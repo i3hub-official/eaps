@@ -1,0 +1,56 @@
+When you add more universities with colleges/departments, the pattern is:
+typescript// src/lib/data/absu-data.ts
+export const absuColleges = [ ... ];
+export const absuDepartments: Record<string, string[]> = { ... };
+
+
+
+Then in seed.ts, after the MOUAU block, add:
+typescript// ── ABSU colleges + departments ───────────────────────────────
+import { absuColleges, absuDepartments } from '../src/lib/data/absu-data.ts';
+
+const absu = await prisma.university.findFirst({ where: { slug: 'absu' } });
+if (absu) {
+  await seedCollegesAndDepts(absu.id, absuColleges, absuDepartments);
+}
+
+
+
+Extract the repeated college+dept logic into a shared function to keep it DRY:
+typescriptasync function seedCollegesAndDepts(
+  universityId: string,
+  colleges: string[],
+  depts: Record<string, string[]>
+) {
+  const collegeMap = new Map<string, number>();
+
+  for (const collegeName of colleges) {
+    const abbreviation = makeAbbreviation(collegeName);
+    const college = await prisma.college.upsert({
+      where:  { name_universityId: { name: collegeName, universityId } },
+      update: { abbreviation },
+      create: { name: collegeName, abbreviation, universityId },
+    });
+    collegeMap.set(collegeName, college.id);
+    console.log(`  ✅ ${collegeName}`);
+  }
+
+  for (const [collegeName, deptList] of Object.entries(depts)) {
+    const collegeId = collegeMap.get(collegeName);
+    if (!collegeId) { console.warn(`  ⚠️  ${collegeName} not found`); continue; }
+
+    for (const deptName of deptList) {
+      const code = makeDeptCode(deptName);
+      await prisma.department.upsert({
+        where:  { name_collegeId: { name: deptName, collegeId } },
+        update: { code },
+        create: { name: deptName, code, collegeId },
+      });
+      console.log(`    ✅ ${deptName}`);
+    }
+  }
+}
+Then the MOUAU block becomes just:
+typescriptif (mouau) await seedCollegesAndDepts(mouau.id, mouauColleges, departments);
+
+node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
