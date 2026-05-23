@@ -50,13 +50,13 @@ export interface Question {
   display_index?: number;       // per-student order
 }
 
-export interface QuestionOption {
-  id: string;
-  question_id: string;
-  option_text: string;
-  is_correct?: boolean;         // only visible server-side
-  display_index?: number;
-}
+// export interface QuestionOption {
+//   id: string;
+//   question_id: string;
+//   option_text: string;
+//   is_correct?: boolean;         // only visible server-side
+//   display_index?: number;
+// }
 
 export interface ExamSession {
   id: string;
@@ -79,16 +79,34 @@ export interface Violation {
   flagged_at: Date;
 }
 
-export interface StudentAnswer {
-  question_id: string;
-  selected_option?: string;   // MCQ option id
-  text_answer?: string;       // FITB
-}
-
 // What the student sees during exam (no correct answers)
 export interface ExamPayload {
   exam: Exam;
   session: ExamSession;
   questions: Question[];
-  saved_answers: Record<string, StudentAnswer>;
+  saved_answers: Record<string, SavedAnswer>;
 }
+
+export interface ClientOption {
+  id: string;
+  option_text: string;
+  display_index: number;
+}
+ 
+export interface ClientQuestion {
+  id: string;
+  exam_id: string;
+  type: QuestionType;
+  body: string;
+  image_url: string | null;
+  marks: number;
+  display_index: number;
+  options: ClientOption[];
+}
+ 
+export interface SavedAnswer {
+  questionId: string;
+  selectedOption: string | null;
+  textAnswer: string | null;
+}
+ 

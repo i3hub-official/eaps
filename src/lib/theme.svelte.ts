@@ -1,32 +1,22 @@
 // src/lib/theme.svelte.ts
-// Global dark/light mode state with persistence
+// Shared reactive theme state using Svelte 5 runes
 
-function createTheme() {
-  let dark = $state(false);
+let theme = $state<'light' | 'dark'>('light');
 
-  function init() {
-    if (typeof window === 'undefined') return;
-    const stored = localStorage.getItem('etest_theme');
-    dark = stored ? stored === 'dark' : window.matchMedia('(prefers-color-scheme: dark)').matches;
-    apply();
-  }
-
-  function apply() {
-    if (typeof document === 'undefined') return;
-    document.documentElement.classList.toggle('dark', dark);
-  }
-
-  function toggle() {
-    dark = !dark;
-    localStorage.setItem('etest_theme', dark ? 'dark' : 'light');
-    apply();
-  }
-
-  return {
-    get dark() { return dark; },
-    init,
-    toggle,
-  };
+export function getTheme() {
+  return theme;
 }
 
-export const theme = createTheme();
+export function initTheme() {
+  if (typeof localStorage === 'undefined') return;
+  const saved = localStorage.getItem('theme');
+  const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+  theme = (saved === 'dark' || (!saved && prefersDark)) ? 'dark' : 'light';
+  document.documentElement.setAttribute('data-theme', theme);
+}
+
+export function toggleTheme() {
+  theme = theme === 'dark' ? 'light' : 'dark';
+  document.documentElement.setAttribute('data-theme', theme);
+  localStorage.setItem('theme', theme);
+}

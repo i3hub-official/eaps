@@ -24,7 +24,7 @@
             <span class="title">{exam.title}</span>
             <span class="time">{fmtDate(exam.scheduledStart)}</span>
           </div>
-          <a href="/invigilator/monitor/{exam.id}" class="monitor-btn">
+          <a href="/invigilator/dashboard/{exam.id}" class="monitor-btn">
             Monitor →
           </a>
         </div>

@@ -12,6 +12,20 @@ export default defineConfig(() => {
       host: '0.0.0.0',
       port: 1209,
       https: true,
+       // Proxy WebSocket connections in dev
+    proxy: {
+      '/ws': {
+        target: 'ws://localhost:3001',
+        ws: true,
+      },
     },
+    },
+
+  // Ensure pg and ws aren't bundled into client
+  ssr: {
+    noExternal: [],
+    external: ['pg', 'ws', 'crypto'],
+  },
   };
+
 });

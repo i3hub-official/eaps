@@ -8,7 +8,7 @@ import { createSession, setSessionCookie } from '$lib/server/auth/session.js';
 const ROLE_HOME: Record<string, string> = {
   student:     '/dashboard',
   lecturer:    '/lecturer/dashboard',
-  invigilator: '/invigilator/monitor',
+  invigilator: '/invigilator/dashboard',
   admin:       '/admin/dashboard',
 };
 

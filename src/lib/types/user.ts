@@ -16,6 +16,20 @@ export interface User {
   created_at: Date;
 }
 
+export interface SafeUser {
+  id: string;
+  matricNumber: string | null;
+  staffId: string | null;
+  email: string;
+  fullName: string;
+  role: UserRole;
+  departmentId: string | null;
+  level: number | null;
+  photoUrl: string | null;
+  isActive: boolean;
+}
+ 
+
 export interface AuthSession {
   id: string;
   user_id: string;

@@ -1,132 +1,131 @@
-<!-- src/routes/(lecturer)/exams/+page.svelte -->
+<!-- src/routes/(lecturer)/dashboard/+page.svelte -->
 <script lang="ts">
   import type { PageData } from './$types';
   let { data }: { data: PageData } = $props();
-  const { exams } = data;
-
-  let search = $state('');
-  let filterStatus = $state('all');
-
-  const filtered = $derived(exams.filter(e => {
-    const matchSearch = e.title.toLowerCase().includes(search.toLowerCase()) ||
-      e.course.code.toLowerCase().includes(search.toLowerCase());
-    const matchStatus = filterStatus === 'all' || e.status === filterStatus;
-    return matchSearch && matchStatus;
-  }));
+  const { exams, statsMap } = data;
 
   const STATUS_COLOR: Record<string, string> = {
     draft: 'gray', scheduled: 'blue', active: 'green',
     completed: 'purple', cancelled: 'red',
   };
-
-  function fmtDate(d: Date | null | undefined) {
-    if (!d) return '—';
-    return new Date(d).toLocaleString([], { dateStyle: 'short', timeStyle: 'short' });
-  }
 </script>
 
-<svelte:head><title>Exams — Lecturer</title></svelte:head>
+<svelte:head><title>Lecturer Dashboard — MOUAU eTest</title></svelte:head>
 
 <div class="page">
   <div class="page-header">
-    <h1>All Exams</h1>
+    <div>
+      <h1>My Exams</h1>
+      <p class="sub">Welcome back, {data.user.fullName}</p>
+    </div>
     <a href="/lecturer/exams/new" class="btn-primary">+ New Exam</a>
   </div>
 
-  <div class="filters">
-    <input class="search" type="search" placeholder="Search title or course…" bind:value={search} />
-    <div class="tabs">
-      {#each ['all','draft','scheduled','active','completed'] as s}
-        <button class="tab" class:active={filterStatus === s}
-          onclick={() => { filterStatus = s; }} type="button">
-          {s.charAt(0).toUpperCase() + s.slice(1)}
-        </button>
+  {#if exams.length === 0}
+    <div class="empty">
+      <p>You haven't created any exams yet.</p>
+      <a href="/lecturer/exams/new" class="btn-primary">Create your first exam</a>
+    </div>
+  {:else}
+    <div class="exam-grid">
+      {#each exams as exam}
+        {@const s = statsMap[exam.id]}
+        <div class="exam-card">
+          <div class="card-top">
+            <span class="course-badge">{exam.course.code}</span>
+            <span class="status-dot {STATUS_COLOR[exam.status]}">{exam.status}</span>
+          </div>
+          <h2 class="exam-title">{exam.title}</h2>
+          <p class="exam-meta">
+            {exam.durationMinutes}min · {exam.totalMarks} marks · Pass {exam.passMark}
+          </p>
+
+          {#if s}
+            <div class="stats-row">
+              <div class="stat"><span class="sv">{s.total}</span><span class="sl">Students</span></div>
+              <div class="stat"><span class="sv">{s.submitted}</span><span class="sl">Submitted</span></div>
+              <div class="stat"><span class="sv">{s.avg_pct}%</span><span class="sl">Avg Score</span></div>
+            </div>
+          {/if}
+
+          <div class="card-actions">
+            <a href="/lecturer/exams/{exam.id}/questions" class="btn-sm">Questions</a>
+            <a href="/lecturer/exams/{exam.id}/results"   class="btn-sm">Results</a>
+            <a href="/lecturer/exams/{exam.id}"           class="btn-sm outline">Manage</a>
+          </div>
+        </div>
       {/each}
     </div>
-  </div>
-
-  <div class="table-wrap">
-    <table>
-      <thead>
-        <tr>
-          <th>Course</th><th>Title</th><th>Status</th>
-          <th>Duration</th><th>Scheduled</th><th>Actions</th>
-        </tr>
-      </thead>
-      <tbody>
-        {#if filtered.length === 0}
-          <tr><td colspan="6" class="empty">No exams found.</td></tr>
-        {:else}
-          {#each filtered as exam}
-            <tr>
-              <td><span class="course-badge">{exam.course.code}</span></td>
-              <td class="title-cell">{exam.title}</td>
-              <td><span class="status {STATUS_COLOR[exam.status]}">{exam.status}</span></td>
-              <td>{exam.durationMinutes}m</td>
-              <td class="mono">{fmtDate(exam.scheduledStart)}</td>
-              <td class="actions-cell">
-                <a href="/lecturer/exams/{exam.id}/questions" class="act">Questions</a>
-                <a href="/lecturer/exams/{exam.id}/results"   class="act">Results</a>
-                <a href="/lecturer/exams/{exam.id}/similarity" class="act">Similarity</a>
-              </td>
-            </tr>
-          {/each}
-        {/if}
-      </tbody>
-    </table>
-  </div>
+  {/if}
 </div>
 
 <style>
-  .page { padding: 2rem; max-width: 1100px; margin: 0 auto; display: flex; flex-direction: column; gap: 1.25rem; }
-  .page-header { display: flex; justify-content: space-between; align-items: center; }
-  h1 { font-size: 1.4rem; font-weight: 700; margin: 0; }
+  .page { padding: 2rem; max-width: 1100px; margin: 0 auto; }
+
+  .page-header {
+    display: flex; justify-content: space-between; align-items: flex-start;
+    margin-bottom: 2rem; gap: 1rem;
+  }
+  h1   { font-size: 1.5rem; font-weight: 700; margin: 0; }
+  .sub { color: var(--color-muted); margin: 0.25rem 0 0; font-size: 0.9rem; }
+
   .btn-primary {
     padding: 0.6rem 1.25rem; background: var(--color-primary); color: #fff;
-    border: none; border-radius: 0.5rem; font-weight: 600; font-size: 0.9rem;
-    text-decoration: none;
+    border-radius: 0.5rem; font-weight: 600; text-decoration: none; font-size: 0.9rem;
+    white-space: nowrap;
   }
-  .filters { display: flex; gap: 1rem; flex-wrap: wrap; align-items: center; }
-  .search {
-    padding: 0.45rem 0.875rem; border: 1px solid var(--color-border);
-    border-radius: 0.5rem; background: var(--color-bg); color: var(--color-text);
-    font-size: 0.875rem; outline: none; width: 240px;
-  }
-  .tabs { display: flex; gap: 0.35rem; }
-  .tab {
-    padding: 0.35rem 0.75rem; border: 1px solid var(--color-border);
-    border-radius: 999px; font-size: 0.75rem; font-weight: 500;
-    color: var(--color-muted); background: none; cursor: pointer;
-  }
-  .tab.active { background: var(--color-primary); border-color: var(--color-primary); color: #fff; }
 
-  .table-wrap { background: var(--color-surface); border: 1px solid var(--color-border); border-radius: 0.75rem; overflow: hidden; }
-  table { width: 100%; border-collapse: collapse; font-size: 0.875rem; }
-  th { padding: 0.75rem 1rem; text-align: left; font-size: 0.72rem; font-weight: 600; color: var(--color-muted); text-transform: uppercase; background: var(--color-bg); }
-  td { padding: 0.75rem 1rem; border-top: 1px solid var(--color-border); }
-  tr:hover td { background: var(--color-bg); }
+  .exam-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+    gap: 1.25rem;
+  }
+
+  .exam-card {
+    background: var(--color-surface); border: 1px solid var(--color-border);
+    border-radius: 0.75rem; padding: 1.25rem;
+    display: flex; flex-direction: column; gap: 0.75rem;
+  }
+
+  .card-top { display: flex; justify-content: space-between; align-items: center; }
 
   .course-badge {
-    font-size: 0.72rem; font-weight: 700; padding: 0.2rem 0.5rem;
-    background: var(--color-primary-subtle); color: var(--color-primary); border-radius: 999px;
+    font-size: 0.75rem; font-weight: 700; padding: 0.2rem 0.6rem;
+    background: var(--color-primary-subtle); color: var(--color-primary);
+    border-radius: 999px;
   }
-  .title-cell { font-weight: 500; max-width: 280px; }
-  .status {
-    font-size: 0.7rem; font-weight: 600; padding: 0.2rem 0.5rem; border-radius: 999px;
-    text-transform: capitalize;
+
+  .status-dot {
+    font-size: 0.7rem; font-weight: 600; padding: 0.2rem 0.6rem;
+    border-radius: 999px; text-transform: capitalize;
   }
-  .status.gray   { background: var(--color-border);  color: var(--color-muted); }
-  .status.blue   { background: #dbeafe; color: #1d4ed8; }
-  .status.green  { background: #dcfce7; color: #16a34a; }
-  .status.purple { background: #f3e8ff; color: #7e22ce; }
-  .status.red    { background: #fee2e2; color: #dc2626; }
-  .mono { font-variant-numeric: tabular-nums; font-size: 0.82rem; }
-  .actions-cell { display: flex; gap: 0.4rem; flex-wrap: wrap; }
-  .act {
-    padding: 0.25rem 0.6rem; background: var(--color-bg); border: 1px solid var(--color-border);
-    border-radius: 0.35rem; font-size: 0.75rem; font-weight: 500; text-decoration: none;
-    color: var(--color-text);
+  .status-dot.gray   { background: var(--color-border);  color: var(--color-muted); }
+  .status-dot.blue   { background: #dbeafe; color: #1d4ed8; }
+  .status-dot.green  { background: #dcfce7; color: #16a34a; }
+  .status-dot.purple { background: #f3e8ff; color: #7e22ce; }
+  .status-dot.red    { background: #fee2e2; color: #dc2626; }
+
+  .exam-title { font-size: 1rem; font-weight: 600; margin: 0; }
+  .exam-meta  { font-size: 0.8rem; color: var(--color-muted); margin: 0; }
+
+  .stats-row  { display: flex; gap: 1rem; padding: 0.75rem; background: var(--color-bg); border-radius: 0.5rem; }
+  .stat       { display: flex; flex-direction: column; align-items: center; flex: 1; gap: 0.1rem; }
+  .sv         { font-size: 1.1rem; font-weight: 700; }
+  .sl         { font-size: 0.7rem; color: var(--color-muted); text-transform: uppercase; }
+
+  .card-actions { display: flex; gap: 0.5rem; flex-wrap: wrap; margin-top: auto; }
+  .btn-sm {
+    padding: 0.35rem 0.75rem; border-radius: 0.4rem; font-size: 0.8rem;
+    font-weight: 600; text-decoration: none; background: var(--color-primary);
+    color: #fff; border: none; cursor: pointer;
   }
-  .act:hover { border-color: var(--color-primary); color: var(--color-primary); }
-  .empty { text-align: center; color: var(--color-muted); padding: 2rem; }
+  .btn-sm.outline {
+    background: none; border: 1px solid var(--color-border); color: var(--color-text);
+  }
+
+  .empty {
+    text-align: center; padding: 4rem 2rem;
+    display: flex; flex-direction: column; align-items: center; gap: 1rem;
+    color: var(--color-muted);
+  }
 </style>
