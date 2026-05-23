@@ -1,42 +1,42 @@
 // src/routes/api/lecturer/exams/+server.ts
 import { json, error } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
-import { createExam, updateExamStatus } from '$lib/server/db/exams.js';
+import { requireLecturer } from '$lib/server/auth/guards.js';
+import { getExamById, updateExam, setExamStatus, deleteExam } from '$lib/server/db/exams.js';
+import { requireOwnership } from '$lib/server/auth/guards.js';
 
-export const POST: RequestHandler = async ({ request, locals }) => {
-  if (!locals.user) error(401, 'Unauthorized');
-  if (!['lecturer', 'admin'].includes(locals.user.role)) error(403, 'Forbidden');
-
+// PATCH — update exam settings or status
+export const PATCH: RequestHandler = async ({ request, locals }) => {
+  const user = requireLecturer(locals.user);
   const body = await request.json();
+  const { examId, ...updates } = body;
 
-  if (!body.course_id || !body.title || !body.duration_minutes) {
-    error(400, 'Missing required fields');
+  if (!examId) error(400, 'examId required');
+
+  const exam = await getExamById(examId);
+  if (!exam) error(404, 'Exam not found');
+  requireOwnership(user, exam.createdBy);
+
+  // Status-only update
+  if (updates.status && Object.keys(updates).length === 1) {
+    await setExamStatus(examId, updates.status);
+    return json({ ok: true });
   }
 
-  const exam = await createExam({
-    course_id: body.course_id,
-    created_by: locals.user.id,
-    title: body.title,
-    instructions: body.instructions || null,
-    duration_minutes: Number(body.duration_minutes),
-    total_marks: Number(body.total_marks) || 100,
-    pass_mark: Number(body.pass_mark) || 40,
-    randomize_questions: body.randomize_questions === 'true',
-    randomize_options: body.randomize_options === 'true',
-    show_result_after: body.show_result_after === 'true',
-    max_violations: 5,
-    session: body.session || '2024/2025',
-    semester: Number(body.semester) || 1,
-    scheduled_start: body.scheduled_start ? new Date(body.scheduled_start) : undefined,
-    scheduled_end: body.scheduled_end ? new Date(body.scheduled_end) : undefined,
-  });
-
-  return json({ id: exam.id });
+  const updated = await updateExam(examId, updates);
+  return json({ ok: true, exam: updated });
 };
 
-export const PATCH: RequestHandler = async ({ request, locals }) => {
-  if (!locals.user) error(401, 'Unauthorized');
-  const { exam_id, status } = await request.json();
-  await updateExamStatus(exam_id, status);
+// DELETE — delete a draft exam
+export const DELETE: RequestHandler = async ({ request, locals }) => {
+  const user = requireLecturer(locals.user);
+  const { examId } = await request.json();
+  if (!examId) error(400, 'examId required');
+
+  const exam = await getExamById(examId);
+  if (!exam) error(404, 'Exam not found');
+  requireOwnership(user, exam.createdBy);
+
+  await deleteExam(examId);
   return json({ ok: true });
 };

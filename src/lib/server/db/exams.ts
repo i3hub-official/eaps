@@ -1,3 +1,4 @@
+// src/lib/server/db/exams.ts
 import { prisma } from './index.js';
 import type { Exam, ExamStatus } from '@prisma/client';
 

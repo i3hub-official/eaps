@@ -1,3 +1,5 @@
+// src/lib/server/db/sessions.ts
+
 import { prisma, sql } from './index.js';
 import type { ExamSession, SessionStatus, StudentAnswer } from '@prisma/client';
 

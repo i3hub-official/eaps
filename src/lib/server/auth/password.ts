@@ -1,3 +1,4 @@
+// src/lib/server/auth/password.ts
 import { randomBytes, scrypt, timingSafeEqual } from 'crypto';
 import { promisify } from 'util';
 

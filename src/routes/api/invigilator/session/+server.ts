@@ -1,43 +1,54 @@
 // src/routes/api/invigilator/session/+server.ts
 import { json, error } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
-import { pauseSession, resumeSession, forceSubmitSession } from '$lib/server/db/sessions.js';
+import { requireInvigilatorOrAdmin } from '$lib/server/auth/guards.js';
+import { flagSession, resumeSession, submitSession, getSessionById } from '$lib/server/db/sessions.js';
+import { getViolationsForSession } from '$lib/server/db/violations.js';
 import { gradeSession } from '$lib/server/db/results.js';
+import { sendToStudent } from '$lib/server/ws/server.js';
 import { logViolation } from '$lib/server/db/violations.js';
-import { broadcastStudentStatus } from '$lib/server/ws/server.js';
-import { getSessionById } from '$lib/server/db/sessions.js';
 
+// GET — fetch violations for a session
+export const GET: RequestHandler = async ({ url, locals }) => {
+  requireInvigilatorOrAdmin(locals.user);
+
+  const sessionId = url.searchParams.get('session_id');
+  if (!sessionId) error(400, 'session_id required');
+
+  const violations = await getViolationsForSession(sessionId);
+  return json({ violations });
+};
+
+// POST — pause / resume / force_submit
 export const POST: RequestHandler = async ({ request, locals }) => {
-  if (!locals.user) error(401, 'Unauthorized');
-  if (!['invigilator', 'admin'].includes(locals.user.role)) error(403, 'Forbidden');
+  requireInvigilatorOrAdmin(locals.user);
 
-  const { action, session_id, note } = await request.json();
+  const { session_id, action, note } = await request.json();
+  if (!session_id || !action) error(400, 'session_id and action required');
 
   const session = await getSessionById(session_id);
   if (!session) error(404, 'Session not found');
 
-  switch (action) {
-    case 'pause':
-      await pauseSession(session_id);
-      await logViolation(session_id, 'invigilator_manual', 'exam_paused', note ?? 'Paused by invigilator');
-      broadcastStudentStatus(session.exam_id, session_id, 'flagged');
-      break;
-
-    case 'resume':
-      await resumeSession(session_id);
-      broadcastStudentStatus(session.exam_id, session_id, 'in_progress');
-      break;
-
-    case 'force_submit':
-      await forceSubmitSession(session_id);
-      await gradeSession(session_id);
-      await logViolation(session_id, 'invigilator_manual', 'auto_submitted', note ?? 'Force submitted by invigilator');
-      broadcastStudentStatus(session.exam_id, session_id, 'force_submitted');
-      break;
-
-    default:
-      error(400, 'Invalid action');
+  if (action === 'pause') {
+    await flagSession(session_id);
+    await logViolation(session_id, 'invigilator_manual', 'exam_paused', note ?? 'Paused by invigilator');
+    sendToStudent(session_id, { type: 'pause_session', session_id });
+    return json({ ok: true, status: 'flagged' });
   }
 
-  return json({ ok: true });
+  if (action === 'resume') {
+    await resumeSession(session_id);
+    sendToStudent(session_id, { type: 'resume_session', session_id });
+    return json({ ok: true, status: 'in_progress' });
+  }
+
+  if (action === 'force_submit') {
+    await submitSession(session_id, 'force_submitted');
+    await gradeSession(session_id);
+    await logViolation(session_id, 'invigilator_manual', 'auto_submitted', note ?? 'Force submitted by invigilator');
+    sendToStudent(session_id, { type: 'force_submit', session_id });
+    return json({ ok: true, status: 'force_submitted' });
+  }
+
+  error(400, 'Unknown action');
 };

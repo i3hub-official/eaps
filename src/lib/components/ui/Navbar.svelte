@@ -1,7 +1,7 @@
 <!-- src/lib/components/ui/Navbar.svelte -->
 <script lang="ts">
   import ThemeToggle from './ThemeToggle.svelte';
-  import { GraduationCap, LogOut, User } from '@lucide/svelte';
+  import { GraduationCap, LogOut, User } from 'lucide-svelte';
   import type { SessionUser } from '$lib/types/user.js';
 
   let { user }: { user: SessionUser } = $props();
@@ -67,14 +67,18 @@
 
     <ThemeToggle />
 
-    <a href="/logout" title="Sign out" style="
-      display:inline-flex; align-items:center; gap:0.35rem;
-      font-size:0.78rem; color:var(--text-muted); text-decoration:none;
-      border: 1px solid var(--border); border-radius:0.5rem;
-      padding: 0.35rem 0.65rem; transition: color 0.15s;
-    ">
-      <LogOut size={14} />
-      Logout
-    </a>
+    <!-- ✅ Logout form instead of link -->
+    <form action="/logout" method="POST" style="display: inline;">
+      <button type="submit" title="Sign out" style="
+        display: inline-flex; align-items: center; gap: 0.35rem;
+        font-size: 0.78rem; color: var(--text-muted);
+        border: 1px solid var(--border); border-radius: 0.5rem;
+        padding: 0.35rem 0.65rem; transition: color 0.15s;
+        background: transparent; cursor: pointer;
+      ">
+        <LogOut size={14} />
+        Logout
+      </button>
+    </form>
   </div>
 </nav>

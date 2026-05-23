@@ -6,7 +6,7 @@ import { getSessionById, incrementViolation, forceSubmitSession } from '$lib/ser
 import { logViolation } from '$lib/server/db/violations.js';
 import { gradeSession } from '$lib/server/db/results.js';
 import { broadcastViolation, broadcastStudentStatus } from '$lib/server/ws/server.js';
-import type { FlagType, ViolationAction } from '$lib/types/exam.js';
+import type { FlagType, ViolationAction } from '@prisma/client';
 
 export const POST: RequestHandler = async ({ request, params, locals }) => {
   if (!locals.user) error(401, 'Unauthorized');
@@ -16,24 +16,21 @@ export const POST: RequestHandler = async ({ request, params, locals }) => {
   const session = await getSessionById(session_id);
   if (!session) error(404, 'Session not found');
 
-  // Don't process violations on already-submitted exams
   if (session.status === 'submitted' || session.status === 'force_submitted') {
-    return json({ ok: true, violation_count: session.violation_count, action: null });
+    return json({ ok: true, violation_count: session.violationCount, action: null });
   }
 
   const exam = await getExamById(params.examId);
   if (!exam) error(404, 'Exam not found');
 
-  const violation_count = await incrementViolation(session_id);
+  const violationCount = await incrementViolation(session_id);
 
-  // Determine action based on threshold
-  let action: ViolationAction | undefined;
-
-  if (violation_count >= exam.max_violations) {
+  let action: ViolationAction;
+  if (violationCount >= exam.maxViolations) {
     action = 'auto_submitted';
-  } else if (violation_count >= Math.floor(exam.max_violations * 0.6)) {
+  } else if (violationCount >= Math.floor(exam.maxViolations * 0.6)) {
     action = 'exam_paused';
-  } else if (violation_count >= Math.floor(exam.max_violations * 0.4)) {
+  } else if (violationCount >= Math.floor(exam.maxViolations * 0.4)) {
     action = 'invigilator_alerted';
   } else {
     action = 'warning';
@@ -41,22 +38,20 @@ export const POST: RequestHandler = async ({ request, params, locals }) => {
 
   await logViolation(session_id, flag_type, action);
 
-  // Broadcast to invigilator dashboard
   broadcastViolation(exam.id, {
     session_id,
-    student_name: locals.user.full_name,
-    matric_number: locals.user.matric_number,
+    student_name: locals.user.fullName,
+    matric_number: locals.user.matricNumber,
     flag_type,
     action,
-    violation_count,
+    violation_count: violationCount,
   });
 
-  // Auto-submit if threshold reached
   if (action === 'auto_submitted') {
     await forceSubmitSession(session_id);
     await gradeSession(session_id);
     broadcastStudentStatus(exam.id, session_id, 'force_submitted');
   }
 
-  return json({ ok: true, violation_count, action });
+  return json({ ok: true, violation_count: violationCount, action });
 };

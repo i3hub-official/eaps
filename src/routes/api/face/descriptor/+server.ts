@@ -1,16 +1,13 @@
 // src/routes/api/face/descriptor/+server.ts
 import { json, error } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
-import { getFaceDescriptor, isFaceEnrolled } from '$lib/server/db/faces.js';
+import { requireStudent } from '$lib/server/auth/guards.js';
+import { getFaceDescriptor } from '$lib/server/db/faces.js';
 
+// GET — retrieve stored descriptor for face verification during exam
 export const GET: RequestHandler = async ({ locals }) => {
-  if (!locals.user) error(401, 'Unauthorized');
-
-  const enrolled = await isFaceEnrolled(locals.user.id);
-  if (!enrolled) {
-    return json({ enrolled: false, descriptor: null });
-  }
-
-  const descriptor = await getFaceDescriptor(locals.user.id);
-  return json({ enrolled: true, descriptor });
+  const user = requireStudent(locals.user);
+  const descriptor = await getFaceDescriptor(user.id);
+  if (!descriptor) error(404, 'No face descriptor found — please enroll first');
+  return json({ descriptor });
 };

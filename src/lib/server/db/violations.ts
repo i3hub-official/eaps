@@ -1,3 +1,5 @@
+// src/lib/server/db/violations.ts
+
 import { prisma } from './index.js';
 import type { Violation, FlagType, ViolationAction } from '@prisma/client';
 

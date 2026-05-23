@@ -4,8 +4,8 @@ import type { PageServerLoad } from './$types';
 import { requireStudent } from '$lib/server/auth/guards.js';
 import { isFaceEnrolled } from '$lib/server/db/faces.js';
 
-export const load: PageServerLoad = async ({ cookies, url }) => {
-  const user = await requireStudent(cookies);
+export const load: PageServerLoad = async ({ locals, url }) => {
+  const user = await requireStudent(locals.user);
   const enrolled = await isFaceEnrolled(user.id);
 
   // If already enrolled and no force re-enroll param, go to dashboard

@@ -1,3 +1,4 @@
+// src/app.d.ts
 import type { User } from '@prisma/client';
 
 declare global {

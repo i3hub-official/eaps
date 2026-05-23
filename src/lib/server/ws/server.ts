@@ -1,3 +1,5 @@
+// src/lib/server/ws/server.ts
+
 import { WebSocketServer, WebSocket } from 'ws';
 import type { IncomingMessage } from 'http';
 

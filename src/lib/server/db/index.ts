@@ -1,11 +1,10 @@
+// src/lib/server/db/index.ts
 import { PrismaClient } from '@prisma/client';
 import { PrismaPg } from '@prisma/adapter-pg';
 import pg from 'pg';
 import { DATABASE_URL } from '$env/static/private';
 
-
 // ─── Prisma singleton ─────────────────────────────────────────────────────────
-// Prevents multiple instances in SvelteKit dev (HMR re-imports)
 const pool = new pg.Pool({ connectionString: DATABASE_URL });
 const adapter = new PrismaPg(pool);
 
@@ -24,29 +23,14 @@ if (process.env.NODE_ENV !== 'production') {
 
 // ─── Raw pg pool (complex queries only) ──────────────────────────────────────
 
-const { Pool } = pg;
-
-function parseConnectionUrl(url: string) {
-  const u = new URL(url);
-  return {
-    host: u.hostname,
-    port: parseInt(u.port || '5432', 10),
-    user: u.username,
-    password: u.password,
-    database: u.pathname.replace(/^\//, ''),
-  };
-}
-
 let _pool: pg.Pool | null = null;
 
 function getPool(): pg.Pool {
   if (_pool) return _pool;
 
-  const url = process.env.DATABASE_URL;
-  if (!url) throw new Error('[DB] DATABASE_URL is not set');
-
-  _pool = new Pool({
-    ...parseConnectionUrl(url),
+  // ✅ Use the same DATABASE_URL from SvelteKit env, not process.env
+  _pool = new pg.Pool({
+    connectionString: DATABASE_URL,
     ssl: false,
     max: 10,
     idleTimeoutMillis: 30_000,

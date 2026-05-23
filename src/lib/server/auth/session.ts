@@ -1,3 +1,4 @@
+// src/lib/server/auth/session.ts
 import { randomBytes } from 'crypto';
 import { prisma } from '$lib/server/db/index.js';
 import type { Cookies } from '@sveltejs/kit';
@@ -70,6 +71,10 @@ export function clearSessionCookie(cookies: Cookies): void {
 
 export function getSessionToken(cookies: Cookies): string | null {
   return cookies.get(SESSION_COOKIE) ?? null;
+}
+
+export async function deleteSession(token: string): Promise<void> {
+  await destroySession(token);
 }
 
 // ─── Cleanup job (call on a schedule or at startup) ───────────────────────────

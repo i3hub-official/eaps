@@ -1,3 +1,5 @@
+// src/lib/server/exam/randomizer.ts
+
 import { sql } from '$lib/server/db/index.js';
 import type { Question, QuestionOption, FitbAnswer } from '@prisma/client';
 
@@ -34,6 +36,7 @@ export async function buildStudentQuestionOrder(
   randomizeOptions: boolean
 ): Promise<QuestionWithRelations[]> {
 
+  // ✅ Use sql() consistently (not prisma.$queryRaw which wasn't imported)
   const existing = await sql<{ question_id: string; display_index: number }>(
     `SELECT question_id, display_index
      FROM session_question_order

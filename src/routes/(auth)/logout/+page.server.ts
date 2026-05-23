@@ -1,13 +1,12 @@
-// src/routes/(auth)/logout/+page.server.ts
 import { redirect } from '@sveltejs/kit';
-import type { PageServerLoad } from './$types';
-import { getSessionToken, deleteSession, clearSessionCookie } from '$lib/server/auth/session.js';
+import type { Actions } from './$types';
+import { destroySession, clearSessionCookie, getSessionToken } from '$lib/server/auth/session.js';
 
-export const load: PageServerLoad = async ({ cookies }) => {
-  const token = getSessionToken(cookies);
-  if (token) {
-    await deleteSession(token);
+export const actions: Actions = {
+  default: async ({ cookies }) => {
+    const token = getSessionToken(cookies);
+    if (token) await destroySession(token);
     clearSessionCookie(cookies);
-  }
-  redirect(302, '/login');
+    redirect(302, '/login');
+  },
 };
