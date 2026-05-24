@@ -22,7 +22,8 @@
 		"seed:all": "prisma migrate dev && tsx prisma/seed.ts",
 		"db:sql": "tsx prisma/apply-sql.ts",
 		"db:seed": "tsx prisma/seed.ts",
-		"db:setup": "prisma db push && pnpm db:sql && pnpm db:seed"
+		"db:setup": "prisma db push && pnpm db:sql && pnpm db:seed",
+		 "download:models": "node scripts/download-models.js"
 	},
 	"devDependencies": {
 		"@eslint/compat": "^2.0.4",

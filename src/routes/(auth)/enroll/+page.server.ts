@@ -1,17 +1,18 @@
-// src/routes/api/face/enroll/+server.ts
-import { json, error } from '@sveltejs/kit';
-import type { RequestHandler } from './$types';
+// src/routes/(auth)/enroll/+page.server.ts
+import { redirect } from '@sveltejs/kit';
+import type { PageServerLoad } from './$types';
 import { requireStudent } from '$lib/server/auth/guards.js';
-import { saveFaceDescriptor } from '$lib/server/db/faces.js';
+import { isFaceEnrolled } from '$lib/server/db/faces.js';
 
-export const POST: RequestHandler = async ({ request, locals }) => {
-  const user = requireStudent(locals.user);
+export const load: PageServerLoad = async ({ locals, url }) => {
+  const user = await requireStudent(locals.user);
+  const enrolled = await isFaceEnrolled(user.id);
 
-  const body = await request.json().catch(() => null);
-  if (!body?.descriptor || !Array.isArray(body.descriptor) || body.descriptor.length !== 128) {
-    error(400, { message: 'Invalid descriptor — expected a 128-element float array.' });
+  if (enrolled && !url.searchParams.has('redo')) {
+    redirect(302, '/student');
   }
 
-  await saveFaceDescriptor(user.id, body.descriptor);
-  return json({ ok: true });
+  return { user, enrolled };
 };
+
+// NO POST, NO PUT, NO DELETE here - those go in +server.ts files only

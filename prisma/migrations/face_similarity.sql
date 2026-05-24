@@ -29,6 +29,19 @@ CREATE TABLE IF NOT EXISTS face_similarity (
   UNIQUE (exam_id, student_a_id, student_b_id)
 );
 
+CREATE TABLE IF NOT EXISTS face_verification_logs (
+  id                  UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+    student_id VARCHAR(50) REFERENCES students(id),
+    similarity_score DECIMAL(5,2),
+    verification_time TIMESTAMPTZ NOT NULL DEFAULT now(),
+    success BOOLEAN,
+    ip_address INET,
+    user_agent TEXT
+);
+
 CREATE INDEX IF NOT EXISTS idx_face_similarity_exam     ON face_similarity(exam_id);
 CREATE INDEX IF NOT EXISTS idx_face_similarity_risk     ON face_similarity(exam_id, risk_level);
 CREATE INDEX IF NOT EXISTS idx_face_similarity_score    ON face_similarity(exam_id, similarity_score DESC);
+CREATE INDEX IF NOT EXISTS idx_face_similarity_students ON face_similarity(exam_id, student_a_id, student_b_id);
+CREATE INDEX IF NOT EXISTS idx_face_verification_logs_student ON face_verification_logs(student_id);
+CREATE INDEX IF NOT EXISTS idx_face_verification_logs_time ON face_verification_logs(verification_time);
