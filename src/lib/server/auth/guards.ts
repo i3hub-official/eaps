@@ -5,7 +5,7 @@ import type { UserRole, User } from '@prisma/client';
 const ROLE_HOME: Record<UserRole, string> = {
   student:     '/dashboard',
   lecturer:    '/lecturer/dashboard',
-  invigilator: '/invigilator/monitor',
+  invigilator: '/invigilator/dashboard',
   admin:       '/admin/dashboard',
 };
 

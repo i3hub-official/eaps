@@ -1,3 +1,10 @@
+// MOUAU eTest — Prisma schema
+// prisma · postgresql
+//
+// Commands:
+//   pnpm prisma migrate dev --name <name>
+//   pnpm prisma generate
+
 generator client {
   provider   = "prisma-client-js"
   engineType = "library"
@@ -56,29 +63,44 @@ enum ViolationAction {
   auto_submitted
 }
 
-// ─── Faculties & Departments ──────────────────────────────────────────────────
+// ─── Institutional hierarchy ──────────────────────────────────────────────────
+//
+// MOUAU structure mirrors Sabify: University → College → Department
+//
+// The old "Faculty" model is renamed to "College" to match MOUAU's real naming
+// (e.g. "College of Natural Sciences", "College of Engineering and Engineering
+// Technology"). Faculty is an alias used colloquially — the official unit is
+// College. This also makes the schema consistent with Sabify's hierarchy so
+// shared helpers (receipt parsing, college/dept resolution) work identically.
 
-model Faculty {
-  id          String       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  name        String       @unique
-  code        String       @unique
-  createdAt   DateTime     @default(now()) @map("created_at") @db.Timestamptz()
+model College {
+  id           Int     @id @default(autoincrement())
+  name         String
+  abbreviation String? // e.g. "CNAES", "COLENG" — optional
+  code         String? @unique // short code if available
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz()
+
   departments Department[]
+  users       User[]
 
-  @@map("faculties")
+  @@unique([name])
+  @@map("colleges")
 }
 
 model Department {
   id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  facultyId String   @map("faculty_id") @db.Uuid
+  collegeId Int      @map("college_id")
   name      String
   code      String   @unique
   createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz()
 
-  faculty Faculty @relation(fields: [facultyId], references: [id], onDelete: Cascade)
+  college College @relation(fields: [collegeId], references: [id], onDelete: Cascade)
   users   User[]
   courses Course[]
 
+  @@unique([name, collegeId])
+  @@index([collegeId])
   @@map("departments")
 }
 
@@ -86,32 +108,73 @@ model Department {
 
 model User {
   id           String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  matricNumber String?  @unique @map("matric_number")
-  staffId      String?  @unique @map("staff_id")
   email        String   @unique
   fullName     String   @map("full_name")
   passwordHash String   @map("password_hash")
   role         UserRole
-  departmentId String?  @map("department_id") @db.Uuid
-  level        Int?     @db.SmallInt
-  photoUrl     String?  @map("photo_url")
   isActive     Boolean  @default(true) @map("is_active")
   createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz()
   updatedAt    DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz()
 
-  department            Department?           @relation(fields: [departmentId], references: [id])
-  authSessions          AuthSession[]
-  courseRegistrations   CourseRegistration[]
-  createdExams          Exam[]                @relation("LecturerExams")
-  examSessions          ExamSession[]         @relation("StudentSessions")
-  invigilatedSessions   ExamSession[]         @relation("InvigilatorSessions")
-  examInvigilators      ExamInvigilator[]
-  examResults           ExamResult[]
-  auditLogs             AuditLog[]
-  notifications         Notification[]
+  // ── Contact ─────────────────────────────────────────────────────────────────
+  phone    String? // stored plaintext — eTest is internal, no encryption layer
+
+  // ── Academic identity ────────────────────────────────────────────────────────
+  // Matches Sabify's User fields 1:1 so the signup server can write the same
+  // fields without branching. jambRegNo is optional — not all MOUAU receipts
+  // include it, and non-MOUAU flows may not have it at all.
+  matricNumber String? @unique @map("matric_number")
+  staffId      String? @unique @map("staff_id")   // lecturers / invigilators
+  jambRegNo    String? @unique @map("jamb_reg_no") // JAMB registration number
+  level        Int?    @db.SmallInt                // 100 | 200 | 300 | 400 | 500
+  session      String?                             // e.g. "2024/2025"
+
+  // ── Institution ──────────────────────────────────────────────────────────────
+  // College sits between University and Department, matching MOUAU's actual
+  // structure and Sabify's hierarchy. departmentId is kept as the primary FK
+  // for exam/course scoping; collegeId is denormalised here for fast filtering
+  // (e.g. "show all students in CNAES") without joining through Department.
+  collegeId    Int?    @map("college_id")
+  college      College?    @relation(fields: [collegeId], references: [id])
+  departmentId String? @map("department_id") @db.Uuid
+  department   Department? @relation(fields: [departmentId], references: [id])
+
+  // ── Profile ───────────────────────────────────────────────────────────────────
+  photoUrl String? @map("photo_url")
+
+  // ── Receipt audit trail ────────────────────────────────────────────────────────
+  // Mirrors Sabify's receipt fields exactly — written by the signup action after
+  // a successful fetchReceipt call. Used for support, fraud investigation, and
+  // re-verification without re-hitting the MOUAU API.
+  receiptNo     String? @map("receipt_no")     // portal issued receipt number
+  receiptRef    String? @map("receipt_ref")     // transaction_ref / RRR / IVN
+  receiptSource String? @map("receipt_source")  // always "MOUAU" here; extensible
+
+  // ── Suspension audit ───────────────────────────────────────────────────────────
+  // Matches Sabify's isSuspended pattern. suspendedById is a plain string (not
+  // a FK) so that admin deletions don't cascade-clear suspension history.
+  isSuspended   Boolean   @default(false) @map("is_suspended")
+  suspendedAt   DateTime? @map("suspended_at") @db.Timestamptz()
+  suspendedById String?   @map("suspended_by_id") // userId of suspending admin
+
+  // ── Relations ─────────────────────────────────────────────────────────────────
+  authSessions        AuthSession[]
+  courseRegistrations CourseRegistration[]
+  createdExams        Exam[]               @relation("LecturerExams")
+  examSessions        ExamSession[]        @relation("StudentSessions")
+  invigilatedSessions ExamSession[]        @relation("InvigilatorSessions")
+  examInvigilators    ExamInvigilator[]
+  examResults         ExamResult[]
+  auditLogs           AuditLog[]
+  notifications       Notification[]
 
   @@index([role])
+  @@index([collegeId])
   @@index([departmentId])
+  @@index([matricNumber])
+  @@index([jambRegNo])
+  @@index([staffId])
+  @@index([isSuspended])
   @@map("users")
 }
 
@@ -144,9 +207,9 @@ model Course {
   level        Int?     @db.SmallInt
   createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz()
 
-  department          Department           @relation(fields: [departmentId], references: [id])
-  registrations       CourseRegistration[]
-  exams               Exam[]
+  department    Department           @relation(fields: [departmentId], references: [id])
+  registrations CourseRegistration[]
+  exams         Exam[]
 
   @@map("courses")
 }
@@ -215,7 +278,7 @@ model Question {
   orderIndex Int?         @map("order_index") @db.SmallInt
   createdAt  DateTime     @default(now()) @map("created_at") @db.Timestamptz()
 
-  exam                 Exam                  @relation(fields: [examId], references: [id], onDelete: Cascade)
+  exam                 Exam                   @relation(fields: [examId], references: [id], onDelete: Cascade)
   options              QuestionOption[]
   fitbAnswers          FitbAnswer[]
   studentAnswers       StudentAnswer[]
@@ -254,20 +317,20 @@ model FitbAnswer {
 // ─── Exam Sessions ────────────────────────────────────────────────────────────
 
 model ExamSession {
-  id               String        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  examId           String        @map("exam_id") @db.Uuid
-  studentId        String        @map("student_id") @db.Uuid
-  invigilatorId    String?       @map("invigilator_id") @db.Uuid
-  status           SessionStatus @default(not_started)
-  startedAt        DateTime?     @map("started_at") @db.Timestamptz()
-  submittedAt      DateTime?     @map("submitted_at") @db.Timestamptz()
-  timeRemainingSecs Int?         @map("time_remaining_secs")
-  ipAddress        String?       @map("ip_address")
-  deviceInfo       String?       @map("device_info")
-  score            Decimal?      @db.Decimal(5, 2)
-  isGraded         Boolean       @default(false) @map("is_graded")
-  violationCount   Int           @default(0) @map("violation_count") @db.SmallInt
-  createdAt        DateTime      @default(now()) @map("created_at") @db.Timestamptz()
+  id                String        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  examId            String        @map("exam_id") @db.Uuid
+  studentId         String        @map("student_id") @db.Uuid
+  invigilatorId     String?       @map("invigilator_id") @db.Uuid
+  status            SessionStatus @default(not_started)
+  startedAt         DateTime?     @map("started_at") @db.Timestamptz()
+  submittedAt       DateTime?     @map("submitted_at") @db.Timestamptz()
+  timeRemainingSecs Int?          @map("time_remaining_secs")
+  ipAddress         String?       @map("ip_address")
+  deviceInfo        String?       @map("device_info")
+  score             Decimal?      @db.Decimal(5, 2)
+  isGraded          Boolean       @default(false) @map("is_graded")
+  violationCount    Int           @default(0) @map("violation_count") @db.SmallInt
+  createdAt         DateTime      @default(now()) @map("created_at") @db.Timestamptz()
 
   exam                 Exam                   @relation(fields: [examId], references: [id])
   student              User                   @relation("StudentSessions", fields: [studentId], references: [id])
@@ -355,10 +418,10 @@ model Violation {
 // ─── Invigilator Assignments ──────────────────────────────────────────────────
 
 model ExamInvigilator {
-  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  examId         String   @map("exam_id") @db.Uuid
-  invigilatorId  String   @map("invigilator_id") @db.Uuid
-  assignedAt     DateTime @default(now()) @map("assigned_at") @db.Timestamptz()
+  id            String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  examId        String   @map("exam_id") @db.Uuid
+  invigilatorId String   @map("invigilator_id") @db.Uuid
+  assignedAt    DateTime @default(now()) @map("assigned_at") @db.Timestamptz()
 
   exam        Exam @relation(fields: [examId], references: [id], onDelete: Cascade)
   invigilator User @relation(fields: [invigilatorId], references: [id])
@@ -370,21 +433,21 @@ model ExamInvigilator {
 // ─── Results ──────────────────────────────────────────────────────────────────
 
 model ExamResult {
-  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  sessionId      String   @unique @map("session_id") @db.Uuid
-  studentId      String   @map("student_id") @db.Uuid
-  examId         String   @map("exam_id") @db.Uuid
-  totalQuestions Int?     @map("total_questions") @db.SmallInt
-  answered       Int?     @db.SmallInt
-  correct        Int?     @db.SmallInt
-  score          Decimal? @db.Decimal(5, 2)
-  percentage     Decimal? @db.Decimal(5, 2)
+  id             String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  sessionId      String    @unique @map("session_id") @db.Uuid
+  studentId      String    @map("student_id") @db.Uuid
+  examId         String    @map("exam_id") @db.Uuid
+  totalQuestions Int?      @map("total_questions") @db.SmallInt
+  answered       Int?      @db.SmallInt
+  correct        Int?      @db.SmallInt
+  score          Decimal?  @db.Decimal(5, 2)
+  percentage     Decimal?  @db.Decimal(5, 2)
   passed         Boolean?
-  grade          String?  @db.Char(2)
-  violationCount Int      @default(0) @map("violation_count") @db.SmallInt
-  timeTakenSecs  Int?     @map("time_taken_secs")
+  grade          String?   @db.Char(2)
+  violationCount Int       @default(0) @map("violation_count") @db.SmallInt
+  timeTakenSecs  Int?      @map("time_taken_secs")
   submittedAt    DateTime? @map("submitted_at") @db.Timestamptz()
-  generatedAt    DateTime @default(now()) @map("generated_at") @db.Timestamptz()
+  generatedAt    DateTime  @default(now()) @map("generated_at") @db.Timestamptz()
 
   session ExamSession @relation(fields: [sessionId], references: [id])
   student User        @relation(fields: [studentId], references: [id])

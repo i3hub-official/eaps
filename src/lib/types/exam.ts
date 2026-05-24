@@ -50,13 +50,13 @@ export interface Question {
   display_index?: number;       // per-student order
 }
 
-// export interface QuestionOption {
-//   id: string;
-//   question_id: string;
-//   option_text: string;
-//   is_correct?: boolean;         // only visible server-side
-//   display_index?: number;
-// }
+export interface QuestionOption {
+  id: string;
+  question_id: string;
+  option_text: string;
+  is_correct?: boolean;         // only visible server-side
+  display_index?: number;
+}
 
 export interface ExamSession {
   id: string;
