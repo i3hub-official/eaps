@@ -94,7 +94,7 @@
       status = 'done';
       message = 'Face enrolled successfully!';
       stopCamera();
-      setTimeout(() => goto('/dashboard'), 1500);
+      setTimeout(() => goto('/student'), 1500);
     } catch {
       status = 'error';
       message = 'Enrollment failed. Please try again.';
@@ -159,9 +159,9 @@
       {:else if status === 'error'}
         <button class="btn-primary" onclick={retry} type="button">Try Again</button>
       {:else if status === 'done'}
-        <a href="/dashboard" class="btn-primary">Go to Dashboard</a>
+        <a href="/student" class="btn-primary">Go to Student Dashboard</a>
       {/if}
-      <a href="/dashboard" class="btn-ghost">Skip for now</a>
+      <a href="/student" class="btn-ghost">Skip for now</a>
     </div>
 
     <div class="tips">

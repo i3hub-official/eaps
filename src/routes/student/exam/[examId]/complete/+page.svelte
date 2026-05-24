@@ -122,7 +122,7 @@
 
     <!-- Action Buttons -->
     <div class="action-buttons">
-      <a href="/dashboard" class="btn-primary">
+      <a href="/student" class="btn-primary">
         <GraduationCap size={16} />
         Back to Dashboard
         <ArrowRight size={14} />

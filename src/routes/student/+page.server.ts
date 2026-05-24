@@ -1,5 +1,5 @@
-// src/routes/(student)/dashboard/+page.server.ts
-import type { PageServerLoad } from './dashboard/$types';
+// src/routes/student/+page.server.ts
+import type { PageServerLoad } from './$types';
 import { requireStudent } from '$lib/server/auth/guards.js';
 import { listExamsForStudent } from '$lib/server/db/exams.js';
 import { getStudentResults } from '$lib/server/db/results.js';

@@ -3,10 +3,10 @@ import { redirect } from '@sveltejs/kit';
 import type { PageServerLoad } from './$types';
 
 const ROLE_HOME: Record<string, string> = {
-  student:     '/dashboard',
-  lecturer:    '/lecturer/dashboard',
-  invigilator: '/invigilator/dashboard',
-  admin:       '/admin/dashboard',
+  student:     '/student',
+  lecturer:    '/lecturer',
+  invigilator: '/invigilator',
+  admin:       '/admin',
 };
 
 export const load: PageServerLoad = async ({ locals }) => {

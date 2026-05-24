@@ -1,5 +1,5 @@
 // src/routes/(lecturer)/exams/+page.server.ts
-import type { PageServerLoad } from '../exams/$types';
+import type { PageServerLoad } from './exams/$types';
 import { requireLecturer } from '$lib/server/auth/guards.js';
 import { listExamsByLecturer } from '$lib/server/db/exams.js';
 import { prisma } from '$lib/server/db/index.js';

@@ -1,6 +1,6 @@
 // src/routes/(invigilator)/invigilator/+page.server.ts
 import { redirect } from '@sveltejs/kit';
-import type { PageServerLoad } from '../$types';
+import type { PageServerLoad } from './$types';
 import { requireInvigilator } from '$lib/server/auth/guards.js';
 import { listExamsForInvigilator } from '$lib/server/db/exams.js';
 
@@ -10,7 +10,7 @@ export const load: PageServerLoad = async ({ locals }) => {
 
   // If only one active exam, go straight to monitor
   const active = exams.find(e => e.status === 'active');
-  if (active) redirect(302, `/invigilator/dashboard/${active.id}`);
+  if (active) redirect(302, `/invigilator/${active.id}`);
 
   return { exams };
 };

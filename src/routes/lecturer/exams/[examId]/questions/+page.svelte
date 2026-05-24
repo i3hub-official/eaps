@@ -14,7 +14,7 @@
 
 <div class="page">
   <div class="page-header">
-    <a href="/lecturer/dashboard" class="back">← Dashboard</a>
+    <a href="/lecturer" class="back">← Dashboard</a>
     <div>
       <h1>Question Bank</h1>
       <p class="sub">{exam.title} · {questions.length} question{questions.length !== 1 ? 's' : ''}</p>

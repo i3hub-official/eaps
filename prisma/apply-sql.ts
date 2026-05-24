@@ -147,7 +147,7 @@ async function main() {
 
   await applySqlFile('prisma/migrations/face_descriptors.sql', 'face_descriptors.sql');
   console.log('Face descriptor schema applied.\n');
-  await applySqlFile('prisma/migrations/similarity_flags.sql', 'similarity_flags.sql');
+  await applySqlFile('prisma/migrations/face_similarity.sql', 'face_similarity.sql');
   console.log('Similarity flags schema applied.\n');
 
   await client.end();

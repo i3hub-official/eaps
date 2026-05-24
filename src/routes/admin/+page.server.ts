@@ -1,5 +1,5 @@
-// src/routes/(admin)/dashboard/+page.server.ts
-import type { PageServerLoad } from '../$types';
+// src/routes/(admin)/+page.server.ts
+import type { PageServerLoad } from './$types';
 import { requireAdmin } from '$lib/server/auth/guards.js';
 import { prisma, sql } from '$lib/server/db/index.js';
 

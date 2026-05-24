@@ -8,7 +8,7 @@
 
 <div class="page">
   <div class="page-header">
-    <a href="/lecturer/dashboard" class="back">← Dashboard</a>
+    <a href="/lecturer" class="back">← Dashboard</a>
     <h1>Create New Exam</h1>
   </div>
 
@@ -108,7 +108,7 @@
     </section>
 
     <div class="form-footer">
-      <a href="/lecturer/dashboard" class="btn-outline">Cancel</a>
+      <a href="/lecturer" class="btn-outline">Cancel</a>
       <button type="submit" class="btn-primary">Create Exam & Add Questions →</button>
     </div>
   </form>

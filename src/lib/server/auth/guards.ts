@@ -3,10 +3,10 @@ import { redirect, error } from '@sveltejs/kit';
 import type { UserRole, User } from '@prisma/client';
 
 const ROLE_HOME: Record<UserRole, string> = {
-  student:     '/dashboard',
-  lecturer:    '/lecturer/dashboard',
-  invigilator: '/invigilator/dashboard',
-  admin:       '/admin/dashboard',
+  student:     '/student',
+  lecturer:    '/lecturer',
+  invigilator: '/invigilator',
+  admin:       '/admin',
 };
 
 export function requireAuth(user: User | null): User {

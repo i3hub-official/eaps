@@ -6,10 +6,10 @@ import { verifyPassword } from '$lib/server/auth/password.js';
 import { createSession, setSessionCookie } from '$lib/server/auth/session.js';
 
 const ROLE_HOME: Record<string, string> = {
-  student:     '/dashboard',
-  lecturer:    '/lecturer/dashboard',
-  invigilator: '/invigilator/dashboard',
-  admin:       '/admin/dashboard',
+  student:     '/student',
+  lecturer:    '/lecturer',
+  invigilator: '/invigilator',
+  admin:       '/admin',
 };
 
 export const load: PageServerLoad = async ({ locals }) => {

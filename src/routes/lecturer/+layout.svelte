@@ -6,7 +6,7 @@
   let { data, children }: { data: LayoutData; children: import('svelte').Snippet } = $props();
 
   const links = [
-    { href: '/lecturer/dashboard', label: 'Dashboard' },
+    { href: '/lecturer', label: 'Dashboard' },
     { href: '/lecturer/exams',     label: 'Exams' },
   ];
 </script>

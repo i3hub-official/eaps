@@ -1,10 +1,11 @@
--- prisma/migrations/manual_face_similarity.sql
+-- prisma/migrations/face_similarity.sql
 -- Run this manually: psql $DATABASE_URL -f prisma/migrations/manual_face_similarity.sql
 -- These tables are NOT in Prisma schema (raw SQL only)
 
 -- ── Face descriptors ──────────────────────────────────────────────────────────
 -- Stores face-api.js 128-float descriptor as JSONB for fast retrieval
 CREATE TABLE IF NOT EXISTS face_descriptors (
+   id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   student_id   UUID        NOT NULL PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
   descriptor   JSONB       NOT NULL,               -- float32[128] stored as JSON array
   enrolled_at  TIMESTAMPTZ NOT NULL DEFAULT now()
@@ -13,7 +14,7 @@ CREATE TABLE IF NOT EXISTS face_descriptors (
 CREATE INDEX IF NOT EXISTS idx_face_descriptors_student ON face_descriptors(student_id);
 
 -- ── Similarity flags ──────────────────────────────────────────────────────────
-CREATE TABLE IF NOT EXISTS similarity_flags (
+CREATE TABLE IF NOT EXISTS face_similarity (
   id                  UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
   exam_id             UUID        NOT NULL REFERENCES exams(id) ON DELETE CASCADE,
   student_a_id        UUID        NOT NULL REFERENCES users(id),
@@ -28,6 +29,6 @@ CREATE TABLE IF NOT EXISTS similarity_flags (
   UNIQUE (exam_id, student_a_id, student_b_id)
 );
 
-CREATE INDEX IF NOT EXISTS idx_similarity_flags_exam     ON similarity_flags(exam_id);
-CREATE INDEX IF NOT EXISTS idx_similarity_flags_risk     ON similarity_flags(exam_id, risk_level);
-CREATE INDEX IF NOT EXISTS idx_similarity_flags_score    ON similarity_flags(exam_id, similarity_score DESC);
+CREATE INDEX IF NOT EXISTS idx_face_similarity_exam     ON face_similarity(exam_id);
+CREATE INDEX IF NOT EXISTS idx_face_similarity_risk     ON face_similarity(exam_id, risk_level);
+CREATE INDEX IF NOT EXISTS idx_face_similarity_score    ON face_similarity(exam_id, similarity_score DESC);

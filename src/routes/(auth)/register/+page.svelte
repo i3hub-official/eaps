@@ -443,7 +443,7 @@
         return; 
       }
       
-      await goto('/dashboard');
+      await goto('/student');
       
     } catch (err: unknown) {
       errorMessage = err instanceof Error ? err.message : 'Network error';

@@ -10,7 +10,7 @@ export const load: PageServerLoad = async ({ locals, url }) => {
 
   // If already enrolled and no force re-enroll param, go to dashboard
   if (enrolled && !url.searchParams.has('redo')) {
-    redirect(302, '/dashboard');
+    redirect(302, '/student');
   }
 
   return { user, enrolled };

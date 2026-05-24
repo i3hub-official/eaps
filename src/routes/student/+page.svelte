@@ -1,4 +1,4 @@
-<!-- src/routes/(student)/dashboard/+page.svelte -->
+<!-- src/routes/student/+page.svelte -->
 <script lang="ts">
   import type { PageData } from './$types';
   let { data }: { data: PageData } = $props();

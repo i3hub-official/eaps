@@ -19,7 +19,7 @@
 
 <div class="page">
   <div class="page-header">
-    <a href="/lecturer/dashboard" class="back">← Dashboard</a>
+    <a href="/lecturer" class="back">← Dashboard</a>
     <div>
       <h1>Exam Results</h1>
       <p class="sub">{exam.title} · {exam.course.code}</p>

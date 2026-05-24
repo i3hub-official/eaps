@@ -1,4 +1,4 @@
-// src/routes/(lecturer)/dashboard/+page.server.ts
+// src/routes/lecturer/+page.server.ts
 import type { PageServerLoad } from '../$types';
 import { requireLecturer } from '$lib/server/auth/guards.js';
 import { listExamsByLecturer } from '$lib/server/db/exams.js';

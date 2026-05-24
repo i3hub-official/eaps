@@ -8,7 +8,7 @@
 
   // Redirect to a specific exam if needed, or show list of active exams
   function openExam(examId: string) {
-    goto(`/invigilator/dashboard/${examId}`);
+    goto(`/invigilator/${examId}`);
   }
 </script>
 
