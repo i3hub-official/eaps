@@ -1,4 +1,3 @@
-<!-- src/routes/(auth)/enroll/+page.svelte -->
 <script lang="ts">
   import { onMount, onDestroy } from 'svelte';
   import { goto } from '$app/navigation';
@@ -8,96 +7,199 @@
 
   let video: HTMLVideoElement;
   let canvas: HTMLCanvasElement;
+  let ctx: CanvasRenderingContext2D | null = null;
   let stream: MediaStream | null = null;
-  let status = $state<'idle' | 'loading' | 'capturing' | 'processing' | 'done' | 'error'>('loading');
-  let message = $state('Loading face detection models…');
-  let captureCount = $state(0);
-  let descriptors: number[][] = [];
-  let isProcessing = $state(false);
-  const REQUIRED_CAPTURES = 5;
+  let raf: number | null = null;
 
-  // Dynamically imported so it never runs on the server (no window/canvas there)
+  type Status = 'loading' | 'gesture' | 'processing' | 'done' | 'error';
+  let status = $state<Status>('loading');
+  let headline = $state('Enrolling your face');
+  let subline  = $state('Starting camera…');
+  let gestureIndex  = $state(0);
+  let gesturesDone  = $state(0);
+  let captureCount  = 0;
+  let descriptors: number[][] = [];
+  let gestureDetected = false;
+  let lastNodY: number | null = null;
+  let scanY = $state(0); // animated scan line position 0–1
+  let scanDir = 1;
+  let scanRaf: number | null = null;
+
   let faceapi: typeof import('@vladmandic/face-api') | null = null;
 
-  async function loadModels() {
-    try {
-      // Dynamic import keeps face-api out of the SSR bundle entirely
-      faceapi = await import('@vladmandic/face-api');
+  const GESTURES = [
+    { id: 'smile',       label: 'Smile naturally' },
+    { id: 'open_mouth',  label: 'Open your mouth' },
+    { id: 'turn_left',   label: 'Turn head left' },
+    { id: 'turn_right',  label: 'Turn head right' },
+    { id: 'raise_brows', label: 'Raise your eyebrows' },
+    { id: 'blink',       label: 'Blink slowly' },
+    { id: 'nod',         label: 'Nod your head' },
+  ];
+  const CAPTURES_PER = 3;
+  const TOTAL        = 4;
+  let selected: typeof GESTURES = [];
 
-      const MODEL_URL = '/models';
-      await Promise.all([
-        faceapi.nets.tinyFaceDetector.loadFromUri(MODEL_URL),
-        faceapi.nets.faceLandmark68TinyNet.loadFromUri(MODEL_URL),
-        faceapi.nets.faceRecognitionNet.loadFromUri(MODEL_URL),
-      ]);
-      status = 'idle';
-      message = 'Models loaded. Click "Start Camera" to begin.';
-    } catch (err) {
-      console.error('Model load error:', err);
-      status = 'error';
-      message = 'Failed to load face detection models. Check your connection and try refreshing.';
+  // ── landmark helpers ────────────────────────────────────────────────────────
+  function ear(lm: any, idx: number[]): number {
+    const p = idx.map(i => lm.positions[i]);
+    const v1 = Math.abs(p[1].y - p[5].y), v2 = Math.abs(p[2].y - p[4].y);
+    const h  = Math.abs(p[0].x - p[3].x);
+    return h > 0 ? (v1 + v2) / (2 * h) : 1;
+  }
+
+  function checkGesture(id: string, lm: any): boolean {
+    const p = lm.positions;
+    switch (id) {
+      case 'smile': {
+        const h = Math.abs(p[62].y - p[66].y), w = Math.abs(p[48].x - p[54].x);
+        return w > 0 && h / w > 0.28;
+      }
+      case 'open_mouth': {
+        const h = Math.abs(p[62].y - p[66].y), fh = Math.abs(p[27].y - p[8].y);
+        return fh > 0 && h / fh > 0.08;
+      }
+      case 'blink':
+        return (ear(lm,[36,37,38,39,40,41]) + ear(lm,[42,43,44,45,46,47])) / 2 < 0.22;
+      case 'turn_left': {
+        const n=p[30],l=p[36],r=p[45],w=Math.abs(l.x-r.x);
+        return w > 0 && (n.x - l.x) / w < 0.32;
+      }
+      case 'turn_right': {
+        const n=p[30],l=p[36],r=p[45],w=Math.abs(l.x-r.x);
+        return w > 0 && (n.x - l.x) / w > 0.68;
+      }
+      case 'raise_brows': {
+        const brow = (p[19].y + p[24].y) / 2, eye = (p[37].y + p[44].y) / 2;
+        const fh = Math.abs(p[27].y - p[8].y);
+        return fh > 0 && Math.abs(brow - eye) / fh > 0.16;
+      }
+      case 'nod': {
+        const ny = p[30].y;
+        if (!lastNodY) { lastNodY = ny; return false; }
+        const d = Math.abs(ny - lastNodY); lastNodY = ny;
+        return d > 8;
+      }
+      default: return false;
     }
   }
 
-  async function startCamera() {
-    try {
-      stream = await navigator.mediaDevices.getUserMedia({ 
-        video: { 
-          facingMode: 'user',
-          width: { ideal: 640 },
-          height: { ideal: 480 }
-        } 
-      });
-      video.srcObject = stream;
-      await video.play();
-      status = 'capturing';
-      message = `Look directly at the camera. Capturing ${REQUIRED_CAPTURES} samples…`;
-      captureLoop();
-    } catch (err) {
-      console.error('Camera error:', err);
-      status = 'error';
-      message = 'Camera access denied. Please allow camera access and try again.';
-    }
+  // ── scan line animation ─────────────────────────────────────────────────────
+  function animateScan() {
+    scanY += scanDir * 0.008;
+    if (scanY >= 1) { scanY = 1; scanDir = -1; }
+    if (scanY <= 0) { scanY = 0; scanDir =  1; }
+    scanRaf = requestAnimationFrame(animateScan);
   }
 
-  async function captureLoop() {
-    if (status !== 'capturing' || !faceapi || isProcessing) return;
+  // ── canvas overlay ──────────────────────────────────────────────────────────
+  function drawOverlay(hit: boolean) {
+    if (!ctx || !canvas) return;
+    const w = canvas.width, h = canvas.height;
+    const cx = w / 2, cy = h / 2;
+    const rx = w * 0.34, ry = h * 0.42;
 
-    try {
-      const detection = await faceapi
-        .detectSingleFace(video, new faceapi.TinyFaceDetectorOptions())
-        .withFaceLandmarks(true)
-        .withFaceDescriptor();
+    ctx.clearRect(0, 0, w, h);
 
-      if (detection) {
-        descriptors.push(Array.from(detection.descriptor));
-        captureCount = descriptors.length;
-        message = `Captured ${captureCount}/${REQUIRED_CAPTURES} — keep looking at the camera…`;
+    // darken outside
+    ctx.save();
+    ctx.fillStyle = 'rgba(10,13,15,0.72)';
+    ctx.fillRect(0, 0, w, h);
+    ctx.globalCompositeOperation = 'destination-out';
+    ctx.beginPath(); ctx.ellipse(cx, cy, rx, ry, 0, 0, Math.PI * 2); ctx.fill();
+    ctx.restore();
 
-        if (captureCount >= REQUIRED_CAPTURES) {
-          await submitEnrollment();
+    // oval stroke
+    ctx.beginPath(); ctx.ellipse(cx, cy, rx, ry, 0, 0, Math.PI * 2);
+    ctx.strokeStyle = hit ? '#00c9a7' : 'rgba(255,255,255,0.15)';
+    ctx.lineWidth = hit ? 2.5 : 1.5;
+    ctx.stroke();
+
+    // corner brackets
+    const bLen = 22, bW = 2.5;
+    const positions = [
+      { x: cx - rx, y: cy - ry, d: [1, 1]  },
+      { x: cx + rx, y: cy - ry, d: [-1, 1]  },
+      { x: cx - rx, y: cy + ry, d: [1, -1]  },
+      { x: cx + rx, y: cy + ry, d: [-1, -1] },
+    ];
+    ctx.strokeStyle = hit ? '#00c9a7' : 'rgba(0,201,167,0.6)';
+    ctx.lineWidth = bW;
+    ctx.lineCap = 'round';
+    for (const { x, y, d } of positions) {
+      ctx.beginPath(); ctx.moveTo(x + d[0] * bLen, y); ctx.lineTo(x, y); ctx.lineTo(x, y + d[1] * bLen); ctx.stroke();
+    }
+
+    // scan line (clipped to oval)
+    ctx.save();
+    ctx.beginPath(); ctx.ellipse(cx, cy, rx - 1, ry - 1, 0, 0, Math.PI * 2); ctx.clip();
+    const sy = cy - ry + scanY * ry * 2;
+    const grad = ctx.createLinearGradient(0, sy - 12, 0, sy + 12);
+    grad.addColorStop(0,   'rgba(0,201,167,0)');
+    grad.addColorStop(0.5, 'rgba(0,201,167,0.55)');
+    grad.addColorStop(1,   'rgba(0,201,167,0)');
+    ctx.fillStyle = grad;
+    ctx.fillRect(cx - rx, sy - 12, rx * 2, 24);
+    ctx.restore();
+  }
+
+  // ── detection loop ──────────────────────────────────────────────────────────
+  function loop() {
+    if (status !== 'gesture' || !faceapi) return;
+
+    faceapi
+      .detectSingleFace(video, new faceapi.TinyFaceDetectorOptions({ inputSize: 320 }))
+      .withFaceLandmarks(true)
+      .withFaceDescriptor()
+      .then(det => {
+        if (!det) {
+          drawOverlay(false);
+          subline = 'Position your face in the oval';
+          gestureDetected = false;
+          raf = requestAnimationFrame(loop);
           return;
         }
-      } else {
-        message = 'No face detected — position your face in the frame.';
-      }
-    } catch (err) {
-      console.error('Detection error:', err);
-      message = 'Detection error. Please ensure good lighting and face visibility.';
-    }
 
-    setTimeout(captureLoop, 600);
+        const g   = selected[gestureIndex];
+        const hit = checkGesture(g.id, det.landmarks);
+        drawOverlay(hit);
+
+        if (hit && !gestureDetected) {
+          gestureDetected = true;
+          descriptors.push(Array.from(det.descriptor));
+          captureCount++;
+
+          if (captureCount >= CAPTURES_PER) {
+            gesturesDone = gestureIndex + 1;
+            if (gesturesDone >= selected.length) {
+              submit(); return;
+            }
+            gestureIndex++;
+            captureCount = 0;
+            gestureDetected = false;
+            lastNodY = null;
+            subline = selected[gestureIndex].label;
+          } else {
+            subline = `Hold… (${captureCount}/${CAPTURES_PER})`;
+          }
+        } else if (!hit) {
+          gestureDetected = false;
+        }
+
+        raf = requestAnimationFrame(loop);
+      })
+      .catch(() => { raf = requestAnimationFrame(loop); });
   }
 
-  async function submitEnrollment() {
-    if (isProcessing) return;
-    isProcessing = true;
+  // ── submit ──────────────────────────────────────────────────────────────────
+  async function submit() {
     status = 'processing';
-    message = 'Processing face data…';
+    headline = 'Processing…';
+    subline  = '';
+    stopCamera();
 
-    // Calculate average descriptor
     const avg = descriptors[0].map((_, i) =>
-      descriptors.reduce((sum, d) => sum + d[i], 0) / descriptors.length
+      descriptors.reduce((s, d) => s + d[i], 0) / descriptors.length
     );
 
     try {
@@ -106,338 +208,295 @@
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ descriptor: avg }),
       });
-
-      if (!res.ok) {
-        const body = await res.json().catch(() => ({}));
-        throw new Error(body.error ?? body.message ?? `Server error ${res.status}`);
-      }
-
+      if (!res.ok) throw new Error((await res.json().catch(() => ({}))).message ?? `${res.status}`);
       status = 'done';
-      message = 'Face enrolled successfully! Redirecting...';
-      stopCamera();
-      setTimeout(() => goto('/student'), 1500);
-    } catch (err: any) {
-      console.error('Enrollment error:', err);
+      headline = 'Enrolled!';
+      subline  = 'Redirecting to dashboard…';
+      setTimeout(() => goto('/student'), 1600);
+    } catch (e: any) {
       status = 'error';
-      message = err.message ?? 'Enrollment failed. Please try again.';
-    } finally {
-      isProcessing = false;
+      headline = 'Enrollment failed';
+      subline  = e.message ?? 'Please try again';
     }
   }
 
   function stopCamera() {
-    if (stream) {
-      stream.getTracks().forEach(t => t.stop());
-      stream = null;
-    }
+    if (raf) cancelAnimationFrame(raf);
+    if (scanRaf) cancelAnimationFrame(scanRaf);
+    stream?.getTracks().forEach(t => t.stop());
+    stream = null;
   }
 
   function retry() {
-    descriptors = [];
-    captureCount = 0;
-    status = 'idle';
-    message = 'Click "Start Camera" to try again.';
-    isProcessing = false;
+    descriptors = []; captureCount = 0; gesturesDone = 0;
+    gestureDetected = false; lastNodY = null;
+    status = 'loading'; init();
   }
 
-  onMount(() => {
-    loadModels();
-  });
-  
-  onDestroy(() => {
-    stopCamera();
-  });
+  async function init() {
+    try {
+      if (!faceapi) {
+        faceapi = await import('@vladmandic/face-api');
+        await Promise.all([
+          faceapi.nets.tinyFaceDetector.loadFromUri('/models'),
+          faceapi.nets.faceLandmark68TinyNet.loadFromUri('/models'),
+          faceapi.nets.faceRecognitionNet.loadFromUri('/models'),
+        ]);
+      }
+
+      stream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: 'user', width: { ideal: 640 }, height: { ideal: 480 } }
+      });
+      video.srcObject = stream;
+      await video.play();
+      canvas.width  = video.videoWidth  || 640;
+      canvas.height = video.videoHeight || 480;
+      ctx = canvas.getContext('2d');
+
+      selected = [...GESTURES].sort(() => 0.5 - Math.random()).slice(0, TOTAL);
+      gestureIndex = 0; gesturesDone = 0; captureCount = 0;
+
+      status   = 'gesture';
+      headline = 'Face enrollment';
+      subline  = selected[0].label;
+
+      animateScan();
+      raf = requestAnimationFrame(loop);
+    } catch (e: any) {
+      status   = 'error';
+      headline = 'Camera error';
+      subline  = e.message?.includes('denied') ? 'Allow camera access and retry' : 'Failed to load — refresh and try again';
+    }
+  }
+
+  onMount(init);
+  onDestroy(stopCamera);
+
+  let currentGestureLabel = $derived(
+    status === 'gesture' && selected[gestureIndex] ? selected[gestureIndex].label : ''
+  );
 </script>
 
-<div class="enroll-container">
-  <div class="enroll-card">
-    <h1>Face Enrollment</h1>
-    <p class="subtitle">Register your face for exam proctoring</p>
+<svelte:head><title>Face Enrollment — MOUAU eTest</title></svelte:head>
 
-    <div class="camera-container">
-      {#if status !== 'done'}
-        <video
-          bind:this={video}
-          autoplay
-          muted
-          playsinline
-          class:video-hidden={status === 'loading' || status === 'error'}
-        ></video>
-        <canvas bind:this={canvas} style="display: none;"></canvas>
-        
-        {#if status === 'loading' || status === 'error'}
-          <div class="placeholder">
-            {#if status === 'loading'}
-              <div class="spinner"></div>
-            {:else}
-              <div class="error-icon">⚠️</div>
-            {/if}
+<div class="page">
+
+  <!-- top bar -->
+  <header class="topbar">
+    <a href="/student" class="back-btn" aria-label="Go back">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M19 12H5M12 5l-7 7 7 7"/>
+      </svg>
+    </a>
+    <span class="top-label">Face Enrollment</span>
+    <div style="width:36px"></div>
+  </header>
+
+  <!-- camera -->
+  <div class="cam-wrap">
+    <video bind:this={video} class="feed" autoplay muted playsinline></video>
+    <canvas bind:this={canvas} class="overlay"></canvas>
+
+    <!-- loading spinner overlay -->
+    {#if status === 'loading'}
+      <div class="center-state">
+        <div class="spinner"></div>
+        <p class="state-text">Starting camera…</p>
+      </div>
+    {/if}
+
+    <!-- processing overlay -->
+    {#if status === 'processing'}
+      <div class="center-state">
+        <div class="spinner teal"></div>
+        <p class="state-text">Processing face data…</p>
+      </div>
+    {/if}
+  </div>
+
+  <!-- bottom panel -->
+  <div class="bottom">
+
+    {#if status === 'done'}
+      <!-- success card -->
+      <div class="result-card">
+        <div class="avatar-ring">
+          <div class="avatar-check">
+            <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="#00c9a7" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+              <polyline points="20 6 9 17 4 12"/>
+            </svg>
           </div>
-        {/if}
-      {:else}
-        <div class="success-placeholder">
-          <div class="success-icon">✓</div>
         </div>
-      {/if}
-    </div>
+        <h2 class="result-title">Face Enrolled</h2>
+        <p class="result-sub">Your identity has been saved.<br>You can now sit exams.</p>
+      </div>
 
-    <div class="status-message" class:error={status === 'error'} class:success={status === 'done'}>
-      {message}
-    </div>
+    {:else if status === 'error'}
+      <div class="bottom-text">
+        <p class="headline err">Something went wrong</p>
+        <p class="subline">{subline}</p>
+      </div>
+      <button class="cta" onclick={retry}>Try Again</button>
+      <a href="/student" class="skip">Skip for now</a>
 
-    <div class="progress" class:visible={status === 'capturing'}>
-      <div class="progress-bar" style="width: {(captureCount / REQUIRED_CAPTURES) * 100}%"></div>
-    </div>
+    {:else if status === 'gesture'}
+      <!-- step dots -->
+      <div class="dots" role="progressbar" aria-valuenow={gesturesDone} aria-valuemax={selected.length}>
+        {#each selected as _, i}
+          <div class="dot" class:done={i < gesturesDone} class:active={i === gesturesDone}></div>
+        {/each}
+      </div>
+      <div class="bottom-text">
+        <p class="headline">Step {gesturesDone + 1} of {selected.length}</p>
+        <p class="subline" aria-live="polite">{currentGestureLabel}</p>
+      </div>
 
-    <div class="actions">
-      {#if status === 'idle'}
-        <button class="btn-primary" onclick={startCamera}>
-          Start Camera
-        </button>
-      {:else if status === 'error'}
-        <button class="btn-secondary" onclick={retry}>
-          Try Again
-        </button>
-        <button class="btn-outline" onclick={() => goto('/student')}>
-          Skip for Now
-        </button>
-      {:else if status === 'capturing' || status === 'processing'}
-        <button class="btn-secondary" onclick={stopCamera} disabled={status === 'processing'}>
-          Cancel
-        </button>
-      {:else if status === 'done'}
-        <div class="done-message">Redirecting to dashboard...</div>
-      {/if}
-    </div>
+    {:else}
+      <div class="bottom-text">
+        <p class="headline">{headline}</p>
+        <p class="subline">{subline}</p>
+      </div>
+    {/if}
 
-    <div class="info">
-      <p>📸 Please ensure:</p>
-      <ul>
-        <li>Good lighting on your face</li>
-        <li>No glasses or remove if possible</li>
-        <li>Look directly at the camera</li>
-        <li>Keep a neutral expression</li>
-      </ul>
-    </div>
   </div>
 </div>
 
 <style>
-  .enroll-container {
-    min-height: 100vh;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    padding: 2rem;
-    background: var(--color-bg);
-  }
+  :global(html), :global(body) { margin: 0; background: #0a0d0f; }
 
-  .enroll-card {
-    max-width: 500px;
-    width: 100%;
-    background: var(--color-surface);
-    border: 1px solid var(--color-border);
-    border-radius: 1.25rem;
-    padding: 2rem;
-    text-align: center;
-  }
-
-  h1 {
-    font-size: 1.75rem;
-    font-weight: 700;
-    margin-bottom: 0.5rem;
-    color: var(--color-text);
-  }
-
-  .subtitle {
-    color: var(--color-muted);
-    margin-bottom: 1.5rem;
-  }
-
-  .camera-container {
-    position: relative;
-    width: 100%;
-    aspect-ratio: 4/3;
-    background: #000;
-    border-radius: 0.75rem;
+  .page {
+    position: fixed; inset: 0;
+    background: #0a0d0f;
+    display: flex; flex-direction: column;
+    font-family: 'DM Sans', 'Outfit', system-ui, sans-serif;
+    color: #fff;
     overflow: hidden;
-    margin-bottom: 1rem;
   }
 
-  video {
-    width: 100%;
-    height: 100%;
-    object-fit: cover;
+  /* ── top bar ── */
+  .topbar {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 1rem 1.25rem 0.5rem;
+    position: relative; z-index: 20;
+    background: linear-gradient(to bottom, #0a0d0f 60%, transparent);
+  }
+  .back-btn {
+    width: 36px; height: 36px; border-radius: 50%;
+    background: rgba(255,255,255,0.08);
+    display: flex; align-items: center; justify-content: center;
+    color: #fff; text-decoration: none;
+    transition: background 0.15s;
+    border: 1px solid rgba(255,255,255,0.08);
+  }
+  .back-btn:hover { background: rgba(255,255,255,0.14); }
+  .top-label { font-size: 0.85rem; font-weight: 600; letter-spacing: 0.05em; color: rgba(255,255,255,0.6); text-transform: uppercase; }
+
+  /* ── camera ── */
+  .cam-wrap { flex: 1; position: relative; overflow: hidden; }
+  .feed {
+    position: absolute; inset: 0; width: 100%; height: 100%;
+    object-fit: cover; transform: scaleX(-1);
+  }
+  .overlay {
+    position: absolute; inset: 0; width: 100%; height: 100%;
+    pointer-events: none;
+  }
+  .center-state {
+    position: absolute; inset: 0;
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    gap: 1rem; background: rgba(10,13,15,0.7); z-index: 10;
+  }
+  .state-text { font-size: 0.875rem; color: rgba(255,255,255,0.5); margin: 0; }
+
+  /* ── bottom panel ── */
+  .bottom {
+    position: relative; z-index: 20;
+    padding: 1.5rem 1.75rem 2.5rem;
+    background: linear-gradient(to top, #0a0d0f 75%, transparent);
+    display: flex; flex-direction: column; align-items: center; gap: 0.75rem;
+    min-height: 160px;
   }
 
-  .video-hidden {
-    opacity: 0;
+  .dots {
+    display: flex; gap: 7px; align-items: center; margin-bottom: 0.25rem;
+  }
+  .dot {
+    width: 6px; height: 6px; border-radius: 3px;
+    background: rgba(255,255,255,0.15);
+    transition: all 0.35s cubic-bezier(0.34,1.56,0.64,1);
+  }
+  .dot.active { width: 24px; background: #00c9a7; }
+  .dot.done   { background: rgba(0,201,167,0.4); }
+
+  .bottom-text { text-align: center; }
+  .headline {
+    font-size: 1.1rem; font-weight: 700; margin: 0 0 0.3rem;
+    color: #fff; letter-spacing: -0.01em;
+  }
+  .headline.err { color: #ff6b6b; }
+  .subline {
+    font-size: 0.875rem; color: rgba(255,255,255,0.45);
+    margin: 0; min-height: 1.3em;
+    transition: opacity 0.2s;
   }
 
-  .placeholder {
-    position: absolute;
-    top: 0;
-    left: 0;
-    width: 100%;
-    height: 100%;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    background: #1a1a1a;
+  .cta {
+    width: 100%; max-width: 320px;
+    padding: 0.9rem; background: #00c9a7; color: #0a0d0f;
+    border: none; border-radius: 100px;
+    font-weight: 700; font-size: 0.95rem;
+    cursor: pointer; font-family: inherit;
+    letter-spacing: 0.02em;
+    transition: opacity 0.15s, transform 0.1s;
+  }
+  .cta:hover  { opacity: 0.88; }
+  .cta:active { transform: scale(0.98); }
+
+  .skip {
+    font-size: 0.8rem; color: rgba(255,255,255,0.28);
+    text-decoration: none;
+  }
+  .skip:hover { color: rgba(255,255,255,0.5); }
+
+  /* ── success card ── */
+  .result-card {
+    display: flex; flex-direction: column; align-items: center; gap: 0.75rem;
+    background: rgba(255,255,255,0.04);
+    border: 1px solid rgba(0,201,167,0.2);
+    border-radius: 1.25rem; padding: 1.75rem 2rem;
+    width: 100%; max-width: 320px;
+    animation: slide-up 0.4s cubic-bezier(0.34,1.56,0.64,1);
+  }
+  @keyframes slide-up {
+    from { opacity: 0; transform: translateY(24px); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
+  .avatar-ring {
+    width: 72px; height: 72px; border-radius: 50%;
+    border: 2px solid rgba(0,201,167,0.4);
+    display: flex; align-items: center; justify-content: center;
+    background: rgba(0,201,167,0.08);
+  }
+  .avatar-check {
+    width: 52px; height: 52px; border-radius: 50%;
+    background: rgba(0,201,167,0.15);
+    display: flex; align-items: center; justify-content: center;
+  }
+  .result-title {
+    font-size: 1.15rem; font-weight: 700; margin: 0; color: #fff;
+  }
+  .result-sub {
+    font-size: 0.8rem; color: rgba(255,255,255,0.4);
+    margin: 0; text-align: center; line-height: 1.6;
   }
 
-  .success-placeholder {
-    position: absolute;
-    top: 0;
-    left: 0;
-    width: 100%;
-    height: 100%;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    background: linear-gradient(135deg, #22c55e, #16a34a);
-  }
-
-  .success-icon {
-    font-size: 4rem;
-    color: white;
-  }
-
+  /* ── spinner ── */
   .spinner {
-    width: 40px;
-    height: 40px;
-    border: 3px solid rgba(255,255,255,0.3);
-    border-top-color: #22c55e;
-    border-radius: 50%;
-    animation: spin 0.8s linear infinite;
+    width: 40px; height: 40px;
+    border: 2.5px solid rgba(255,255,255,0.08);
+    border-top-color: rgba(255,255,255,0.4);
+    border-radius: 50%; animation: spin 0.75s linear infinite;
   }
-
-  .error-icon {
-    font-size: 3rem;
-  }
-
-  @keyframes spin {
-    to { transform: rotate(360deg); }
-  }
-
-  .status-message {
-    padding: 0.75rem;
-    border-radius: 0.5rem;
-    margin-bottom: 1rem;
-    font-size: 0.875rem;
-    background: var(--color-surface-elevated);
-    color: var(--color-text);
-  }
-
-  .status-message.error {
-    background: #fef2f2;
-    color: #dc2626;
-  }
-
-  .status-message.success {
-    background: #f0fdf4;
-    color: #16a34a;
-  }
-
-  .progress {
-    height: 4px;
-    background: var(--color-border);
-    border-radius: 2px;
-    margin-bottom: 1.5rem;
-    overflow: hidden;
-    opacity: 0;
-  }
-
-  .progress.visible {
-    opacity: 1;
-  }
-
-  .progress-bar {
-    height: 100%;
-    background: linear-gradient(90deg, #22c55e, #16a34a);
-    transition: width 0.3s ease;
-  }
-
-  .actions {
-    display: flex;
-    gap: 0.75rem;
-    justify-content: center;
-    margin-bottom: 1.5rem;
-  }
-
-  button {
-    padding: 0.625rem 1.25rem;
-    border-radius: 0.5rem;
-    font-weight: 600;
-    cursor: pointer;
-    transition: all 0.2s;
-    font-family: inherit;
-  }
-
-  .btn-primary {
-    background: linear-gradient(135deg, #22c55e, #16a34a);
-    color: white;
-    border: none;
-  }
-
-  .btn-primary:hover {
-    transform: translateY(-1px);
-    box-shadow: 0 4px 12px rgba(34,197,94,0.3);
-  }
-
-  .btn-secondary {
-    background: var(--color-surface-elevated);
-    color: var(--color-text);
-    border: 1px solid var(--color-border);
-  }
-
-  .btn-secondary:hover {
-    border-color: #22c55e;
-    color: #22c55e;
-  }
-
-  .btn-outline {
-    background: transparent;
-    color: var(--color-muted);
-    border: 1px solid var(--color-border);
-  }
-
-  .btn-outline:hover {
-    border-color: #dc2626;
-    color: #dc2626;
-  }
-
-  button:disabled {
-    opacity: 0.5;
-    cursor: not-allowed;
-  }
-
-  .done-message {
-    color: #16a34a;
-    font-weight: 500;
-  }
-
-  .info {
-    text-align: left;
-    padding: 1rem;
-    background: var(--color-surface-elevated);
-    border-radius: 0.5rem;
-    font-size: 0.8rem;
-  }
-
-  .info p {
-    font-weight: 600;
-    margin-bottom: 0.5rem;
-    color: var(--color-text);
-  }
-
-  .info ul {
-    margin: 0;
-    padding-left: 1.25rem;
-    color: var(--color-muted);
-  }
-
-  .info li {
-    margin: 0.25rem 0;
-  }
+  .spinner.teal { border-top-color: #00c9a7; }
+  @keyframes spin { to { transform: rotate(360deg); } }
 </style>
