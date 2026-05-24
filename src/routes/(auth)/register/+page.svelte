@@ -39,6 +39,56 @@
   let receiptFetched  = $state(false);
   let receiptLoading  = $state(false);
   let settingFromScan = $state(false);
+  
+  // Step 1 validation
+  let matricTouched = $state(false);
+  let matricError = $state('');
+  let refTouched = $state(false);
+  let refError = $state('');
+
+  // Matric number validation function
+  function validateMatricNumber(matric: string): string | undefined {
+    if (!matric.trim()) return 'Matric number is required';
+    
+    // Format: MOUAU/[THREE TO FIVE LETTERS]/[TWO YEAR DIGITS]/[NUMBERS OR LETTERS]
+    // Examples: MOUAU/CSC/25/001, MOUAU/PHY/24/123, MOUAU/ENG/25/A001
+    const pattern = /^MOUAU\/([A-Z]{3,5})\/(\d{2})\/([A-Z0-9]+)$/i;
+    
+    if (!pattern.test(matric.toUpperCase())) {
+      return 'Matric number must be in format: MOUAU/DEPT/YY/NUMBER (e.g., MOUAU/CSC/25/001)';
+    }
+    
+    return undefined;
+  }
+
+  function validateRefNumber(ref: string): string | undefined {
+    if (!ref.trim()) return `Please enter or scan the ${MOUAU_CFG.refLabel}`;
+    return undefined;
+  }
+
+  function onMatricInput() {
+    matricTouched = true;
+    matricError = validateMatricNumber(uniMatric) || '';
+    
+    // Clear receipt state when matric changes
+    if (receiptFetched) {
+      clearReceiptState();
+    }
+  }
+
+  function onRefInput() {
+    if (settingFromScan) return;
+    refTouched = true;
+    refError = validateRefNumber(refNumber) || '';
+    refMasked = false;
+    
+    if (receiptFetched) {
+      receiptRaw = null; 
+      receiptPreview = null; 
+      receiptFetched = false;
+      surname = firstName = otherName = jambRegNo = college = department = '';
+    }
+  }
 
   // ─── Webcam ───────────────────────────────────────────────────────
   let showWebcam   = $state(false);
@@ -75,6 +125,12 @@
       email:        'Email address is required',
     };
     if (!value.trim()) { errors2[field] = required[field]; return; }
+    
+    if (field === 'matricNumber') {
+      const matricErr = validateMatricNumber(value);
+      if (matricErr) { errors2[field] = matricErr; return; }
+    }
+    
     if (field === 'email' && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value)) {
       errors2[field] = 'Enter a valid email address'; return;
     }
@@ -112,54 +168,65 @@
     refNumber = ''; refMasked = false;
     receiptRaw = null; receiptPreview = null; receiptFetched = false;
     surname = firstName = otherName = jambRegNo = matricNumber = college = department = '';
-  }
-
-  function onMatricInput() { if (receiptFetched) clearReceiptState(); }
-
-  function onRefInput() {
-    if (settingFromScan) return;
-    refMasked = false;
-    if (receiptFetched) {
-      receiptRaw = null; receiptPreview = null; receiptFetched = false;
-      surname = firstName = otherName = jambRegNo = college = department = '';
-    }
+    refError = '';
+    refTouched = false;
   }
 
   async function fetchReceipt(fromScan = false) {
-    if (!uniMatric.trim()) { errorMessage = 'Please enter your matric number first.'; return; }
+    // Validate matric first
+    const matricErr = validateMatricNumber(uniMatric);
+    if (matricErr) { 
+      errorMessage = matricErr;
+      matricTouched = true;
+      matricError = matricErr;
+      return; 
+    }
 
-    // Extract the bare ref from whatever the QR encoded (full URL or raw value)
-    // Matches exactly how Sabify's fetchReceipt works client-side
+    // Extract the bare ref from whatever the QR encoded
     const ref = extractRefFromUrl(refNumber.trim(), REF_EXTRACT_PARAM);
-    if (!ref) { errorMessage = `Please enter or scan the ${MOUAU_CFG.refLabel}.`; return; }
+    if (!ref) { 
+      errorMessage = `Please enter or scan the ${MOUAU_CFG.refLabel}.`;
+      refTouched = true;
+      refError = errorMessage;
+      return; 
+    }
 
-    receiptLoading = true; receiptRaw = null; receiptPreview = null; errorMessage = '';
+    receiptLoading = true; 
+    receiptRaw = null; 
+    receiptPreview = null; 
+    errorMessage = '';
     if (fromScan) refMasked = true;
 
     try {
       const fd = new FormData();
-      // Use the field name defined in the registry — 'ref' for MOUAU
       fd.set(REF_FIELD_NAME, ref);
-      // Post to the dynamic action name from registry — 'fetchReceipt' for MOUAU
       const res    = await fetch(`?/${MOUAU_CFG.actionName}`, { method: 'POST', body: fd });
       const result = deserialize(await res.text());
 
-      if (result.type === 'error') { errorMessage = result.error?.message ?? 'Something went wrong.'; refMasked = false; return; }
+      if (result.type === 'error') { 
+        errorMessage = result.error?.message ?? 'Something went wrong.'; 
+        refMasked = false; 
+        return; 
+      }
       if (result.type !== 'success' || !result.data?.success) {
-        errorMessage = (result.data?.error as string) ?? 'Could not fetch receipt.'; refMasked = false; return;
+        errorMessage = (result.data?.error as string) ?? 'Could not fetch receipt.'; 
+        refMasked = false; 
+        return; 
       }
 
       const d = result.data.data as Record<string, string> & { preview: Record<string, string> };
 
-      // Strip slashes from both sides before comparing — "MOUAU/PHY/25/001" vs "MOUAU/PHY/25/001"
-      // Sabify does exactly this; without it, matric formats with slashes silently fail the check
-      if (d.matricNo && !d.matricNo.replace(/\//g, '').includes(uniMatric.replace(/\//g, '').trim())) {
+      // Compare matric numbers after normalizing slashes
+      const receiptMatricNorm = d.matricNo?.replace(/\//g, '').toUpperCase() || '';
+      const inputMatricNorm = uniMatric.replace(/\//g, '').toUpperCase().trim();
+      
+      if (d.matricNo && !receiptMatricNorm.includes(inputMatricNorm)) {
         errorMessage = 'Matric number does not match this receipt. Please check and try again.';
-        refMasked = false; return;
+        refMasked = false; 
+        return;
       }
 
-      // MOUAU receipt name format: "SURNAME FIRSTNAME OTHERNAME" (all caps, space-separated)
-      // parts[0] = surname, parts[1] = firstName, parts[2+] = otherName(s)
+      // Auto-fill form fields from receipt
       if (d.name) {
         const parts = d.name.trim().split(/\s+/);
         surname   = parts[0] ?? '';
@@ -172,14 +239,16 @@
       if (d.department) department   = d.department;
       if (d.level)      level        = d.level;
 
-      receiptRaw = d; receiptPreview = d.preview; receiptFetched = true;
+      receiptRaw = d; 
+      receiptPreview = d.preview; 
+      receiptFetched = true;
 
-      // After a successful scan, stay on step 1 so the student sees the receipt
-      // preview card before continuing — matches Sabify's `if (fromScan) currentStep = 1`
+      // Stay on step 1 so student sees receipt preview
       if (fromScan) currentStep = 1;
 
     } catch (err: unknown) {
-      errorMessage = err instanceof Error ? err.message : 'Network error'; refMasked = false;
+      errorMessage = err instanceof Error ? err.message : 'Network error'; 
+      refMasked = false;
     } finally {
       receiptLoading = false;
     }
@@ -188,55 +257,91 @@
   async function handleQrUpload(e: Event) {
     const file = (e.target as HTMLInputElement).files?.[0];
     if (!file) return;
-    if (!uniMatric.trim()) { errorMessage = 'Please enter your matric number before scanning.'; return; }
+    
+    // Validate matric first
+    const matricErr = validateMatricNumber(uniMatric);
+    if (matricErr) { 
+      errorMessage = 'Please enter a valid matric number before scanning.';
+      matricTouched = true;
+      matricError = matricErr;
+      return; 
+    }
+    
     errorMessage = '';
     (e.target as HTMLInputElement).value = '';
+    
     try {
       const bitmap = await createImageBitmap(file);
       const canvas = document.createElement('canvas');
-      canvas.width = bitmap.width; canvas.height = bitmap.height;
+      canvas.width = bitmap.width; 
+      canvas.height = bitmap.height;
       const ctx = canvas.getContext('2d')!;
       ctx.drawImage(bitmap, 0, 0);
       const imgData = ctx.getImageData(0, 0, canvas.width, canvas.height);
       const code = jsQR(imgData.data, imgData.width, imgData.height);
+      
       if (code?.data) {
         settingFromScan = true;
-        // Extract the bare ref from the QR payload (may be a full URL)
         refNumber = extractRefFromUrl(code.data, REF_EXTRACT_PARAM);
-        await tick(); settingFromScan = false;
+        refTouched = true;
+        refError = validateRefNumber(refNumber) || '';
+        await tick(); 
+        settingFromScan = false;
         await fetchReceipt(true);
       } else {
         errorMessage = 'Could not read QR code. Please enter the ref manually.';
       }
-    } catch { errorMessage = 'Failed to process image.'; }
+    } catch { 
+      errorMessage = 'Failed to process image.'; 
+    }
   }
 
   async function startWebcam() {
-    if (!uniMatric.trim()) { errorMessage = 'Please enter your matric number before scanning.'; return; }
-    camError = ''; errorMessage = '';
+    const matricErr = validateMatricNumber(uniMatric);
+    if (matricErr) { 
+      errorMessage = 'Please enter a valid matric number before scanning.';
+      matricTouched = true;
+      matricError = matricErr;
+      return; 
+    }
+    
+    camError = ''; 
+    errorMessage = '';
+    
     try {
       camStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
       showWebcam = true;
       await new Promise(r => setTimeout(r, 100));
-      if (videoEl) { videoEl.srcObject = camStream; await videoEl.play(); startScanLoop(); }
-    } catch { camError = 'Camera access denied. Upload an image instead.'; }
+      if (videoEl) { 
+        videoEl.srcObject = camStream; 
+        await videoEl.play(); 
+        startScanLoop(); 
+      }
+    } catch { 
+      camError = 'Camera access denied. Upload an image instead.'; 
+    }
   }
 
   function startScanLoop() {
     scanCanvas = document.createElement('canvas');
     scanInterval = setInterval(async () => {
       if (!videoEl || videoEl.readyState !== 4) return;
-      scanCanvas.width = videoEl.videoWidth; scanCanvas.height = videoEl.videoHeight;
+      scanCanvas.width = videoEl.videoWidth; 
+      scanCanvas.height = videoEl.videoHeight;
       const ctx = scanCanvas.getContext('2d')!;
       ctx.drawImage(videoEl, 0, 0);
       const imgData = ctx.getImageData(0, 0, scanCanvas.width, scanCanvas.height);
       const code = jsQR(imgData.data, imgData.width, imgData.height);
+      
       if (code?.data) {
-        stopWebcam(); settingFromScan = true;
-        // Extract bare ref from QR payload before assigning
+        stopWebcam(); 
+        settingFromScan = true;
         refNumber = extractRefFromUrl(code.data, REF_EXTRACT_PARAM);
+        refTouched = true;
+        refError = validateRefNumber(refNumber) || '';
         await tick();
-        settingFromScan = false; fetchReceipt(true);
+        settingFromScan = false; 
+        fetchReceipt(true);
       }
     }, 300);
   }
@@ -244,7 +349,8 @@
   function stopWebcam() {
     if (scanInterval) clearInterval(scanInterval);
     if (camStream) camStream.getTracks().forEach(t => t.stop());
-    camStream = null; showWebcam = false;
+    camStream = null; 
+    showWebcam = false;
   }
 
   onDestroy(() => stopWebcam());
@@ -252,36 +358,73 @@
   // ─── Navigation ───────────────────────────────────────────────────
   function nextStep() {
     errorMessage = '';
+    
     if (currentStep === 1) {
-      if (!uniMatric.trim()) { errorMessage = 'Please enter your matric number.'; return; }
+      // Validate matric number
+      const matricErr = validateMatricNumber(uniMatric);
+      matricTouched = true;
+      matricError = matricErr || '';
+      
+      if (matricErr) { 
+        errorMessage = matricErr; 
+        return; 
+      }
+      
+      // Validate receipt is fetched
+      if (!receiptFetched) {
+        errorMessage = 'Please verify your receipt first by clicking "Fetch" or scanning a QR code.';
+        return;
+      }
+      
       currentStep = 2;
+      
     } else if (currentStep === 2) {
       const fields: Step2Field[] = ['surname', 'firstName', 'matricNumber', 'department', 'email'];
       const vals: Record<Step2Field, string> = { surname, firstName, matricNumber, department, email };
       fields.forEach(f => validateStep2Field(f, vals[f]));
-      if (fields.some(f => errors2[f])) { errorMessage = 'Please fix the highlighted fields.'; return; }
+      
+      if (fields.some(f => errors2[f])) { 
+        errorMessage = 'Please fix the highlighted fields.'; 
+        return; 
+      }
+      
       currentStep = 3;
     }
   }
 
-  function prevStep() { errorMessage = ''; currentStep -= 1; }
+  function prevStep() { 
+    errorMessage = ''; 
+    currentStep -= 1; 
+  }
 
   // ─── Submit ───────────────────────────────────────────────────────
   async function handleSubmit() {
     errorMessage = '';
-    touchPassword(password); touchConfirm(confirmPassword);
+    touchPassword(password); 
+    touchConfirm(confirmPassword);
+    
     const pErr = validatePassword(password);
     const cErr = validateConfirm(confirmPassword);
-    if (pErr || cErr) { errorMessage = pErr ?? cErr ?? ''; return; }
+    
+    if (pErr || cErr) { 
+      errorMessage = pErr ?? cErr ?? ''; 
+      return; 
+    }
 
     isLoading = true;
+    
     try {
       const fd = new FormData();
-      fd.set('matricNumber', matricNumber); fd.set('jambRegNo',    jambRegNo);
-      fd.set('firstName',    firstName);    fd.set('otherName',    otherName);
-      fd.set('surname',      surname);      fd.set('college',      college);
-      fd.set('department',   department);   fd.set('level',        level);
-      fd.set('phone',        phone);        fd.set('email',        email);
+      fd.set('matricNumber', matricNumber); 
+      fd.set('jambRegNo',    jambRegNo);
+      fd.set('firstName',    firstName);    
+      fd.set('otherName',    otherName);
+      fd.set('surname',      surname);      
+      fd.set('college',      college);
+      fd.set('department',   department);   
+      fd.set('level',        level);
+      fd.set('phone',        phone);        
+      fd.set('email',        email);
       fd.set('receiptNo',    receiptRaw?.receiptNo ?? '');
       fd.set('receiptRef',   refNumber);
       fd.set('session',      receiptRaw?.session   ?? '');
@@ -290,11 +433,18 @@
       const res    = await fetch('?/signup', { method: 'POST', body: fd });
       const result = deserialize(await res.text());
 
-      if (result.type === 'error') { errorMessage = result.error?.message ?? 'Something went wrong.'; return; }
-      if (result.type !== 'success' || !result.data?.success) {
-        errorMessage = (result.data?.error as string) ?? 'Unable to create account.'; return;
+      if (result.type === 'error') { 
+        errorMessage = result.error?.message ?? 'Something went wrong.'; 
+        return; 
       }
+      
+      if (result.type !== 'success' || !result.data?.success) {
+        errorMessage = (result.data?.error as string) ?? 'Unable to create account.'; 
+        return; 
+      }
+      
       await goto('/dashboard');
+      
     } catch (err: unknown) {
       errorMessage = err instanceof Error ? err.message : 'Network error';
     } finally {
@@ -362,7 +512,7 @@
         <div class="form-badge">Step {currentStep} of {STEPS.length}</div>
         <h2 class="form-title">{STEPS[currentStep - 1]}</h2>
         <p class="form-hint">
-          {#if currentStep === 1}Scan or paste your MOUAU school fee receipt ref
+          {#if currentStep === 1}Enter your matric number and verify your school fee receipt
           {:else if currentStep === 2}Confirm your academic details
           {:else}Create a secure password for your account
           {/if}
@@ -380,38 +530,42 @@
       {#if currentStep === 1}
         <div class="step-body">
 
-          <!-- Matric -->
+          <!-- Matric Number Field -->
           <div class="field">
             <label class="field-label" for="s1matric">
               Matric number <span class="req">*</span>
-              <span class="hint-tag">enter first</span>
             </label>
-            <div class="field-input-wrap">
+            <div class="field-input-wrap" class:error={!!matricError}>
               <span class="field-icon"><Briefcase size={16} /></span>
               <input
                 id="s1matric"
                 type="text"
                 bind:value={uniMatric}
                 oninput={onMatricInput}
-                placeholder="2021/CSC/001"
+                placeholder="MOUAU/CSC/25/001"
                 class="field-input"
+                class:field-input-error={!!matricError}
               />
             </div>
+            {#if matricError}
+              <p class="inline-error"><AlertCircle size={13} /> {matricError}</p>
+            {/if}
+            <span class="field-hint">Format: MOUAU/DEPT/YY/NUMBER (e.g., MOUAU/CSC/25/001)</span>
           </div>
 
           <!-- QR scan box -->
-          <div class="scan-box" class:scan-box--locked={!uniMatric.trim()}>
+          <div class="scan-box" class:scan-box--locked={!!matricError}>
             <p class="scan-box-label">
               <QrCode size={14} /> Scan school fee QR code
-              {#if !uniMatric.trim()}<span class="lock-note">— enter matric first</span>{/if}
+              {#if matricError}<span class="lock-note">— fix matric number first</span>{/if}
             </p>
             <div class="scan-btns">
-              <button type="button" class="scan-btn" onclick={startWebcam} disabled={!uniMatric.trim()}>
+              <button type="button" class="scan-btn" onclick={startWebcam} disabled={!!matricError}>
                 <Camera size={14} /> Live camera
               </button>
-              <label class="scan-btn" class:scan-btn--disabled={!uniMatric.trim()}>
+              <label class="scan-btn" class:scan-btn--disabled={!!matricError}>
                 <Upload size={14} /> Upload image
-                <input type="file" accept="image/*" class="sr-only" disabled={!uniMatric.trim()} onchange={handleQrUpload} />
+                <input type="file" accept="image/*" class="sr-only" disabled={!!matricError} onchange={handleQrUpload} />
               </label>
             </div>
           </div>
@@ -435,7 +589,7 @@
           <!-- Manual ref -->
           <div class="field">
             <label class="field-label">Transaction ref <span class="opt">(or paste from QR)</span></label>
-            <div class="field-input-wrap ref-wrap">
+            <div class="field-input-wrap ref-wrap" class:error={!!refError && !receiptFetched}>
               <span class="field-icon"><QrCode size={16} /></span>
               <input
                 type={refMasked ? 'password' : 'text'}
@@ -444,7 +598,8 @@
                 placeholder="e.g. TRX-2024-XXXXXXXX"
                 class="field-input"
                 class:inp--masked={refMasked}
-                disabled={!uniMatric.trim() || receiptLoading}
+                class:field-input-error={!!refError && !receiptFetched}
+                disabled={!!matricError || receiptLoading}
                 readonly={refMasked}
               />
               {#if receiptLoading}
@@ -454,18 +609,23 @@
                   type="button"
                   class="fetch-btn"
                   onclick={() => fetchReceipt(false)}
-                  disabled={!refNumber.trim() || !uniMatric.trim()}
+                  disabled={!refNumber.trim() || !!matricError}
                 >Fetch</button>
               {:else}
                 <button type="button" class="ref-clear-btn" onclick={() => {
                   refNumber = ''; refMasked = false; receiptRaw = null;
                   receiptPreview = null; receiptFetched = false;
                   surname = firstName = otherName = jambRegNo = college = department = '';
+                  refError = '';
+                  refTouched = false;
                 }} title="Clear">
                   <X size={13} />
                 </button>
               {/if}
             </div>
+            {#if refError && !receiptFetched}
+              <p class="inline-error"><AlertCircle size={13} /> {refError}</p>
+            {/if}
             <span class="field-hint">Found on your MOUAU portal or school fee receipt</span>
           </div>
 
@@ -485,8 +645,12 @@
             </div>
           {/if}
 
-          <button type="button" class="submit-btn" onclick={nextStep}>
-            Continue <ChevronRight size={16} />
+          <button type="button" class="submit-btn" onclick={nextStep} disabled={!receiptFetched}>
+            {#if !receiptFetched}
+              Verify receipt first
+            {:else}
+              Continue <ChevronRight size={16} />
+            {/if}
           </button>
 
           <p class="signin-link">Already have an account? <a href="/login">Sign in</a></p>
@@ -562,7 +726,7 @@
               <span class="field-icon"><Briefcase size={16} /></span>
               <input id="s2matric" type="text" bind:value={matricNumber}
                 class="field-input" class:field-input-error={!!getError2('matricNumber')}
-                placeholder="2021/CSC/001"
+                placeholder="MOUAU/CSC/25/001"
                 readonly={receiptFetched}
                 onblur={(e) => validateStep2Field('matricNumber', e.currentTarget.value)}
                 oninput={(e) => { if (touched2.matricNumber) validateStep2Field('matricNumber', e.currentTarget.value); }}
@@ -960,7 +1124,7 @@
     text-transform: none; letter-spacing: 0;
   }
   .lock-icon { color: var(--text-muted); opacity: .6; flex-shrink: 0; }
-  .field-hint { font-size: .72rem; color: var(--text-muted); }
+  .field-hint { font-size: .72rem; color: var(--text-muted); margin-top: -0.25rem; }
 
   .field-input-wrap { position: relative; }
   .field-input-wrap.error .field-icon { color: #dc2626; }
@@ -1134,7 +1298,7 @@
     transform: translateY(-1px);
     box-shadow: 0 6px 15px rgba(21,128,61,.35);
   }
-  .submit-btn:disabled { opacity: .6; cursor: not-allowed; }
+  .submit-btn:disabled { opacity: .6; cursor: not-allowed; background: var(--border); }
 
   .back-btn {
     display: inline-flex; align-items: center; gap: 6px;
