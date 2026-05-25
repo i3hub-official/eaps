@@ -23,7 +23,7 @@
 		"db:sql": "tsx prisma/apply-sql.ts",
 		"db:seed": "tsx prisma/seed.ts",
 		"db:setup": "prisma db push && pnpm db:sql && pnpm db:seed",
-		 "download:models": "node scripts/download-models.js"
+		"download:models": "node scripts/download-models.js"
 	},
 	"devDependencies": {
 		"@eslint/compat": "^2.0.4",
@@ -68,6 +68,8 @@
 		"cheerio": "^1.2.0",
 		"dotenv": "^17.4.2",
 		"face-api.js": "^0.22.2",
+		"html2canvas": "^1.4.1",
+		"jspdf": "^4.2.1",
 		"jsqr": "^1.4.0",
 		"lucide-svelte": "^1.0.1",
 		"nanoid": "^5.1.11",

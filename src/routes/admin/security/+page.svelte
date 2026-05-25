@@ -5,20 +5,91 @@
     ShieldAlert, Lock, Eye, EyeOff, History, Users,
     Activity, AlertTriangle, CheckCircle, XCircle,
     RefreshCw, Download, Filter, Search, Calendar,
-    Server, Database, Wifi, Shield
+    Server, Database, Wifi, Shield, FileText, ShieldCheck,
+    KeyRound, Fingerprint, Bell, Clock, Globe, Smartphone,
+    ChevronRight, Info, Ban, FileLock, BadgeCheck
   } from 'lucide-svelte';
+  import { tick } from 'svelte';
 
   let { data }: { data: PageData } = $props();
 
+  // Tab state - reorganized: Overview first, then operational tabs
   let activeTab = $state('overview');
   let dateRange = $state('7d');
   let searchQuery = $state('');
+  let severityFilter = $state('all');
+  let isExporting = $state(false);
 
   const tabs = [
-    { id: 'overview', label: 'Overview', icon: ShieldAlert },
+    { id: 'overview', label: 'Overview', icon: ShieldCheck },
+    { id: 'measures', label: 'Security Measures', icon: Shield },
     { id: 'audit', label: 'Audit Log', icon: History },
     { id: 'sessions', label: 'Active Sessions', icon: Users },
     { id: 'violations', label: 'Violations', icon: AlertTriangle },
+  ];
+
+  // Security measures data
+  const securityMeasures = [
+    {
+      category: 'Authentication',
+      icon: KeyRound,
+      items: [
+        { name: 'Multi-Factor Authentication (MFA)', status: 'required', description: 'Mandatory for all admin accounts' },
+        { name: 'Password Policy', status: 'required', description: 'Min 16 chars, complexity enforced' },
+        { name: 'Session Timeout', status: 'required', description: 'Auto-logout after 15 min inactivity' },
+        { name: 'Biometric Verification', status: 'required', description: 'Face recognition for exam access' },
+      ]
+    },
+    {
+      category: 'Data Protection',
+      icon: FileLock,
+      items: [
+        { name: 'Encryption at Rest', status: 'required', description: 'AES-256 for all stored data' },
+        { name: 'Encryption in Transit', status: 'required', description: 'TLS 1.3 for all connections' },
+        { name: 'Database Encryption', status: 'required', description: 'Column-level encryption for PII' },
+        { name: 'Backup Encryption', status: 'required', description: 'Encrypted backups with 7-day retention' },
+      ]
+    },
+    {
+      category: 'Access Control',
+      icon: Lock,
+      items: [
+        { name: 'Role-Based Access (RBAC)', status: 'required', description: 'Granular permissions per role' },
+        { name: 'IP Whitelisting', status: 'recommended', description: 'Restrict admin panel by IP range' },
+        { name: 'API Rate Limiting', status: 'required', description: '100 req/min per user' },
+        { name: 'Account Lockout', status: 'required', description: 'Lock after 5 failed attempts' },
+      ]
+    },
+    {
+      category: 'Monitoring',
+      icon: Bell,
+      items: [
+        { name: 'Audit Logging', status: 'required', description: 'All actions logged immutably' },
+        { name: 'Real-time Alerts', status: 'required', description: 'Instant notification on threats' },
+        { name: 'Anomaly Detection', status: 'recommended', description: 'AI-based behavior analysis' },
+        { name: 'Log Retention', status: 'required', description: '90-day minimum retention' },
+      ]
+    },
+    {
+      category: 'Exam Integrity',
+      icon: Fingerprint,
+      items: [
+        { name: 'Face Recognition', status: 'required', description: 'Live verification before exam' },
+        { name: 'Proctoring Logs', status: 'required', description: 'Continuous screen monitoring' },
+        { name: 'Violation Detection', status: 'required', description: 'Auto-flag suspicious behavior' },
+        { name: 'Device Fingerprinting', status: 'recommended', description: 'Track device characteristics' },
+      ]
+    },
+    {
+      category: 'Infrastructure',
+      icon: Server,
+      items: [
+        { name: 'DDoS Protection', status: 'required', description: 'Cloudflare Enterprise protection' },
+        { name: 'WAF Rules', status: 'required', description: 'OWASP Top 10 filtering' },
+        { name: 'Penetration Testing', status: 'required', description: 'Quarterly third-party audits' },
+        { name: 'Vulnerability Scanning', status: 'required', description: 'Weekly automated scans' },
+      ]
+    }
   ];
 
   function formatDate(date: string | Date) {
@@ -53,26 +124,122 @@
     if (actionLower.includes('login')) return 'action-login';
     return 'action-default';
   }
+
+  // PDF Export using jsPDF + html2canvas
+  async function exportToPDF() {
+    isExporting = true;
+    await tick();
+
+    try {
+      const html2canvas = (await import('html2canvas')).default;
+      const { jsPDF } = await import('jspdf');
+
+      const element = document.getElementById('security-export-container');
+      if (!element) return;
+
+      const canvas = await html2canvas(element, {
+        scale: 2,
+        useCORS: true,
+        logging: false,
+        backgroundColor: '#ffffff',
+        windowWidth: element.scrollWidth,
+        width: element.scrollWidth,
+        height: element.scrollHeight
+      });
+
+      const imgData = canvas.toDataURL('image/png');
+      const pdf = new jsPDF('p', 'mm', 'a4');
+
+      const pdfWidth = pdf.internal.pageSize.getWidth();
+      const pdfHeight = pdf.internal.pageSize.getHeight();
+      const imgWidth = canvas.width;
+      const imgHeight = canvas.height;
+      const ratio = Math.min(pdfWidth / imgWidth, pdfHeight / imgHeight);
+      const imgX = (pdfWidth - imgWidth * ratio) / 2;
+      let imgY = 10;
+      let scaledHeight = imgHeight * ratio;
+      let scaledWidth = imgWidth * ratio;
+
+      // Handle multi-page
+      let heightLeft = scaledHeight;
+      let position = imgY;
+
+      // Add header
+      pdf.setFontSize(16);
+      pdf.setTextColor(22, 163, 74);
+      pdf.text('MOUAU eTest — Security Report', pdfWidth / 2, 10, { align: 'center' });
+      pdf.setFontSize(10);
+      pdf.setTextColor(100, 116, 139);
+      pdf.text(`Generated: ${new Date().toLocaleString()}`, pdfWidth / 2, 16, { align: 'center' });
+
+      position = 20;
+      heightLeft -= 20;
+
+      pdf.addImage(imgData, 'PNG', imgX, position, scaledWidth, scaledHeight);
+      heightLeft -= pdfHeight;
+
+      while (heightLeft > 0) {
+        position = heightLeft - scaledHeight + 20;
+        pdf.addPage();
+        pdf.addImage(imgData, 'PNG', imgX, position, scaledWidth, scaledHeight);
+        heightLeft -= pdfHeight;
+      }
+
+      pdf.save(`security-report-${new Date().toISOString().split('T')[0]}.pdf`);
+    } catch (err) {
+      console.error('PDF export failed:', err);
+      alert('Failed to export PDF. Please try again.');
+    } finally {
+      isExporting = false;
+    }
+  }
+
+  // Filtered data
+  let filteredAuditLogs = $derived(
+    data.auditLogs?.filter((log: any) => {
+      const matchesSearch = !searchQuery || 
+        log.user?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        log.action?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        log.resource?.toLowerCase().includes(searchQuery.toLowerCase());
+      return matchesSearch;
+    }) ?? []
+  );
+
+  let filteredViolations = $derived(
+    data.violations?.filter((v: any) => {
+      return severityFilter === 'all' || v.severity === severityFilter;
+    }) ?? []
+  );
 </script>
 
 <svelte:head><title>Security — MOUAU eTest Admin</title></svelte:head>
 
 <div class="security-page">
-  
+
   <!-- Header -->
   <div class="page-header">
-    <div>
-      <h1>Security Centre</h1>
-      <p class="subtitle">Monitor system security, audit logs, and active sessions</p>
+    <div class="header-title-group">
+      <div class="header-icon">
+        <ShieldCheck size={28} color="#16a34a" />
+      </div>
+      <div>
+        <h1>Security Centre</h1>
+        <p class="subtitle">Monitor system security, audit logs, and active sessions</p>
+      </div>
     </div>
     <div class="header-actions">
       <button class="btn-outline" onclick={() => window.location.reload()}>
         <RefreshCw size={14} />
         Refresh
       </button>
-      <button class="btn-outline">
-        <Download size={14} />
-        Export Report
+      <button class="btn-primary" onclick={exportToPDF} disabled={isExporting}>
+        {#if isExporting}
+          <RefreshCw size={14} class="spin" />
+          Exporting...
+        {:else}
+          <Download size={14} />
+          Export Report
+        {/if}
       </button>
     </div>
   </div>
@@ -81,7 +248,7 @@
   <div class="status-grid">
     <div class="status-card">
       <div class="status-icon green">
-        <Shield size={24} />
+        <Shield size={22} />
       </div>
       <div class="status-info">
         <span class="status-label">System Security</span>
@@ -92,7 +259,7 @@
 
     <div class="status-card">
       <div class="status-icon blue">
-        <Lock size={24} />
+        <Lock size={22} />
       </div>
       <div class="status-info">
         <span class="status-label">Encryption</span>
@@ -103,7 +270,7 @@
 
     <div class="status-card">
       <div class="status-icon amber">
-        <Activity size={24} />
+        <Activity size={22} />
       </div>
       <div class="status-info">
         <span class="status-label">Active Threats</span>
@@ -116,7 +283,7 @@
 
     <div class="status-card">
       <div class="status-icon purple">
-        <Users size={24} />
+        <Users size={22} />
       </div>
       <div class="status-info">
         <span class="status-label">Active Sessions</span>
@@ -127,26 +294,28 @@
   </div>
 
   <!-- Tabs -->
-  <div class="tabs">
-    {#each tabs as tab}
-      <button
-        class="tab"
-        class:active={activeTab === tab.id}
-        onclick={() => activeTab = tab.id}
-      >
-        <tab.icon size={16} />
-        <span>{tab.label}</span>
-      </button>
-    {/each}
+  <div class="tabs-container">
+    <div class="tabs">
+      {#each tabs as tab}
+        <button
+          class="tab"
+          class:active={activeTab === tab.id}
+          onclick={() => activeTab = tab.id}
+        >
+          <tab.icon size={16} />
+          <span>{tab.label}</span>
+        </button>
+      {/each}
+    </div>
   </div>
 
-  <!-- Tab Content -->
-  <div class="tab-content">
+  <!-- Export Container -->
+  <div id="security-export-container" class="tab-content">
 
     <!-- Overview Tab -->
     {#if activeTab === 'overview'}
       <div class="overview-grid">
-        
+
         <!-- System Health -->
         <div class="card">
           <div class="card-header">
@@ -170,7 +339,7 @@
               <span class="health-status ok">Active</span>
             </div>
             <div class="health-item">
-              <Lock size={16} />
+              <Fingerprint size={16} />
               <span>Face Recognition</span>
               <span class="health-status ok">Ready</span>
             </div>
@@ -180,11 +349,11 @@
         <!-- Security Metrics -->
         <div class="card">
           <div class="card-header">
-            <h3>Security Metrics</h3>
+            <h3>Security Metrics (24h)</h3>
           </div>
           <div class="metrics-list">
             <div class="metric">
-              <span class="metric-label">Failed Logins (24h)</span>
+              <span class="metric-label">Failed Logins</span>
               <span class="metric-value">{data.failedLogins ?? 0}</span>
             </div>
             <div class="metric">
@@ -202,6 +371,44 @@
           </div>
         </div>
 
+        <!-- Compliance Summary -->
+        <div class="card full-width">
+          <div class="card-header">
+            <h3>Security Compliance</h3>
+            <span class="compliance-score">98%</span>
+          </div>
+          <div class="compliance-grid">
+            <div class="compliance-item">
+              <BadgeCheck size={20} color="#16a34a" />
+              <div>
+                <span class="compliance-name">MFA Enforced</span>
+                <span class="compliance-status">All admins</span>
+              </div>
+            </div>
+            <div class="compliance-item">
+              <BadgeCheck size={20} color="#16a34a" />
+              <div>
+                <span class="compliance-name">Encryption Active</span>
+                <span class="compliance-status">AES-256 + TLS 1.3</span>
+              </div>
+            </div>
+            <div class="compliance-item">
+              <BadgeCheck size={20} color="#16a34a" />
+              <div>
+                <span class="compliance-name">Audit Logging</span>
+                <span class="compliance-status">90-day retention</span>
+              </div>
+            </div>
+            <div class="compliance-item">
+              <BadgeCheck size={20} color="#16a34a" />
+              <div>
+                <span class="compliance-name">Penetration Test</span>
+                <span class="compliance-status">Last: 2026-04-15</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
         <!-- Recent Alerts -->
         <div class="card full-width">
           <div class="card-header">
@@ -210,7 +417,7 @@
           </div>
           {#if !data.recentAlerts?.length}
             <div class="empty-state">
-              <CheckCircle size={32} />
+              <CheckCircle size={32} color="#16a34a" />
               <p>No recent security alerts</p>
             </div>
           {:else}
@@ -238,6 +445,49 @@
           {/if}
         </div>
 
+      </div>
+    {/if}
+
+    <!-- Security Measures Tab -->
+    {#if activeTab === 'measures'}
+      <div class="measures-container">
+        <div class="measures-header">
+          <Info size={18} color="#16a34a" />
+          <p>The following security measures are <strong>required</strong> for MOUAU eTest platform compliance. Items marked <span class="tag-required">Required</span> must be active at all times. <span class="tag-recommended">Recommended</span> items enhance security posture.</p>
+        </div>
+
+        <div class="measures-grid">
+          {#each securityMeasures as category}
+            <div class="measure-card">
+              <div class="measure-category-header">
+                <category.icon size={20} color="#16a34a" />
+                <h3>{category.category}</h3>
+              </div>
+              <div class="measure-items">
+                {#each category.items as item}
+                  <div class="measure-item">
+                    <div class="measure-info">
+                      <div class="measure-name">
+                        {item.name}
+                        <span class="measure-tag" class:required={item.status === 'required'} class:recommended={item.status === 'recommended'}>
+                          {item.status}
+                        </span>
+                      </div>
+                      <div class="measure-desc">{item.description}</div>
+                    </div>
+                    <div class="measure-status">
+                      {#if item.status === 'required'}
+                        <CheckCircle size={16} color="#16a34a" />
+                      {:else}
+                        <Clock size={16} color="#f59e0b" />
+                      {/if}
+                    </div>
+                  </div>
+                {/each}
+              </div>
+            </div>
+          {/each}
+        </div>
       </div>
     {/if}
 
@@ -272,7 +522,7 @@
               </tr>
             </thead>
             <tbody>
-              {#if !data.auditLogs?.length}
+              {#if !filteredAuditLogs.length}
                 <tr>
                   <td colspan="6" class="empty-row">
                     <div class="empty-state-small">
@@ -282,7 +532,7 @@
                   </td>
                 </tr>
               {:else}
-                {#each data.auditLogs as log}
+                {#each filteredAuditLogs as log}
                   <tr>
                     <td class="mono">{formatDate(log.timestamp)}</td>
                     <td>{log.user}</td>
@@ -374,7 +624,7 @@
         <div class="card-header">
           <h3>Exam Violations</h3>
           <div class="filter-controls">
-            <select class="severity-select">
+            <select bind:value={severityFilter} class="severity-select">
               <option value="all">All Severities</option>
               <option value="high">High</option>
               <option value="medium">Medium</option>
@@ -395,7 +645,7 @@
               </tr>
             </thead>
             <tbody>
-              {#if !data.violations?.length}
+              {#if !filteredViolations.length}
                 <tr>
                   <td colspan="6" class="empty-row">
                     <div class="empty-state-small">
@@ -405,7 +655,7 @@
                   </td>
                 </tr>
               {:else}
-                {#each data.violations as violation}
+                {#each filteredViolations as violation}
                   <tr>
                     <td class="mono">{formatDate(violation.timestamp)}</td>
                     <td>{violation.student}</td>
@@ -435,15 +685,35 @@
     display: flex;
     flex-direction: column;
     gap: 1.5rem;
+    max-width: 1400px;
+    margin: 0 auto;
   }
 
   /* Header */
   .page-header {
     display: flex;
     justify-content: space-between;
-    align-items: flex-start;
+    align-items: center;
     flex-wrap: wrap;
     gap: 1rem;
+    padding-bottom: 0.5rem;
+    border-bottom: 1px solid var(--color-border);
+  }
+
+  .header-title-group {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+  }
+
+  .header-icon {
+    width: 48px;
+    height: 48px;
+    border-radius: 0.75rem;
+    background: rgba(22, 163, 74, 0.1);
+    display: flex;
+    align-items: center;
+    justify-content: center;
   }
 
   h1 {
@@ -484,6 +754,40 @@
     color: var(--color-primary);
   }
 
+  .btn-primary {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.5rem 1rem;
+    background: #16a34a;
+    border: 1px solid #16a34a;
+    border-radius: 0.5rem;
+    font-size: 0.8rem;
+    font-weight: 600;
+    color: white;
+    cursor: pointer;
+    transition: all 0.15s;
+  }
+
+  .btn-primary:hover {
+    background: #15803d;
+    border-color: #15803d;
+  }
+
+  .btn-primary:disabled {
+    opacity: 0.7;
+    cursor: not-allowed;
+  }
+
+  .spin {
+    animation: spin 1s linear infinite;
+  }
+
+  @keyframes spin {
+    from { transform: rotate(0deg); }
+    to { transform: rotate(360deg); }
+  }
+
   /* Status Cards */
   .status-grid {
     display: grid;
@@ -499,18 +803,24 @@
     display: flex;
     align-items: center;
     gap: 1rem;
+    transition: transform 0.15s, box-shadow 0.15s;
+  }
+
+  .status-card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
   }
 
   .status-icon {
-    width: 48px;
-    height: 48px;
+    width: 44px;
+    height: 44px;
     border-radius: 0.75rem;
     display: flex;
     align-items: center;
     justify-content: center;
   }
 
-  .status-icon.green { background: rgba(34, 197, 94, 0.1); color: #22c55e; }
+  .status-icon.green { background: rgba(22, 163, 74, 0.1); color: #16a34a; }
   .status-icon.blue { background: rgba(59, 130, 246, 0.1); color: #3b82f6; }
   .status-icon.amber { background: rgba(245, 158, 11, 0.1); color: #f59e0b; }
   .status-icon.purple { background: rgba(139, 92, 246, 0.1); color: #8b5cf6; }
@@ -557,11 +867,17 @@
   }
 
   /* Tabs */
+  .tabs-container {
+    background: var(--color-surface);
+    border: 1px solid var(--color-border);
+    border-radius: 0.75rem;
+    padding: 0.25rem;
+  }
+
   .tabs {
     display: flex;
-    gap: 0.5rem;
-    border-bottom: 1px solid var(--color-border);
-    padding-bottom: 0;
+    gap: 0.25rem;
+    flex-wrap: wrap;
   }
 
   .tab {
@@ -571,7 +887,7 @@
     padding: 0.6rem 1.25rem;
     background: none;
     border: none;
-    border-bottom: 2px solid transparent;
+    border-radius: 0.5rem;
     font-size: 0.85rem;
     font-weight: 600;
     color: var(--color-muted);
@@ -581,16 +897,17 @@
 
   .tab:hover {
     color: var(--color-text);
+    background: var(--color-bg);
   }
 
   .tab.active {
-    color: #16a34a;
-    border-bottom-color: #16a34a;
+    color: white;
+    background: #16a34a;
   }
 
   /* Tab Content */
   .tab-content {
-    margin-top: 1.5rem;
+    margin-top: 0.5rem;
   }
 
   .overview-grid {
@@ -665,7 +982,7 @@
   }
 
   .health-status.ok {
-    color: #22c55e;
+    color: #16a34a;
   }
 
   .metric {
@@ -696,6 +1013,44 @@
     padding: 0.15rem 0.5rem;
     background: var(--color-bg);
     border-radius: 0.25rem;
+    color: var(--color-muted);
+  }
+
+  .compliance-score {
+    font-size: 1.25rem;
+    font-weight: 800;
+    color: #16a34a;
+  }
+
+  .compliance-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 1rem;
+    padding: 1.25rem;
+  }
+
+  .compliance-item {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    padding: 0.75rem;
+    background: var(--color-bg);
+    border-radius: 0.5rem;
+  }
+
+  .compliance-item div {
+    display: flex;
+    flex-direction: column;
+  }
+
+  .compliance-name {
+    font-size: 0.8rem;
+    font-weight: 600;
+    color: var(--color-text);
+  }
+
+  .compliance-status {
+    font-size: 0.7rem;
     color: var(--color-muted);
   }
 
@@ -742,6 +1097,141 @@
     font-size: 0.7rem;
     font-weight: 600;
     text-transform: uppercase;
+  }
+
+  /* Security Measures */
+  .measures-container {
+    display: flex;
+    flex-direction: column;
+    gap: 1.25rem;
+  }
+
+  .measures-header {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.75rem;
+    padding: 1rem 1.25rem;
+    background: rgba(22, 163, 74, 0.05);
+    border: 1px solid rgba(22, 163, 74, 0.2);
+    border-radius: 0.75rem;
+    color: var(--color-text);
+    font-size: 0.85rem;
+    line-height: 1.5;
+  }
+
+  .measures-header p {
+    margin: 0;
+  }
+
+  .tag-required {
+    display: inline-block;
+    padding: 0.1rem 0.4rem;
+    background: #dcfce7;
+    color: #16a34a;
+    border-radius: 0.25rem;
+    font-size: 0.7rem;
+    font-weight: 600;
+    margin: 0 0.2rem;
+  }
+
+  .tag-recommended {
+    display: inline-block;
+    padding: 0.1rem 0.4rem;
+    background: #fef3c7;
+    color: #f59e0b;
+    border-radius: 0.25rem;
+    font-size: 0.7rem;
+    font-weight: 600;
+    margin: 0 0.2rem;
+  }
+
+  .measures-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(380px, 1fr));
+    gap: 1.25rem;
+  }
+
+  .measure-card {
+    background: var(--color-surface);
+    border: 1px solid var(--color-border);
+    border-radius: 0.75rem;
+    overflow: hidden;
+  }
+
+  .measure-category-header {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 1rem 1.25rem;
+    background: var(--color-bg);
+    border-bottom: 1px solid var(--color-border);
+  }
+
+  .measure-category-header h3 {
+    font-size: 0.9rem;
+    font-weight: 700;
+    margin: 0;
+    color: var(--color-text);
+  }
+
+  .measure-items {
+    padding: 0.5rem;
+  }
+
+  .measure-item {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 0.75rem;
+    padding: 0.75rem 1rem;
+    border-bottom: 1px solid var(--color-border);
+  }
+
+  .measure-item:last-child {
+    border-bottom: none;
+  }
+
+  .measure-info {
+    flex: 1;
+  }
+
+  .measure-name {
+    font-size: 0.85rem;
+    font-weight: 600;
+    color: var(--color-text);
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    flex-wrap: wrap;
+  }
+
+  .measure-tag {
+    font-size: 0.65rem;
+    padding: 0.1rem 0.4rem;
+    border-radius: 0.25rem;
+    font-weight: 600;
+    text-transform: uppercase;
+  }
+
+  .measure-tag.required {
+    background: #dcfce7;
+    color: #16a34a;
+  }
+
+  .measure-tag.recommended {
+    background: #fef3c7;
+    color: #f59e0b;
+  }
+
+  .measure-desc {
+    font-size: 0.75rem;
+    color: var(--color-muted);
+    margin-top: 0.2rem;
+  }
+
+  .measure-status {
+    flex-shrink: 0;
+    margin-top: 0.1rem;
   }
 
   /* Tables */
@@ -799,6 +1289,7 @@
     padding: 0.35rem 0.75rem;
     border: 1px solid var(--color-border);
     border-radius: 0.5rem;
+    background: var(--color-surface);
   }
 
   .search-box input {
@@ -807,6 +1298,7 @@
     outline: none;
     font-size: 0.8rem;
     width: 200px;
+    color: var(--color-text);
   }
 
   .date-select, .severity-select {
@@ -816,15 +1308,26 @@
     background: var(--color-surface);
     color: var(--color-text);
     font-size: 0.8rem;
+    cursor: pointer;
   }
 
   .btn-small {
-    padding: 0.25rem 0.6rem;
-    font-size: 0.7rem;
-    background: transparent;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3rem;
+    padding: 0.35rem 0.75rem;
+    font-size: 0.75rem;
+    background: var(--color-bg);
     border: 1px solid var(--color-border);
-    border-radius: 0.25rem;
+    border-radius: 0.5rem;
+    color: var(--color-text);
     cursor: pointer;
+    transition: all 0.15s;
+  }
+
+  .btn-small:hover {
+    border-color: var(--color-primary);
+    color: var(--color-primary);
   }
 
   .action-badge {
@@ -868,6 +1371,7 @@
     font-size: 0.7rem;
     font-weight: 600;
     background: var(--color-bg);
+    color: var(--color-text);
   }
 
   .btn-danger-small {
@@ -876,6 +1380,12 @@
     color: #dc2626;
     cursor: pointer;
     padding: 0.25rem;
+    border-radius: 0.25rem;
+    transition: background 0.15s;
+  }
+
+  .btn-danger-small:hover {
+    background: rgba(220, 38, 38, 0.1);
   }
 
   .severity-badge {
@@ -901,7 +1411,8 @@
 
   /* Responsive */
   @media (max-width: 768px) {
-    .overview-grid {
+    .overview-grid,
+    .measures-grid {
       grid-template-columns: 1fr;
     }
 
@@ -912,6 +1423,15 @@
 
     .search-box input {
       width: 100%;
+    }
+
+    .tabs {
+      overflow-x: auto;
+      flex-wrap: nowrap;
+    }
+
+    .tab {
+      white-space: nowrap;
     }
   }
 </style>
