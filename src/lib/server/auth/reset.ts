@@ -1,81 +1,81 @@
-
 // src/lib/server/auth/reset.ts
-import { createHash, randomBytes } from 'crypto';
+import { randomBytes } from 'crypto';
 import { sql } from '$lib/server/db/index.js';
 
-// ─── Token generation ─────────────────────────────────────────────
+const TOKEN_TTL_MINUTES = 15;
 
-/** Generate a 6-char uppercase alphanumeric OTP */
-export function generateOTP(): string {
-  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; // no ambiguous chars (0,O,1,I)
-  let result = '';
+// ── Table DDL (run once) ──────────────────────────────────────────────────────
+// CREATE TABLE IF NOT EXISTS password_resets (
+//   token       TEXT        PRIMARY KEY,
+//   user_id     UUID        NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+//   expires_at  TIMESTAMPTZ NOT NULL,
+//   used_at     TIMESTAMPTZ
+// );
+// CREATE INDEX IF NOT EXISTS idx_password_resets_user ON password_resets(user_id);
+
+// ── Generate a 6-char alphanumeric token ──────────────────────────────────────
+function generateToken(): string {
+  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; // no ambiguous chars (0/O, 1/I)
   const bytes = randomBytes(6);
-  for (const byte of bytes) {
-    result += chars[byte % chars.length];
-  }
-  return result;
+  return Array.from(bytes)
+    .map(b => chars[b % chars.length])
+    .join('');
 }
 
-function hashToken(token: string): string {
-  return createHash('sha256').update(token).digest('hex');
-}
-
-// ─── Create reset ─────────────────────────────────────────────────
-
+// ── Create a reset token for a user ──────────────────────────────────────────
 export async function createPasswordReset(userId: string): Promise<string> {
-  // Invalidate any existing tokens for this user
-  await sql(`UPDATE password_resets SET used = true WHERE user_id = $1`, [userId]);
+  // Invalidate any existing unused tokens for this user
+  await sql(
+    `DELETE FROM password_resets WHERE user_id = $1 AND used_at IS NULL`,
+    [userId]
+  );
 
-  const token    = generateOTP();
-  const tokenHash = hashToken(token);
-  const expiresAt = new Date(Date.now() + 15 * 60 * 1000); // 15 minutes
+  const token     = generateToken();
+  const expiresAt = new Date(Date.now() + TOKEN_TTL_MINUTES * 60_000);
 
   await sql(
-    `INSERT INTO password_resets (user_id, token, token_hash, expires_at)
-     VALUES ($1, $2, $3, $4)`,
-    [userId, token, tokenHash, expiresAt]
+    `INSERT INTO password_resets (token, user_id, expires_at)
+     VALUES ($1, $2, $3)`,
+    [token, userId, expiresAt]
   );
 
   return token;
 }
 
-// ─── Verify token ─────────────────────────────────────────────────
-
-export interface ResetTokenResult {
-  valid: boolean;
-  userId?: string;
-  token?: string;
-  error?: string;
-}
-
-export async function verifyResetToken(token: string): Promise<ResetTokenResult> {
-  const tokenHash = hashToken(token.toUpperCase().trim());
-
+// ── Verify a token — returns userId if valid ──────────────────────────────────
+export async function verifyResetToken(
+  token: string
+): Promise<{ valid: boolean; userId?: string; error?: string }> {
   const rows = await sql<{
-    id: string; user_id: string; token: string;
-    used: boolean; expires_at: Date;
+    user_id: string;
+    expires_at: Date;
+    used_at: Date | null;
   }>(
-    `SELECT id, user_id, token, used, expires_at
+    `SELECT user_id, expires_at, used_at
      FROM password_resets
-     WHERE token_hash = $1`,
-    [tokenHash]
+     WHERE token = $1`,
+    [token.toUpperCase().trim()]
   );
 
-  if (!rows[0]) return { valid: false, error: 'Invalid token.' };
-  if (rows[0].used) return { valid: false, error: 'This token has already been used.' };
-  if (new Date(rows[0].expires_at) < new Date()) {
-    return { valid: false, error: 'This token has expired. Please request a new one.' };
-  }
+  const row = rows[0];
 
-  return { valid: true, userId: rows[0].user_id, token: rows[0].token };
+  if (!row)              return { valid: false, error: 'Invalid code — check you copied it correctly.' };
+  if (row.used_at)       return { valid: false, error: 'This code has already been used.' };
+  if (new Date() > row.expires_at)
+                         return { valid: false, error: 'Code expired — request a new one.' };
+
+  return { valid: true, userId: row.user_id };
 }
 
-// ─── Consume token ────────────────────────────────────────────────
-
+// ── Mark token as used ────────────────────────────────────────────────────────
 export async function consumeResetToken(token: string): Promise<void> {
-  const tokenHash = hashToken(token.toUpperCase().trim());
   await sql(
-    `UPDATE password_resets SET used = true WHERE token_hash = $1`,
-    [tokenHash]
+    `UPDATE password_resets SET used_at = now() WHERE token = $1`,
+    [token.toUpperCase().trim()]
   );
+}
+
+// ── Cleanup expired tokens (call periodically) ────────────────────────────────
+export async function purgeExpiredResetTokens(): Promise<void> {
+  await sql(`DELETE FROM password_resets WHERE expires_at < now()`);
 }

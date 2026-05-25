@@ -1,65 +1,78 @@
 <!-- src/routes/(auth)/login/+page.svelte -->
 <script lang="ts">
   import type { ActionData } from './$types';
-  import { Mail, Lock, Eye, EyeOff, LogIn, AlertCircle, ShieldCheck } from 'lucide-svelte';
+  import { Mail, Lock, Eye, EyeOff, LogIn, AlertCircle, ShieldCheck, ArrowRight, ArrowLeft } from 'lucide-svelte';
   import ThemeToggle from '$lib/components/ui/ThemeToggle.svelte';
 
   let { form }: { form: ActionData } = $props();
+
+  // ── Step state ────────────────────────────────────────
+  type Step = 'email' | 'password';
+  let step = $state<Step>('email');
   let loading = $state(false);
   let showPass = $state(false);
 
-  let clientErrors = $state<{ email?: string; password?: string }>({});
-  let touched = $state<{ email: boolean; password: boolean }>({ email: false, password: false });
+  let email = $state('');
+  let password = $state('');
 
-  function validateEmail(value: string): string | undefined {
-    if (!value || value.trim() === '') return 'Email address is required';
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    if (!emailRegex.test(value)) return 'Please enter a valid email address';
-    return undefined;
+  let emailError = $state('');
+  let passwordError = $state('');
+  let emailTouched = $state(false);
+  let passwordTouched = $state(false);
+
+  // ── Validation ────────────────────────────────────────
+  function validateEmail(v: string): string {
+    if (!v.trim()) return 'Email address is required';
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v)) return 'Enter a valid email address';
+    return '';
   }
 
-  function validatePassword(value: string): string | undefined {
-    if (!value || value.trim() === '') return 'Password is required';
-    if (value.length < 6) return 'Password must be at least 6 characters';
-    return undefined;
+  function validatePassword(v: string): string {
+    if (!v) return 'Password is required';
+    if (v.length < 6) return 'Password must be at least 6 characters';
+    return '';
   }
 
-  function validateField(field: 'email' | 'password', value: string) {
-    touched[field] = true;
-    if (field === 'email') {
-      clientErrors.email = validateEmail(value);
-    } else {
-      clientErrors.password = validatePassword(value);
-    }
+  // ── Step 1: Next button ───────────────────────────────
+  function handleNext() {
+    emailTouched = true;
+    emailError = validateEmail(email);
+    if (emailError) return;
+    step = 'password';
   }
 
+  function handleEmailKeydown(e: KeyboardEvent) {
+    if (e.key === 'Enter') { e.preventDefault(); handleNext(); }
+  }
+
+  // ── Step 2: Submit ────────────────────────────────────
   function handleSubmit(e: SubmitEvent) {
-    const formEl = e.target as HTMLFormElement;
-    const email = (formEl.elements.namedItem('email') as HTMLInputElement).value;
-    const password = (formEl.elements.namedItem('password') as HTMLInputElement).value;
-
-    const emailErr = validateEmail(email);
-    const passErr = validatePassword(password);
-
-    clientErrors = { email: emailErr, password: passErr };
-    touched = { email: true, password: true };
-
-    if (emailErr || passErr) {
-      e.preventDefault();
-      return;
-    }
-
+    passwordTouched = true;
+    passwordError = validatePassword(password);
+    if (passwordError) { e.preventDefault(); return; }
     loading = true;
   }
 
-  function getError(field: 'email' | 'password'): string | undefined {
-    if (touched[field] && clientErrors[field]) return clientErrors[field];
-    return form?.errors?.[field];
+  function goBack() {
+    step = 'email';
+    password = '';
+    passwordError = '';
+    passwordTouched = false;
+    loading = false;
   }
 
-  function hasError(field: 'email' | 'password'): boolean {
-    return !!getError(field);
-  }
+  // Live validation
+  $effect(() => { if (emailTouched) emailError = validateEmail(email); });
+  $effect(() => { if (passwordTouched) passwordError = validatePassword(password); });
+
+  // Mask email for display on step 2
+  const maskedEmail = $derived(() => {
+    const [local, domain] = email.split('@');
+    if (!local || !domain) return email;
+    const visible = local.slice(0, 2);
+    const masked = '*'.repeat(Math.max(local.length - 2, 2));
+    return `${visible}${masked}@${domain}`;
+  });
 </script>
 
 <svelte:head>
@@ -67,10 +80,11 @@
 </svelte:head>
 
 <div class="root">
+  <!-- Left branding panel -->
   <aside class="panel-left">
     <div class="panel-left-inner">
       <div class="brand">
-        <div class="brand-icon"><ShieldCheck size={28} /></div>
+        <div class="brand-icon"><ShieldCheck size={26} strokeWidth={1.5} /></div>
         <div>
           <p class="brand-name">MOUAU eTest</p>
           <p class="brand-sub">Secure Examination Platform</p>
@@ -81,83 +95,143 @@
         <p class="panel-desc">
           Tamper-proof digital examination system for Michael Okpara University of Agriculture, Umudike.
         </p>
+        <ul class="features">
+          {#each ['AI-powered malpractice detection', 'Per-student question randomization', 'Real-time invigilator dashboard', 'Instant automated grading'] as f}
+            <li><span class="dot"></span>{f}</li>
+          {/each}
+        </ul>
       </div>
-      <p class="panel-footer">© {new Date().getFullYear()} MOUAU</p>
+      <p class="panel-footer">© {new Date().getFullYear()} Michael Okpara University of Agriculture</p>
     </div>
   </aside>
 
+  <!-- Right form panel -->
   <main class="panel-right">
     <div class="top-right"><ThemeToggle /></div>
 
     <div class="form-wrap">
       <div class="form-header">
-        <div class="form-badge">Secure Access</div>
+        <div class="form-badge">
+          <ShieldCheck size={12} /> Secure Access
+        </div>
         <h2 class="form-title">Welcome back</h2>
         <p class="form-hint">Sign in to continue to your dashboard</p>
       </div>
 
-      <form method="POST" onsubmit={handleSubmit} class="form" novalidate>
-        <div class="field">
-          <label for="email" class="field-label">Email address</label>
-          <div class="field-input-wrap" class:error={hasError('email')}>
-            <span class="field-icon"><Mail size={16} /></span>
-            <input
-              id="email" name="email" type="email" autocomplete="email"
-              placeholder="you@mouau.edu.ng" class="field-input"
-              class:field-input-error={hasError('email')}
-              onblur={(e) => validateField('email', e.currentTarget.value)}
-              oninput={(e) => { if (touched.email) validateField('email', e.currentTarget.value); }}
-            />
-          </div>
-          {#if getError('email')}
-            <p class="inline-error"><AlertCircle size={14} /> {getError('email')}</p>
-          {/if}
+      <!-- Step indicator -->
+      <div class="steps">
+        <div class="step" class:active={step === 'email'} class:done={step === 'password'}>
+          <div class="step-dot">1</div>
+          <span>Email</span>
         </div>
-
-        <div class="field">
-          <label for="password" class="field-label">Password</label>
-          <div class="field-input-wrap" class:error={hasError('password')}>
-            <span class="field-icon"><Lock size={16} /></span>
-            <input
-              id="password" name="password"
-              type={showPass ? 'text' : 'password'}
-              autocomplete="current-password"
-              placeholder="Enter your password"
-              class="field-input field-input-pass"
-              class:field-input-error={hasError('password')}
-              onblur={(e) => validateField('password', e.currentTarget.value)}
-              oninput={(e) => { if (touched.password) validateField('password', e.currentTarget.value); }}
-            />
-            <button type="button" onclick={() => (showPass = !showPass)} class="pass-toggle" aria-label="Toggle password">
-              {#if showPass}<EyeOff size={16} />{:else}<Eye size={16} />{/if}
-            </button>
-          </div>
-          {#if getError('password')}
-            <p class="inline-error"><AlertCircle size={14} /> {getError('password')}</p>
-          {/if}
+        <div class="step-connector" class:done={step === 'password'}></div>
+        <div class="step" class:active={step === 'password'}>
+          <div class="step-dot">2</div>
+          <span>Password</span>
         </div>
+      </div>
 
-        {#if form?.error}
-          <div class="error-box">
-            <AlertCircle size={16} /><span>{form.error}</span>
-          </div>
+      <!-- Server error -->
+      {#if form?.error}
+        <div class="error-box">
+          <AlertCircle size={15} /><span>{form.error}</span>
+        </div>
+      {/if}
+
+      <form method="POST" onsubmit={handleSubmit} novalidate>
+        <!-- Hidden email field so it submits on step 2 -->
+        {#if step === 'password'}
+          <input type="hidden" name="email" value={email} />
         {/if}
 
-        <button type="submit" disabled={loading} class="submit-btn">
-          {#if loading}
-            <span class="spinner"></span> Signing in...
-          {:else}
-            <LogIn size={16} /> Sign In
-          {/if}
-        </button>
+        <!-- ── Step 1: Email ── -->
+        {#if step === 'email'}
+          <div class="field">
+            <label for="email" class="field-label">Email address</label>
+            <div class="field-wrap" class:has-error={emailTouched && emailError}>
+              <span class="fi"><Mail size={15} /></span>
+              <input
+                id="email"
+                name="email"
+                type="email"
+                autocomplete="email"
+                placeholder="you@mouau.edu.ng"
+                class="fi-input"
+                bind:value={email}
+                onblur={() => (emailTouched = true)}
+                onkeydown={handleEmailKeydown}
+                autofocus
+              />
+            </div>
+            {#if emailTouched && emailError}
+              <p class="inline-error"><AlertCircle size={13} />{emailError}</p>
+            {/if}
+          </div>
+
+          <!-- Forgot password -->
+          <div class="forgot-row">
+            <a href="/forgot" class="forgot-link">Forgot password?</a>
+          </div>
+
+          <button type="button" onclick={handleNext} class="submit-btn">
+            Continue <ArrowRight size={16} />
+          </button>
+
+        <!-- ── Step 2: Password ── -->
+        {:else}
+          <!-- Who are we signing in as -->
+          <div class="email-pill">
+            <button type="button" onclick={goBack} class="email-pill-back" aria-label="Change email">
+              <ArrowLeft size={13} />
+            </button>
+            <span class="email-pill-addr">{maskedEmail()}</span>
+          </div>
+
+          <div class="field">
+            <label for="password" class="field-label">Password</label>
+            <div class="field-wrap" class:has-error={passwordTouched && passwordError}>
+              <span class="fi"><Lock size={15} /></span>
+              <input
+                id="password"
+                name="password"
+                type={showPass ? 'text' : 'password'}
+                autocomplete="current-password"
+                placeholder="Enter your password"
+                class="fi-input fi-input-pass"
+                bind:value={password}
+                onblur={() => (passwordTouched = true)}
+                autofocus
+              />
+              <button
+                type="button"
+                onclick={() => (showPass = !showPass)}
+                class="pass-toggle"
+                aria-label="Toggle password visibility"
+              >
+                {#if showPass}<EyeOff size={15} />{:else}<Eye size={15} />{/if}
+              </button>
+            </div>
+            {#if passwordTouched && passwordError}
+              <p class="inline-error"><AlertCircle size={13} />{passwordError}</p>
+            {/if}
+          </div>
+
+          <button type="submit" disabled={loading} class="submit-btn">
+            {#if loading}
+              <span class="spinner"></span> Signing in…
+            {:else}
+              <LogIn size={16} /> Sign In
+            {/if}
+          </button>
+        {/if}
       </form>
 
       <div class="info-box">
-        <ShieldCheck size={14} />
-        <p>This is a secure platform. All activities are monitored and logged.</p>
+        <ShieldCheck size={13} />
+        All activities are monitored and logged.
       </div>
 
-      <p class="register-link">
+      <p class="register-hint">
         New student? <a href="/register">Create an account</a>
       </p>
     </div>
@@ -165,23 +239,7 @@
 </div>
 
 <style>
-  :root {
-    --bg: #ffffff;
-    --bg-card: #ffffff;
-    --text: #0f172a;
-    --text-muted: #475569;
-    --border: #e2e8f0;
-  }
-  :global(.dark) {
-    --bg: #0f172a;
-    --bg-card: #1e293b;
-    --text: #f8fafc;
-    --text-muted: #94a3b8;
-    --border: #334155;
-  }
-
-  * { margin: 0; padding: 0; box-sizing: border-box; }
-
+  /* ── Layout ─────────────────────────────────────────── */
   .root {
     min-height: 100vh;
     display: grid;
@@ -191,179 +249,379 @@
 
   @media (max-width: 768px) {
     .root { grid-template-columns: 1fr; }
-    .panel-left { height: auto; min-height: 260px; padding: 1.5rem 1.25rem; }
-    .panel-left-inner { padding: 0; }
-    .panel-body { padding: 1.25rem 0; }
-    .panel-heading { font-size: 2.1rem; line-height: 1.1; }
-    .panel-desc { font-size: 0.8rem; max-width: 100%; }
-    .panel-footer { font-size: 0.65rem; }
+    .panel-left { display: none; }
   }
 
+  /* ── Left panel ─────────────────────────────────────── */
   .panel-left {
-    background: linear-gradient(135deg, #051a11 0%, #0a2a1c 100%);
-    position: relative; overflow: hidden;
-    display: flex; flex-direction: column; color: white;
+    background: #071810;
+    position: relative;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
   }
+
   .panel-left::before {
-    content: ''; position: absolute; inset: 0; pointer-events: none;
-    background-image: linear-gradient(rgba(34, 197, 94, 0.08) 1px, transparent 1px),
-                      linear-gradient(90deg, rgba(34, 197, 94, 0.08) 1px, transparent 1px);
-    background-size: 40px 40px;
+    content: '';
+    position: absolute;
+    inset: 0;
+    background-image:
+      linear-gradient(rgba(34,197,94,.07) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(34,197,94,.07) 1px, transparent 1px);
+    background-size: 44px 44px;
+    pointer-events: none;
   }
+
+  .panel-left::after {
+    content: '';
+    position: absolute;
+    width: 600px; height: 600px;
+    border-radius: 50%;
+    background: radial-gradient(circle, rgba(34,197,94,.12) 0%, transparent 65%);
+    top: -160px; left: -160px;
+    pointer-events: none;
+  }
+
   .panel-left-inner {
-    position: relative; z-index: 1;
-    display: flex; flex-direction: column;
-    height: 100%; padding: 2.5rem;
+    position: relative;
+    z-index: 1;
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    padding: 2.5rem;
   }
 
   .brand { display: flex; align-items: center; gap: 0.75rem; }
+
   .brand-icon {
-    width: 48px; height: 48px; border-radius: 12px;
-    background: rgba(34, 197, 94, 0.12);
-    border: 1px solid rgba(34, 197, 94, 0.3);
+    width: 44px; height: 44px;
+    border-radius: 10px;
+    background: rgba(34,197,94,.12);
+    border: 1px solid rgba(34,197,94,.25);
     display: flex; align-items: center; justify-content: center;
-    color: #22c55e;
+    color: #22c55e; flex-shrink: 0;
   }
-  .brand-name { font-size: 1.1rem; font-weight: 800; letter-spacing: -0.01em; }
-  .brand-sub  { font-size: 0.7rem; color: rgba(255, 255, 255, 0.45); }
+
+  .brand-name {
+    font-size: .95rem; font-weight: 800;
+    color: #f1f5f9; margin: 0; letter-spacing: -.01em;
+  }
+
+  .brand-sub {
+    font-size: .68rem; color: rgba(255,255,255,.3);
+    margin: 0; letter-spacing: .04em;
+  }
+
   .panel-body {
     flex: 1; display: flex; flex-direction: column;
-    justify-content: center; padding: 3rem 0;
+    justify-content: center; padding: 2.5rem 0;
   }
-  .panel-heading {
-    font-size: clamp(2.4rem, 4.5vw, 3.5rem);
-    font-weight: 900; line-height: 1.05; letter-spacing: -0.04em;
-  }
-  .panel-desc {
-    font-size: 0.85rem; color: rgba(255, 255, 255, 0.55);
-    line-height: 1.7; margin-top: 1rem;
-  }
-  .panel-footer { font-size: 0.7rem; color: rgba(255, 255, 255, 0.25); margin-top: auto; }
 
+  .panel-heading {
+    font-size: clamp(2.8rem, 4.5vw, 4rem);
+    font-weight: 900; color: #fff;
+    line-height: 1.02; letter-spacing: -.04em; margin: 0 0 1.25rem;
+  }
+
+  .panel-desc {
+    font-size: .85rem; color: rgba(255,255,255,.38);
+    line-height: 1.75; margin: 0 0 1.75rem; max-width: 300px;
+  }
+
+  .features {
+    list-style: none; padding: 0; margin: 0;
+    display: flex; flex-direction: column; gap: .7rem;
+  }
+
+  .features li {
+    display: flex; align-items: center; gap: .6rem;
+    font-size: .78rem; color: rgba(255,255,255,.5);
+  }
+
+  .dot {
+    width: 5px; height: 5px; border-radius: 50%;
+    background: #22c55e; flex-shrink: 0;
+    box-shadow: 0 0 6px #22c55e;
+  }
+
+  .panel-footer {
+    font-size: .68rem; color: rgba(255,255,255,.18); margin: 0;
+  }
+
+  /* ── Right panel ────────────────────────────────────── */
   .panel-right {
     display: flex; align-items: center; justify-content: center;
-    padding: 2rem 1.5rem; background: var(--bg); position: relative;
+    padding: 3rem 2rem; position: relative;
+    background: var(--bg);
   }
-  .top-right { position: absolute; top: 1.25rem; right: 1.25rem; }
-  .form-wrap  { width: 100%; max-width: 420px; }
 
-  .form-header { text-align: center; margin-bottom: 2rem; }
+  .top-right { position: absolute; top: 1.5rem; right: 1.5rem; }
+
+  .form-wrap { width: 100%; max-width: 400px; }
+
+  /* ── Form header ────────────────────────────────────── */
+  .form-header { margin-bottom: 1.75rem; }
+
   .form-badge {
-    display: inline-block; padding: 0.25rem 0.75rem;
-    background: rgba(34, 197, 94, 0.1);
-    border: 1px solid rgba(34, 197, 94, 0.25);
-    border-radius: 9999px;
-    font-size: 0.7rem; font-weight: 600; color: #22c55e;
-    margin-bottom: 0.75rem;
+    display: inline-flex; align-items: center; gap: .35rem;
+    font-size: .68rem; font-weight: 700;
+    text-transform: uppercase; letter-spacing: .1em;
+    color: #16a34a;
+    background: rgba(34,197,94,.08);
+    border: 1px solid rgba(34,197,94,.2);
+    padding: .25rem .6rem; border-radius: 9999px;
+    margin-bottom: .75rem;
   }
-  .form-title { font-size: 2rem; font-weight: 800; color: var(--text); letter-spacing: -0.03em; }
-  .form-hint  { color: var(--text-muted); font-size: 0.9rem; }
 
-  .form { display: flex; flex-direction: column; gap: 1.25rem; }
+  :global(.dark) .form-badge {
+    color: #22c55e;
+    background: rgba(34,197,94,.12);
+    border-color: rgba(34,197,94,.25);
+  }
 
-  .field { display: flex; flex-direction: column; gap: 0.35rem; }
+  .form-title {
+    font-size: 2rem; font-weight: 900;
+    color: var(--text); letter-spacing: -.04em;
+    margin: 0 0 .4rem;
+  }
+
+  .form-hint { font-size: .83rem; color: var(--text-muted); margin: 0; }
+
+  /* ── Step indicator ─────────────────────────────────── */
+  .steps {
+    display: flex; align-items: center; gap: 0;
+    margin-bottom: 1.5rem;
+  }
+
+  .step {
+    display: flex; align-items: center; gap: .45rem;
+    font-size: .72rem; font-weight: 600;
+    color: var(--text-muted);
+    transition: color .2s;
+  }
+
+  .step.active { color: var(--text); }
+  .step.done   { color: #16a34a; }
+  :global(.dark) .step.done { color: #22c55e; }
+
+  .step-dot {
+    width: 22px; height: 22px; border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    font-size: .65rem; font-weight: 700;
+    border: 2px solid var(--border);
+    background: var(--bg);
+    transition: all .2s;
+  }
+
+  .step.active .step-dot {
+    border-color: #15803d;
+    color: #15803d;
+  }
+
+  .step.done .step-dot {
+    background: #16a34a; border-color: #16a34a;
+    color: #fff;
+  }
+
+  :global(.dark) .step.active .step-dot { border-color: #22c55e; color: #22c55e; }
+  :global(.dark) .step.done .step-dot   { background: #22c55e; border-color: #22c55e; }
+
+  .step-connector {
+    flex: 1; height: 2px;
+    background: var(--border);
+    margin: 0 .5rem;
+    transition: background .3s;
+  }
+
+  .step-connector.done { background: #16a34a; }
+  :global(.dark) .step-connector.done { background: #22c55e; }
+
+  /* ── Error box ──────────────────────────────────────── */
+  .error-box {
+    display: flex; align-items: center; gap: .5rem;
+    padding: .7rem .9rem; border-radius: .5rem;
+    background: #fee2e2; border: 1px solid #fecaca;
+    color: #991b1b; font-size: .82rem; margin-bottom: 1.25rem;
+  }
+
+  :global(.dark) .error-box {
+    background: #450a0a; border-color: #7f1d1d; color: #fca5a5;
+  }
+
+  /* ── Fields ─────────────────────────────────────────── */
+  .field { display: flex; flex-direction: column; gap: .4rem; margin-bottom: 1rem; }
+
   .field-label {
-    font-size: 0.75rem; font-weight: 600; color: var(--text-muted);
-    text-transform: uppercase; letter-spacing: 0.05em;
+    font-size: .72rem; font-weight: 700;
+    color: var(--text-muted);
+    text-transform: uppercase; letter-spacing: .07em;
   }
-  .field-input-wrap { position: relative; }
-  .field-input-wrap.error .field-icon { color: #dc2626; }
-  .field-icon {
-    position: absolute; left: 1rem; top: 50%; transform: translateY(-50%);
-    color: var(--text-muted); transition: color 0.15s;
+
+  .field-wrap {
+    position: relative; display: flex; align-items: center;
   }
-  .field-input {
-    width: 100%; padding: 0.85rem 1rem 0.85rem 2.75rem;
-    background: var(--bg-card); border: 1.5px solid var(--border);
-    border-radius: 0.75rem; font-size: 0.95rem; outline: none;
-    transition: all 0.2s; color: var(--text);
+
+  .fi {
+    position: absolute; left: .85rem;
+    color: var(--text-muted);
+    display: flex; align-items: center;
+    pointer-events: none; transition: color .15s;
   }
-  .field-input:focus {
+
+  .field-wrap.has-error .fi { color: #dc2626; }
+  :global(.dark) .field-wrap.has-error .fi { color: #f87171; }
+
+  .fi-input {
+    width: 100%;
+    padding: .78rem .85rem .78rem 2.5rem;
+    background: var(--bg-card);
+    border: 1.5px solid var(--border);
+    border-radius: .6rem;
+    color: var(--text);
+    font-size: .875rem;
+    outline: none;
+    transition: border-color .15s, box-shadow .15s;
+  }
+
+  .fi-input:focus {
     border-color: #22c55e;
-    box-shadow: 0 0 0 3px rgba(34, 197, 94, 0.1);
+    box-shadow: 0 0 0 3px rgba(34,197,94,.1);
   }
-  .field-input-error,
-  .field-input-wrap.error .field-input {
+
+  .field-wrap.has-error .fi-input {
     border-color: #dc2626;
-    box-shadow: 0 0 0 3px rgba(220, 38, 38, 0.08);
+    box-shadow: 0 0 0 3px rgba(220,38,38,.08);
   }
-  .field-input-error:focus,
-  .field-input-wrap.error .field-input:focus {
-    border-color: #dc2626;
-    box-shadow: 0 0 0 3px rgba(220, 38, 38, 0.12);
+
+  :global(.dark) .field-wrap.has-error .fi-input {
+    border-color: #f87171;
+    box-shadow: 0 0 0 3px rgba(248,113,113,.08);
   }
-  .field-input-pass { padding-right: 3rem; }
+
+  .fi-input::placeholder { color: var(--text-muted); opacity: .55; }
+  .fi-input-pass { padding-right: 2.75rem; }
+
   .pass-toggle {
-    position: absolute; right: 1rem; top: 50%; transform: translateY(-50%);
-    background: none; border: none; color: var(--text-muted);
-    cursor: pointer; display: flex; align-items: center;
-    padding: 0.25rem; border-radius: 0.25rem; transition: color 0.15s;
+    position: absolute; right: .75rem;
+    background: none; border: none; cursor: pointer;
+    color: var(--text-muted);
+    display: flex; align-items: center;
+    padding: .2rem; border-radius: .25rem;
+    transition: color .15s;
   }
   .pass-toggle:hover { color: var(--text); }
 
   .inline-error {
-    color: #dc2626; font-size: 0.8rem;
-    display: flex; align-items: center; gap: 0.35rem;
-    margin-top: 0.15rem; animation: slideIn 0.2s ease;
+    display: flex; align-items: center; gap: .35rem;
+    font-size: .75rem; color: #dc2626;
+    animation: slideIn .2s ease;
   }
+
   :global(.dark) .inline-error { color: #f87171; }
+
   @keyframes slideIn {
     from { opacity: 0; transform: translateY(-4px); }
     to   { opacity: 1; transform: translateY(0); }
   }
 
-  .error-box {
-    display: flex; align-items: center; gap: 0.5rem;
-    padding: 0.75rem 1rem;
-    background: #fef2f2; border: 1px solid #fecaca;
-    color: #dc2626; border-radius: 0.5rem; font-size: 0.85rem;
-  }
-  :global(.dark) .error-box {
-    background: rgba(220, 38, 38, 0.1);
-    border-color: rgba(220, 38, 38, 0.3);
-    color: #f87171;
+  /* ── Forgot row ─────────────────────────────────────── */
+  .forgot-row {
+    display: flex; justify-content: flex-end;
+    margin-bottom: 1.25rem; margin-top: -.25rem;
   }
 
+  .forgot-link {
+    font-size: .78rem; font-weight: 600;
+    color: #15803d; text-decoration: none;
+    transition: color .15s;
+  }
+
+  .forgot-link:hover { color: #166534; text-decoration: underline; }
+  :global(.dark) .forgot-link { color: #22c55e; }
+  :global(.dark) .forgot-link:hover { color: #4ade80; }
+
+  /* ── Email pill (step 2) ────────────────────────────── */
+  .email-pill {
+    display: flex; align-items: center; gap: .5rem;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 9999px;
+    padding: .35rem .75rem .35rem .4rem;
+    margin-bottom: 1.25rem;
+    width: fit-content;
+  }
+
+  .email-pill-back {
+    width: 24px; height: 24px; border-radius: 50%;
+    background: var(--border);
+    border: none; cursor: pointer;
+    color: var(--text-muted);
+    display: flex; align-items: center; justify-content: center;
+    transition: background .15s, color .15s;
+    flex-shrink: 0;
+  }
+
+  .email-pill-back:hover {
+    background: var(--text-muted);
+    color: var(--bg);
+  }
+
+  .email-pill-addr {
+    font-size: .78rem; font-weight: 600;
+    color: var(--text); font-family: monospace;
+  }
+
+  /* ── Submit button ──────────────────────────────────── */
   .submit-btn {
-    margin-top: 0.5rem; padding: 0.9rem;
-    background: linear-gradient(135deg, #15803d 0%, #166534 100%);
-    color: white; border: none; border-radius: 0.75rem;
-    font-weight: 600; font-size: 0.95rem; cursor: pointer;
-    display: flex; align-items: center; justify-content: center; gap: 0.5rem;
-    transition: all 0.15s;
+    display: flex; align-items: center; justify-content: center; gap: .5rem;
+    width: 100%; padding: .82rem;
+    background: #15803d; color: #fff;
+    border: none; border-radius: .6rem;
+    font-size: .9rem; font-weight: 700;
+    cursor: pointer; letter-spacing: -.01em;
+    transition: background .15s, transform .1s, box-shadow .15s;
+    margin-top: .25rem;
   }
+
   .submit-btn:hover:not(:disabled) {
+    background: #166534;
+    box-shadow: 0 4px 16px rgba(21,128,61,.3);
     transform: translateY(-1px);
-    box-shadow: 0 6px 15px rgba(21, 128, 61, 0.35);
   }
-  .submit-btn:disabled { opacity: 0.6; cursor: not-allowed; }
+
+  .submit-btn:active:not(:disabled) { transform: translateY(0); }
+  .submit-btn:disabled { opacity: .5; cursor: not-allowed; }
 
   .spinner {
-    width: 18px; height: 18px;
-    border: 2px solid rgba(255,255,255,0.3);
-    border-top-color: white; border-radius: 50%;
-    animation: spin 0.7s linear infinite;
+    width: 15px; height: 15px;
+    border: 2px solid rgba(255,255,255,.25);
+    border-top-color: #fff; border-radius: 50%;
+    animation: spin .6s linear infinite;
   }
+
   @keyframes spin { to { transform: rotate(360deg); } }
 
+  /* ── Info box ───────────────────────────────────────── */
   .info-box {
-    margin-top: 2rem; padding: 1rem;
-    background: var(--bg-card); border-radius: 0.5rem;
-    font-size: 0.75rem; color: var(--text-muted);
-    text-align: center;
-    display: flex; align-items: center; justify-content: center; gap: 0.5rem;
+    display: flex; align-items: center; justify-content: center; gap: .4rem;
+    margin-top: 1.5rem; padding: .65rem 1rem;
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: .5rem;
+    font-size: .72rem; color: var(--text-muted);
   }
 
-  .register-link {
-    margin-top: 1.25rem;
+  /* ── Register hint ──────────────────────────────────── */
+  .register-hint {
     text-align: center;
-    font-size: 0.875rem;
-    color: var(--text-muted);
+    font-size: .8rem; color: var(--text-muted);
+    margin-top: 1.1rem;
   }
-  .register-link a {
-    color: #22c55e;
-    font-weight: 600;
-    text-decoration: none;
+
+  .register-hint a {
+    color: #15803d; font-weight: 600; text-decoration: none;
   }
-  .register-link a:hover { text-decoration: underline; }
+
+  .register-hint a:hover { text-decoration: underline; }
+  :global(.dark) .register-hint a { color: #22c55e; }
 </style>

@@ -1,16 +1,16 @@
 // src/lib/server/db/audit.ts
 import { prisma } from './index.js';
+import { Prisma } from '@prisma/client';
 
-export async function log(
-  action: string,
-  opts: {
-    userId?: string;
-    entity?: string;
-    entityId?: string;
-    metadata?: Record<string, unknown>;
-    ipAddress?: string;
-  } = {}
-): Promise<void> {
+interface AuditOptions {
+  userId?:    string;
+  entity?:    string;
+  entityId?:  string;
+  metadata?:  Record<string, unknown>;
+  ipAddress?: string;
+}
+
+export async function log(action: string, opts: AuditOptions = {}): Promise<void> {
   try {
     await prisma.auditLog.create({
       data: {
@@ -18,11 +18,11 @@ export async function log(
         userId:    opts.userId    ?? null,
         entity:    opts.entity    ?? null,
         entityId:  opts.entityId  ?? null,
-        metadata:  opts.metadata  ?? null,
+        metadata:  opts.metadata  ?? Prisma.JsonNull,  // ← Prisma sentinel for null JSON
         ipAddress: opts.ipAddress ?? null,
       },
     });
-  } catch {
-    // Audit logging must never crash the main flow
+  } catch (err) {
+    console.error('[Audit] Failed to write log entry:', action, err);
   }
 }

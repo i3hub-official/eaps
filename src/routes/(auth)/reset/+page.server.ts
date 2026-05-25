@@ -1,15 +1,15 @@
 // src/routes/(auth)/reset/+page.server.ts
-import { fail, redirect } from '@sveltejs/kit';
+import { fail } from '@sveltejs/kit';
 import type { Actions, PageServerLoad } from './$types';
 import { verifyResetToken, consumeResetToken } from '$lib/server/auth/reset.js';
 import { updatePasswordHash } from '$lib/server/db/users.js';
 import { hashPassword } from '$lib/server/auth/password.js';
 import { destroyAllUserSessions } from '$lib/server/auth/session.js';
 
-export const load: PageServerLoad = async () => ({ });
+export const load: PageServerLoad = async () => ({});
 
 export const actions: Actions = {
-  // ── Step 1: verify OTP ────────────────────────────────────────────
+  // Step 1: verify OTP
   verifyToken: async ({ request }) => {
     const d     = await request.formData();
     const token = String(d.get('token') ?? '').toUpperCase().trim();
@@ -23,11 +23,10 @@ export const actions: Actions = {
       return fail(400, { step: 'verify', error: result.error ?? 'Invalid code.' });
     }
 
-    // Return the token so the client can use it in step 2
     return { step: 'verified', token };
   },
 
-  // ── Step 2: set new password ──────────────────────────────────────
+  // Step 2: set new password
   resetPassword: async ({ request }) => {
     const d        = await request.formData();
     const token    = String(d.get('token')    ?? '').toUpperCase().trim();
@@ -43,7 +42,6 @@ export const actions: Actions = {
       return fail(400, { step: 'reset', error: 'Passwords do not match.', token });
     }
 
-    // Verify token is still valid
     const result = await verifyResetToken(token);
     if (!result.valid) {
       return fail(400, { step: 'reset', error: result.error ?? 'Token expired. Please start over.', token });

@@ -54,3 +54,17 @@ Then the MOUAU block becomes just:
 typescriptif (mouau) await seedCollegesAndDepts(mouau.id, mouauColleges, departments);
 
 node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
+
+
+RUN ONLY ON PRODUCTION:
+psql $DATABASE_URL -f prisma/migrations/manual_extras.sql
+
+# 1. LOCAL — make schema changes, generate migration file
+pnpm prisma migrate dev --name add_something
+
+# 2. COMMIT — the generated migration file goes into git
+git add prisma/migrations/
+git commit -m "migration: add something"
+
+# 3. PRODUCTION — deploy code, then run this (CI/CD or on server)
+pnpm prisma migrate deploy

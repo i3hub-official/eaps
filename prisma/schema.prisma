@@ -6,8 +6,7 @@
 //   pnpm prisma generate
 
 generator client {
-  provider   = "prisma-client-js"
-  engineType = "library"
+  provider = "prisma-client-js"
 }
 
 datasource db {
@@ -64,20 +63,12 @@ enum ViolationAction {
 }
 
 // ─── Institutional hierarchy ──────────────────────────────────────────────────
-//
-// MOUAU structure mirrors Sabify: University → College → Department
-//
-// The old "Faculty" model is renamed to "College" to match MOUAU's real naming
-// (e.g. "College of Natural Sciences", "College of Engineering and Engineering
-// Technology"). Faculty is an alias used colloquially — the official unit is
-// College. This also makes the schema consistent with Sabify's hierarchy so
-// shared helpers (receipt parsing, college/dept resolution) work identically.
 
 model College {
   id           Int     @id @default(autoincrement())
   name         String
-  abbreviation String? // e.g. "CNAES", "COLENG" — optional
-  code         String? @unique // short code if available
+  abbreviation String?
+  code         String? @unique
 
   createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz()
 
@@ -116,48 +107,41 @@ model User {
   createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz()
   updatedAt    DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz()
 
-  // ── Contact ─────────────────────────────────────────────────────────────────
-  phone    String? // stored plaintext — eTest is internal, no encryption layer
+  // ── Contact ──────────────────────────────────────────────────────────────
+  phone String?
 
-  // ── Academic identity ────────────────────────────────────────────────────────
-  // Matches Sabify's User fields 1:1 so the signup server can write the same
-  // fields without branching. jambRegNo is optional — not all MOUAU receipts
-  // include it, and non-MOUAU flows may not have it at all.
+  // ── Academic identity ─────────────────────────────────────────────────────
   matricNumber String? @unique @map("matric_number")
-  staffId      String? @unique @map("staff_id")   // lecturers / invigilators
-  jambRegNo    String? @unique @map("jamb_reg_no") // JAMB registration number
-  level        Int?    @db.SmallInt                // 100 | 200 | 300 | 400 | 500
-  session      String?                             // e.g. "2024/2025"
+  staffId      String? @unique @map("staff_id")
+  jambRegNo    String? @unique @map("jamb_reg_no")
+  level        Int?    @db.SmallInt
+  session      String?
 
-  // ── Institution ──────────────────────────────────────────────────────────────
-  // College sits between University and Department, matching MOUAU's actual
-  // structure and Sabify's hierarchy. departmentId is kept as the primary FK
-  // for exam/course scoping; collegeId is denormalised here for fast filtering
-  // (e.g. "show all students in CNAES") without joining through Department.
-  collegeId    Int?    @map("college_id")
+  // ── Institution ───────────────────────────────────────────────────────────
+  collegeId    Int?        @map("college_id")
   college      College?    @relation(fields: [collegeId], references: [id])
-  departmentId String? @map("department_id") @db.Uuid
+  departmentId String?     @map("department_id") @db.Uuid
   department   Department? @relation(fields: [departmentId], references: [id])
 
-  // ── Profile ───────────────────────────────────────────────────────────────────
+  // ── Profile ───────────────────────────────────────────────────────────────
   photoUrl String? @map("photo_url")
 
-  // ── Receipt audit trail ────────────────────────────────────────────────────────
-  // Mirrors Sabify's receipt fields exactly — written by the signup action after
-  // a successful fetchReceipt call. Used for support, fraud investigation, and
-  // re-verification without re-hitting the MOUAU API.
-  receiptNo     String? @map("receipt_no")     // portal issued receipt number
-  receiptRef    String? @map("receipt_ref")     // transaction_ref / RRR / IVN
-  receiptSource String? @map("receipt_source")  // always "MOUAU" here; extensible
+  // ── Receipt audit trail ───────────────────────────────────────────────────
+  receiptNo     String? @map("receipt_no")
+  receiptRef    String? @map("receipt_ref")
+  receiptSource String? @map("receipt_source")
 
-  // ── Suspension audit ───────────────────────────────────────────────────────────
-  // Matches Sabify's isSuspended pattern. suspendedById is a plain string (not
-  // a FK) so that admin deletions don't cascade-clear suspension history.
+  // ── Suspension audit ──────────────────────────────────────────────────────
   isSuspended   Boolean   @default(false) @map("is_suspended")
   suspendedAt   DateTime? @map("suspended_at") @db.Timestamptz()
-  suspendedById String?   @map("suspended_by_id") // userId of suspending admin
+  suspendedById String?   @map("suspended_by_id")
 
-  // ── Relations ─────────────────────────────────────────────────────────────────
+  // ── Face enrollment ───────────────────────────────────────────────────────
+  // One-to-one — a student has at most one enrolled face descriptor.
+  // Stored separately so it can be updated/deleted without touching the user row.
+  faceDescriptor FaceDescriptor?
+
+  // ── Relations ─────────────────────────────────────────────────────────────
   authSessions        AuthSession[]
   courseRegistrations CourseRegistration[]
   createdExams        Exam[]               @relation("LecturerExams")
@@ -176,6 +160,29 @@ model User {
   @@index([staffId])
   @@index([isSuspended])
   @@map("users")
+}
+
+// ─── Face Descriptors ─────────────────────────────────────────────────────────
+//
+// Stores the 128-float face embedding produced by face-api / vladmandic.
+// Kept in its own table so:
+//   • it can be wiped/re-enrolled without touching the user row
+//   • the descriptor column (large JSON array) doesn't bloat user queries
+//   • cascade delete keeps it clean when a user is removed
+//
+// descriptor is stored as a JSON array of 128 floats.
+// If you later add pgvector, swap the column type to vector(128) and
+// update faces.ts accordingly — the API surface stays the same.
+
+model FaceDescriptor {
+  studentId  String   @id @map("student_id") @db.Uuid
+  descriptor Json     // 128-element float array — e.g. [0.123, -0.456, ...]
+  enrolledAt DateTime @default(now()) @map("enrolled_at") @db.Timestamptz()
+  updatedAt  DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz()
+
+  student User @relation(fields: [studentId], references: [id], onDelete: Cascade)
+
+  @@map("face_descriptors")
 }
 
 // ─── Auth Sessions ────────────────────────────────────────────────────────────

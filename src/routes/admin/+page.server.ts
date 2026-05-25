@@ -15,7 +15,7 @@ export const load: PageServerLoad = async ({ locals }) => {
       `SELECT al.action, al.entity, u.full_name AS user_name, al.created_at
        FROM audit_logs al
        LEFT JOIN users u ON u.id = al.user_id
-       ORDER BY al.created_at DESC LIMIT 20`
+       ORDER BY al.created_at DESC LIMIT 30`
     ),
   ]);
 

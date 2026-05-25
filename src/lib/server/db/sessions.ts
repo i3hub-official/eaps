@@ -201,10 +201,10 @@ export async function saveAnswerFlat(
 /** startSession override that also records ip/ua on the session */
 export async function startSessionWithMeta(
   id: string,
-  _ip?: string,
-  _ua?: string
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  ip?: string,
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  ua?: string
 ) {
-  // ip/ua are already captured at session creation (getOrCreateSession);
-  // this just transitions the status
   return startSession(id);
 }
