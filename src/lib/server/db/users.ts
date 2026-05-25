@@ -28,6 +28,54 @@ export async function getSafeUser(id: string): Promise<SafeUser | null> {
   return prisma.user.findUnique({ where: { id }, select: safeSelect });
 }
 
+// ✅ Fixed getUserById - using correct relation names from your schema
+export async function getUserById(id: string) {
+  return prisma.user.findUnique({
+    where: { id },
+    include: {
+      department: {
+        include: {
+          college: true,
+          courses: {
+            select: {
+              code: true,
+              title: true,
+              creditUnits: true,
+              level: true
+            },
+            take: 5
+          }
+        }
+      },
+      // ✅ Fixed: Use 'examSessions' instead of 'examAttempts'
+      examSessions: {
+        include: {
+          exam: {
+            include: {
+              course: true
+            }
+          }
+        },
+        orderBy: { startedAt: 'desc' },
+        take: 10
+      },
+      // ✅ Fixed: Use 'courseRegistrations' instead of 'courses'
+      courseRegistrations: {
+        include: {
+          course: true
+        },
+        take: 10
+      },
+      _count: {
+        select: {
+          examSessions: true,
+          courseRegistrations: true
+        }
+      }
+    }
+  });
+}
+
 export async function listUsers(role?: UserRole): Promise<SafeUser[]> {
   return prisma.user.findMany({
     where: role ? { role } : undefined,

@@ -5,7 +5,8 @@
   import {
     Search, UserPlus, X, ChevronLeft, ChevronRight,
     Users, GraduationCap, BookOpen, ShieldCheck, ShieldAlert,
-    Building2, Mail, IdCard, AlertCircle
+    Building2, Mail, IdCard, AlertCircle, Calendar, Clock,
+    Award, BookMarked, FileText, Activity, MapPin
   } from 'lucide-svelte';
 
   let { data, form }: { data: PageData; form: ActionData } = $props();
@@ -19,6 +20,7 @@
   let showProfileModal = $state(false);
   let showDeactivateModal = $state(false);
   let userToDeactivate = $state<any>(null);
+  let isLoadingProfile = $state(false);
   
   // Pagination
   const PAGE_SIZE = 10;
@@ -45,11 +47,11 @@
 
   const paginated = $derived(filtered.slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE));
 
-  const ROLE_META: Record<string, { color: string; icon: any; bg: string }> = {
-    admin: { color: '#dc2626', icon: ShieldAlert, bg: '#fee2e2' },
-    lecturer: { color: '#7c3aed', icon: BookOpen, bg: '#f3e8ff' },
-    invigilator: { color: '#f59e0b', icon: ShieldCheck, bg: '#fef3c7' },
-    student: { color: '#16a34a', icon: GraduationCap, bg: '#dcfce7' },
+  const ROLE_META: Record<string, { color: string; icon: any; bg: string; label: string }> = {
+    admin: { color: '#dc2626', icon: ShieldAlert, bg: '#fee2e2', label: 'Administrator' },
+    lecturer: { color: '#7c3aed', icon: BookOpen, bg: '#f3e8ff', label: 'Lecturer' },
+    invigilator: { color: '#f59e0b', icon: ShieldCheck, bg: '#fef3c7', label: 'Invigilator' },
+    student: { color: '#16a34a', icon: GraduationCap, bg: '#dcfce7', label: 'Student' },
   };
 
   const roleLabel = (r: string) => r.charAt(0).toUpperCase() + r.slice(1);
@@ -62,9 +64,23 @@
     admin: data.users.filter(u => u.role === 'admin').length,
   });
 
-  function openProfile(user: any) {
+  async function openProfile(user: any) {
+    isLoadingProfile = true;
     selectedUser = user;
     showProfileModal = true;
+    
+    // Fetch additional user data if needed
+    try {
+      const response = await fetch(`/api/admin/users/${user.id}`);
+      if (response.ok) {
+        const additionalData = await response.json();
+        selectedUser = { ...user, ...additionalData };
+      }
+    } catch (error) {
+      console.error('Failed to fetch user details:', error);
+    } finally {
+      isLoadingProfile = false;
+    }
   }
 
   function openDeactivateModal(user: any) {
@@ -80,7 +96,27 @@
   }
   
   function getRoleMeta(role: string) {
-    return ROLE_META[role] || { color: '#64748b', icon: Users, bg: '#e2e8f0' };
+    return ROLE_META[role] || { color: '#64748b', icon: Users, bg: '#e2e8f0', label: 'User' };
+  }
+  
+  function formatDate(date: string | null | undefined) {
+    if (!date) return 'N/A';
+    return new Date(date).toLocaleDateString('en-GB', {
+      day: '2-digit',
+      month: 'short',
+      year: 'numeric'
+    });
+  }
+  
+  function formatDateTime(date: string | null | undefined) {
+    if (!date) return 'N/A';
+    return new Date(date).toLocaleString('en-GB', {
+      day: '2-digit',
+      month: 'short',
+      year: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit'
+    });
   }
 </script>
 
@@ -172,7 +208,7 @@
           <select name="department_id">
             <option value="">— None —</option>
             {#each data.departments as d}
-              <option value={d.id}>{d.code} — {d.name}</option>
+              <option value={d.id}>{d.code} — {d.name} ({d.college?.name || 'No College'})</option>
             {/each}
           </select>
         </div>
@@ -218,6 +254,7 @@
     </div>
     
     <div class="search-wrap">
+      <Search size={16} class="search-icon" />
       <input type="search" placeholder="Search users..." bind:value={search} class="search" />
     </div>
   </div>
@@ -264,6 +301,12 @@
               <div class="detail-row">
                 <Building2 size={14} />
                 <span class="detail-value">{u.department.code || u.department.name}</span>
+              </div>
+            {/if}
+            {#if u.level}
+              <div class="detail-row">
+                <Award size={14} />
+                <span class="detail-value">Level {u.level}</span>
               </div>
             {/if}
           </div>
@@ -319,7 +362,7 @@
     {@const profileMeta = getRoleMeta(selectedUser.role)}
     {@const ProfileIcon = profileMeta.icon}
     <div class="modal-overlay" onclick={closeModals}>
-      <div class="modal" onclick={(e) => e.stopPropagation()}>
+      <div class="modal modal-large" onclick={(e) => e.stopPropagation()}>
         <div class="modal-header">
           <h2>User Profile</h2>
           <button class="modal-close" onclick={closeModals} type="button">
@@ -327,64 +370,202 @@
           </button>
         </div>
         
-        <div class="modal-body">
-          <div class="profile-avatar" style="background: {profileMeta.bg}">
-            <ProfileIcon size={32} style="color: {profileMeta.color}" />
+        {#if isLoadingProfile}
+          <div class="modal-loading">
+            <div class="spinner"></div>
+            <p>Loading user details...</p>
           </div>
-          
-          <div class="profile-field">
-            <label>Full Name</label>
-            <p>{selectedUser.fullName}</p>
+        {:else}
+          <div class="modal-body">
+            <!-- Profile Header -->
+            <div class="profile-header">
+              <div class="profile-avatar" style="background: {profileMeta.bg}">
+                <ProfileIcon size={48} style="color: {profileMeta.color}" />
+              </div>
+              <div class="profile-header-info">
+                <h3>{selectedUser.fullName}</h3>
+                <span class="profile-role" style="background: {profileMeta.bg}; color: {profileMeta.color}">
+                  {profileMeta.label}
+                </span>
+                <span class="profile-status" class:active={selectedUser.isActive}>
+                  {selectedUser.isActive ? 'Active' : 'Inactive'}
+                </span>
+              </div>
+            </div>
+
+            <!-- Personal Information -->
+            <div class="profile-section">
+              <h4>Personal Information</h4>
+              <div class="profile-grid">
+                <div class="profile-field">
+                  <label>Full Name</label>
+                  <p>{selectedUser.fullName}</p>
+                </div>
+                <div class="profile-field">
+                  <label>Email Address</label>
+                  <p>{selectedUser.email}</p>
+                </div>
+                {#if selectedUser.matricNumber}
+                  <div class="profile-field">
+                    <label>Matric Number</label>
+                    <p class="mono">{selectedUser.matricNumber}</p>
+                  </div>
+                {/if}
+                {#if selectedUser.staffId}
+                  <div class="profile-field">
+                    <label>Staff ID</label>
+                    <p class="mono">{selectedUser.staffId}</p>
+                  </div>
+                {/if}
+                {#if selectedUser.level}
+                  <div class="profile-field">
+                    <label>Level</label>
+                    <p>{selectedUser.level}</p>
+                  </div>
+                {/if}
+                {#if selectedUser.phone}
+                  <div class="profile-field">
+                    <label>Phone</label>
+                    <p>{selectedUser.phone}</p>
+                  </div>
+                {/if}
+              </div>
+            </div>
+
+            <!-- Department & College Information -->
+            {#if selectedUser.department}
+              <div class="profile-section">
+                <h4>Academic Information</h4>
+                <div class="profile-grid">
+                  <div class="profile-field">
+                    <label>Department</label>
+                    <p>{selectedUser.department.name}</p>
+                  </div>
+                  <div class="profile-field">
+                    <label>Department Code</label>
+                    <p class="mono">{selectedUser.department.code}</p>
+                  </div>
+                  {#if selectedUser.department.college}
+                    <div class="profile-field">
+                      <label>College/Faculty</label>
+                      <p>{selectedUser.department.college.name}</p>
+                    </div>
+                    <div class="profile-field">
+                      <label>College Code</label>
+                      <p class="mono">{selectedUser.department.college.code}</p>
+                    </div>
+                  {/if}
+                </div>
+              </div>
+            {/if}
+
+            <!-- Statistics -->
+            <div class="profile-section">
+              <h4>Statistics</h4>
+              <div class="stats-grid">
+                <div class="stat-item">
+                  <FileText size={20} />
+                  <div>
+                    <p class="stat-value">{selectedUser._count?.examAttempts || 0}</p>
+                    <p class="stat-label">Exam Attempts</p>
+                  </div>
+                </div>
+                <div class="stat-item">
+                  <BookMarked size={20} />
+                  <div>
+                    <p class="stat-value">{selectedUser._count?.courses || 0}</p>
+                    <p class="stat-label">Enrolled Courses</p>
+                  </div>
+                </div>
+                <div class="stat-item">
+                  <Clock size={20} />
+                  <div>
+                    <p class="stat-value">{formatDate(selectedUser.createdAt)}</p>
+                    <p class="stat-label">Joined</p>
+                  </div>
+                </div>
+                <div class="stat-item">
+                  <Activity size={20} />
+                  <div>
+                    <p class="stat-value">{selectedUser.isActive ? 'Active' : 'Inactive'}</p>
+                    <p class="stat-label">Account Status</p>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+
+<!-- STATISTICS -->
+{#if selectedUser.examSessions && selectedUser.examSessions.length > 0}
+  <div class="profile-section">
+    <h4>Recent Exam Sessions</h4>
+    <div class="attempts-list">
+      {#each selectedUser.examSessions.slice(0, 5) as session}
+        <div class="attempt-item">
+          <div class="attempt-info">
+            <span class="attempt-title">{session.exam?.title || 'Unknown Exam'}</span>
+            <span class="attempt-date">{formatDateTime(session.startedAt)}</span>
           </div>
-          
-          <div class="profile-field">
-            <label>Email Address</label>
-            <p>{selectedUser.email}</p>
-          </div>
-          
-          <div class="profile-field">
-            <label>Role</label>
-            <p>{selectedUser.role}</p>
-          </div>
-          
-          {#if selectedUser.matricNumber}
-            <div class="profile-field">
-              <label>Matric Number</label>
-              <p class="mono">{selectedUser.matricNumber}</p>
-            </div>
-          {/if}
-          
-          {#if selectedUser.staffId}
-            <div class="profile-field">
-              <label>Staff ID</label>
-              <p class="mono">{selectedUser.staffId}</p>
-            </div>
-          {/if}
-          
-          {#if selectedUser.level}
-            <div class="profile-field">
-              <label>Level</label>
-              <p>{selectedUser.level}</p>
-            </div>
-          {/if}
-          
-          {#if selectedUser.department}
-            <div class="profile-field">
-              <label>Department</label>
-              <p>{selectedUser.department.name}</p>
-            </div>
-          {/if}
-          
-          <div class="profile-field">
-            <label>Status</label>
-            <p class={selectedUser.isActive ? 'status-active' : 'status-inactive'}>
-              {selectedUser.isActive ? 'Active' : 'Inactive'}
-            </p>
+          <div class="attempt-status" class:completed={session.completedAt}>
+            {session.completedAt ? 'Completed' : 'In Progress'}
           </div>
         </div>
+      {/each}
+    </div>
+  </div>
+{/if}
+
+<!-- Update the registered courses section -->
+{#if selectedUser.courseRegistrations && selectedUser.courseRegistrations.length > 0}
+  <div class="profile-section">
+    <h4>Registered Courses</h4>
+    <div class="courses-list">
+      {#each selectedUser.courseRegistrations.slice(0, 5) as reg}
+        <div class="course-item">
+          <span class="course-code">{reg.course.code}</span>
+          <span class="course-title">{reg.course.title}</span>
+          <span class="course-credits">{reg.course.creditUnits} units</span>
+        </div>
+      {/each}
+    </div>
+  </div>
+{/if}
+
+            <!-- Account Timeline -->
+            <div class="profile-section">
+              <h4>Account Timeline</h4>
+              <div class="timeline">
+                <div class="timeline-item">
+                  <Calendar size={14} />
+                  <div>
+                    <p class="timeline-label">Account Created</p>
+                    <p class="timeline-date">{formatDateTime(selectedUser.createdAt)}</p>
+                  </div>
+                </div>
+                {#if selectedUser.updatedAt !== selectedUser.createdAt}
+                  <div class="timeline-item">
+                    <Clock size={14} />
+                    <div>
+                      <p class="timeline-label">Last Updated</p>
+                      <p class="timeline-date">{formatDateTime(selectedUser.updatedAt)}</p>
+                    </div>
+                  </div>
+                {/if}
+              </div>
+            </div>
+          </div>
+        {/if}
         
         <div class="modal-footer">
           <button class="btn-ghost" onclick={closeModals} type="button">Close</button>
+          {#if selectedUser.isActive}
+            <button class="btn-danger" onclick={() => {
+              closeModals();
+              openDeactivateModal(selectedUser);
+            }} type="button">
+              Deactivate User
+            </button>
+          {/if}
         </div>
       </div>
     </div>
@@ -407,6 +588,7 @@
           </div>
           <p>Are you sure you want to deactivate <strong>{userToDeactivate.fullName}</strong>?</p>
           <p class="warning-text">This user will lose access to the platform until reactivated.</p>
+          <p class="warning-text-small">Email: {userToDeactivate.email}</p>
         </div>
         
         <div class="modal-footer">
@@ -422,7 +604,6 @@
 
 </div>
 
-<!-- Styles remain the same as before -->
 <style>
   .page {
     padding: 1rem;
@@ -435,6 +616,7 @@
     min-height: 100vh;
   }
 
+  /* Header */
   .page-header {
     display: flex;
     justify-content: space-between;
@@ -456,6 +638,7 @@
     margin: 0.25rem 0 0;
   }
 
+  /* Buttons */
   .btn-primary {
     display: inline-flex;
     align-items: center;
@@ -530,6 +713,7 @@
     background: var(--color-surface-hover);
   }
 
+  /* Alerts */
   .alert {
     display: flex;
     align-items: center;
@@ -549,6 +733,7 @@
     color: #16a34a;
   }
 
+  /* Create Form */
   .create-form {
     background: var(--color-surface);
     border: 1px solid var(--color-border);
@@ -609,6 +794,7 @@
     border-top: 1px solid var(--color-border);
   }
 
+  /* Toolbar */
   .toolbar {
     display: flex;
     flex-direction: column;
@@ -666,6 +852,7 @@
     font-size: 0.85rem;
   }
 
+  /* User Cards */
   .users-grid {
     display: flex;
     flex-direction: column;
@@ -771,12 +958,14 @@
     justify-content: flex-end;
   }
 
+  /* Empty State */
   .empty-state {
     text-align: center;
     padding: 3rem 1rem;
     color: var(--color-muted);
   }
 
+  /* Pagination */
   .pagination {
     display: flex;
     justify-content: space-between;
@@ -825,6 +1014,7 @@
     color: var(--color-muted);
   }
 
+  /* Modal */
   .modal-overlay {
     position: fixed;
     top: 0;
@@ -842,17 +1032,21 @@
   .modal {
     background: var(--color-surface);
     border-radius: 0.75rem;
-    max-width: 400px;
+    max-width: 600px;
     width: 100%;
     max-height: 90vh;
     overflow-y: auto;
+  }
+  
+  .modal-large {
+    max-width: 700px;
   }
   
   .modal-header {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    padding: 1rem;
+    padding: 1rem 1.5rem;
     border-bottom: 1px solid var(--color-border);
   }
   
@@ -864,36 +1058,118 @@
   }
   
   .modal-body {
-    padding: 1rem;
+    padding: 1.5rem;
   }
   
   .modal-footer {
-    padding: 1rem;
+    padding: 1rem 1.5rem;
     border-top: 1px solid var(--color-border);
     display: flex;
     justify-content: flex-end;
     gap: 0.5rem;
   }
   
+  .modal-loading {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 3rem;
+    gap: 1rem;
+  }
+  
+  .spinner {
+    width: 40px;
+    height: 40px;
+    border: 3px solid var(--color-border);
+    border-top-color: #16a34a;
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+  }
+  
+  @keyframes spin {
+    to { transform: rotate(360deg); }
+  }
+
+  /* Profile Modal Styles */
+  .profile-header {
+    display: flex;
+    align-items: center;
+    gap: 1.5rem;
+    padding-bottom: 1.5rem;
+    margin-bottom: 1.5rem;
+    border-bottom: 1px solid var(--color-border);
+  }
+  
   .profile-avatar {
-    width: 80px;
-    height: 80px;
+    width: 96px;
+    height: 96px;
     border-radius: 50%;
     display: flex;
     align-items: center;
     justify-content: center;
-    margin: 0 auto 1rem;
+    flex-shrink: 0;
   }
   
-  .profile-field {
-    margin-bottom: 0.75rem;
+  .profile-header-info h3 {
+    font-size: 1.25rem;
+    font-weight: 700;
+    margin: 0 0 0.5rem;
+    color: var(--color-text);
+  }
+  
+  .profile-role {
+    display: inline-block;
+    padding: 0.2rem 0.75rem;
+    border-radius: 0.25rem;
+    font-size: 0.75rem;
+    font-weight: 600;
+    margin-right: 0.5rem;
+  }
+  
+  .profile-status {
+    display: inline-block;
+    padding: 0.2rem 0.75rem;
+    border-radius: 0.25rem;
+    font-size: 0.75rem;
+    font-weight: 600;
+  }
+  
+  .profile-status.active {
+    background: #dcfce7;
+    color: #16a34a;
+  }
+  
+  .profile-status:not(.active) {
+    background: #fee2e2;
+    color: #dc2626;
+  }
+  
+  .profile-section {
+    margin-bottom: 1.5rem;
+  }
+  
+  .profile-section h4 {
+    font-size: 0.85rem;
+    font-weight: 700;
+    color: var(--color-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    margin-bottom: 1rem;
+    padding-bottom: 0.5rem;
+    border-bottom: 1px solid var(--color-border);
+  }
+  
+  .profile-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 1rem;
   }
   
   .profile-field label {
     font-size: 0.7rem;
     font-weight: 600;
     color: var(--color-muted);
-    text-transform: uppercase;
     display: block;
     margin-bottom: 0.25rem;
   }
@@ -904,14 +1180,101 @@
     color: var(--color-text);
   }
   
-  .status-active {
-    color: #16a34a;
-    font-weight: 600;
+  .stats-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+    gap: 1rem;
   }
   
-  .status-inactive {
-    color: #dc2626;
+  .stat-item {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    padding: 0.75rem;
+    background: var(--color-bg);
+    border-radius: 0.5rem;
+  }
+  
+  .stat-value {
+    font-size: 1.25rem;
+    font-weight: 700;
+    margin: 0;
+    color: var(--color-text);
+  }
+  
+  .stat-label {
+    font-size: 0.7rem;
+    color: var(--color-muted);
+    margin: 0;
+  }
+  
+  .attempts-list {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+  }
+  
+  .attempt-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 0.75rem;
+    background: var(--color-bg);
+    border-radius: 0.5rem;
+  }
+  
+  .attempt-title {
     font-weight: 600;
+    font-size: 0.85rem;
+    color: var(--color-text);
+  }
+  
+  .attempt-date {
+    font-size: 0.7rem;
+    color: var(--color-muted);
+    display: block;
+  }
+  
+  .attempt-status {
+    font-size: 0.7rem;
+    font-weight: 600;
+    padding: 0.2rem 0.5rem;
+    border-radius: 0.25rem;
+  }
+  
+  .attempt-status.completed {
+    background: #dcfce7;
+    color: #16a34a;
+  }
+  
+  .attempt-status:not(.completed) {
+    background: #fef3c7;
+    color: #f59e0b;
+  }
+  
+  .timeline {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+  }
+  
+  .timeline-item {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    font-size: 0.85rem;
+  }
+  
+  .timeline-label {
+    font-size: 0.7rem;
+    color: var(--color-muted);
+    margin: 0;
+  }
+  
+  .timeline-date {
+    font-size: 0.85rem;
+    margin: 0;
+    color: var(--color-text);
   }
   
   .warning-icon {
@@ -921,11 +1284,18 @@
   }
   
   .warning-text {
+    font-size: 0.9rem;
+    color: var(--color-text);
+    margin-top: 0.5rem;
+  }
+  
+  .warning-text-small {
     font-size: 0.8rem;
     color: var(--color-muted);
     margin-top: 0.5rem;
   }
 
+  /* Responsive */
   @media (min-width: 768px) {
     .page {
       padding: 1.5rem;
@@ -960,6 +1330,7 @@
     }
   }
 
+  /* Dark mode */
   :global(.dark) .btn-primary,
   :global(.dark) .btn-success {
     background: #16a34a;
@@ -992,4 +1363,52 @@
     background: rgba(22, 163, 74, 0.15);
     color: #86efac;
   }
+  
+  :global(.dark) .attempt-status.completed {
+    background: rgba(22, 163, 74, 0.2);
+    color: #86efac;
+  }
+  
+  :global(.dark) .profile-status.active {
+    background: rgba(22, 163, 74, 0.2);
+    color: #86efac;
+  }
+  
+  :global(.dark) .profile-status:not(.active) {
+    background: rgba(220, 38, 38, 0.2);
+    color: #fca5a5;
+  }
+
+  .courses-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.course-item {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  padding: 0.75rem;
+  background: var(--color-bg);
+  border-radius: 0.5rem;
+}
+
+.course-code {
+  font-weight: 700;
+  font-size: 0.8rem;
+  color: var(--color-primary);
+  min-width: 80px;
+}
+
+.course-title {
+  flex: 1;
+  font-size: 0.85rem;
+  color: var(--color-text);
+}
+
+.course-credits {
+  font-size: 0.7rem;
+  color: var(--color-muted);
+}
 </style>
