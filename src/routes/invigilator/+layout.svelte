@@ -198,7 +198,7 @@
   .logo-icon {
     width: 36px;
     height: 36px;
-    background: linear-gradient(135deg, #d97706, #b45309);
+    background: linear-gradient(135deg, #16a34a, #d97706);
     border-radius: 0.5rem;
     display: flex;
     align-items: center;
@@ -329,7 +329,7 @@
   .user-avatar {
     width: 40px;
     height: 40px;
-    background: linear-gradient(135deg, #d97706, #b45309);
+    background: linear-gradient(135deg, #16a34a, #d97706);
     border-radius: 50%;
     display: flex;
     align-items: center;
