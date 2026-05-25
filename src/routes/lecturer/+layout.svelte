@@ -267,7 +267,7 @@
   .logo-icon {
     width: 36px;
     height: 36px;
-    background: linear-gradient(135deg, #2563eb, #1d4ed8);
+    background: linear-gradient(135deg, #16a34a, #2563eb);
     border-radius: 0.5rem;
     display: flex;
     align-items: center;
@@ -387,7 +387,7 @@
     gap: 0.125rem;
     padding-left: 0.5rem;
     margin-left: 0.75rem;
-    border-left: 2px solid var(--color-border);
+    border-left: 2px solid rgba(22, 163, 74, 0.35);
     animation: slideDown 0.2s ease;
   }
 
@@ -444,7 +444,7 @@
   .user-avatar {
     width: 40px;
     height: 40px;
-    background: linear-gradient(135deg, #2563eb, #1d4ed8);
+    background: linear-gradient(135deg, #16a34a, #2563eb);
     border-radius: 50%;
     display: flex;
     align-items: center;
