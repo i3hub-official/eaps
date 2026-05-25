@@ -1,6 +1,6 @@
 allowBuilds:
   '@prisma/engines': true
   '@tailwindcss/oxide': true
-  core-js: set this to true or false
+  core-js: true
   esbuild: true
   prisma: true

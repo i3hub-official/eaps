@@ -1,51 +1,51 @@
 <!-- src/routes/(admin)/users/+page.svelte -->
 <script lang="ts">
   import { enhance } from '$app/forms';
+  import { goto } from '$app/navigation';
+  import { page } from '$app/stores';
   import type { PageData, ActionData } from './$types';
   import {
     Search, UserPlus, X, ChevronLeft, ChevronRight,
     Users, GraduationCap, BookOpen, ShieldCheck, ShieldAlert,
     Building2, Mail, IdCard, AlertCircle, Calendar, Clock,
-    Award, BookMarked, FileText, Activity, MapPin
+    Award, BookMarked, FileText, Activity,
+    Download, RefreshCw, Filter, ChevronDown,
+    Edit3, Eye, Ban, CheckCircle, Phone, Briefcase
   } from 'lucide-svelte';
+  import { tick } from 'svelte';
 
   let { data, form }: { data: PageData; form: ActionData } = $props();
 
+  // State
   let showCreate = $state(false);
-  let search = $state('');
+  let showEdit = $state(false);
+  let search = $state(data.meta?.search ?? '');
+  let searchTimeout: ReturnType<typeof setTimeout> | null = null;
   let newRole = $state('student');
-  
-  // Modal states
   let selectedUser = $state<any>(null);
   let showProfileModal = $state(false);
   let showDeactivateModal = $state(false);
   let userToDeactivate = $state<any>(null);
   let isLoadingProfile = $state(false);
-  
-  // Pagination
-  const PAGE_SIZE = 10;
-  let currentPage = $state(1);
+  let isExporting = $state(false);
+  let openDropdown = $state<string | null>(null);
+  let dropdownSearch = $state('');
 
-  const PROTECTED_PATTERN = /ogwogp/i;
-
-  const filtered = $derived(
-    data.users
-      .filter(u => !PROTECTED_PATTERN.test(u.email))
-      .filter(u =>
-        u.fullName.toLowerCase().includes(search.toLowerCase()) ||
-        u.email.toLowerCase().includes(search.toLowerCase()) ||
-        (u.matricNumber ?? '').toLowerCase().includes(search.toLowerCase()) ||
-        (u.staffId ?? '').toLowerCase().includes(search.toLowerCase())
-      )
-  );
-
-  const totalPages = $derived(Math.max(1, Math.ceil(filtered.length / PAGE_SIZE)));
+  // Derived
+  const PAGE_SIZE = $derived(data.meta?.limit ?? 20);
+  const currentPage = $derived(data.meta?.page ?? 1);
+  const totalPages = $derived(data.meta?.totalPages ?? 1);
+  const totalCount = $derived(data.meta?.totalCount ?? 0);
   const startItem = $derived((currentPage - 1) * PAGE_SIZE + 1);
-  const endItem = $derived(Math.min(currentPage * PAGE_SIZE, filtered.length));
+  const endItem = $derived(Math.min(currentPage * PAGE_SIZE, totalCount));
 
-  $effect(() => { search; currentPage = 1; });
-
-  const paginated = $derived(filtered.slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE));
+  const counts = $derived({
+    all: data.meta?.totalCount ?? 0,
+    student: data.users?.filter((u: any) => u.role === 'student').length ?? 0,
+    lecturer: data.users?.filter((u: any) => u.role === 'lecturer').length ?? 0,
+    invigilator: data.users?.filter((u: any) => u.role === 'invigilator').length ?? 0,
+    admin: data.users?.filter((u: any) => u.role === 'admin').length ?? 0,
+  });
 
   const ROLE_META: Record<string, { color: string; icon: any; bg: string; label: string }> = {
     admin: { color: '#dc2626', icon: ShieldAlert, bg: '#fee2e2', label: 'Administrator' },
@@ -54,22 +54,64 @@
     student: { color: '#16a34a', icon: GraduationCap, bg: '#dcfce7', label: 'Student' },
   };
 
-  const roleLabel = (r: string) => r.charAt(0).toUpperCase() + r.slice(1);
+  function getRoleMeta(role: string) {
+    return ROLE_META[role] || { color: '#64748b', icon: Users, bg: '#e2e8f0', label: 'User' };
+  }
 
-  const counts = $derived({
-    all: data.users.length,
-    student: data.users.filter(u => u.role === 'student').length,
-    lecturer: data.users.filter(u => u.role === 'lecturer').length,
-    invigilator: data.users.filter(u => u.role === 'invigilator').length,
-    admin: data.users.filter(u => u.role === 'admin').length,
-  });
+  function roleLabel(r: string) {
+    return r.charAt(0).toUpperCase() + r.slice(1);
+  }
+
+  function handleSearch() {
+    if (searchTimeout) clearTimeout(searchTimeout);
+    searchTimeout = setTimeout(() => {
+      const url = new URL($page.url);
+      if (search) url.searchParams.set('search', search);
+      else url.searchParams.delete('search');
+      url.searchParams.set('page', '1');
+      goto(url.toString(), { replaceState: true });
+    }, 300);
+  }
+
+  function goToPage(p: number) {
+    const url = new URL($page.url);
+    url.searchParams.set('page', String(p));
+    goto(url.toString(), { replaceState: true });
+  }
+
+  function changeRole(role: string) {
+    const url = new URL($page.url);
+    if (role !== 'all') url.searchParams.set('role', role);
+    else url.searchParams.delete('role');
+    url.searchParams.set('page', '1');
+    goto(url.toString(), { replaceState: true });
+  }
+
+  function toggleDropdown(id: string) {
+    openDropdown = openDropdown === id ? null : id;
+    dropdownSearch = '';
+  }
+
+  function selectDropdownItem(id: string, value: string, label: string) {
+    const input = document.getElementById(id) as HTMLInputElement;
+    if (input) input.value = value;
+    const display = document.getElementById(`${id}-display`);
+    if (display) display.textContent = label;
+    openDropdown = null;
+    dropdownSearch = '';
+  }
+
+  function filterDropdownItems(items: any[], searchKey: string) {
+    if (!dropdownSearch) return items;
+    return items.filter(item =>
+      item[searchKey]?.toLowerCase().includes(dropdownSearch.toLowerCase())
+    );
+  }
 
   async function openProfile(user: any) {
     isLoadingProfile = true;
     selectedUser = user;
     showProfileModal = true;
-    
-    // Fetch additional user data if needed
     try {
       const response = await fetch(`/api/admin/users/${user.id}`);
       if (response.ok) {
@@ -83,6 +125,12 @@
     }
   }
 
+  function openEditModal(user: any) {
+    selectedUser = user;
+    showEdit = true;
+    showCreate = false;
+  }
+
   function openDeactivateModal(user: any) {
     userToDeactivate = user;
     showDeactivateModal = true;
@@ -91,33 +139,66 @@
   function closeModals() {
     showProfileModal = false;
     showDeactivateModal = false;
+    showCreate = false;
+    showEdit = false;
     selectedUser = null;
     userToDeactivate = null;
   }
-  
-  function getRoleMeta(role: string) {
-    return ROLE_META[role] || { color: '#64748b', icon: Users, bg: '#e2e8f0', label: 'User' };
+
+  async function exportToCSV() {
+    isExporting = true;
+    await tick();
+    try {
+      const headers = ['Name', 'Email', 'Role', 'Matric/Staff ID', 'Department', 'Level', 'Status', 'Created'];
+      const rows = data.users?.map((u: any) => [
+        u.fullName,
+        u.email,
+        u.role,
+        u.matricNumber || u.staffId || '',
+        u.department?.name || '',
+        u.level || '',
+        u.isActive ? 'Active' : 'Inactive',
+        new Date(u.createdAt).toLocaleDateString(),
+      ]) ?? [];
+      const csv = [headers.join(','), ...rows.map((r: any[]) => r.map((v: any) => `"${String(v).replace(/"/g, '""')}"`).join(','))].join('\n');
+      const blob = new Blob([csv], { type: 'text/csv' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `users-${new Date().toISOString().split('T')[0]}.csv`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      console.error('Export failed:', err);
+      alert('Failed to export CSV.');
+    } finally {
+      isExporting = false;
+    }
   }
-  
+
   function formatDate(date: string | null | undefined) {
     if (!date) return 'N/A';
-    return new Date(date).toLocaleDateString('en-GB', {
-      day: '2-digit',
-      month: 'short',
-      year: 'numeric'
-    });
+    return new Date(date).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
   }
-  
+
   function formatDateTime(date: string | null | undefined) {
     if (!date) return 'N/A';
-    return new Date(date).toLocaleString('en-GB', {
-      day: '2-digit',
-      month: 'short',
-      year: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit'
-    });
+    return new Date(date).toLocaleString('en-GB', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' });
   }
+
+  function handleClickOutside(event: MouseEvent) {
+    const target = event.target as HTMLElement;
+    if (!target.closest('.custom-dropdown')) {
+      openDropdown = null;
+    }
+  }
+
+  $effect(() => {
+    if (openDropdown) {
+      document.addEventListener('click', handleClickOutside);
+      return () => document.removeEventListener('click', handleClickOutside);
+    }
+  });
 </script>
 
 <svelte:head><title>User Management — MOUAU eTest Admin</title></svelte:head>
@@ -125,19 +206,34 @@
 <div class="page">
 
   <!-- Header -->
-  <div class="page-header">
-    <div>
-      <h1>User Management</h1>
-      <p class="page-sub">{counts.all} total users</p>
+  <header class="page-header">
+    <div class="header-left">
+      <div class="header-icon">
+        <Users size={24} color="#16a34a" />
+      </div>
+      <div>
+        <h1>User Management</h1>
+        <p class="subtitle">{totalCount} total users · {counts.student} students · {counts.lecturer} lecturers · {counts.invigilator} invigilators · {counts.admin} admins</p>
+      </div>
     </div>
-    <button class="btn-primary" onclick={() => { showCreate = !showCreate; }} type="button">
-      {#if showCreate}
-        <X size={16} /> Cancel
-      {:else}
-        <UserPlus size={16} /> Add User
-      {/if}
-    </button>
-  </div>
+    <div class="header-right">
+      <button class="btn-outline" onclick={exportToCSV} disabled={isExporting}>
+        {#if isExporting}
+          <RefreshCw size={14} class="spin" />
+        {:else}
+          <Download size={14} />
+        {/if}
+        Export CSV
+      </button>
+      <button class="btn-primary" onclick={() => { showCreate = !showCreate; showEdit = false; }} type="button">
+        {#if showCreate}
+          <X size={16} /> Cancel
+        {:else}
+          <UserPlus size={16} /> Add User
+        {/if}
+      </button>
+    </div>
+  </header>
 
   <!-- Alerts -->
   {#if form?.createError}
@@ -152,30 +248,48 @@
       <span>{form.deactivateError}</span>
     </div>
   {/if}
+  {#if form?.activateError}
+    <div class="alert error">
+      <AlertCircle size={14} />
+      <span>{form.activateError}</span>
+    </div>
+  {/if}
+  {#if form?.updateError}
+    <div class="alert error">
+      <AlertCircle size={14} />
+      <span>{form.updateError}</span>
+    </div>
+  {/if}
   {#if form?.created}
     <div class="alert success">
-      <span>✓</span>
+      <CheckCircle size={14} />
       <span>User created successfully.</span>
     </div>
   {/if}
   {#if form?.deactivated}
     <div class="alert success">
-      <span>✓</span>
-      <span>User deactivated.</span>
+      <CheckCircle size={14} />
+      <span>{form.userName ?? 'User'} deactivated.</span>
     </div>
   {/if}
   {#if form?.activated}
     <div class="alert success">
-      <span>✓</span>
-      <span>User reactivated.</span>
+      <CheckCircle size={14} />
+      <span>{form.userName ?? 'User'} reactivated.</span>
+    </div>
+  {/if}
+  {#if form?.updated}
+    <div class="alert success">
+      <CheckCircle size={14} />
+      <span>User updated successfully.</span>
     </div>
   {/if}
 
-  <!-- Create user form -->
+  <!-- Create Form -->
   {#if showCreate}
-    <form method="POST" action="?/create" use:enhance class="create-form">
-      <div class="create-form-header">
-        <h2>Create New User</h2>
+    <form method="POST" action="?/create" use:enhance class="create-form" onsubmit={() => { showCreate = false; }}>
+      <div class="form-header">
+        <h2><UserPlus size={18} /> Create New User</h2>
         <button type="button" class="icon-btn" onclick={() => { showCreate = false; }}>
           <X size={18} />
         </button>
@@ -201,17 +315,78 @@
         </div>
         <div class="field">
           <label>Password <span class="req">*</span></label>
-          <input name="password" type="password" required placeholder="Min. 8 characters" />
+          <input name="password" type="password" required placeholder="Min. 8 characters" minlength="8" />
         </div>
         <div class="field">
-          <label>Department</label>
-          <select name="department_id">
-            <option value="">— None —</option>
-            {#each data.departments as d}
-              <option value={d.id}>{d.code} — {d.name} ({d.college?.name || 'No College'})</option>
-            {/each}
-          </select>
+          <label>Phone</label>
+          <input name="phone" type="tel" placeholder="+234 800 000 0000" />
         </div>
+
+        <!-- Custom Dropdown: Department -->
+        <div class="field">
+          <label>Department</label>
+          <div class="custom-dropdown">
+            <button type="button" class="dropdown-trigger" onclick={() => toggleDropdown('department')}>
+              <span id="department-display">— Select Department —</span>
+              <ChevronDown size={14} />
+            </button>
+            {#if openDropdown === 'department'}
+              <div class="dropdown-menu">
+                <div class="dropdown-search">
+                  <Search size={12} />
+                  <input type="text" placeholder="Search departments..." bind:value={dropdownSearch} />
+                </div>
+                <div class="dropdown-items">
+                  <button type="button" class="dropdown-item" onclick={() => selectDropdownItem('department', '', '— None —')}>
+                    — None —
+                  </button>
+                  {#each filterDropdownItems(data.departments ?? [], 'name') as d}
+                    <button type="button" class="dropdown-item" onclick={() => selectDropdownItem('department', d.id, `${d.code} — ${d.name}`)}>
+                      <span class="item-code">{d.code}</span>
+                      <span class="item-name">{d.name}</span>
+                      {#if d.college}
+                        <span class="item-meta">{d.college.name}</span>
+                      {/if}
+                    </button>
+                  {/each}
+                </div>
+              </div>
+            {/if}
+            <input type="hidden" name="department_id" id="department" value="" />
+          </div>
+        </div>
+
+        <!-- Custom Dropdown: College -->
+        <div class="field">
+          <label>College / Faculty</label>
+          <div class="custom-dropdown">
+            <button type="button" class="dropdown-trigger" onclick={() => toggleDropdown('college')}>
+              <span id="college-display">— Select College —</span>
+              <ChevronDown size={14} />
+            </button>
+            {#if openDropdown === 'college'}
+              <div class="dropdown-menu">
+                <div class="dropdown-search">
+                  <Search size={12} />
+                  <input type="text" placeholder="Search colleges..." bind:value={dropdownSearch} />
+                </div>
+                <div class="dropdown-items">
+                  <button type="button" class="dropdown-item" onclick={() => selectDropdownItem('college', '', '— None —')}>
+                    — None —
+                  </button>
+                  {#each filterDropdownItems(data.colleges ?? [], 'name') as c}
+                    <button type="button" class="dropdown-item" onclick={() => selectDropdownItem('college', c.id, `${c.code} — ${c.name}`)}>
+                      <span class="item-code">{c.code}</span>
+                      <span class="item-name">{c.name}</span>
+                    </button>
+                  {/each}
+                </div>
+              </div>
+            {/if}
+            <input type="hidden" name="college_id" id="college" value="" />
+          </div>
+        </div>
+
         {#if newRole === 'student'}
           <div class="field">
             <label>Matric Number</label>
@@ -222,7 +397,7 @@
             <select name="level">
               <option value="">— Select —</option>
               {#each [100, 200, 300, 400, 500] as l}
-                <option value={l}>{l}</option>
+                <option value={l}>{l} Level</option>
               {/each}
             </select>
           </div>
@@ -234,100 +409,209 @@
         {/if}
       </div>
 
-      <div class="create-form-footer">
+      <div class="form-footer">
         <button type="button" class="btn-ghost" onclick={() => { showCreate = false; }}>Cancel</button>
         <button type="submit" class="btn-primary"><UserPlus size={14} /> Create User</button>
       </div>
     </form>
   {/if}
 
-  <!-- Role tabs + search -->
+  <!-- Edit Form -->
+  {#if showEdit && selectedUser}
+    <form method="POST" action="?/update" use:enhance class="create-form" onsubmit={() => { showEdit = false; }}>
+      <div class="form-header">
+        <h2><Edit3 size={18} /> Edit User</h2>
+        <button type="button" class="icon-btn" onclick={() => { showEdit = false; selectedUser = null; }}>
+          <X size={18} />
+        </button>
+      </div>
+      <input type="hidden" name="id" value={selectedUser.id} />
+
+      <div class="field-grid">
+        <div class="field">
+          <label>Full Name</label>
+          <input name="full_name" type="text" value={selectedUser.fullName} />
+        </div>
+        <div class="field">
+          <label>Email</label>
+          <input name="email" type="email" value={selectedUser.email} />
+        </div>
+        <div class="field">
+          <label>Phone</label>
+          <input name="phone" type="tel" value={selectedUser.phone ?? ''} />
+        </div>
+
+        <!-- Custom Dropdown: Department (Edit) -->
+        <div class="field">
+          <label>Department</label>
+          <div class="custom-dropdown">
+            <button type="button" class="dropdown-trigger" onclick={() => toggleDropdown('edit-department')}>
+              <span id="edit-department-display">{selectedUser.department?.name ?? '— Select Department —'}</span>
+              <ChevronDown size={14} />
+            </button>
+            {#if openDropdown === 'edit-department'}
+              <div class="dropdown-menu">
+                <div class="dropdown-search">
+                  <Search size={12} />
+                  <input type="text" placeholder="Search departments..." bind:value={dropdownSearch} />
+                </div>
+                <div class="dropdown-items">
+                  <button type="button" class="dropdown-item" onclick={() => selectDropdownItem('edit-department', '', '— None —')}>
+                    — None —
+                  </button>
+                  {#each filterDropdownItems(data.departments ?? [], 'name') as d}
+                    <button type="button" class="dropdown-item" class:selected={d.id === selectedUser.departmentId} onclick={() => selectDropdownItem('edit-department', d.id, `${d.code} — ${d.name}`)}>
+                      <span class="item-code">{d.code}</span>
+                      <span class="item-name">{d.name}</span>
+                      {#if d.college}
+                        <span class="item-meta">{d.college.name}</span>
+                      {/if}
+                    </button>
+                  {/each}
+                </div>
+              </div>
+            {/if}
+            <input type="hidden" name="department_id" id="edit-department" value={selectedUser.departmentId ?? ''} />
+          </div>
+        </div>
+
+        {#if selectedUser.role === 'student'}
+          <div class="field">
+            <label>Matric Number</label>
+            <input name="matric_number" type="text" value={selectedUser.matricNumber ?? ''} />
+          </div>
+          <div class="field">
+            <label>Level</label>
+            <select name="level">
+              <option value="">— Select —</option>
+              {#each [100, 200, 300, 400, 500] as l}
+                <option value={l} selected={selectedUser.level === l}>{l} Level</option>
+              {/each}
+            </select>
+          </div>
+        {:else}
+          <div class="field">
+            <label>Staff ID</label>
+            <input name="staff_id" type="text" value={selectedUser.staffId ?? ''} />
+          </div>
+        {/if}
+      </div>
+
+      <div class="form-footer">
+        <button type="button" class="btn-ghost" onclick={() => { showEdit = false; selectedUser = null; }}>Cancel</button>
+        <button type="submit" class="btn-primary"><Edit3 size={14} /> Update User</button>
+      </div>
+    </form>
+  {/if}
+
+  <!-- Toolbar -->
   <div class="toolbar">
     <div class="role-tabs">
       {#each ['all', 'student', 'lecturer', 'invigilator', 'admin'] as r}
-        <a href="/admin/users{r !== 'all' ? `?role=${r}` : ''}" 
-           class="tab" class:active={data.role === r}>
+        <button
+          class="tab"
+          class:active={data.role === r}
+          onclick={() => changeRole(r)}
+          type="button"
+        >
           {r === 'all' ? 'All' : roleLabel(r) + 's'}
           <span class="tab-count">{counts[r as keyof typeof counts]}</span>
-        </a>
+        </button>
       {/each}
     </div>
-    
+
     <div class="search-wrap">
-      <Search size={16} class="search-icon" />
-      <input type="search" placeholder="Search users..." bind:value={search} class="search" />
+      <Search size={14} />
+      <input
+        type="search"
+        placeholder="Search users..."
+        bind:value={search}
+        oninput={handleSearch}
+        class="search"
+      />
+      {#if search}
+        <button class="search-clear" onclick={() => { search = ''; handleSearch(); }}>
+          <X size={12} />
+        </button>
+      {/if}
     </div>
   </div>
 
-  <!-- User Cards -->
-  <div class="users-grid">
-    {#if paginated.length === 0}
+  <!-- Users Table -->
+  <div class="table-container">
+    {#if !data.users?.length}
       <div class="empty-state">
         <Users size={48} strokeWidth={1} />
         <p>No users found{search ? ` matching "${search}"` : ''}.</p>
       </div>
     {:else}
-      {#each paginated as u (u.id)}
-        {@const roleMeta = getRoleMeta(u.role)}
-        {@const RoleIconComponent = roleMeta.icon}
-        <div class="user-card" class:inactive={!u.isActive}>
-          <div class="card-header">
-            <div class="user-avatar" style="background: {roleMeta.bg}">
-              <RoleIconComponent size={20} style="color: {roleMeta.color}" />
-            </div>
-            <div class="user-info">
-              <h3 class="user-name">{u.fullName}</h3>
-              <div class="user-meta">
+      <table class="users-table">
+        <thead>
+          <tr>
+            <th>User</th>
+            <th>Role</th>
+            <th>ID</th>
+            <th>Department</th>
+            <th>Level</th>
+            <th>Status</th>
+            <th>Joined</th>
+            <th class="actions">Actions</th>
+          </tr>
+        </thead>
+        <tbody>
+          {#each data.users as u (u.id)}
+            {@const roleMeta = getRoleMeta(u.role)}
+            {@const RoleIconComponent = roleMeta.icon}
+            <tr class:inactive={!u.isActive}>
+              <td class="user-cell">
+                <div class="user-avatar-small" style="background: {roleMeta.bg}">
+                  <RoleIconComponent size={16} style="color: {roleMeta.color}" />
+                </div>
+                <div class="user-info-cell">
+                  <span class="user-name">{u.fullName}</span>
+                  <span class="user-email">{u.email}</span>
+                </div>
+              </td>
+              <td>
                 <span class="role-badge" style="background: {roleMeta.bg}; color: {roleMeta.color}">
                   {u.role}
                 </span>
+              </td>
+              <td class="mono">{u.matricNumber || u.staffId || '—'}</td>
+              <td>{u.department?.name || '—'}</td>
+              <td>{u.level ? `${u.level}L` : '—'}</td>
+              <td>
                 <span class="status-badge" class:active={u.isActive}>
                   {u.isActive ? 'Active' : 'Inactive'}
                 </span>
-              </div>
-            </div>
-          </div>
-
-          <div class="card-details">
-            <div class="detail-row">
-              <Mail size={14} />
-              <span class="detail-value">{u.email}</span>
-            </div>
-            <div class="detail-row">
-              <IdCard size={14} />
-              <span class="detail-value mono">{u.matricNumber || u.staffId || '—'}</span>
-            </div>
-            {#if u.department}
-              <div class="detail-row">
-                <Building2 size={14} />
-                <span class="detail-value">{u.department.code || u.department.name}</span>
-              </div>
-            {/if}
-            {#if u.level}
-              <div class="detail-row">
-                <Award size={14} />
-                <span class="detail-value">Level {u.level}</span>
-              </div>
-            {/if}
-          </div>
-
-          <div class="card-actions">
-            <button class="btn-outline" onclick={() => openProfile(u)} type="button">
-              View Profile
-            </button>
-            {#if u.isActive}
-              <button class="btn-danger" onclick={() => openDeactivateModal(u)} type="button">
-                Deactivate
-              </button>
-            {:else}
-              <form method="POST" action="?/activate" use:enhance style="display:inline">
-                <input type="hidden" name="id" value={u.id} />
-                <button type="submit" class="btn-success">Activate</button>
-              </form>
-            {/if}
-          </div>
-        </div>
-      {/each}
+              </td>
+              <td class="date">{formatDate(u.createdAt)}</td>
+              <td class="actions">
+                <div class="action-btns">
+                  <button class="action-btn" title="View Profile" onclick={() => openProfile(u)}>
+                    <Eye size={14} />
+                  </button>
+                  <button class="action-btn" title="Edit" onclick={() => openEditModal(u)}>
+                    <Edit3 size={14} />
+                  </button>
+                  {#if u.isActive}
+                    <button class="action-btn danger" title="Deactivate" onclick={() => openDeactivateModal(u)}>
+                      <Ban size={14} />
+                    </button>
+                  {:else}
+                    <form method="POST" action="?/activate" use:enhance style="display:inline">
+                      <input type="hidden" name="id" value={u.id} />
+                      <button type="submit" class="action-btn success" title="Activate">
+                        <CheckCircle size={14} />
+                      </button>
+                    </form>
+                  {/if}
+                </div>
+              </td>
+            </tr>
+          {/each}
+        </tbody>
+      </table>
     {/if}
   </div>
 
@@ -335,24 +619,41 @@
   {#if totalPages > 1}
     <div class="pagination">
       <div class="pag-info">
-        Showing {startItem}–{endItem} of {filtered.length}
+        Showing <strong>{startItem}</strong>–<strong>{endItem}</strong> of <strong>{totalCount}</strong>
       </div>
       <div class="pag-controls">
-        <button class="pag-btn" disabled={currentPage === 1} onclick={() => currentPage--} type="button">
+        <button class="pag-btn" disabled={currentPage === 1} onclick={() => goToPage(currentPage - 1)} type="button">
           <ChevronLeft size={16} />
         </button>
         {#each Array.from({ length: totalPages }, (_, i) => i + 1) as p}
-          {#if totalPages <= 5 || p === 1 || p === totalPages || Math.abs(p - currentPage) <= 1}
-            <button class="pag-btn pag-num" class:current={p === currentPage} onclick={() => currentPage = p} type="button">
+          {#if totalPages <= 7 || p === 1 || p === totalPages || Math.abs(p - currentPage) <= 1}
+            <button
+              class="pag-btn pag-num"
+              class:current={p === currentPage}
+              onclick={() => goToPage(p)}
+              type="button"
+            >
               {p}
             </button>
           {:else if Math.abs(p - currentPage) === 2}
             <span class="pag-ellipsis">…</span>
           {/if}
         {/each}
-        <button class="pag-btn" disabled={currentPage === totalPages} onclick={() => currentPage++} type="button">
+        <button class="pag-btn" disabled={currentPage === totalPages} onclick={() => goToPage(currentPage + 1)} type="button">
           <ChevronRight size={16} />
         </button>
+      </div>
+      <div class="pag-size">
+        <select onchange={(e) => {
+          const url = new URL($page.url);
+          url.searchParams.set('limit', (e.target as HTMLSelectElement).value);
+          url.searchParams.set('page', '1');
+          goto(url.toString(), { replaceState: true });
+        }}>
+          <option value="10" selected={PAGE_SIZE === 10}>10 / page</option>
+          <option value="20" selected={PAGE_SIZE === 20}>20 / page</option>
+          <option value="50" selected={PAGE_SIZE === 50}>50 / page</option>
+        </select>
       </div>
     </div>
   {/if}
@@ -369,7 +670,7 @@
             <X size={20} />
           </button>
         </div>
-        
+
         {#if isLoadingProfile}
           <div class="modal-loading">
             <div class="spinner"></div>
@@ -377,115 +678,105 @@
           </div>
         {:else}
           <div class="modal-body">
-            <!-- Profile Header -->
             <div class="profile-header">
               <div class="profile-avatar" style="background: {profileMeta.bg}">
                 <ProfileIcon size={48} style="color: {profileMeta.color}" />
               </div>
               <div class="profile-header-info">
                 <h3>{selectedUser.fullName}</h3>
-                <span class="profile-role" style="background: {profileMeta.bg}; color: {profileMeta.color}">
-                  {profileMeta.label}
-                </span>
-                <span class="profile-status" class:active={selectedUser.isActive}>
-                  {selectedUser.isActive ? 'Active' : 'Inactive'}
-                </span>
+                <div class="profile-badges">
+                  <span class="profile-role" style="background: {profileMeta.bg}; color: {profileMeta.color}">
+                    {profileMeta.label}
+                  </span>
+                  <span class="profile-status" class:active={selectedUser.isActive}>
+                    {selectedUser.isActive ? 'Active' : 'Inactive'}
+                  </span>
+                </div>
               </div>
             </div>
 
-            <!-- Personal Information -->
             <div class="profile-section">
               <h4>Personal Information</h4>
               <div class="profile-grid">
                 <div class="profile-field">
-                  <label>Full Name</label>
-                  <p>{selectedUser.fullName}</p>
-                </div>
-                <div class="profile-field">
-                  <label>Email Address</label>
+                  <label><Mail size={12} /> Email</label>
                   <p>{selectedUser.email}</p>
                 </div>
+                {#if selectedUser.phone}
+                  <div class="profile-field">
+                    <label><Phone size={12} /> Phone</label>
+                    <p>{selectedUser.phone}</p>
+                  </div>
+                {/if}
                 {#if selectedUser.matricNumber}
                   <div class="profile-field">
-                    <label>Matric Number</label>
+                    <label><IdCard size={12} /> Matric Number</label>
                     <p class="mono">{selectedUser.matricNumber}</p>
                   </div>
                 {/if}
                 {#if selectedUser.staffId}
                   <div class="profile-field">
-                    <label>Staff ID</label>
+                    <label><Briefcase size={12} /> Staff ID</label>
                     <p class="mono">{selectedUser.staffId}</p>
                   </div>
                 {/if}
                 {#if selectedUser.level}
                   <div class="profile-field">
-                    <label>Level</label>
-                    <p>{selectedUser.level}</p>
-                  </div>
-                {/if}
-                {#if selectedUser.phone}
-                  <div class="profile-field">
-                    <label>Phone</label>
-                    <p>{selectedUser.phone}</p>
+                    <label><Award size={12} /> Level</label>
+                    <p>{selectedUser.level} Level</p>
                   </div>
                 {/if}
               </div>
             </div>
 
-            <!-- Department & College Information -->
             {#if selectedUser.department}
               <div class="profile-section">
                 <h4>Academic Information</h4>
                 <div class="profile-grid">
                   <div class="profile-field">
-                    <label>Department</label>
+                    <label><Building2 size={12} /> Department</label>
                     <p>{selectedUser.department.name}</p>
                   </div>
                   <div class="profile-field">
-                    <label>Department Code</label>
+                    <label><IdCard size={12} /> Department Code</label>
                     <p class="mono">{selectedUser.department.code}</p>
                   </div>
                   {#if selectedUser.department.college}
                     <div class="profile-field">
-                      <label>College/Faculty</label>
+                      <label><Building2 size={12} /> College / Faculty</label>
                       <p>{selectedUser.department.college.name}</p>
-                    </div>
-                    <div class="profile-field">
-                      <label>College Code</label>
-                      <p class="mono">{selectedUser.department.college.code}</p>
                     </div>
                   {/if}
                 </div>
               </div>
             {/if}
 
-            <!-- Statistics -->
             <div class="profile-section">
               <h4>Statistics</h4>
               <div class="stats-grid">
                 <div class="stat-item">
-                  <FileText size={20} />
+                  <FileText size={18} color="#3b82f6" />
                   <div>
-                    <p class="stat-value">{selectedUser._count?.examAttempts || 0}</p>
+                    <p class="stat-value">{selectedUser._count?.examSessions ?? 0}</p>
                     <p class="stat-label">Exam Attempts</p>
                   </div>
                 </div>
                 <div class="stat-item">
-                  <BookMarked size={20} />
+                  <BookMarked size={18} color="#a78bfa" />
                   <div>
-                    <p class="stat-value">{selectedUser._count?.courses || 0}</p>
-                    <p class="stat-label">Enrolled Courses</p>
+                    <p class="stat-value">{selectedUser._count?.courseRegistrations ?? 0}</p>
+                    <p class="stat-label">Course Registrations</p>
                   </div>
                 </div>
                 <div class="stat-item">
-                  <Clock size={20} />
+                  <Calendar size={18} color="#22c55e" />
                   <div>
                     <p class="stat-value">{formatDate(selectedUser.createdAt)}</p>
                     <p class="stat-label">Joined</p>
                   </div>
                 </div>
                 <div class="stat-item">
-                  <Activity size={20} />
+                  <Activity size={18} color={selectedUser.isActive ? '#22c55e' : '#dc2626'} />
                   <div>
                     <p class="stat-value">{selectedUser.isActive ? 'Active' : 'Inactive'}</p>
                     <p class="stat-label">Account Status</p>
@@ -494,57 +785,19 @@
               </div>
             </div>
 
-
-<!-- STATISTICS -->
-{#if selectedUser.examSessions && selectedUser.examSessions.length > 0}
-  <div class="profile-section">
-    <h4>Recent Exam Sessions</h4>
-    <div class="attempts-list">
-      {#each selectedUser.examSessions.slice(0, 5) as session}
-        <div class="attempt-item">
-          <div class="attempt-info">
-            <span class="attempt-title">{session.exam?.title || 'Unknown Exam'}</span>
-            <span class="attempt-date">{formatDateTime(session.startedAt)}</span>
-          </div>
-          <div class="attempt-status" class:completed={session.completedAt}>
-            {session.completedAt ? 'Completed' : 'In Progress'}
-          </div>
-        </div>
-      {/each}
-    </div>
-  </div>
-{/if}
-
-<!-- Update the registered courses section -->
-{#if selectedUser.courseRegistrations && selectedUser.courseRegistrations.length > 0}
-  <div class="profile-section">
-    <h4>Registered Courses</h4>
-    <div class="courses-list">
-      {#each selectedUser.courseRegistrations.slice(0, 5) as reg}
-        <div class="course-item">
-          <span class="course-code">{reg.course.code}</span>
-          <span class="course-title">{reg.course.title}</span>
-          <span class="course-credits">{reg.course.creditUnits} units</span>
-        </div>
-      {/each}
-    </div>
-  </div>
-{/if}
-
-            <!-- Account Timeline -->
             <div class="profile-section">
               <h4>Account Timeline</h4>
               <div class="timeline">
                 <div class="timeline-item">
-                  <Calendar size={14} />
+                  <div class="timeline-dot"></div>
                   <div>
                     <p class="timeline-label">Account Created</p>
                     <p class="timeline-date">{formatDateTime(selectedUser.createdAt)}</p>
                   </div>
                 </div>
-                {#if selectedUser.updatedAt !== selectedUser.createdAt}
+                {#if selectedUser.updatedAt && selectedUser.updatedAt !== selectedUser.createdAt}
                   <div class="timeline-item">
-                    <Clock size={14} />
+                    <div class="timeline-dot"></div>
                     <div>
                       <p class="timeline-label">Last Updated</p>
                       <p class="timeline-date">{formatDateTime(selectedUser.updatedAt)}</p>
@@ -555,15 +808,15 @@
             </div>
           </div>
         {/if}
-        
+
         <div class="modal-footer">
           <button class="btn-ghost" onclick={closeModals} type="button">Close</button>
+          <button class="btn-outline" onclick={() => { closeModals(); openEditModal(selectedUser); }} type="button">
+            <Edit3 size={14} /> Edit
+          </button>
           {#if selectedUser.isActive}
-            <button class="btn-danger" onclick={() => {
-              closeModals();
-              openDeactivateModal(selectedUser);
-            }} type="button">
-              Deactivate User
+            <button class="btn-danger" onclick={() => { closeModals(); openDeactivateModal(selectedUser); }} type="button">
+              <Ban size={14} /> Deactivate
             </button>
           {/if}
         </div>
@@ -571,31 +824,31 @@
     </div>
   {/if}
 
-  <!-- Deactivate Confirmation Modal -->
+  <!-- Deactivate Modal -->
   {#if showDeactivateModal && userToDeactivate}
     <div class="modal-overlay" onclick={closeModals}>
       <div class="modal modal-warning" onclick={(e) => e.stopPropagation()}>
-        <div class="modal-header">
-          <h2>Confirm Deactivation</h2>
+        <div class="modal-header warning">
+          <h2><AlertCircle size={20} /> Confirm Deactivation</h2>
           <button class="modal-close" onclick={closeModals} type="button">
             <X size={20} />
           </button>
         </div>
-        
-        <div class="modal-body">
+        <div class="modal-body center">
           <div class="warning-icon">
-            <AlertCircle size={40} />
+            <Ban size={48} color="#dc2626" />
           </div>
-          <p>Are you sure you want to deactivate <strong>{userToDeactivate.fullName}</strong>?</p>
-          <p class="warning-text">This user will lose access to the platform until reactivated.</p>
-          <p class="warning-text-small">Email: {userToDeactivate.email}</p>
+          <p class="warning-title">Deactivate <strong>{userToDeactivate.fullName}</strong>?</p>
+          <p class="warning-text">This user will immediately lose access to the platform.</p>
+          <p class="warning-meta">{userToDeactivate.email} · {userToDeactivate.role}</p>
         </div>
-        
         <div class="modal-footer">
           <button class="btn-ghost" onclick={closeModals} type="button">Cancel</button>
-          <form method="POST" action="?/deactivate" use:enhance style="display:inline">
+          <form method="POST" action="?/deactivate" use:enhance style="display:inline" onsubmit={() => { closeModals(); }}>
             <input type="hidden" name="id" value={userToDeactivate.id} />
-            <button type="submit" class="btn-danger" onclick={closeModals}>Confirm Deactivate</button>
+            <button type="submit" class="btn-danger">
+              <Ban size={14} /> Confirm Deactivate
+            </button>
           </form>
         </div>
       </div>
@@ -606,363 +859,570 @@
 
 <style>
   .page {
-    padding: 1rem;
-    max-width: 1200px;
+    padding: 2rem 2.5rem 3rem;
+    max-width: 1400px;
     margin: 0 auto;
     display: flex;
     flex-direction: column;
-    gap: 1rem;
-    background: var(--color-bg);
-    min-height: 100vh;
+    gap: 1.5rem;
+    font-family: 'DM Sans', system-ui, sans-serif;
   }
 
-  /* Header */
   .page-header {
     display: flex;
     justify-content: space-between;
     align-items: center;
     flex-wrap: wrap;
     gap: 1rem;
+    padding-bottom: 0.5rem;
+    border-bottom: 1px solid var(--color-border);
   }
-  
+  .header-left {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+  }
+  .header-icon {
+    width: 48px;
+    height: 48px;
+    border-radius: 0.75rem;
+    background: rgba(22, 163, 74, 0.1);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
   h1 {
     font-size: 1.5rem;
     font-weight: 800;
     color: var(--color-text);
     margin: 0;
   }
-  
-  .page-sub {
-    font-size: 0.75rem;
+  .subtitle {
+    font-size: 0.8rem;
     color: var(--color-muted);
     margin: 0.25rem 0 0;
   }
+  .header-right {
+    display: flex;
+    gap: 0.75rem;
+    flex-wrap: wrap;
+  }
 
-  /* Buttons */
   .btn-primary {
     display: inline-flex;
     align-items: center;
     gap: 0.5rem;
-    padding: 0.6rem 1rem;
+    padding: 0.5rem 1rem;
     background: #16a34a;
-    color: white;
-    border: none;
+    border: 1px solid #16a34a;
     border-radius: 0.5rem;
+    font-size: 0.8rem;
     font-weight: 600;
-    font-size: 0.85rem;
+    color: white;
     cursor: pointer;
+    transition: all 0.15s;
   }
-  
   .btn-primary:hover {
-    opacity: 0.9;
+    background: #15803d;
+    border-color: #15803d;
   }
-  
-  .btn-ghost {
+  .btn-outline {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
     padding: 0.5rem 1rem;
     background: transparent;
     border: 1px solid var(--color-border);
     border-radius: 0.5rem;
+    font-size: 0.8rem;
     font-weight: 500;
-    font-size: 0.85rem;
-    cursor: pointer;
     color: var(--color-text);
+    cursor: pointer;
+    transition: all 0.15s;
   }
-  
+  .btn-outline:hover {
+    border-color: var(--color-primary);
+    color: var(--color-primary);
+  }
+  .btn-ghost {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.5rem 1rem;
+    background: transparent;
+    border: 1px solid var(--color-border);
+    border-radius: 0.5rem;
+    font-size: 0.8rem;
+    font-weight: 500;
+    color: var(--color-text);
+    cursor: pointer;
+  }
   .btn-ghost:hover {
-    background: var(--color-surface-hover);
+    background: var(--color-bg);
   }
-  
   .btn-danger {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
     padding: 0.5rem 1rem;
     background: #dc2626;
-    color: white;
-    border: none;
+    border: 1px solid #dc2626;
     border-radius: 0.5rem;
+    font-size: 0.8rem;
     font-weight: 600;
-    font-size: 0.85rem;
+    color: white;
     cursor: pointer;
+    transition: all 0.15s;
   }
-  
   .btn-danger:hover {
     background: #b91c1c;
+    border-color: #b91c1c;
   }
-  
-  .btn-success {
-    padding: 0.5rem 1rem;
-    background: #16a34a;
-    color: white;
+  .icon-btn {
+    background: none;
     border: none;
-    border-radius: 0.5rem;
-    font-weight: 600;
-    font-size: 0.85rem;
     cursor: pointer;
+    color: var(--color-muted);
+    padding: 0.25rem;
+    border-radius: 0.25rem;
   }
-  
-  .btn-outline {
-    padding: 0.5rem 1rem;
-    background: transparent;
-    border: 1px solid var(--color-border);
-    border-radius: 0.5rem;
-    font-weight: 500;
-    font-size: 0.85rem;
-    cursor: pointer;
+  .icon-btn:hover {
     color: var(--color-text);
+    background: var(--color-bg);
   }
-  
-  .btn-outline:hover {
-    background: var(--color-surface-hover);
+  .spin {
+    animation: spin 1s linear infinite;
+  }
+  @keyframes spin {
+    from { transform: rotate(0deg); }
+    to { transform: rotate(360deg); }
   }
 
-  /* Alerts */
   .alert {
     display: flex;
     align-items: center;
     gap: 0.5rem;
-    padding: 0.75rem;
+    padding: 0.75rem 1rem;
     border-radius: 0.5rem;
     font-size: 0.85rem;
+    animation: fadeUp 0.3s ease;
   }
-  
   .alert.error {
     background: #fee2e2;
     color: #dc2626;
+    border: 1px solid #fecaca;
   }
-  
   .alert.success {
     background: #dcfce7;
     color: #16a34a;
+    border: 1px solid #bbf7d0;
   }
 
-  /* Create Form */
   .create-form {
     background: var(--color-surface);
     border: 1px solid var(--color-border);
-    border-radius: 0.75rem;
-    padding: 1rem;
+    border-radius: 1rem;
+    overflow: hidden;
+    animation: fadeUp 0.4s ease;
   }
-  
-  .create-form-header {
+  .form-header {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    margin-bottom: 1rem;
+    padding: 1rem 1.25rem;
+    border-bottom: 1px solid var(--color-border);
+    background: var(--color-bg);
   }
-  
-  h2 {
+  .form-header h2 {
     font-size: 1rem;
     font-weight: 700;
     margin: 0;
-  }
-  
-  .field-grid {
     display: flex;
-    flex-direction: column;
-    gap: 0.75rem;
-    margin-bottom: 1rem;
+    align-items: center;
+    gap: 0.5rem;
+    color: var(--color-text);
   }
-  
+  .field-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+    gap: 1rem;
+    padding: 1.25rem;
+  }
   .field {
     display: flex;
     flex-direction: column;
-    gap: 0.25rem;
+    gap: 0.35rem;
   }
-  
   .field label {
     font-size: 0.75rem;
     font-weight: 600;
     color: var(--color-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
   }
-  
   .req {
     color: #dc2626;
   }
-  
-  .field input, .field select {
-    padding: 0.6rem;
+  .field input,
+  .field select {
+    padding: 0.6rem 0.75rem;
     border: 1px solid var(--color-border);
     border-radius: 0.5rem;
     background: var(--color-bg);
     color: var(--color-text);
     font-size: 0.85rem;
+    transition: border-color 0.15s;
   }
-  
-  .create-form-footer {
+  .field input:focus,
+  .field select:focus {
+    outline: none;
+    border-color: #16a34a;
+  }
+  .form-footer {
     display: flex;
     justify-content: flex-end;
-    gap: 0.5rem;
-    padding-top: 0.75rem;
+    gap: 0.75rem;
+    padding: 1rem 1.25rem;
     border-top: 1px solid var(--color-border);
+    background: var(--color-bg);
+  }
+
+  /* Custom Dropdown */
+  .custom-dropdown {
+    position: relative;
+  }
+  .dropdown-trigger {
+    width: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.5rem;
+    padding: 0.6rem 0.75rem;
+    border: 1px solid var(--color-border);
+    border-radius: 0.5rem;
+    background: var(--color-bg);
+    color: var(--color-text);
+    font-size: 0.85rem;
+    cursor: pointer;
+    transition: border-color 0.15s;
+  }
+  .dropdown-trigger:hover {
+    border-color: var(--color-primary);
+  }
+  .dropdown-menu {
+    position: absolute;
+    top: calc(100% + 4px);
+    left: 0;
+    right: 0;
+    background: var(--color-surface);
+    border: 1px solid var(--color-border);
+    border-radius: 0.5rem;
+    box-shadow: 0 10px 40px rgba(0,0,0,0.15);
+    z-index: 100;
+    max-height: 300px;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+  .dropdown-search {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.5rem 0.75rem;
+    border-bottom: 1px solid var(--color-border);
+  }
+  .dropdown-search input {
+    flex: 1;
+    border: none;
+    background: none;
+    outline: none;
+    font-size: 0.8rem;
+    color: var(--color-text);
+  }
+  .dropdown-items {
+    overflow-y: auto;
+    max-height: 240px;
+    padding: 0.25rem;
+  }
+  .dropdown-item {
+    width: 100%;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.5rem 0.75rem;
+    border: none;
+    background: none;
+    border-radius: 0.35rem;
+    font-size: 0.8rem;
+    color: var(--color-text);
+    cursor: pointer;
+    text-align: left;
+    transition: background 0.1s;
+  }
+  .dropdown-item:hover,
+  .dropdown-item.selected {
+    background: var(--color-bg);
+  }
+  .item-code {
+    font-weight: 700;
+    color: #16a34a;
+    min-width: 50px;
+  }
+  .item-name {
+    flex: 1;
+  }
+  .item-meta {
+    font-size: 0.7rem;
+    color: var(--color-muted);
   }
 
   /* Toolbar */
   .toolbar {
     display: flex;
-    flex-direction: column;
-    gap: 0.75rem;
+    justify-content: space-between;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 1rem;
   }
-  
   .role-tabs {
     display: flex;
     gap: 0.5rem;
     flex-wrap: wrap;
   }
-  
   .tab {
-    padding: 0.4rem 0.8rem;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    padding: 0.5rem 1rem;
     background: var(--color-surface);
     border: 1px solid var(--color-border);
     border-radius: 2rem;
-    font-size: 0.75rem;
+    font-size: 0.8rem;
     font-weight: 600;
     color: var(--color-muted);
-    text-decoration: none;
-    white-space: nowrap;
+    cursor: pointer;
+    transition: all 0.15s;
+    border-bottom: none;
   }
-  
+  .tab:hover {
+    color: var(--color-text);
+    border-color: var(--color-primary);
+  }
   .tab.active {
     background: #16a34a;
     border-color: #16a34a;
     color: white;
   }
-  
   .tab-count {
-    margin-left: 0.25rem;
-    opacity: 0.7;
+    font-size: 0.7rem;
+    opacity: 0.8;
+    background: rgba(0,0,0,0.1);
+    padding: 0.1rem 0.4rem;
+    border-radius: 999px;
   }
-  
   .search-wrap {
     position: relative;
+    display: flex;
+    align-items: center;
   }
-  
-  .search-icon {
+  .search-wrap :global(svg:first-child) {
     position: absolute;
     left: 0.75rem;
-    top: 50%;
-    transform: translateY(-50%);
     color: var(--color-muted);
+    pointer-events: none;
   }
-  
   .search {
-    width: 100%;
-    padding: 0.6rem 0.75rem 0.6rem 2.25rem;
+    padding: 0.5rem 0.75rem 0.5rem 2.25rem;
     border: 1px solid var(--color-border);
     border-radius: 0.5rem;
     background: var(--color-surface);
     color: var(--color-text);
     font-size: 0.85rem;
+    width: 280px;
+    transition: border-color 0.15s;
+  }
+  .search:focus {
+    outline: none;
+    border-color: #16a34a;
+  }
+  .search-clear {
+    position: absolute;
+    right: 0.5rem;
+    background: none;
+    border: none;
+    cursor: pointer;
+    color: var(--color-muted);
+    padding: 0.2rem;
+    border-radius: 0.25rem;
+  }
+  .search-clear:hover {
+    color: var(--color-text);
   }
 
-  /* User Cards */
-  .users-grid {
-    display: flex;
-    flex-direction: column;
-    gap: 0.75rem;
-  }
-  
-  .user-card {
+  /* Table */
+  .table-container {
     background: var(--color-surface);
     border: 1px solid var(--color-border);
-    border-radius: 0.75rem;
-    padding: 1rem;
+    border-radius: 1rem;
+    overflow-x: auto;
+    overflow-y: visible;
+    animation: fadeUp 0.45s ease;
+    -webkit-overflow-scrolling: touch;
   }
-  
-  .user-card.inactive {
+  .table-container::-webkit-scrollbar {
+    height: 6px;
+  }
+  .table-container::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  .table-container::-webkit-scrollbar-thumb {
+    background: var(--color-border);
+    border-radius: 3px;
+  }
+  .table-container::-webkit-scrollbar-thumb:hover {
+    background: var(--color-muted);
+  }
+  .users-table {
+    width: 100%;
+    min-width: 900px;
+    border-collapse: collapse;
+    font-size: 0.85rem;
+  }
+  .users-table th {
+    padding: 0.75rem 1rem;
+    text-align: left;
+    font-size: 0.68rem;
+    font-weight: 700;
+    color: var(--color-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    background: var(--color-bg);
+    border-bottom: 1px solid var(--color-border);
+    white-space: nowrap;
+  }
+  .users-table th.actions {
+    text-align: center;
+  }
+  .users-table td {
+    padding: 0.875rem 1rem;
+    border-bottom: 1px solid var(--color-border);
+    vertical-align: middle;
+    white-space: nowrap;
+  }
+  .users-table td.user-cell,
+  .users-table td:first-child {
+    white-space: normal;
+    min-width: 220px;
+  }
+  .users-table tr:hover td {
+    background: var(--color-bg);
+  }
+  .users-table tr.inactive {
     opacity: 0.6;
   }
-  
-  .card-header {
+  .users-table tr.inactive:hover {
+    opacity: 0.8;
+  }
+  .user-cell {
     display: flex;
     align-items: center;
     gap: 0.75rem;
-    margin-bottom: 0.75rem;
   }
-  
-  .user-avatar {
-    width: 48px;
-    height: 48px;
-    border-radius: 50%;
+  .user-avatar-small {
+    width: 36px;
+    height: 36px;
+    border-radius: 0.5rem;
     display: flex;
     align-items: center;
     justify-content: center;
     flex-shrink: 0;
   }
-  
-  .user-info {
-    flex: 1;
+  .user-info-cell {
+    display: flex;
+    flex-direction: column;
+    gap: 0.15rem;
   }
-  
   .user-name {
-    font-size: 1rem;
-    font-weight: 700;
-    margin: 0 0 0.25rem;
+    font-weight: 600;
     color: var(--color-text);
   }
-  
-  .user-meta {
-    display: flex;
-    gap: 0.5rem;
-    flex-wrap: wrap;
+  .user-email {
+    font-size: 0.75rem;
+    color: var(--color-muted);
   }
-  
   .role-badge {
-    padding: 0.2rem 0.5rem;
+    padding: 0.2rem 0.6rem;
     border-radius: 0.25rem;
     font-size: 0.7rem;
-    font-weight: 600;
+    font-weight: 700;
     text-transform: uppercase;
+    letter-spacing: 0.03em;
   }
-  
   .status-badge {
-    padding: 0.2rem 0.5rem;
+    padding: 0.2rem 0.6rem;
     border-radius: 0.25rem;
     font-size: 0.7rem;
-    font-weight: 600;
+    font-weight: 700;
   }
-  
   .status-badge.active {
     background: #dcfce7;
     color: #16a34a;
   }
-  
   .status-badge:not(.active) {
     background: #fee2e2;
     color: #dc2626;
   }
-  
-  .card-details {
-    display: flex;
-    flex-direction: column;
-    gap: 0.5rem;
-    margin-bottom: 0.75rem;
+  .mono {
+    font-family: 'SF Mono', monospace;
+    font-size: 0.8rem;
+    color: var(--color-muted);
   }
-  
-  .detail-row {
+  .date {
+    font-size: 0.8rem;
+    color: var(--color-muted);
+  }
+  .actions {
+    text-align: center;
+  }
+  .action-btns {
+    display: flex;
+    gap: 0.25rem;
+    justify-content: center;
+  }
+  .action-btn {
+    width: 32px;
+    height: 32px;
     display: flex;
     align-items: center;
-    gap: 0.5rem;
-    font-size: 0.8rem;
+    justify-content: center;
+    border: none;
+    background: var(--color-bg);
+    border-radius: 0.4rem;
+    cursor: pointer;
+    color: var(--color-muted);
+    transition: all 0.15s;
+  }
+  .action-btn:hover {
+    background: var(--color-border);
     color: var(--color-text);
   }
-  
-  .detail-value {
-    color: var(--color-muted);
+  .action-btn.danger:hover {
+    background: #fee2e2;
+    color: #dc2626;
   }
-  
-  .mono {
-    font-family: monospace;
-  }
-  
-  .card-actions {
-    display: flex;
-    gap: 0.5rem;
-    justify-content: flex-end;
+  .action-btn.success:hover {
+    background: #dcfce7;
+    color: #16a34a;
   }
 
-  /* Empty State */
   .empty-state {
-    text-align: center;
-    padding: 3rem 1rem;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.75rem;
+    padding: 4rem 2rem;
     color: var(--color-muted);
+    text-align: center;
   }
 
   /* Pagination */
@@ -971,21 +1431,18 @@
     justify-content: space-between;
     align-items: center;
     flex-wrap: wrap;
-    gap: 0.75rem;
-    padding-top: 0.5rem;
+    gap: 1rem;
+    padding: 1rem 0;
   }
-  
   .pag-info {
-    font-size: 0.75rem;
+    font-size: 0.8rem;
     color: var(--color-muted);
   }
-  
   .pag-controls {
     display: flex;
     gap: 0.25rem;
     align-items: center;
   }
-  
   .pag-btn {
     width: 36px;
     height: 36px;
@@ -995,80 +1452,114 @@
     border: 1px solid var(--color-border);
     border-radius: 0.5rem;
     background: var(--color-surface);
+    color: var(--color-text);
     cursor: pointer;
+    font-size: 0.8rem;
+    font-weight: 600;
+    transition: all 0.15s;
   }
-  
+  .pag-btn:hover:not(:disabled) {
+    border-color: var(--color-primary);
+    color: var(--color-primary);
+  }
   .pag-btn:disabled {
-    opacity: 0.5;
+    opacity: 0.4;
     cursor: not-allowed;
   }
-  
   .pag-btn.current {
     background: #16a34a;
     border-color: #16a34a;
     color: white;
   }
-  
   .pag-ellipsis {
-    padding: 0 0.25rem;
+    padding: 0 0.5rem;
     color: var(--color-muted);
+    font-size: 0.8rem;
+  }
+  .pag-size select {
+    padding: 0.4rem 0.75rem;
+    border: 1px solid var(--color-border);
+    border-radius: 0.5rem;
+    background: var(--color-surface);
+    color: var(--color-text);
+    font-size: 0.8rem;
+    cursor: pointer;
   }
 
   /* Modal */
   .modal-overlay {
     position: fixed;
-    top: 0;
-    left: 0;
-    right: 0;
-    bottom: 0;
-    background: rgba(0, 0, 0, 0.7);
+    inset: 0;
+    background: rgba(0, 0, 0, 0.6);
+    backdrop-filter: blur(4px);
     display: flex;
     align-items: center;
     justify-content: center;
     z-index: 1000;
     padding: 1rem;
+    animation: fadeIn 0.2s ease;
   }
-  
   .modal {
     background: var(--color-surface);
-    border-radius: 0.75rem;
+    border-radius: 1rem;
     max-width: 600px;
     width: 100%;
     max-height: 90vh;
     overflow-y: auto;
+    box-shadow: 0 25px 50px rgba(0,0,0,0.25);
+    animation: slideUp 0.3s ease;
   }
-  
   .modal-large {
-    max-width: 700px;
+    max-width: 720px;
   }
-  
   .modal-header {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    padding: 1rem 1.5rem;
+    padding: 1.25rem 1.5rem;
     border-bottom: 1px solid var(--color-border);
   }
-  
+  .modal-header.warning {
+    background: #fef3c7;
+    border-bottom-color: #fde68a;
+  }
+  .modal-header h2 {
+    font-size: 1rem;
+    font-weight: 700;
+    margin: 0;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    color: var(--color-text);
+  }
   .modal-close {
     background: none;
     border: none;
     cursor: pointer;
     color: var(--color-muted);
+    padding: 0.25rem;
+    border-radius: 0.25rem;
+    transition: all 0.15s;
   }
-  
+  .modal-close:hover {
+    color: var(--color-text);
+    background: var(--color-bg);
+  }
   .modal-body {
     padding: 1.5rem;
   }
-  
+  .modal-body.center {
+    text-align: center;
+    padding: 2rem 1.5rem;
+  }
   .modal-footer {
-    padding: 1rem 1.5rem;
-    border-top: 1px solid var(--color-border);
     display: flex;
     justify-content: flex-end;
-    gap: 0.5rem;
+    gap: 0.75rem;
+    padding: 1rem 1.5rem;
+    border-top: 1px solid var(--color-border);
+    background: var(--color-bg);
   }
-  
   .modal-loading {
     display: flex;
     flex-direction: column;
@@ -1076,8 +1567,8 @@
     justify-content: center;
     padding: 3rem;
     gap: 1rem;
+    color: var(--color-muted);
   }
-  
   .spinner {
     width: 40px;
     height: 40px;
@@ -1086,329 +1577,201 @@
     border-radius: 50%;
     animation: spin 0.8s linear infinite;
   }
-  
-  @keyframes spin {
-    to { transform: rotate(360deg); }
-  }
 
-  /* Profile Modal Styles */
+  /* Profile */
   .profile-header {
     display: flex;
     align-items: center;
-    gap: 1.5rem;
-    padding-bottom: 1.5rem;
-    margin-bottom: 1.5rem;
+    gap: 1.25rem;
+    padding-bottom: 1.25rem;
+    margin-bottom: 1.25rem;
     border-bottom: 1px solid var(--color-border);
   }
-  
   .profile-avatar {
-    width: 96px;
-    height: 96px;
-    border-radius: 50%;
+    width: 80px;
+    height: 80px;
+    border-radius: 1rem;
     display: flex;
     align-items: center;
     justify-content: center;
     flex-shrink: 0;
   }
-  
   .profile-header-info h3 {
     font-size: 1.25rem;
-    font-weight: 700;
+    font-weight: 800;
     margin: 0 0 0.5rem;
     color: var(--color-text);
   }
-  
+  .profile-badges {
+    display: flex;
+    gap: 0.5rem;
+    flex-wrap: wrap;
+  }
   .profile-role {
-    display: inline-block;
-    padding: 0.2rem 0.75rem;
+    padding: 0.25rem 0.75rem;
     border-radius: 0.25rem;
     font-size: 0.75rem;
-    font-weight: 600;
-    margin-right: 0.5rem;
+    font-weight: 700;
   }
-  
   .profile-status {
-    display: inline-block;
-    padding: 0.2rem 0.75rem;
+    padding: 0.25rem 0.75rem;
     border-radius: 0.25rem;
     font-size: 0.75rem;
-    font-weight: 600;
+    font-weight: 700;
   }
-  
   .profile-status.active {
     background: #dcfce7;
     color: #16a34a;
   }
-  
   .profile-status:not(.active) {
     background: #fee2e2;
     color: #dc2626;
   }
-  
   .profile-section {
     margin-bottom: 1.5rem;
   }
-  
   .profile-section h4 {
-    font-size: 0.85rem;
+    font-size: 0.75rem;
     font-weight: 700;
     color: var(--color-muted);
     text-transform: uppercase;
-    letter-spacing: 0.05em;
+    letter-spacing: 0.08em;
     margin-bottom: 1rem;
     padding-bottom: 0.5rem;
     border-bottom: 1px solid var(--color-border);
   }
-  
   .profile-grid {
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
     gap: 1rem;
   }
-  
   .profile-field label {
+    display: flex;
+    align-items: center;
+    gap: 0.35rem;
     font-size: 0.7rem;
     font-weight: 600;
     color: var(--color-muted);
-    display: block;
-    margin-bottom: 0.25rem;
+    margin-bottom: 0.35rem;
   }
-  
   .profile-field p {
     font-size: 0.9rem;
     margin: 0;
     color: var(--color-text);
+    font-weight: 500;
   }
-  
   .stats-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+    grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
     gap: 1rem;
   }
-  
   .stat-item {
     display: flex;
     align-items: center;
     gap: 0.75rem;
-    padding: 0.75rem;
+    padding: 1rem;
     background: var(--color-bg);
-    border-radius: 0.5rem;
+    border-radius: 0.75rem;
+    border: 1px solid var(--color-border);
   }
-  
   .stat-value {
     font-size: 1.25rem;
-    font-weight: 700;
+    font-weight: 800;
     margin: 0;
     color: var(--color-text);
+    line-height: 1;
   }
-  
   .stat-label {
     font-size: 0.7rem;
     color: var(--color-muted);
-    margin: 0;
+    margin: 0.15rem 0 0;
   }
-  
-  .attempts-list {
-    display: flex;
-    flex-direction: column;
-    gap: 0.5rem;
-  }
-  
-  .attempt-item {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    padding: 0.75rem;
-    background: var(--color-bg);
-    border-radius: 0.5rem;
-  }
-  
-  .attempt-title {
-    font-weight: 600;
-    font-size: 0.85rem;
-    color: var(--color-text);
-  }
-  
-  .attempt-date {
-    font-size: 0.7rem;
-    color: var(--color-muted);
-    display: block;
-  }
-  
-  .attempt-status {
-    font-size: 0.7rem;
-    font-weight: 600;
-    padding: 0.2rem 0.5rem;
-    border-radius: 0.25rem;
-  }
-  
-  .attempt-status.completed {
-    background: #dcfce7;
-    color: #16a34a;
-  }
-  
-  .attempt-status:not(.completed) {
-    background: #fef3c7;
-    color: #f59e0b;
-  }
-  
   .timeline {
     display: flex;
     flex-direction: column;
-    gap: 0.75rem;
+    gap: 1rem;
+    padding-left: 0.5rem;
   }
-  
   .timeline-item {
     display: flex;
-    align-items: center;
+    align-items: flex-start;
     gap: 0.75rem;
-    font-size: 0.85rem;
+    position: relative;
+    padding-left: 1.25rem;
   }
-  
+  .timeline-item::before {
+    content: '';
+    position: absolute;
+    left: 0;
+    top: 0.5rem;
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: #16a34a;
+  }
+  .timeline-item:not(:last-child)::after {
+    content: '';
+    position: absolute;
+    left: 3.5px;
+    top: 1rem;
+    width: 1px;
+    height: calc(100% + 0.5rem);
+    background: var(--color-border);
+  }
   .timeline-label {
-    font-size: 0.7rem;
+    font-size: 0.75rem;
+    font-weight: 600;
     color: var(--color-muted);
     margin: 0;
   }
-  
   .timeline-date {
     font-size: 0.85rem;
-    margin: 0;
+    margin: 0.15rem 0 0;
     color: var(--color-text);
+    font-weight: 500;
   }
-  
+
+  /* Warning */
   .warning-icon {
-    text-align: center;
-    color: #f59e0b;
     margin-bottom: 1rem;
   }
-  
+  .warning-title {
+    font-size: 1.1rem;
+    font-weight: 700;
+    color: var(--color-text);
+    margin: 0 0 0.5rem;
+  }
   .warning-text {
     font-size: 0.9rem;
-    color: var(--color-text);
-    margin-top: 0.5rem;
+    color: var(--color-muted);
+    margin: 0 0 0.25rem;
   }
-  
-  .warning-text-small {
+  .warning-meta {
     font-size: 0.8rem;
     color: var(--color-muted);
-    margin-top: 0.5rem;
+    margin: 0;
   }
 
-  /* Responsive */
-  @media (min-width: 768px) {
-    .page {
-      padding: 1.5rem;
-    }
-    
-    .toolbar {
-      flex-direction: row;
-      justify-content: space-between;
-      align-items: center;
-    }
-    
-    .search-wrap {
-      width: 280px;
-    }
-    
-    .field-grid {
-      display: grid;
-      grid-template-columns: repeat(2, 1fr);
-      gap: 1rem;
-    }
-    
-    .users-grid {
-      display: grid;
-      grid-template-columns: repeat(2, 1fr);
-      gap: 1rem;
-    }
+  @keyframes fadeUp {
+    from { opacity: 0; transform: translateY(12px); }
+    to   { opacity: 1; transform: translateY(0); }
   }
-  
-  @media (min-width: 1024px) {
-    .users-grid {
-      grid-template-columns: repeat(3, 1fr);
-    }
+  @keyframes fadeIn {
+    from { opacity: 0; }
+    to   { opacity: 1; }
+  }
+  @keyframes slideUp {
+    from { opacity: 0; transform: translateY(20px); }
+    to   { opacity: 1; transform: translateY(0); }
   }
 
-  /* Dark mode */
-  :global(.dark) .btn-primary,
-  :global(.dark) .btn-success {
-    background: #16a34a;
+  @media (max-width: 768px) {
+    .page { padding: 1.25rem 1rem; }
+    .field-grid { grid-template-columns: 1fr; }
+    .toolbar { flex-direction: column; align-items: stretch; }
+    .search { width: 100%; }
+    .pagination { flex-direction: column; align-items: stretch; }
+    .profile-grid { grid-template-columns: 1fr; }
+    .stats-grid { grid-template-columns: repeat(2, 1fr); }
   }
-  
-  :global(.dark) .tab.active {
-    background: #16a34a;
-  }
-  
-  :global(.dark) .pag-btn.current {
-    background: #16a34a;
-  }
-  
-  :global(.dark) .status-badge.active {
-    background: rgba(22, 163, 74, 0.2);
-    color: #86efac;
-  }
-  
-  :global(.dark) .status-badge:not(.active) {
-    background: rgba(220, 38, 38, 0.2);
-    color: #fca5a5;
-  }
-  
-  :global(.dark) .alert.error {
-    background: rgba(220, 38, 38, 0.15);
-    color: #fca5a5;
-  }
-  
-  :global(.dark) .alert.success {
-    background: rgba(22, 163, 74, 0.15);
-    color: #86efac;
-  }
-  
-  :global(.dark) .attempt-status.completed {
-    background: rgba(22, 163, 74, 0.2);
-    color: #86efac;
-  }
-  
-  :global(.dark) .profile-status.active {
-    background: rgba(22, 163, 74, 0.2);
-    color: #86efac;
-  }
-  
-  :global(.dark) .profile-status:not(.active) {
-    background: rgba(220, 38, 38, 0.2);
-    color: #fca5a5;
-  }
-
-  .courses-list {
-  display: flex;
-  flex-direction: column;
-  gap: 0.5rem;
-}
-
-.course-item {
-  display: flex;
-  align-items: center;
-  gap: 1rem;
-  padding: 0.75rem;
-  background: var(--color-bg);
-  border-radius: 0.5rem;
-}
-
-.course-code {
-  font-weight: 700;
-  font-size: 0.8rem;
-  color: var(--color-primary);
-  min-width: 80px;
-}
-
-.course-title {
-  flex: 1;
-  font-size: 0.85rem;
-  color: var(--color-text);
-}
-
-.course-credits {
-  font-size: 0.7rem;
-  color: var(--color-muted);
-}
 </style>

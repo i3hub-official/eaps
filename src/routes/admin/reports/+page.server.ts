@@ -1,4 +1,4 @@
-// src/routes/(admin)/reports/+page.server.ts
+// src/routes/(admin)/admin/reports/+page.server.ts
 import type { PageServerLoad } from './$types';
 import { requireAdmin } from '$lib/server/auth/guards.js';
 import { sql } from '$lib/server/db/index.js';
@@ -47,19 +47,13 @@ interface DashboardSummary {
   active_today: number;
 }
 
-interface CourseDistribution {
-  course_code: string;
-  exam_count: number;
-  avg_score: number;
-}
-
 // ── Constants ────────────────────────────────────────────
 const DATE_RANGES: Record<DateRange, string> = {
-  '7d':  '7 days',
-  '14d': '14 days',
-  '30d': '30 days',
-  '90d': '90 days',
-  'all': '100 years',
+  '7d':  "'7 days'",
+  '14d': "'14 days'",
+  '30d': "'30 days'",
+  '90d': "'90 days'",
+  'all': "'100 years'",
 };
 
 const FLAG_LABELS: Record<string, string> = {
@@ -75,15 +69,8 @@ const FLAG_LABELS: Record<string, string> = {
 };
 
 // ── Helpers ────────────────────────────────────────────────
-function getIntervalDays(range: DateRange): number {
-  const days = {
-    '7d': 7,
-    '14d': 14,
-    '30d': 30,
-    '90d': 90,
-    'all': 36500,
-  };
-  return days[range] ?? 14;
+function getInterval(range: DateRange): string {
+  return DATE_RANGES[range] ?? "'14 days'";
 }
 
 function calculateRates(stats: ExamStat[]): void {
@@ -108,7 +95,7 @@ export const load: PageServerLoad = async ({ locals, url }) => {
   const range = (url.searchParams.get('range') as DateRange) ?? '14d';
   const examLimit = Math.min(parseInt(url.searchParams.get('limit') ?? '20', 10), 100);
   const examOffset = Math.max(parseInt(url.searchParams.get('offset') ?? '0', 10), 0);
-  const intervalDays = getIntervalDays(range);
+  const interval = getInterval(range);
 
   try {
     const [
@@ -134,11 +121,10 @@ export const load: PageServerLoad = async ({ locals, url }) => {
          JOIN courses c ON c.id = e.course_id
          LEFT JOIN exam_sessions es ON es.exam_id = e.id
          LEFT JOIN exam_results er ON er.session_id = es.id
-         WHERE e.created_at >= NOW() - ($1 || ' days')::interval
+         WHERE e.created_at >= now() - INTERVAL ${interval}
          GROUP BY e.id, e.title, c.code
          ORDER BY e.created_at DESC
-         LIMIT $2 OFFSET $3`,
-        [intervalDays, examLimit, examOffset]
+         LIMIT ${examLimit} OFFSET ${examOffset}`
       ),
 
       // ── Top 10 students by avg score ────────────────────
@@ -152,12 +138,11 @@ export const load: PageServerLoad = async ({ locals, url }) => {
          FROM exam_results er
          JOIN users u ON u.id = er.student_id
          JOIN exam_sessions es ON es.id = er.session_id
-         WHERE es.created_at >= NOW() - ($1 || ' days')::interval
+         WHERE es.created_at >= now() - INTERVAL ${interval}
          GROUP BY u.id, u.full_name, u.matric_number
          HAVING COUNT(er.id) >= 1
          ORDER BY avg_pct DESC
-         LIMIT 10`,
-        [intervalDays]
+         LIMIT 10`
       ),
 
       // ── Violation breakdown by type ───────────────────────
@@ -168,10 +153,9 @@ export const load: PageServerLoad = async ({ locals, url }) => {
            0::numeric AS pct_of_total
          FROM violations v
          JOIN exam_sessions es ON es.id = v.session_id
-         WHERE es.created_at >= NOW() - ($1 || ' days')::interval
+         WHERE es.created_at >= now() - INTERVAL ${interval}
          GROUP BY v.flag_type
-         ORDER BY count DESC`,
-        [intervalDays]
+         ORDER BY count DESC`
       ),
 
       // ── Daily exam activity ─────────────────────────────
@@ -183,35 +167,24 @@ export const load: PageServerLoad = async ({ locals, url }) => {
            ROUND(COALESCE(AVG(er.percentage), 0)::numeric, 1) AS avg_score
          FROM exam_sessions es
          LEFT JOIN exam_results er ON er.session_id = es.id
-         WHERE es.created_at >= NOW() - ($1 || ' days')::interval
+         WHERE es.created_at >= now() - INTERVAL ${interval}
          GROUP BY DATE(es.created_at)
-         ORDER BY day ASC`,
-        [intervalDays]
+         ORDER BY day ASC`
       ),
 
-      // ── Dashboard summary (separate queries to avoid parameter issues) ──
-      (async () => {
-        const [totalExams, totalSessions, totalSubmissions, overallAvg, totalViolations, activeToday] = await Promise.all([
-          sql<{ count: number }>(`SELECT COUNT(*)::int AS count FROM exams WHERE created_at >= NOW() - ($1 || ' days')::interval`, [intervalDays]),
-          sql<{ count: number }>(`SELECT COUNT(*)::int AS count FROM exam_sessions WHERE created_at >= NOW() - ($1 || ' days')::interval`, [intervalDays]),
-          sql<{ count: number }>(`SELECT COUNT(*)::int AS count FROM exam_sessions WHERE status IN ('submitted','force_submitted') AND created_at >= NOW() - ($1 || ' days')::interval`, [intervalDays]),
-          sql<{ avg: number }>(`SELECT ROUND(COALESCE(AVG(er.percentage), 0)::numeric, 1) AS avg FROM exam_results er JOIN exam_sessions es ON es.id = er.session_id WHERE es.created_at >= NOW() - ($1 || ' days')::interval`, [intervalDays]),
-          sql<{ count: number }>(`SELECT COUNT(*)::int AS count FROM violations v JOIN exam_sessions es ON es.id = v.session_id WHERE es.created_at >= NOW() - ($1 || ' days')::interval`, [intervalDays]),
-          sql<{ count: number }>(`SELECT COUNT(*)::int AS count FROM exam_sessions WHERE created_at >= CURRENT_DATE AND status = 'in_progress'`, []),
-        ]);
-        
-        return {
-          total_exams: totalExams[0]?.count ?? 0,
-          total_sessions: totalSessions[0]?.count ?? 0,
-          total_submissions: totalSubmissions[0]?.count ?? 0,
-          overall_avg: overallAvg[0]?.avg ?? 0,
-          total_violations: totalViolations[0]?.count ?? 0,
-          active_today: activeToday[0]?.count ?? 0,
-        };
-      })(),
+      // ── Dashboard summary ────────────────────────────────
+      sql<DashboardSummary>(
+        `SELECT
+           (SELECT COUNT(*)::int FROM exams WHERE created_at >= now() - INTERVAL ${interval}) AS total_exams,
+           (SELECT COUNT(*)::int FROM exam_sessions WHERE created_at >= now() - INTERVAL ${interval}) AS total_sessions,
+           (SELECT COUNT(*)::int FROM exam_sessions WHERE status IN ('submitted','force_submitted') AND created_at >= now() - INTERVAL ${interval}) AS total_submissions,
+           (SELECT ROUND(COALESCE(AVG(percentage), 0)::numeric, 1) FROM exam_results er JOIN exam_sessions es ON es.id = er.session_id WHERE es.created_at >= now() - INTERVAL ${interval}) AS overall_avg,
+           (SELECT COUNT(*)::int FROM violations v JOIN exam_sessions es ON es.id = v.session_id WHERE es.created_at >= now() - INTERVAL ${interval}) AS total_violations,
+           (SELECT COUNT(*)::int FROM exam_sessions WHERE created_at >= CURRENT_DATE AND status = 'active') AS active_today`
+      ).then(rows => rows[0]),
 
       // ── Course distribution ────────────────────────────
-      sql<CourseDistribution>(
+      sql<{ course_code: string; exam_count: number; avg_score: number }>(
         `SELECT
            c.code AS course_code,
            COUNT(DISTINCT e.id)::int AS exam_count,
@@ -220,11 +193,10 @@ export const load: PageServerLoad = async ({ locals, url }) => {
          JOIN exams e ON e.course_id = c.id
          LEFT JOIN exam_sessions es ON es.exam_id = e.id
          LEFT JOIN exam_results er ON er.session_id = es.id
-         WHERE e.created_at >= NOW() - ($1 || ' days')::interval
+         WHERE e.created_at >= now() - INTERVAL ${interval}
          GROUP BY c.id, c.code
          ORDER BY exam_count DESC
-         LIMIT 8`,
-        [intervalDays]
+         LIMIT 8`
       ),
     ]);
 
@@ -240,14 +212,7 @@ export const load: PageServerLoad = async ({ locals, url }) => {
       topStudents,
       violationBreakdown,
       dailyActivity,
-      summary: summary || {
-        total_exams: 0,
-        total_sessions: 0,
-        total_submissions: 0,
-        overall_avg: 0,
-        total_violations: 0,
-        active_today: 0,
-      },
+      summary,
       courseDistribution,
       flagLabels: FLAG_LABELS,
       meta: {
