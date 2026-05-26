@@ -29,7 +29,7 @@
       children: [
         { href: '/lecturer/exams', label: 'All Exams', icon: ClipboardList },
         { href: '/lecturer/exams/create', label: 'Create Exam', icon: PlusCircle },
-        { href: '/lecturer/exams/results', label: 'Results', icon: BarChart2 },
+        { href: '/lecturer/results', label: 'Results', icon: BarChart2 },
       ]
     },
   ];
