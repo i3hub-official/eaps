@@ -1,86 +1,62 @@
-<!-- src/routes/(lecturer)/exams/+page.svelte -->
+<!-- src/routes/lecturer/+page.svelte -->
 <script lang="ts">
   import type { PageData } from './$types';
   import {
-    BookOpen, Search, Filter, Plus, Clock, Users,
-    CheckCircle, AlertCircle, Calendar, BarChart3,
-    FileText, Eye, TrendingUp, ArrowUpRight,
-    ChevronRight, RefreshCw, Download, Zap,
-    PlayCircle, Archive, XCircle, Edit3
+    BookOpen, Plus, GraduationCap, CheckCircle,
+    Calendar, Zap, BarChart3, ArrowUpRight,
+    TrendingUp, Users, Clock, Edit3,
+    PlayCircle, RefreshCw, ChevronRight,
+    FileText, Eye, Shield
   } from 'lucide-svelte';
 
   let { data }: { data: PageData } = $props();
-  const { exams } = data;
+  const { exams, statsMap } = data;
 
-  let search = $state('');
-  let filterStatus = $state('all');
-
-  const filtered = $derived(exams.filter(e => {
-    const matchSearch =
-      e.title.toLowerCase().includes(search.toLowerCase()) ||
-      e.course.code.toLowerCase().includes(search.toLowerCase());
-    const matchStatus = filterStatus === 'all' || e.status === filterStatus;
-    return matchSearch && matchStatus;
-  }));
-
-  // KPI derived counts
   const totalExams     = $derived(exams.length);
   const activeExams    = $derived(exams.filter(e => e.status === 'active').length);
   const scheduledExams = $derived(exams.filter(e => e.status === 'scheduled').length);
   const completedExams = $derived(exams.filter(e => e.status === 'completed').length);
   const draftExams     = $derived(exams.filter(e => e.status === 'draft').length);
 
-  const STATUS_META: Record<string, { label: string; color: string; icon: any }> = {
-    draft:     { label: 'Draft',     color: '#64748b', icon: Edit3 },
-    scheduled: { label: 'Scheduled', color: '#3b82f6', icon: Calendar },
-    active:    { label: 'Live',      color: '#22c55e', icon: PlayCircle },
-    completed: { label: 'Done',      color: '#a78bfa', icon: CheckCircle },
-    cancelled: { label: 'Cancelled', color: '#ef4444', icon: XCircle },
+  const totalStudents  = $derived(
+    Object.values(statsMap ?? {}).reduce((sum: number, s: any) => sum + (s?.total ?? 0), 0)
+  );
+  const avgPass = $derived(() => {
+    const vals = Object.values(statsMap ?? {}).filter((s: any) => s?.pass_rate != null);
+    if (!vals.length) return 0;
+    return Math.round(vals.reduce((a: number, s: any) => a + Number(s.pass_rate ?? 0), 0) / vals.length);
+  });
+
+  const STATUS_META: Record<string, { label: string; color: string }> = {
+    draft:     { label: 'Draft',     color: '#64748b' },
+    scheduled: { label: 'Scheduled', color: '#3b82f6' },
+    active:    { label: 'Live',      color: '#22c55e' },
+    completed: { label: 'Done',      color: '#a78bfa' },
+    cancelled: { label: 'Cancelled', color: '#ef4444' },
   };
-
-  function fmtDate(d: Date | null | undefined) {
-    if (!d) return '—';
-    return new Date(d).toLocaleString([], { dateStyle: 'short', timeStyle: 'short' });
-  }
-
-  function fmtTimeShort(d: Date | null | undefined) {
-    if (!d) return '';
-    const now = Date.now();
-    const diff = now - new Date(d).getTime();
-    const m = Math.floor(diff / 60000);
-    if (m < 1)  return 'just now';
-    if (m < 60) return `${m}m ago`;
-    const h = Math.floor(m / 60);
-    if (h < 24) return `${h}h ago`;
-    return `${Math.floor(h / 24)}d ago`;
-  }
-
-  const FILTER_TABS = ['all', 'active', 'scheduled', 'draft', 'completed'];
 </script>
 
-<svelte:head><title>My Exams — MOUAU eTest</title></svelte:head>
+<svelte:head><title>Lecturer Dashboard — MOUAU eTest</title></svelte:head>
 
 <div class="dashboard">
 
-  <!-- ══ PAGE HEADER ══════════════════════════════════════════ -->
+  <!-- ══ HEADER ═══════════════════════════════════════════════ -->
   <header class="dash-header">
     <div class="dash-header-left">
       <div class="dash-eyebrow">
         <span class="dash-dot pulse"></span>
         Lecturer Portal
       </div>
-      <h1 class="dash-title">Exam Manager</h1>
-      <p class="dash-subtitle">MOUAU eTest · Manage and monitor your exams</p>
+      <h1 class="dash-title">My Dashboard</h1>
+      <p class="dash-subtitle">Welcome back, <strong>{data.user.fullName}</strong></p>
     </div>
     <div class="dash-header-right">
       <div class="header-actions">
         <button class="btn-outline" onclick={() => window.location.reload()}>
-          <RefreshCw size={14} />
-          Refresh
+          <RefreshCw size={14} /> Refresh
         </button>
         <a href="/lecturer/exams/new" class="btn-primary">
-          <Plus size={14} />
-          New Exam
+          <Plus size={14} /> New Exam
         </a>
       </div>
     </div>
@@ -128,132 +104,113 @@
       <div class="kpi-trend neutral">finished</div>
     </div>
 
-    <div class="kpi-card kpi-green">
-      <div class="kpi-icon"><Edit3 size={20} /></div>
+    <div class="kpi-card kpi-teal">
+      <div class="kpi-icon"><Users size={20} /></div>
       <div class="kpi-body">
-        <span class="kpi-value">{draftExams}</span>
-        <span class="kpi-label">Drafts</span>
+        <span class="kpi-value">{totalStudents}</span>
+        <span class="kpi-label">Students</span>
       </div>
-      <div class="kpi-trend neutral">in progress</div>
+      <div class="kpi-trend up"><ArrowUpRight size={12} /> enrolled</div>
+    </div>
+
+    <div class="kpi-card kpi-green">
+      <div class="kpi-icon"><TrendingUp size={20} /></div>
+      <div class="kpi-body">
+        <span class="kpi-value">{avgPass()}%</span>
+        <span class="kpi-label">Avg Pass Rate</span>
+      </div>
+      <div class="kpi-trend neutral">across exams</div>
     </div>
   </section>
 
-  <!-- ══ MAIN PANEL ═══════════════════════════════════════════ -->
-  <section class="panel">
-    <div class="panel-head">
-      <div class="panel-title-wrap">
-        <FileText size={15} />
-        <h2>All Exams</h2>
-      </div>
-      <span class="panel-count">{filtered.length} of {totalExams}</span>
-    </div>
-
-    <!-- Filters bar -->
-    <div class="filters-bar">
-      <div class="search-wrap">
-        <Search size={14} class="search-icon" />
-        <input
-          class="search-input"
-          type="search"
-          placeholder="Search title or course code…"
-          bind:value={search}
-        />
-      </div>
-      <div class="tabs">
-        {#each FILTER_TABS as s}
-          <button
-            class="tab"
-            class:active={filterStatus === s}
-            onclick={() => { filterStatus = s; }}
-            type="button"
-          >
-            {s === 'all' ? 'All' : (STATUS_META[s]?.label ?? s)}
-            {#if s === 'active' && activeExams > 0}
-              <span class="tab-badge live">{activeExams}</span>
-            {:else if s !== 'all'}
-              {@const count = exams.filter(e => e.status === s).length}
-              {#if count > 0}
-                <span class="tab-badge">{count}</span>
-              {/if}
-            {/if}
-          </button>
-        {/each}
-      </div>
-    </div>
-
-    <!-- Table -->
-    {#if filtered.length === 0}
+  <!-- ══ EXAMS GRID ════════════════════════════════════════════ -->
+  {#if exams.length === 0}
+    <section class="panel">
       <div class="empty-state">
-        <BookOpen size={32} />
-        <p>No exams found{search ? ` for "${search}"` : ''}.</p>
-        <a href="/lecturer/exams/new" class="btn-primary" style="font-size:0.8rem; padding: 0.5rem 1rem;">
-          <Plus size={13} /> Create your first exam
+        <BookOpen size={36} />
+        <p>You haven't created any exams yet.</p>
+        <a href="/lecturer/exams/new" class="btn-primary">
+          <Plus size={14} /> Create your first exam
         </a>
       </div>
-    {:else}
-      <div class="table-wrap">
-        <table>
-          <thead>
-            <tr>
-              <th>Course</th>
-              <th>Title</th>
-              <th>Status</th>
-              <th>Duration</th>
-              <th>Scheduled</th>
-              <th>Actions</th>
-            </tr>
-          </thead>
-          <tbody>
-            {#each filtered as exam, i}
-              {@const meta = STATUS_META[exam.status] ?? STATUS_META.draft}
-              <tr style="animation-delay:{i * 30}ms">
-                <td>
-                  <span class="course-badge">{exam.course.code}</span>
-                </td>
-                <td class="title-cell">
-                  <span class="exam-title">{exam.title}</span>
-                </td>
-                <td>
-                  <span class="status-pill" style="color:{meta.color}; background:{meta.color}18; border-color:{meta.color}30;">
-                    <svelte:component this={meta.icon} size={10} />
-                    {meta.label}
-                    {#if exam.status === 'active'}
-                      <span class="live-dot"></span>
-                    {/if}
-                  </span>
-                </td>
-                <td>
-                  <div class="duration-wrap">
-                    <Clock size={12} color="var(--color-muted)" />
-                    <span>{exam.durationMinutes}m</span>
-                  </div>
-                </td>
-                <td class="mono">{fmtDate(exam.scheduledStart)}</td>
-                <td>
-                  <div class="actions-cell">
-                    <a href="/lecturer/exams/{exam.id}/questions" class="act" title="Questions">
-                      <FileText size={12} /> Questions
-                    </a>
-                    <a href="/lecturer/exams/{exam.id}/results" class="act" title="Results">
-                      <BarChart3 size={12} /> Results
-                    </a>
-                    <a href="/lecturer/exams/{exam.id}/similarity" class="act act-ghost" title="Similarity">
-                      <Eye size={12} />
-                    </a>
-                  </div>
-                </td>
-              </tr>
-            {/each}
-          </tbody>
-        </table>
+    </section>
+  {:else}
+    <section class="panel">
+      <div class="panel-head">
+        <div class="panel-title-wrap">
+          <FileText size={15} />
+          <h2>My Exams</h2>
+        </div>
+        <div style="display:flex;gap:0.75rem;align-items:center;">
+          <span class="panel-count">{totalExams} exams</span>
+          <a href="/lecturer/exams" class="panel-link">View all <ChevronRight size={12} /></a>
+        </div>
       </div>
-    {/if}
-  </section>
+
+      <div class="exam-grid">
+        {#each exams as exam, i}
+          {@const s = statsMap?.[exam.id]}
+          {@const meta = STATUS_META[exam.status] ?? STATUS_META.draft}
+          <div class="exam-card" style="animation-delay:{i * 50}ms">
+            <div class="card-accent" style="background:{meta.color}"></div>
+
+            <div class="card-top">
+              <span class="course-badge">{exam.course.code}</span>
+              <span class="status-pill" style="color:{meta.color};background:{meta.color}18;border-color:{meta.color}30;">
+                {meta.label}
+                {#if exam.status === 'active'}
+                  <span class="live-dot" style="background:{meta.color}"></span>
+                {/if}
+              </span>
+            </div>
+
+            <h3 class="exam-title">{exam.title}</h3>
+
+            <div class="exam-meta-row">
+              <span class="meta-chip"><Clock size={11} />{exam.durationMinutes}m</span>
+              <span class="meta-chip"><BarChart3 size={11} />{exam.totalMarks} marks</span>
+              <span class="meta-chip">Pass {exam.passMark}</span>
+            </div>
+
+            {#if s}
+              <div class="stats-strip">
+                <div class="stat-box">
+                  <span class="stat-val">{s.total}</span>
+                  <span class="stat-lbl">Students</span>
+                </div>
+                <div class="stat-divider"></div>
+                <div class="stat-box">
+                  <span class="stat-val">{s.submitted}</span>
+                  <span class="stat-lbl">Submitted</span>
+                </div>
+                <div class="stat-divider"></div>
+                <div class="stat-box">
+                  <span class="stat-val" style="color:#22c55e">{s.avg_pct ?? 0}%</span>
+                  <span class="stat-lbl">Avg</span>
+                </div>
+              </div>
+            {/if}
+
+            <div class="card-actions">
+              <a href="/lecturer/exams/{exam.id}/questions" class="act">
+                <FileText size={12} /> Questions
+              </a>
+              <a href="/lecturer/exams/{exam.id}/results" class="act">
+                <BarChart3 size={12} /> Results
+              </a>
+              <a href="/lecturer/exams/{exam.id}" class="act act-outline">
+                <Edit3 size={12} /> Manage
+              </a>
+            </div>
+          </div>
+        {/each}
+      </div>
+    </section>
+  {/if}
 
 </div>
 
 <style>
-  /* ── Base ─────────────────────────────────────────────── */
   .dashboard {
     padding: 2rem 2.5rem 3rem;
     max-width: 1400px; margin: 0 auto;
@@ -265,59 +222,48 @@
   .dash-header {
     display: flex; align-items: flex-start; justify-content: space-between;
     flex-wrap: wrap; gap: 1rem;
-    padding-bottom: 0.5rem;
-    border-bottom: 1px solid var(--color-border);
+    padding-bottom: 0.5rem; border-bottom: 1px solid var(--color-border);
   }
   .dash-eyebrow {
     display: inline-flex; align-items: center; gap: 0.4rem;
     font-size: 0.72rem; font-weight: 700; letter-spacing: 0.08em;
     text-transform: uppercase; color: #3b82f6; margin-bottom: 0.3rem;
   }
-  .dash-dot {
-    width: 7px; height: 7px; border-radius: 50%; background: #3b82f6;
-  }
-  .dash-dot.pulse {
-    animation: pulse 2s ease-in-out infinite;
-    box-shadow: 0 0 0 0 rgba(59,130,246,0.5);
-  }
+  .dash-dot { width: 7px; height: 7px; border-radius: 50%; background: #3b82f6; }
+  .dash-dot.pulse { animation: pulse 2s ease-in-out infinite; }
   @keyframes pulse {
-    0%   { box-shadow: 0 0 0 0 rgba(59,130,246,.5); }
-    70%  { box-shadow: 0 0 0 6px rgba(59,130,246,0); }
-    100% { box-shadow: 0 0 0 0 rgba(59,130,246,0); }
+    0%,100% { box-shadow: 0 0 0 0 rgba(59,130,246,.5); }
+    70%      { box-shadow: 0 0 0 6px rgba(59,130,246,0); }
   }
   .dash-title {
     font-size: 2.25rem; font-weight: 900; letter-spacing: -0.04em;
     color: var(--color-text); margin: 0 0 0.2rem; line-height: 1;
   }
   .dash-subtitle { font-size: 0.82rem; color: var(--color-muted); margin: 0; }
-  .dash-header-right { display: flex; align-items: center; gap: 1rem; flex-wrap: wrap; }
+  .dash-header-right { display: flex; align-items: center; }
   .header-actions { display: flex; gap: 0.75rem; }
 
   .btn-outline {
     display: inline-flex; align-items: center; gap: 0.5rem;
-    padding: 0.5rem 1rem;
-    background: transparent; border: 1px solid var(--color-border);
-    border-radius: 0.5rem; font-size: 0.8rem; font-weight: 500;
-    color: var(--color-text); cursor: pointer; transition: all 0.15s;
-    text-decoration: none;
+    padding: 0.5rem 1rem; background: transparent;
+    border: 1px solid var(--color-border); border-radius: 0.5rem;
+    font-size: 0.8rem; font-weight: 500; color: var(--color-text);
+    cursor: pointer; transition: all 0.15s; text-decoration: none;
   }
   .btn-outline:hover { border-color: #3b82f6; color: #3b82f6; }
 
   .btn-primary {
     display: inline-flex; align-items: center; gap: 0.5rem;
-    padding: 0.5rem 1rem;
-    background: #3b82f6; border: 1px solid #3b82f6;
-    border-radius: 0.5rem; font-size: 0.8rem; font-weight: 600;
-    color: white; cursor: pointer; transition: all 0.15s;
-    text-decoration: none;
+    padding: 0.5rem 1rem; background: #3b82f6;
+    border: 1px solid #3b82f6; border-radius: 0.5rem;
+    font-size: 0.8rem; font-weight: 600; color: white;
+    cursor: pointer; transition: all 0.15s; text-decoration: none;
   }
   .btn-primary:hover { background: #2563eb; border-color: #2563eb; }
 
   /* ── KPI Strip ───────────────────────────────────────── */
   .kpi-strip {
-    display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
-    gap: 1rem;
+    display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 1rem;
   }
   .kpi-card {
     background: var(--color-surface); border: 1px solid var(--color-border);
@@ -333,8 +279,7 @@
     to   { opacity: 1; transform: translateY(0); }
   }
   .kpi-card::before {
-    content: ''; position: absolute;
-    top: 0; left: 0; right: 0; height: 3px;
+    content: ''; position: absolute; top: 0; left: 0; right: 0; height: 3px;
     border-radius: 1rem 1rem 0 0;
   }
   .kpi-blue::before   { background: #3b82f6; }
@@ -342,38 +287,28 @@
   .kpi-violet::before { background: #a78bfa; }
   .kpi-amber::before  { background: #f59e0b; }
   .kpi-slate::before  { background: #64748b; }
+  .kpi-teal::before   { background: #14b8a6; }
 
   .kpi-icon {
     width: 36px; height: 36px; border-radius: 0.6rem;
-    display: flex; align-items: center; justify-content: center;
-    background: var(--color-bg);
+    display: flex; align-items: center; justify-content: center; background: var(--color-bg);
   }
   .kpi-blue   .kpi-icon { color: #3b82f6; }
   .kpi-green  .kpi-icon { color: #22c55e; }
   .kpi-violet .kpi-icon { color: #a78bfa; }
   .kpi-amber  .kpi-icon { color: #f59e0b; }
   .kpi-slate  .kpi-icon { color: #64748b; }
+  .kpi-teal   .kpi-icon { color: #14b8a6; }
 
   .kpi-body { display: flex; flex-direction: column; gap: 0.1rem; }
-  .kpi-value {
-    font-size: 1.9rem; font-weight: 900; letter-spacing: -0.04em;
-    color: var(--color-text); line-height: 1;
-  }
-  .kpi-label {
-    font-size: 0.7rem; font-weight: 600; text-transform: uppercase;
-    letter-spacing: 0.06em; color: var(--color-muted);
-  }
-  .kpi-trend {
-    display: inline-flex; align-items: center; gap: 0.2rem;
-    font-size: 0.68rem; font-weight: 700; color: var(--color-muted);
-  }
+  .kpi-value { font-size: 1.9rem; font-weight: 900; letter-spacing: -0.04em; color: var(--color-text); line-height: 1; }
+  .kpi-label { font-size: 0.7rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em; color: var(--color-muted); }
+  .kpi-trend { display: inline-flex; align-items: center; gap: 0.2rem; font-size: 0.68rem; font-weight: 700; color: var(--color-muted); }
   .kpi-trend.up { color: #22c55e; }
   .kpi-live-badge {
     font-size: 0.62rem; font-weight: 800; letter-spacing: 0.1em;
-    color: #f59e0b; background: rgba(245,158,11,0.12);
-    border: 1px solid rgba(245,158,11,0.25);
-    padding: 0.1rem 0.4rem; border-radius: 999px;
-    width: fit-content;
+    color: #f59e0b; background: rgba(245,158,11,0.12); border: 1px solid rgba(245,158,11,0.25);
+    padding: 0.1rem 0.4rem; border-radius: 999px; width: fit-content;
     animation: blink 1.5s step-end infinite;
   }
   @keyframes blink { 50% { opacity: 0.4; } }
@@ -381,16 +316,13 @@
   /* ── Panel ───────────────────────────────────────────── */
   .panel {
     background: var(--color-surface); border: 1px solid var(--color-border);
-    border-radius: 1rem; overflow: hidden;
-    animation: fadeUp 0.45s ease both;
+    border-radius: 1rem; overflow: hidden; animation: fadeUp 0.45s ease both;
   }
   .panel-head {
     display: flex; align-items: center; justify-content: space-between;
     padding: 1rem 1.25rem; border-bottom: 1px solid var(--color-border);
   }
-  .panel-title-wrap {
-    display: flex; align-items: center; gap: 0.5rem; color: var(--color-muted);
-  }
+  .panel-title-wrap { display: flex; align-items: center; gap: 0.5rem; color: var(--color-muted); }
   .panel-title-wrap h2 {
     font-size: 0.82rem; font-weight: 700; text-transform: uppercase;
     letter-spacing: 0.06em; color: var(--color-text); margin: 0;
@@ -400,119 +332,89 @@
     background: var(--color-bg); border: 1px solid var(--color-border);
     padding: 0.15rem 0.5rem; border-radius: 999px;
   }
+  .panel-link {
+    display: inline-flex; align-items: center; gap: 0.2rem;
+    font-size: 0.75rem; font-weight: 600; color: #3b82f6; text-decoration: none;
+    transition: gap 0.15s;
+  }
+  .panel-link:hover { gap: 0.4rem; }
 
-  /* ── Filters Bar ─────────────────────────────────────── */
-  .filters-bar {
-    display: flex; align-items: center; gap: 1rem; flex-wrap: wrap;
-    padding: 0.875rem 1.25rem;
-    border-bottom: 1px solid var(--color-border);
-    background: var(--color-bg);
+  /* ── Exam Grid ───────────────────────────────────────── */
+  .exam-grid {
+    padding: 1.25rem;
+    display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 1rem;
   }
-  .search-wrap {
-    position: relative; display: flex; align-items: center;
+  .exam-card {
+    background: var(--color-bg); border: 1px solid var(--color-border);
+    border-radius: 0.875rem; padding: 1.25rem;
+    display: flex; flex-direction: column; gap: 0.875rem;
+    position: relative; overflow: hidden;
+    transition: transform 0.15s, box-shadow 0.15s, border-color 0.15s;
+    animation: fadeUp 0.4s ease both;
   }
-  .search-wrap :global(.search-icon) {
-    position: absolute; left: 0.75rem; color: var(--color-muted); pointer-events: none;
-  }
-  .search-input {
-    padding: 0.45rem 0.875rem 0.45rem 2.25rem;
-    border: 1px solid var(--color-border);
-    border-radius: 0.5rem; background: var(--color-surface); color: var(--color-text);
-    font-size: 0.82rem; outline: none; width: 240px;
-    transition: border-color 0.15s;
-  }
-  .search-input:focus { border-color: #3b82f6; }
+  .exam-card:hover { transform: translateY(-2px); box-shadow: 0 8px 20px rgba(0,0,0,0.07); border-color: var(--color-primary, #3b82f6); }
 
-  .tabs { display: flex; gap: 0.35rem; flex-wrap: wrap; }
-  .tab {
-    display: inline-flex; align-items: center; gap: 0.35rem;
-    padding: 0.35rem 0.75rem; border: 1px solid var(--color-border);
-    border-radius: 999px; font-size: 0.75rem; font-weight: 500;
-    color: var(--color-muted); background: none; cursor: pointer;
-    transition: all 0.15s;
+  .card-accent {
+    position: absolute; top: 0; left: 0; right: 0; height: 3px;
+    border-radius: 0.875rem 0.875rem 0 0;
   }
-  .tab:hover { border-color: #3b82f6; color: #3b82f6; }
-  .tab.active { background: #3b82f6; border-color: #3b82f6; color: #fff; }
-  .tab-badge {
-    font-size: 0.62rem; font-weight: 800;
-    background: rgba(255,255,255,0.25); padding: 0 0.3rem;
-    border-radius: 999px; min-width: 16px; text-align: center;
-  }
-  .tab:not(.active) .tab-badge { background: var(--color-border); color: var(--color-muted); }
-  .tab-badge.live { background: rgba(245,158,11,0.2); color: #f59e0b; }
-  .tab.active .tab-badge.live { background: rgba(255,255,255,0.3); color: white; }
 
-  /* ── Table ───────────────────────────────────────────── */
-  .table-wrap { overflow-x: auto; }
-  table { width: 100%; border-collapse: collapse; font-size: 0.875rem; }
-  thead tr { background: var(--color-bg); }
-  th {
-    padding: 0.75rem 1rem; text-align: left;
-    font-size: 0.68rem; font-weight: 700; color: var(--color-muted);
-    text-transform: uppercase; letter-spacing: 0.06em;
-    border-bottom: 1px solid var(--color-border);
-  }
-  tbody tr {
-    border-bottom: 1px solid var(--color-border);
-    transition: background 0.12s;
-    animation: fadeUp 0.3s ease both;
-  }
-  tbody tr:last-child { border-bottom: none; }
-  tbody tr:hover { background: var(--color-bg); }
-  td { padding: 0.875rem 1rem; vertical-align: middle; }
-
+  .card-top { display: flex; justify-content: space-between; align-items: center; }
   .course-badge {
-    font-size: 0.72rem; font-weight: 700;
-    padding: 0.2rem 0.55rem;
-    background: rgba(59,130,246,0.1); color: #3b82f6;
-    border-radius: 999px; white-space: nowrap;
+    font-size: 0.7rem; font-weight: 700; padding: 0.2rem 0.55rem;
+    background: rgba(59,130,246,0.1); color: #3b82f6; border-radius: 999px;
   }
-  .exam-title { font-weight: 600; color: var(--color-text); }
-
   .status-pill {
-    display: inline-flex; align-items: center; gap: 0.35rem;
-    font-size: 0.7rem; font-weight: 700; padding: 0.25rem 0.6rem;
-    border-radius: 999px; border: 1px solid; white-space: nowrap;
+    display: inline-flex; align-items: center; gap: 0.3rem;
+    font-size: 0.68rem; font-weight: 700; padding: 0.2rem 0.55rem;
+    border-radius: 999px; border: 1px solid;
   }
-  .live-dot {
-    width: 5px; height: 5px; border-radius: 50%; background: currentColor;
-    animation: blink 1.5s step-end infinite;
+  .live-dot { width: 5px; height: 5px; border-radius: 50%; animation: blink 1.5s step-end infinite; }
+
+  .exam-title { font-size: 0.95rem; font-weight: 700; color: var(--color-text); margin: 0; line-height: 1.4; }
+
+  .exam-meta-row { display: flex; gap: 0.5rem; flex-wrap: wrap; }
+  .meta-chip {
+    display: inline-flex; align-items: center; gap: 0.3rem;
+    font-size: 0.7rem; font-weight: 500; color: var(--color-muted);
+    background: var(--color-surface); border: 1px solid var(--color-border);
+    padding: 0.15rem 0.5rem; border-radius: 999px;
   }
 
-  .duration-wrap {
-    display: flex; align-items: center; gap: 0.35rem;
-    font-size: 0.82rem; color: var(--color-text);
+  .stats-strip {
+    display: flex; align-items: center;
+    background: var(--color-surface); border: 1px solid var(--color-border);
+    border-radius: 0.6rem; overflow: hidden;
   }
-  .mono {
-    font-variant-numeric: tabular-nums; font-size: 0.8rem;
-    color: var(--color-muted);
-  }
+  .stat-box { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 0.1rem; padding: 0.6rem 0.5rem; }
+  .stat-val { font-size: 1.1rem; font-weight: 800; letter-spacing: -0.03em; color: var(--color-text); }
+  .stat-lbl { font-size: 0.6rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em; color: var(--color-muted); }
+  .stat-divider { width: 1px; height: 32px; background: var(--color-border); flex-shrink: 0; }
 
-  .actions-cell { display: flex; gap: 0.4rem; align-items: center; }
+  .card-actions { display: flex; gap: 0.4rem; margin-top: auto; }
   .act {
     display: inline-flex; align-items: center; gap: 0.3rem;
-    padding: 0.3rem 0.65rem;
-    background: var(--color-bg); border: 1px solid var(--color-border);
-    border-radius: 0.4rem; font-size: 0.73rem; font-weight: 500;
-    text-decoration: none; color: var(--color-text);
-    transition: all 0.12s; white-space: nowrap;
+    padding: 0.35rem 0.7rem; background: #3b82f6; border: 1px solid #3b82f6;
+    border-radius: 0.4rem; font-size: 0.73rem; font-weight: 600;
+    text-decoration: none; color: white; transition: all 0.12s;
   }
-  .act:hover { border-color: #3b82f6; color: #3b82f6; }
-  .act-ghost { padding: 0.3rem 0.5rem; }
+  .act:hover { background: #2563eb; border-color: #2563eb; }
+  .act.act-outline {
+    background: var(--color-surface); border-color: var(--color-border); color: var(--color-text);
+  }
+  .act.act-outline:hover { border-color: #3b82f6; color: #3b82f6; background: var(--color-surface); }
 
   /* ── Empty State ─────────────────────────────────────── */
   .empty-state {
-    display: flex; flex-direction: column; align-items: center; gap: 0.875rem;
+    display: flex; flex-direction: column; align-items: center; gap: 1rem;
     padding: 4rem 1.5rem; color: var(--color-muted); text-align: center;
   }
-  .empty-state p { font-size: 0.875rem; margin: 0; }
+  .empty-state p { font-size: 0.9rem; font-weight: 600; color: var(--color-text); margin: 0; }
 
-  /* ── Responsive ──────────────────────────────────────── */
   @media (max-width: 768px) {
     .dashboard { padding: 1.25rem 1rem; gap: 1.25rem; }
     .dash-title { font-size: 1.75rem; }
-    .kpi-strip  { grid-template-columns: repeat(2, 1fr); }
-    .search-input { width: 100%; }
-    .filters-bar { flex-direction: column; align-items: flex-start; }
+    .kpi-strip { grid-template-columns: repeat(2, 1fr); }
+    .exam-grid { grid-template-columns: 1fr; padding: 1rem; }
   }
 </style>
