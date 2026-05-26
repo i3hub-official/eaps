@@ -1,49 +1,21 @@
-// src/lib/server/db/index.ts
 import { PrismaClient } from '@prisma/client';
-import { PrismaPg } from '@prisma/adapter-pg';
 import pg from 'pg';
 import { DATABASE_URL } from '$env/static/private';
 
-// ─── Prisma pool ──────────────────────────────────────────────────────────────
-//
-// The pool MUST have an 'error' listener attached before any connection is
-// attempted. Without it, a broken idle connection emits an uncaught 'error'
-// event and Node's default handler calls process.exit().
-//
-// We create the pool once, attach the listener immediately, then pass it to
-// Prisma. The listener only logs — it never rethrows — so a lost DB connection
-// is visible in logs but never kills the server.
-
-const prismaPool = new pg.Pool({
-  connectionString: DATABASE_URL,
-  max: 10,
-  idleTimeoutMillis: 30_000,
-  connectionTimeoutMillis: 5_000,
-});
-
-// ⚠️  This MUST be registered before any query is made.
-// pg emits 'error' on the pool when a client encounters a network drop,
-// auth failure, or unexpected server termination while idle. Without a
-// listener, Node treats it as an uncaught exception → process crash.
-prismaPool.on('error', (err) => {
-  // Log but never throw — the next query will reconnect automatically.
-  console.error('[DB:prisma-pool] Idle client error (non-fatal):', err.message);
-});
-
-const adapter = new PrismaPg(prismaPool);
-
 // ─── Prisma singleton ─────────────────────────────────────────────────────────
 //
-// Stored on globalThis in dev so HMR doesn't create a new client (and new
-// connection pool) on every hot reload. In production there is only one
-// module instance so globalThis is not needed, but it's harmless.
+// Prisma manages its own pg pool internally. Pool behaviour is controlled via
+// DATABASE_URL query params — no adapter needed, one fewer abstraction layer.
+//
+// Stored on globalThis in dev so HMR doesn't spin up a new pool on every
+// hot reload. In production there is only one module instance so globalThis
+// is a no-op, but it's harmless.
 
 const globalForPrisma = globalThis as unknown as { prisma?: PrismaClient };
 
 export const prisma =
   globalForPrisma.prisma ??
   new PrismaClient({
-    adapter,
     log: process.env.NODE_ENV === 'development' ? ['warn', 'error'] : ['error'],
   });
 
@@ -53,8 +25,13 @@ if (process.env.NODE_ENV !== 'production') {
 
 // ─── Raw pg pool (complex queries / transactions only) ────────────────────────
 //
-// Separate pool from the Prisma one so raw SQL and ORM queries don't compete
-// for the same connections. Same error-listener discipline as above.
+// Kept separate from Prisma so raw SQL and ORM queries don't compete for
+// connections. Capped at 5 — combined with Prisma's own pool (also 5 via
+// DATABASE_URL) this stays well under typical hosted-DB limits (25–30).
+//
+// The 'error' listener MUST be attached before any connection is attempted.
+// Without it, a dropped idle connection emits an uncaught 'error' event and
+// Node's default handler calls process.exit().
 
 let _rawPool: pg.Pool | null = null;
 
@@ -63,8 +40,7 @@ function getRawPool(): pg.Pool {
 
   _rawPool = new pg.Pool({
     connectionString: DATABASE_URL,
-    ssl: false,
-    max: 10,
+    max: 5,
     idleTimeoutMillis: 30_000,
     connectionTimeoutMillis: 5_000,
   });
@@ -91,9 +67,6 @@ export async function sql<T extends pg.QueryResultRow = pg.QueryResultRow>(
     if (ms > 500) console.warn(`[DB] Slow query (${ms}ms):`, text.slice(0, 120));
     return result.rows;
   } catch (err) {
-    // Log the query prefix for debugging, then re-throw so the caller
-    // (a SvelteKit action or load fn) can return an appropriate HTTP response
-    // rather than leaving the request hanging.
     console.error('[DB] Raw query error:', text.slice(0, 120), err);
     throw err;
   }
@@ -112,14 +85,11 @@ export async function withTransaction<T>(
     await client.query('COMMIT');
     return result;
   } catch (err) {
-    // ROLLBACK is best-effort — if the connection is already dead this will
-    // also throw, but that's fine: we still re-throw the original error below.
     await client.query('ROLLBACK').catch((rbErr) => {
       console.error('[DB] ROLLBACK failed:', rbErr.message);
     });
     throw err;
   } finally {
-    // Always release so the connection returns to the pool.
     client.release();
   }
 }
