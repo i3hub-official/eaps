@@ -71,6 +71,7 @@
 		"html2canvas": "^1.4.1",
 		"jspdf": "^4.2.1",
 		"jsqr": "^1.4.0",
+		"lru-cache": "^11.5.0",
 		"lucide-svelte": "^1.0.1",
 		"nanoid": "^5.1.11",
 		"nodemailer": "^8.0.7",
