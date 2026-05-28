@@ -257,6 +257,8 @@ model Exam {
   showResultAfter    Boolean    @default(false) @map("show_result_after")
   maxViolations      Int        @default(5) @map("max_violations") @db.SmallInt
   session            String
+  levels      Int[]      @default([]) @db.SmallInt
+  department  String?
   semester           Int        @db.SmallInt
   createdAt          DateTime   @default(now()) @map("created_at") @db.Timestamptz()
   updatedAt          DateTime   @default(now()) @updatedAt @map("updated_at") @db.Timestamptz()
@@ -267,6 +269,7 @@ model Exam {
   examSessions ExamSession[]
   invigilators ExamInvigilator[]
   examResults  ExamResult[]
+  
 
   @@index([courseId])
   @@index([status])

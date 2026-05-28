@@ -35,6 +35,19 @@ export const actions: Actions = {
     const randomizeO      = d.get('randomize_options')   === 'on';
     const showResult      = d.get('show_result_after')   === 'on';
 
+    // ── Scope ────────────────────────────────────────────────────────────────
+    // levels: hidden input sends "all" or "100,200,300" or ""
+    const levelsRaw = String(d.get('levels') ?? '').trim();
+    const levels: number[] =
+      !levelsRaw || levelsRaw === 'all'
+        ? []                                                 // empty = no restriction
+        : levelsRaw.split(',').map(Number).filter(n => !isNaN(n) && n > 0);
+
+    // department: free-text, split on commas, store as single nullable string
+    const departmentRaw = String(d.get('department') ?? '').trim();
+    const department    = departmentRaw || null;
+
+    // ── Validation ───────────────────────────────────────────────────────────
     if (!title)    return fail(400, { error: 'Title is required' });
     if (!courseId) return fail(400, { error: 'Course is required' });
     if (!session)  return fail(400, { error: 'Session is required' });
@@ -44,6 +57,7 @@ export const actions: Actions = {
       durationMinutes, totalMarks, passMark, maxViolations,
       scheduledStart, scheduledEnd, session, semester,
       randomizeQuestions: randomizeQ, randomizeOptions: randomizeO, showResultAfter: showResult,
+      levels, department,
     });
 
     redirect(302, `/lecturer/exams/${exam.id}/questions`);

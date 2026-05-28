@@ -345,6 +345,7 @@
     display: flex; flex-direction: column;
     z-index: 100; transform: translateX(-100%);
     transition: transform 0.25s cubic-bezier(0.16,1,0.3,1);
+    overflow: hidden;
   }
   .sidebar.sidebar-open { transform: translateX(0); }
 
@@ -354,7 +355,7 @@
     z-index: 99; animation: fadeIn 0.2s ease;
   }
 
-  .sidebar-header {
+  .sidebar-header { flex-shrink: 0;
     display: flex; justify-content: space-between; align-items: center;
     padding: 1.25rem 1.5rem; border-bottom: 1px solid var(--color-border);
   }
@@ -382,11 +383,8 @@
   /* ── Nav ─────────────────────────────────────────────── */
   .sidebar-nav {
     flex: 1; padding: 1rem;
-    display: flex; flex-direction: column; gap: 0.125rem; overflow-y: auto;
+    display: flex; flex-direction: column; gap: 0.125rem; overflow: visible; min-height: 0;
   }
-  .sidebar-nav::-webkit-scrollbar { width: 4px; }
-  .sidebar-nav::-webkit-scrollbar-track { background: transparent; }
-  .sidebar-nav::-webkit-scrollbar-thumb { background: var(--color-border); border-radius: 2px; }
 
   .nav-link {
     display: flex; align-items: center; gap: 0.75rem;
@@ -508,10 +506,11 @@
 
   /* ── Desktop ─────────────────────────────────────────── */
   @media (min-width: 1024px) {
-    .sidebar { position: sticky; transform: translateX(0); width: 260px; }
+    .lecturer-layout { align-items: flex-start; }
+    .sidebar { position: sticky; top: 0; height: 100vh; transform: translateX(0); width: 260px; overflow: hidden; flex-shrink: 0; }
     .sidebar-overlay, .close-sidebar, .menu-toggle { display: none; }
-    .main-content { margin-left: 0; flex: 1; }
-    .page-content { padding: 2rem 2.5rem; }
+    .main-content { margin-left: 0; flex: 1; min-width: 0; min-height: 100vh; display: flex; flex-direction: column; }
+    .page-content { padding: 2rem 2.5rem; flex: 1; }
   }
 
   @media (min-width: 1280px) { .sidebar { width: 280px; } }
