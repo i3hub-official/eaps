@@ -39,7 +39,7 @@
     try {
       const fd = new FormData();
       fd.set('email', email);
-      const res    = await fetch('?/default', { method: 'POST', body: fd });
+const res = await fetch('', { method: 'POST', body: fd });
       const result = deserialize(await res.text()) as any;
 
       if (result.data?.error) { error = result.data.error; return; }
