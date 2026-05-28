@@ -1,4 +1,4 @@
-<!-- src/routes/(lecturer)/+layout.svelte -->
+<!-- src/routes/lecturer/+layout.svelte -->
 <script lang="ts">
   import type { LayoutData } from './$types';
   import { page } from '$app/stores';
@@ -8,7 +8,7 @@
   import {
     LayoutDashboard, BookOpen, ClipboardList, Menu, X,
     Sun, Moon, LogOut, ChevronRight, Loader2,
-    PlusCircle, BarChart2, ChevronDown,
+    PlusCircle, BarChart2, ChevronDown, AlertCircle
   } from 'lucide-svelte';
 
   let { data, children }: { data: LayoutData; children: import('svelte').Snippet } = $props();
@@ -19,6 +19,8 @@
   let sidebarOpen = $state(false);
   let navLoading = $state<string | null>(null);
   let examsExpanded = $state(false);
+  let showSignoutModal = $state(false);
+  let isSigningOut = $state(false);
 
   const navGroups = [
     { href: '/lecturer', label: 'Dashboard', icon: LayoutDashboard, children: null },
@@ -27,9 +29,9 @@
       label: 'Exams',
       icon: ClipboardList,
       children: [
-        { href: '/lecturer/exams', label: 'All Exams', icon: ClipboardList },
-        { href: '/lecturer/exams/create', label: 'Create Exam', icon: PlusCircle },
-        { href: '/lecturer/results', label: 'Results', icon: BarChart2 },
+        { href: '/lecturer/exams',        label: 'All Exams',    icon: ClipboardList },
+        { href: '/lecturer/exams/create', label: 'Create Exam',  icon: PlusCircle },
+        { href: '/lecturer/results',      label: 'Results',      icon: BarChart2 },
       ]
     },
   ];
@@ -62,14 +64,27 @@
     }
   }
 
-  function toggleExamsGroup() {
-    examsExpanded = !examsExpanded;
+  function toggleExamsGroup() { examsExpanded = !examsExpanded; }
+  function openSignoutModal()  { showSignoutModal = true; }
+  function closeSignoutModal() { if (!isSigningOut) showSignoutModal = false; }
+
+  async function confirmSignout() {
+    isSigningOut = true;
+    try {
+      const form = document.createElement('form');
+      form.method = 'POST';
+      form.action = '/logout';
+      document.body.appendChild(form);
+      form.submit();
+    } catch (error) {
+      console.error('Signout failed:', error);
+      isSigningOut = false;
+      closeSignoutModal();
+    }
   }
 
   $effect(() => {
-    if (isGroupActive(navGroups[1])) {
-      examsExpanded = true;
-    }
+    if (isGroupActive(navGroups[1])) examsExpanded = true;
   });
 </script>
 
@@ -83,6 +98,41 @@
     <div class="sidebar-overlay" onclick={() => sidebarOpen = false}></div>
   {/if}
 
+  <!-- Sign-out confirmation modal -->
+  {#if showSignoutModal}
+    <div class="modal-overlay" onclick={closeSignoutModal}>
+      <div class="modal-container" onclick={(e) => e.stopPropagation()}>
+        <div class="modal-header">
+          <div class="modal-icon">
+            <LogOut size={24} />
+          </div>
+          <h3>Sign Out</h3>
+          <button class="modal-close" onclick={closeSignoutModal} disabled={isSigningOut}>
+            <X size={20} />
+          </button>
+        </div>
+        <div class="modal-body">
+          <AlertCircle size={20} />
+          <p>Are you sure you want to sign out?</p>
+          <p class="modal-warning">You'll need to sign in again to access your dashboard.</p>
+        </div>
+        <div class="modal-footer">
+          <button class="modal-btn modal-btn-secondary" onclick={closeSignoutModal} disabled={isSigningOut}>
+            Cancel
+          </button>
+          <button class="modal-btn modal-btn-danger" onclick={confirmSignout} disabled={isSigningOut}>
+            {#if isSigningOut}
+              <Loader2 size={16} class="spin" /> Signing Out…
+            {:else}
+              <LogOut size={16} /> Sign Out
+            {/if}
+          </button>
+        </div>
+      </div>
+    </div>
+  {/if}
+
+  <!-- Sidebar -->
   <aside class="sidebar" class:sidebar-open={sidebarOpen}>
     <div class="sidebar-header">
       <div class="logo">
@@ -172,15 +222,14 @@
           <span class="user-role">Lecturer</span>
         </div>
       </div>
-      <form method="POST" action="/logout">
-        <button type="submit" class="logout-btn">
-          <LogOut size={16} />
-          <span>Sign Out</span>
-        </button>
-      </form>
+      <button onclick={openSignoutModal} class="logout-btn">
+        <LogOut size={16} />
+        <span>Sign Out</span>
+      </button>
     </div>
   </aside>
 
+  <!-- Main content -->
   <main class="main-content">
     <header class="main-header">
       <button class="menu-toggle" onclick={() => sidebarOpen = true} aria-label="Open menu">
@@ -191,15 +240,11 @@
         {#if navLoading}
           <div class="header-loading">
             <Loader2 size={16} class="spin" />
-            <span>Loading...</span>
+            <span>Loading…</span>
           </div>
         {/if}
         <button class="theme-btn" onclick={toggleTheme} type="button" aria-label="Toggle theme">
-          {#if theme === 'dark'}
-            <Sun size={16} />
-          {:else}
-            <Moon size={16} />
-          {/if}
+          {#if theme === 'dark'}<Sun size={16} />{:else}<Moon size={16} />{/if}
         </button>
         <div class="lecturer-badge">
           <BookOpen size={14} />
@@ -215,429 +260,266 @@
 </div>
 
 <style>
+  /* ── Brand tokens ─────────────────────────────────────── */
+  :root {
+    --green-500: #22c55e;
+    --green-600: #16a34a;
+    --green-700: #15803d;
+    --green-800: #166534;
+  }
+
   .lecturer-layout {
     display: flex;
     min-height: 100vh;
     background: var(--color-bg);
   }
 
-  /* Sidebar */
-  .sidebar {
-    position: fixed;
-    top: 0;
-    left: 0;
-    bottom: 0;
-    width: 280px;
-    background: var(--color-surface);
-    border-right: 1px solid var(--color-border);
-    display: flex;
-    flex-direction: column;
-    z-index: 100;
-    transform: translateX(-100%);
-    transition: transform 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+  /* ── Modal ───────────────────────────────────────────── */
+  .modal-overlay {
+    position: fixed; inset: 0;
+    background: rgba(0,0,0,0.6); backdrop-filter: blur(4px);
+    display: flex; align-items: center; justify-content: center;
+    z-index: 1000; animation: fadeIn 0.2s ease;
   }
 
-  .sidebar.sidebar-open {
-    transform: translateX(0);
+  .modal-container {
+    background: var(--color-surface); border-radius: 1rem;
+    width: 90%; max-width: 420px;
+    box-shadow: 0 20px 35px -8px rgba(0,0,0,0.2);
+    animation: slideUp 0.25s cubic-bezier(0.16,1,0.3,1);
+    border: 1px solid var(--color-border);
   }
+
+  .modal-header {
+    display: flex; align-items: center; gap: 0.75rem;
+    padding: 1.25rem 1.5rem; border-bottom: 1px solid var(--color-border);
+  }
+
+  .modal-icon {
+    width: 40px; height: 40px;
+    background: rgba(220,38,38,0.1); border-radius: 0.75rem;
+    display: flex; align-items: center; justify-content: center; color: #dc2626;
+  }
+
+  .modal-header h3 { font-size: 1.25rem; font-weight: 700; color: var(--color-text); margin: 0; flex: 1; }
+
+  .modal-close {
+    background: transparent; border: none; color: var(--color-muted);
+    cursor: pointer; padding: 0.25rem; border-radius: 0.375rem;
+    display: flex; align-items: center; transition: all 0.15s;
+  }
+  .modal-close:hover:not(:disabled) { background: var(--color-surface-hover); color: var(--color-text); }
+  .modal-close:disabled { opacity: 0.5; cursor: not-allowed; }
+
+  .modal-body { padding: 1.5rem; text-align: center; }
+  .modal-body svg { color: #dc2626; margin-bottom: 0.75rem; }
+  .modal-body p { margin: 0.5rem 0; font-size: 0.95rem; color: var(--color-text); }
+  .modal-body p:first-of-type { font-weight: 600; font-size: 1rem; }
+  .modal-warning { font-size: 0.8rem !important; color: var(--color-muted) !important; }
+
+  .modal-footer {
+    display: flex; gap: 0.75rem;
+    padding: 1rem 1.5rem 1.5rem; border-top: 1px solid var(--color-border);
+  }
+
+  .modal-btn {
+    flex: 1; display: inline-flex; align-items: center; justify-content: center; gap: 0.5rem;
+    padding: 0.6rem 1rem; border-radius: 0.5rem;
+    font-size: 0.85rem; font-weight: 600; cursor: pointer; transition: all 0.15s; border: none;
+  }
+  .modal-btn:disabled { opacity: 0.6; cursor: not-allowed; }
+  .modal-btn-secondary {
+    background: transparent; border: 1px solid var(--color-border); color: var(--color-text);
+  }
+  .modal-btn-secondary:hover:not(:disabled) { background: var(--color-surface-hover); }
+  .modal-btn-danger { background: #dc2626; color: white; }
+  .modal-btn-danger:hover:not(:disabled) {
+    background: #b91c1c; transform: translateY(-1px);
+    box-shadow: 0 4px 12px rgba(220,38,38,0.3);
+  }
+
+  /* ── Sidebar ─────────────────────────────────────────── */
+  .sidebar {
+    position: fixed; top: 0; left: 0; bottom: 0; width: 280px;
+    background: var(--color-surface); border-right: 1px solid var(--color-border);
+    display: flex; flex-direction: column;
+    z-index: 100; transform: translateX(-100%);
+    transition: transform 0.25s cubic-bezier(0.16,1,0.3,1);
+  }
+  .sidebar.sidebar-open { transform: translateX(0); }
 
   .sidebar-overlay {
-    position: fixed;
-    inset: 0;
-    background: rgba(0, 0, 0, 0.5);
-    backdrop-filter: blur(2px);
-    z-index: 99;
-    animation: fadeIn 0.2s ease;
+    position: fixed; inset: 0;
+    background: rgba(0,0,0,0.5); backdrop-filter: blur(2px);
+    z-index: 99; animation: fadeIn 0.2s ease;
   }
 
   .sidebar-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    padding: 1.25rem 1.5rem;
-    border-bottom: 1px solid var(--color-border);
+    display: flex; justify-content: space-between; align-items: center;
+    padding: 1.25rem 1.5rem; border-bottom: 1px solid var(--color-border);
   }
 
-  .logo {
-    display: flex;
-    align-items: center;
-    gap: 0.75rem;
-  }
+  .logo { display: flex; align-items: center; gap: 0.75rem; }
 
   .logo-icon {
-    width: 36px;
-    height: 36px;
-    background: linear-gradient(135deg, #16a34a, #2563eb);
+    width: 36px; height: 36px;
+    background: linear-gradient(135deg, var(--green-600), var(--green-700));
     border-radius: 0.5rem;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    color: white;
+    display: flex; align-items: center; justify-content: center; color: white;
   }
 
-  .logo-text {
-    display: flex;
-    flex-direction: column;
-  }
-
-  .logo-title {
-    font-weight: 800;
-    font-size: 0.9rem;
-    color: var(--color-text);
-  }
-
-  .logo-badge {
-    font-size: 0.65rem;
-    font-weight: 600;
-    color: #2563eb;
-    text-transform: uppercase;
-  }
+  .logo-text { display: flex; flex-direction: column; }
+  .logo-title { font-weight: 800; font-size: 0.9rem; color: var(--color-text); }
+  .logo-badge { font-size: 0.65rem; font-weight: 600; color: var(--green-600); text-transform: uppercase; }
 
   .close-sidebar {
-    background: none;
-    border: none;
-    color: var(--color-muted);
-    cursor: pointer;
-    padding: 0.25rem;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    border-radius: 0.25rem;
+    background: none; border: none; color: var(--color-muted);
+    cursor: pointer; padding: 0.25rem; border-radius: 0.25rem;
+    display: flex; align-items: center; justify-content: center;
   }
+  .close-sidebar:hover { color: var(--color-text); background: var(--color-bg); }
 
-  .close-sidebar:hover {
-    color: var(--color-text);
-    background: var(--color-bg);
-  }
-
-  /* Navigation */
+  /* ── Nav ─────────────────────────────────────────────── */
   .sidebar-nav {
-    flex: 1;
-    padding: 1rem;
-    display: flex;
-    flex-direction: column;
-    gap: 0.125rem;
-    overflow-y: auto;
+    flex: 1; padding: 1rem;
+    display: flex; flex-direction: column; gap: 0.125rem; overflow-y: auto;
   }
-
   .sidebar-nav::-webkit-scrollbar { width: 4px; }
   .sidebar-nav::-webkit-scrollbar-track { background: transparent; }
-  .sidebar-nav::-webkit-scrollbar-thumb {
-    background: var(--color-border);
-    border-radius: 2px;
-  }
+  .sidebar-nav::-webkit-scrollbar-thumb { background: var(--color-border); border-radius: 2px; }
 
   .nav-link {
-    display: flex;
-    align-items: center;
-    gap: 0.75rem;
-    padding: 0.7rem 1rem;
-    border-radius: 0.5rem;
-    text-decoration: none;
-    color: var(--color-text);
-    font-weight: 500;
-    font-size: 0.875rem;
-    transition: all 0.15s;
-    position: relative;
-    border: none;
-    background: none;
-    cursor: pointer;
-    width: 100%;
-    text-align: left;
+    display: flex; align-items: center; gap: 0.75rem;
+    padding: 0.7rem 1rem; border-radius: 0.5rem;
+    text-decoration: none; color: var(--color-text);
+    font-weight: 500; font-size: 0.875rem; transition: all 0.15s;
+    border: none; background: none; cursor: pointer; width: 100%; text-align: left;
   }
-
   .nav-link:hover { background: var(--color-surface-hover); }
+  .nav-link.active { background: rgba(22,163,74,0.1); color: var(--green-600); }
+  .nav-link.loading { opacity: 0.7; pointer-events: none; }
 
-  .nav-link.active {
-    background: rgba(37, 99, 235, 0.1);
-    color: #2563eb;
-  }
+  .nav-arrow { margin-left: auto; opacity: 0.5; }
+  .nav-loader { margin-left: auto; animation: spin 0.8s linear infinite; color: var(--green-600); }
 
-  .nav-link.loading {
-    opacity: 0.7;
-    pointer-events: none;
-  }
-
-  .nav-arrow {
-    margin-left: auto;
-    opacity: 0.5;
-  }
-
-  .nav-loader {
-    margin-left: auto;
-    animation: spin 0.8s linear infinite;
-    color: #2563eb;
-  }
-
-  /* Nav Group */
   .nav-group { display: flex; flex-direction: column; }
   .nav-group-trigger { justify-content: flex-start; }
-
-  .nav-chevron {
-    margin-left: auto;
-    transition: transform 0.2s ease;
-    opacity: 0.5;
-  }
-
+  .nav-chevron { margin-left: auto; transition: transform 0.2s ease; opacity: 0.5; }
   .nav-group.expanded .nav-chevron { transform: rotate(180deg); }
 
   .nav-children {
-    display: flex;
-    flex-direction: column;
-    gap: 0.125rem;
-    padding-left: 0.5rem;
-    margin-left: 0.75rem;
-    border-left: 2px solid rgba(22, 163, 74, 0.35);
+    display: flex; flex-direction: column; gap: 0.125rem;
+    padding-left: 0.5rem; margin-left: 0.75rem;
+    border-left: 2px solid rgba(22,163,74,0.35);
     animation: slideDown 0.2s ease;
   }
 
-  .nav-child {
-    padding: 0.6rem 0.75rem;
-    font-size: 0.82rem;
-    color: var(--color-muted);
-  }
-
+  .nav-child { padding: 0.6rem 0.75rem; font-size: 0.82rem; color: var(--color-muted); }
   .nav-child:hover { color: var(--color-text); }
-
-  .nav-child.active {
-    background: rgba(37, 99, 235, 0.08);
-    color: #2563eb;
-  }
+  .nav-child.active { background: rgba(22,163,74,0.08); color: var(--green-600); }
 
   .child-active-dot {
-    width: 6px;
-    height: 6px;
-    border-radius: 50%;
-    background: #2563eb;
-    margin-left: auto;
+    width: 6px; height: 6px; border-radius: 50%;
+    background: var(--green-600); margin-left: auto;
   }
 
-  /* Loading bar */
-  .nav-loading-bar {
-    height: 2px;
-    background: var(--color-border);
-    overflow: hidden;
-    flex-shrink: 0;
-  }
-
+  /* ── Loading bar ─────────────────────────────────────── */
+  .nav-loading-bar { height: 2px; background: var(--color-border); overflow: hidden; flex-shrink: 0; }
   .nav-loading-progress {
-    height: 100%;
-    width: 40%;
-    background: #2563eb;
+    height: 100%; width: 40%; background: var(--green-600);
     animation: loadingSlide 1s ease-in-out infinite;
   }
 
-  /* Sidebar Footer */
-  .sidebar-footer {
-    padding: 1rem 1.5rem;
-    border-top: 1px solid var(--color-border);
-    flex-shrink: 0;
-  }
+  /* ── Sidebar footer ──────────────────────────────────── */
+  .sidebar-footer { padding: 1rem 1.5rem; border-top: 1px solid var(--color-border); flex-shrink: 0; }
 
-  .user-info {
-    display: flex;
-    align-items: center;
-    gap: 0.75rem;
-    margin-bottom: 1rem;
-  }
+  .user-info { display: flex; align-items: center; gap: 0.75rem; margin-bottom: 1rem; }
 
   .user-avatar {
-    width: 40px;
-    height: 40px;
-    background: linear-gradient(135deg, #16a34a, #2563eb);
+    width: 40px; height: 40px;
+    background: linear-gradient(135deg, var(--green-600), var(--green-700));
     border-radius: 50%;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-weight: 700;
-    font-size: 1rem;
-    color: white;
+    display: flex; align-items: center; justify-content: center;
+    font-weight: 700; font-size: 1rem; color: white;
   }
 
   .user-details { display: flex; flex-direction: column; }
-
-  .user-name {
-    font-weight: 600;
-    font-size: 0.85rem;
-    color: var(--color-text);
-  }
-
-  .user-role {
-    font-size: 0.7rem;
-    color: var(--color-muted);
-  }
+  .user-name { font-weight: 600; font-size: 0.85rem; color: var(--color-text); }
+  .user-role { font-size: 0.7rem; color: var(--color-muted); }
 
   .logout-btn {
-    width: 100%;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    gap: 0.5rem;
-    padding: 0.6rem;
-    background: transparent;
-    border: 1px solid var(--color-border);
-    border-radius: 0.5rem;
-    color: #dc2626;
-    font-size: 0.8rem;
-    font-weight: 600;
-    cursor: pointer;
-    transition: all 0.15s;
+    width: 100%; display: flex; align-items: center; justify-content: center; gap: 0.5rem;
+    padding: 0.6rem; background: transparent;
+    border: 1px solid var(--color-border); border-radius: 0.5rem;
+    color: #dc2626; font-size: 0.8rem; font-weight: 600;
+    cursor: pointer; transition: all 0.15s;
   }
+  .logout-btn:hover { background: rgba(220,38,38,0.1); border-color: #dc2626; }
 
-  .logout-btn:hover {
-    background: rgba(220, 38, 38, 0.1);
-    border-color: #dc2626;
-  }
-
-  /* Main Content */
-  .main-content {
-    flex: 1;
-    margin-left: 0;
-    min-width: 0;
-    width: 100%;
-  }
+  /* ── Main content ────────────────────────────────────── */
+  .main-content { flex: 1; margin-left: 0; min-width: 0; width: 100%; }
 
   .main-header {
-    position: sticky;
-    top: 0;
-    background: var(--color-surface);
-    border-bottom: 1px solid var(--color-border);
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    padding: 0.75rem 1.5rem;
-    z-index: 50;
-    gap: 1rem;
+    position: sticky; top: 0;
+    background: var(--color-surface); border-bottom: 1px solid var(--color-border);
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 0.75rem 1.5rem; z-index: 50; gap: 1rem;
   }
 
   .menu-toggle {
-    background: none;
-    border: none;
-    color: var(--color-text);
-    cursor: pointer;
-    padding: 0.5rem;
-    border-radius: 0.5rem;
-    display: flex;
-    align-items: center;
-    justify-content: center;
+    background: none; border: none; color: var(--color-text);
+    cursor: pointer; padding: 0.5rem; border-radius: 0.5rem;
+    display: flex; align-items: center; justify-content: center;
   }
-
   .menu-toggle:hover { background: var(--color-surface-hover); }
 
-  .header-right {
-    display: flex;
-    align-items: center;
-    gap: 0.75rem;
-  }
+  .header-right { display: flex; align-items: center; gap: 0.75rem; }
 
   .header-loading {
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
-    padding: 0.4rem 0.75rem;
-    background: rgba(37, 99, 235, 0.1);
-    border-radius: 0.5rem;
-    font-size: 0.75rem;
-    font-weight: 600;
-    color: #2563eb;
-    animation: fadeIn 0.2s ease;
+    display: flex; align-items: center; gap: 0.5rem;
+    padding: 0.4rem 0.75rem; background: rgba(22,163,74,0.1);
+    border-radius: 0.5rem; font-size: 0.75rem; font-weight: 600;
+    color: var(--green-600); animation: fadeIn 0.2s ease;
   }
-
   .header-loading .spin { animation: spin 0.8s linear infinite; }
 
   .theme-btn {
-    width: 36px;
-    height: 36px;
-    border-radius: 0.5rem;
-    border: 1px solid var(--color-border);
-    background: transparent;
-    color: var(--color-text);
-    cursor: pointer;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    transition: all 0.15s;
+    width: 36px; height: 36px; border-radius: 0.5rem;
+    border: 1px solid var(--color-border); background: transparent;
+    color: var(--color-text); cursor: pointer;
+    display: flex; align-items: center; justify-content: center; transition: all 0.15s;
   }
-
   .theme-btn:hover { background: var(--color-surface-hover); }
 
   .lecturer-badge {
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
-    padding: 0.4rem 0.8rem;
-    background: rgba(37, 99, 235, 0.1);
-    border-radius: 2rem;
-    font-size: 0.75rem;
-    font-weight: 600;
-    color: #2563eb;
+    display: flex; align-items: center; gap: 0.5rem;
+    padding: 0.4rem 0.8rem; background: rgba(22,163,74,0.1);
+    border-radius: 2rem; font-size: 0.75rem; font-weight: 600; color: var(--green-600);
   }
 
-  .page-content {
-    padding: 2rem 1.5rem;
-  }
+  .page-content { padding: 2rem 1.5rem; }
 
-  /* Animations */
-  @keyframes fadeIn {
-    from { opacity: 0; }
-    to { opacity: 1; }
-  }
+  /* ── Animations ──────────────────────────────────────── */
+  @keyframes fadeIn    { from { opacity: 0; } to { opacity: 1; } }
+  @keyframes slideUp   { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: translateY(0); } }
+  @keyframes slideDown { from { opacity: 0; transform: translateY(-8px); } to { opacity: 1; transform: translateY(0); } }
+  @keyframes spin      { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+  @keyframes loadingSlide { 0% { transform: translateX(-100%); } 100% { transform: translateX(250%); } }
 
-  @keyframes slideDown {
-    from { opacity: 0; transform: translateY(-8px); }
-    to { opacity: 1; transform: translateY(0); }
-  }
-
-  @keyframes spin {
-    from { transform: rotate(0deg); }
-    to { transform: rotate(360deg); }
-  }
-
-  @keyframes loadingSlide {
-    0% { transform: translateX(-100%); }
-    100% { transform: translateX(250%); }
-  }
-
-  /* Desktop */
+  /* ── Desktop ─────────────────────────────────────────── */
   @media (min-width: 1024px) {
-    .sidebar {
-      position: sticky;
-      transform: translateX(0);
-      width: 260px;
-    }
-
-    .sidebar-overlay { display: none; }
-    .close-sidebar { display: none; }
-    .menu-toggle { display: none; }
-
-    .main-content {
-      margin-left: 0;
-      flex: 1;
-    }
-
-    .page-content {
-      padding: 2rem 2.5rem;
-    }
+    .sidebar { position: sticky; transform: translateX(0); width: 260px; }
+    .sidebar-overlay, .close-sidebar, .menu-toggle { display: none; }
+    .main-content { margin-left: 0; flex: 1; }
+    .page-content { padding: 2rem 2.5rem; }
   }
 
-  @media (min-width: 1280px) {
-    .sidebar { width: 280px; }
-  }
+  @media (min-width: 1280px) { .sidebar { width: 280px; } }
 
-  /* Dark mode */
-  :global(.dark) .lecturer-badge {
-    background: rgba(37, 99, 235, 0.15);
-  }
-
-  :global(.dark) .logout-btn {
-    border-color: rgba(220, 38, 38, 0.3);
-  }
-
-  :global(.dark) .logout-btn:hover {
-    background: rgba(220, 38, 38, 0.15);
-  }
-
-  :global(.dark) .header-loading {
-    background: rgba(37, 99, 235, 0.15);
-  }
+  /* ── Dark mode ───────────────────────────────────────── */
+  :global(.dark) .lecturer-badge    { background: rgba(22,163,74,0.15); }
+  :global(.dark) .header-loading    { background: rgba(22,163,74,0.15); }
+  :global(.dark) .logout-btn        { border-color: rgba(220,38,38,0.3); }
+  :global(.dark) .logout-btn:hover  { background: rgba(220,38,38,0.15); }
+  :global(.dark) .modal-icon        { background: rgba(220,38,38,0.15); }
 </style>

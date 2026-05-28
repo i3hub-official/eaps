@@ -22,7 +22,7 @@
  const links = [
   { href: '/student',         label: 'Dashboard',      icon: LayoutDashboard },
   { href: '/student/results', label: 'My Results',     icon: BarChart2       },
-  { href: '/student/enroll',  label: 'Face Enrollment', icon: Camera          },
+  { href: '/enroll',  label: 'Face Enrollment', icon: Camera          },
 ];
 
   const currentPath = $derived($page.url.pathname);

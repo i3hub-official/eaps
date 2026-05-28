@@ -11,8 +11,8 @@
   let stream: MediaStream | null = null;
   let raf: number | null = null;
 
-  type Status = 'loading' | 'gesture' | 'processing' | 'done' | 'error';
-  let status = $state<Status>('loading');
+  type Status = 'intro' | 'loading' | 'gesture' | 'processing' | 'done' | 'error';
+let status = $state<Status>('intro');
   let headline = $state('Enrolling your face');
   let subline  = $state('Starting camera…');
   let gestureIndex  = $state(0);
@@ -28,16 +28,15 @@
   let faceapi: typeof import('@vladmandic/face-api') | null = null;
 
   const GESTURES = [
-    { id: 'smile',       label: 'Smile naturally' },
-    { id: 'open_mouth',  label: 'Open your mouth' },
-    { id: 'turn_left',   label: 'Turn head left' },
-    { id: 'turn_right',  label: 'Turn head right' },
-    { id: 'raise_brows', label: 'Raise your eyebrows' },
-    { id: 'blink',       label: 'Blink slowly' },
-    { id: 'nod',         label: 'Nod your head' },
-  ];
-  const CAPTURES_PER = 3;
-  const TOTAL        = 4;
+  { id: 'open_mouth',  label: 'Open your mouth' },
+  { id: 'turn_left',   label: 'Turn head left'  },
+  { id: 'turn_right',  label: 'Turn head right'  },
+  { id: 'raise_brows', label: 'Raise your eyebrows' },
+  { id: 'nod',         label: 'Nod your head'   },
+];
+const CAPTURES_PER = 3;
+const TOTAL        = 3;
+
   let selected: typeof GESTURES = [];
 
   // ── landmark helpers ────────────────────────────────────────────────────────
@@ -227,6 +226,11 @@
     stream = null;
   }
 
+  function startEnrollment() {
+  status = 'loading';
+  init();
+}
+
   function retry() {
     descriptors = []; captureCount = 0; gesturesDone = 0;
     gestureDetected = false; lastNodY = null;
@@ -269,7 +273,7 @@
     }
   }
 
-  onMount(init);
+  onMount(() => {});
   onDestroy(stopCamera);
 
   let currentGestureLabel = $derived(
@@ -314,51 +318,75 @@
     {/if}
   </div>
 
-  <!-- bottom panel -->
-  <div class="bottom">
+ <!-- bottom panel -->
+<div class="bottom">
 
-    {#if status === 'done'}
-      <!-- success card -->
-      <div class="result-card">
-        <div class="avatar-ring">
-          <div class="avatar-check">
-            <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="#00c9a7" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-              <polyline points="20 6 9 17 4 12"/>
-            </svg>
-          </div>
+  {#if status === 'intro'}
+    <div class="intro-card">
+      <div class="intro-icon">
+        <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#00c9a7" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M12 2a5 5 0 1 0 0 10A5 5 0 0 0 12 2z"/>
+          <path d="M3 20a9 9 0 0 1 18 0"/>
+        </svg>
+      </div>
+      <h2 class="intro-title">Face Enrollment</h2>
+      <p class="intro-desc">
+        We'll verify you're a real person by asking you to perform
+        <strong>3 simple gestures</strong> in front of your camera.
+      </p>
+      <ul class="intro-steps">
+        <li><span class="step-dot">1</span> Allow camera access when prompted</li>
+        <li><span class="step-dot">2</span> Follow each gesture shown on screen</li>
+        <li><span class="step-dot">3</span> Hold each gesture briefly until captured</li>
+      </ul>
+      <div class="intro-note">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+        Your face data is stored securely and only used for exam verification.
+      </div>
+      <button class="cta" onclick={startEnrollment}>Start Enrollment</button>
+      <a href="/student" class="skip">Do this later</a>
+    </div>
+
+  {:else if status === 'done'}
+    <div class="result-card">
+      <div class="avatar-ring">
+        <div class="avatar-check">
+          <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="#00c9a7" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+            <polyline points="20 6 9 17 4 12"/>
+          </svg>
         </div>
-        <h2 class="result-title">Face Enrolled</h2>
-        <p class="result-sub">Your identity has been saved.<br>You can now sit exams.</p>
       </div>
+      <h2 class="result-title">Face Enrolled</h2>
+      <p class="result-sub">Your identity has been saved.<br>You can now sit exams.</p>
+    </div>
 
-    {:else if status === 'error'}
-      <div class="bottom-text">
-        <p class="headline err">Something went wrong</p>
-        <p class="subline">{subline}</p>
-      </div>
-      <button class="cta" onclick={retry}>Try Again</button>
-      <a href="/student" class="skip">Skip for now</a>
+  {:else if status === 'error'}
+    <div class="bottom-text">
+      <p class="headline err">Something went wrong</p>
+      <p class="subline">{subline}</p>
+    </div>
+    <button class="cta" onclick={retry}>Try Again</button>
+    <a href="/student" class="skip">Skip for now</a>
 
-    {:else if status === 'gesture'}
-      <!-- step dots -->
-      <div class="dots" role="progressbar" aria-valuenow={gesturesDone} aria-valuemax={selected.length}>
-        {#each selected as _, i}
-          <div class="dot" class:done={i < gesturesDone} class:active={i === gesturesDone}></div>
-        {/each}
-      </div>
-      <div class="bottom-text">
-        <p class="headline">Step {gesturesDone + 1} of {selected.length}</p>
-        <p class="subline" aria-live="polite">{currentGestureLabel}</p>
-      </div>
+  {:else if status === 'gesture'}
+    <div class="dots" role="progressbar" aria-valuenow={gesturesDone} aria-valuemax={selected.length}>
+      {#each selected as _, i}
+        <div class="dot" class:done={i < gesturesDone} class:active={i === gesturesDone}></div>
+      {/each}
+    </div>
+    <div class="bottom-text">
+      <p class="headline">Step {gesturesDone + 1} of {selected.length}</p>
+      <p class="subline" aria-live="polite">{currentGestureLabel}</p>
+    </div>
 
-    {:else}
-      <div class="bottom-text">
-        <p class="headline">{headline}</p>
-        <p class="subline">{subline}</p>
-      </div>
-    {/if}
+  {:else}
+    <div class="bottom-text">
+      <p class="headline">{headline}</p>
+      <p class="subline">{subline}</p>
+    </div>
+  {/if}
 
-  </div>
+</div>
 </div>
 
 <style>
@@ -441,16 +469,16 @@
   }
 
   .cta {
-    width: 100%; max-width: 320px;
-    padding: 0.9rem; background: #00c9a7; color: #0a0d0f;
-    border: none; border-radius: 100px;
-    font-weight: 700; font-size: 0.95rem;
-    cursor: pointer; font-family: inherit;
-    letter-spacing: 0.02em;
-    transition: opacity 0.15s, transform 0.1s;
-  }
-  .cta:hover  { opacity: 0.88; }
-  .cta:active { transform: scale(0.98); }
+  width: 100%; max-width: 320px;
+  padding: 0.9rem; background: #15803d; color: #fff;
+  border: none; border-radius: 100px;
+  font-weight: 700; font-size: 0.95rem;
+  cursor: pointer; font-family: inherit;
+  letter-spacing: 0.02em;
+  transition: opacity 0.15s, transform 0.1s;
+}
+.cta:hover  { background: #166534; opacity: 1; }
+.cta:active { transform: scale(0.98); }
 
   .skip {
     font-size: 0.8rem; color: rgba(255,255,255,0.28);
@@ -499,4 +527,47 @@
   }
   .spinner.teal { border-top-color: #00c9a7; }
   @keyframes spin { to { transform: rotate(360deg); } }
+  .intro-card {
+  display: flex; flex-direction: column; align-items: center; gap: 0.875rem;
+  width: 100%; max-width: 340px; text-align: center;
+  animation: slide-up 0.35s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+.intro-icon {
+  width: 64px; height: 64px; border-radius: 50%;
+  background: rgba(0,201,167,0.08); border: 1px solid rgba(0,201,167,0.25);
+  display: flex; align-items: center; justify-content: center;
+  margin-bottom: 0.25rem;
+}
+.intro-title {
+  font-size: 1.2rem; font-weight: 800; margin: 0; color: #fff; letter-spacing: -0.02em;
+}
+.intro-desc {
+  font-size: 0.825rem; color: rgba(255,255,255,0.45);
+  margin: 0; line-height: 1.65;
+}
+.intro-desc strong { color: rgba(255,255,255,0.75); font-weight: 700; }
+
+.intro-steps {
+  list-style: none; padding: 0; margin: 0;
+  display: flex; flex-direction: column; gap: 0.6rem;
+  width: 100%; text-align: left;
+}
+.intro-steps li {
+  display: flex; align-items: center; gap: 0.75rem;
+  font-size: 0.8rem; color: rgba(255,255,255,0.5);
+}
+.step-dot {
+  width: 22px; height: 22px; border-radius: 50%; flex-shrink: 0;
+  background: rgba(0,201,167,0.15); border: 1px solid rgba(0,201,167,0.3);
+  color: #00c9a7; font-size: 0.65rem; font-weight: 800;
+  display: flex; align-items: center; justify-content: center;
+}
+.intro-note {
+  display: flex; align-items: center; gap: 0.5rem;
+  font-size: 0.72rem; color: rgba(255,255,255,0.25);
+  background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.07);
+  border-radius: 0.6rem; padding: 0.6rem 0.875rem;
+  width: 100%; text-align: left; box-sizing: border-box;
+}
+.intro-note svg { flex-shrink: 0; color: rgba(255,255,255,0.25); }
 </style>
