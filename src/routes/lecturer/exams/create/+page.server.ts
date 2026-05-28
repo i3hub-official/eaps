@@ -1,4 +1,4 @@
-// src/routes/(lecturer)/exams/new/+page.server.ts
+// src/routes/(lecturer)/exams/create/+page.server.ts
 import { fail, redirect } from '@sveltejs/kit';
 import type { Actions, PageServerLoad } from './$types';
 import { requireLecturer } from '$lib/server/auth/guards.js';

@@ -1,13 +1,19 @@
+// src/routes/api/face/verify-session/+server.ts
 import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import { requireStudent } from '$lib/server/auth/guards.js';
+import { prisma } from '$lib/server/db/index.js';
 
 export const POST: RequestHandler = async ({ request, locals, cookies }) => {
-  const user = await requireStudent(locals.user);
-  const { verified, similarityScore } = await request.json();
-  
-  if (verified) {
-    // Set HTTP-only cookie (can't be accessed by JavaScript - more secure)
+  try {
+    const user = await requireStudent(locals.user);
+    const { verified, similarityScore, examId } = await request.json();
+    
+    if (!verified) {
+      return json({ error: 'Face verification failed' }, { status: 400 });
+    }
+    
+    // Set HTTP-only cookies for verification
     cookies.set('face_verified', 'true', {
       path: '/',
       httpOnly: true,
@@ -32,8 +38,27 @@ export const POST: RequestHandler = async ({ request, locals, cookies }) => {
       maxAge: 60 * 5
     });
     
+    // Log verification in audit trail
+    if (examId) {
+      await prisma.auditLog.create({
+        data: {
+          userId: user.id,
+          action: 'face_verification',
+          entity: 'exam',
+          entityId: examId,
+          metadata: { 
+            similarityScore,
+            verifiedAt: new Date().toISOString(),
+            type: 'exam_access'
+          }
+        }
+      });
+    }
+    
     return json({ success: true });
+    
+  } catch (error) {
+    console.error('Face verification session error:', error);
+    return json({ error: 'Failed to create verification session' }, { status: 500 });
   }
-  
-  return json({ error: 'Invalid verification' }, { status: 400 });
 };

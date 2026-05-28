@@ -1,3 +1,4 @@
+<!-- src/routes/(student)/verify/+page.svelte -->
 <script lang="ts">
   import { onMount, onDestroy } from 'svelte';
   import { goto } from '$app/navigation';
@@ -24,17 +25,19 @@
   let gestureDetected = false;
   let livenessIndex = 0;
   let lastNodY: number | null = null;
+  let lastMouthRatio = 0;
+  let lastEyebrowY: number | null = null;
   let scanY = $state(0);
   let scanDir = 1;
 
   let faceapi: typeof import('@vladmandic/face-api') | null = null;
 
   const GESTURES = [
-    { id: 'blink',       label: 'Blink your eyes'   },
-    { id: 'smile',       label: 'Smile naturally'    },
-    { id: 'nod',         label: 'Nod your head'      },
-    { id: 'turn_left',   label: 'Turn head left'     },
-    { id: 'turn_right',  label: 'Turn head right'    },
+    { id: 'open_mouth',  label: 'Open your mouth' },
+    { id: 'turn_left',   label: 'Turn head left'  },
+    { id: 'turn_right',  label: 'Turn head right' },
+    { id: 'raise_brows', label: 'Raise your eyebrows' },
+    { id: 'nod',         label: 'Nod your head'   },
   ];
   let selected: typeof GESTURES = [];
 
@@ -48,15 +51,77 @@
     return h > 0 ? (v1 + v2) / (2 * h) : 1;
   }
 
+  // Calculate mouth aspect ratio (open/closed)
+  function mouthAspectRatio(lm: any): number {
+    const p = lm.positions;
+    // Outer mouth points: 61 (left), 67 (right), 62 (top), 66 (bottom)
+    const mouthWidth = Math.abs(p[61].x - p[67].x);
+    const mouthHeight = Math.abs(p[62].y - p[66].y);
+    return mouthWidth > 0 ? mouthHeight / mouthWidth : 0;
+  }
+
+  // Calculate eyebrow height (raised/lowered)
+  function eyebrowHeight(lm: any): number {
+    const p = lm.positions;
+    // Left eyebrow: 21 (inner), 22 (middle), 23 (outer)
+    const leftBrowY = (p[21].y + p[22].y + p[23].y) / 3;
+    // Left eye center: 37 (left), 38 (center), 39 (right)
+    const leftEyeY = (p[37].y + p[38].y + p[39].y) / 3;
+    return leftBrowY - leftEyeY;
+  }
+
   function checkGesture(id: string, lm: any): boolean {
     const p = lm.positions;
     switch (id) {
-      case 'blink':      return (ear(lm,[36,37,38,39,40,41]) + ear(lm,[42,43,44,45,46,47])) / 2 < 0.22;
-      case 'smile':      { const h=Math.abs(p[62].y-p[66].y),w=Math.abs(p[48].x-p[54].x); return w>0&&h/w>0.28; }
-      case 'nod':        { const ny=p[30].y; if(!lastNodY){lastNodY=ny;return false;} const d=Math.abs(ny-lastNodY); lastNodY=ny; return d>8; }
-      case 'turn_left':  { const n=p[30],l=p[36],r=p[45],w=Math.abs(l.x-r.x); return w>0&&(n.x-l.x)/w<0.32; }
-      case 'turn_right': { const n=p[30],l=p[36],r=p[45],w=Math.abs(l.x-r.x); return w>0&&(n.x-l.x)/w>0.68; }
-      default: return false;
+      case 'blink':
+        return (ear(lm, [36,37,38,39,40,41]) + ear(lm, [42,43,44,45,46,47])) / 2 < 0.22;
+        
+      case 'smile': {
+        const h = Math.abs(p[62].y - p[66].y);
+        const w = Math.abs(p[48].x - p[54].x);
+        return w > 0 && h/w > 0.28;
+      }
+      
+      case 'open_mouth': {
+        const ratio = mouthAspectRatio(lm);
+        const isOpen = ratio > 0.35; // Threshold for open mouth
+        if (isOpen && !gestureDetected) {
+          return true;
+        }
+        return false;
+      }
+      
+      case 'raise_brows': {
+        const height = eyebrowHeight(lm);
+        const isRaised = height > 12; // Threshold for raised eyebrows
+        if (isRaised && !gestureDetected) {
+          return true;
+        }
+        return false;
+      }
+      
+      case 'nod': {
+        const ny = p[30].y;
+        if (!lastNodY) { lastNodY = ny; return false; }
+        const d = Math.abs(ny - lastNodY);
+        lastNodY = ny;
+        return d > 8;
+      }
+      
+      case 'turn_left': {
+        const n = p[30], l = p[36], r = p[45];
+        const w = Math.abs(l.x - r.x);
+        return w > 0 && (n.x - l.x) / w < 0.32;
+      }
+      
+      case 'turn_right': {
+        const n = p[30], l = p[36], r = p[45];
+        const w = Math.abs(l.x - r.x);
+        return w > 0 && (n.x - l.x) / w > 0.68;
+      }
+      
+      default:
+        return false;
     }
   }
 
@@ -144,7 +209,8 @@
           livenessDone = livenessIndex + 1;
 
           if (livenessIndex + 1 >= selected.length) {
-            matchFace(); return;
+            matchFace(); 
+            return;
           }
           livenessIndex++;
           gestureDetected = false;
@@ -183,14 +249,17 @@
       const dist = Math.sqrt(live.reduce((s, v, i) => s + (v - stored[i]) ** 2, 0));
       const isMatch = dist < MATCH_THRESHOLD;
 
-      // score for display: 0 dist = 100%, threshold dist = 0%
       matchScore = Math.max(0, Math.round((1 - dist / MATCH_THRESHOLD) * 100));
 
       if (isMatch) {
         await fetch('/api/face/verify-session', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ verified: true, similarityScore: matchScore }),
+          body: JSON.stringify({ 
+            verified: true, 
+            similarityScore: matchScore,
+            examId: data.exam?.id 
+          }),
         });
         status   = 'success';
         headline = 'Identity Verified';
@@ -198,14 +267,24 @@
         stopCamera();
         setTimeout(() => {
           const examId  = data.exam?.id;
-          const returnTo = new URLSearchParams(window.location.search).get('returnTo');
-          goto(returnTo ?? (examId ? `/exam/${examId}` : '/student'));
+          const returnTo = data.returnTo;
+          
+          // Use returnTo if provided, otherwise fallback to exam or dashboard
+          if (returnTo) {
+            goto(returnTo);
+          } else if (data.exam?.hasExistingSession && data.exam?.sessionId) {
+            goto(`/student/exam/${data.exam.sessionId}`);
+          } else if (examId) {
+            goto(`/student/exam/${examId}`);
+          } else {
+            goto('/student');
+          }
         }, 1800);
       } else {
         retryCount++;
         status   = 'error';
         headline = 'Not recognised';
-        subline  = `${matchScore}% match — need more than 0% (distance ${dist.toFixed(2)})`;
+        subline  = `${matchScore}% match — need more than ${MATCH_THRESHOLD * 100}% (distance ${dist.toFixed(2)})`;
         stopCamera();
       }
     } catch (e: any) {
@@ -226,9 +305,12 @@
   }
 
   function retry() {
-    livenessDone = 0; livenessIndex = 0;
-    gestureDetected = false; lastNodY = null;
-    status = 'loading'; init();
+    livenessDone = 0; 
+    livenessIndex = 0;
+    gestureDetected = false; 
+    lastNodY = null;
+    status = 'loading'; 
+    init();
   }
 
   async function init() {
@@ -251,11 +333,13 @@
       canvas.height = video.videoHeight || 480;
       ctx = canvas.getContext('2d');
 
-      // 2 random gestures — fast liveness check
+      // Pick 2 random gestures for liveness check
       selected = [...GESTURES].sort(() => 0.5 - Math.random()).slice(0, 2);
       livenessTotal = selected.length;
-      livenessIndex = 0; livenessDone = 0;
-      gestureDetected = false; lastNodY = null;
+      livenessIndex = 0; 
+      livenessDone = 0;
+      gestureDetected = false; 
+      lastNodY = null;
 
       status   = 'liveness';
       headline = 'Liveness check';
@@ -283,7 +367,7 @@
 <div class="page">
 
   <header class="topbar">
-    <a href="/student" class="back-btn" aria-label="Go back">
+    <a href={data.returnTo || '/student'} class="back-btn" aria-label="Go back">
       <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
         <path d="M19 12H5M12 5l-7 7 7 7"/>
       </svg>
@@ -323,7 +407,13 @@
           </div>
         </div>
         <h2 class="result-title">Identity Verified</h2>
-        <p class="result-sub">Your smile just unlocked a world of possibilities.<br>You're officially you, and that's awesome!</p>
+        <p class="result-sub">
+          {#if data.exam?.hasExistingSession}
+            Resuming your exam...
+          {:else}
+            Your identity has been verified.<br>You may now proceed to your exam.
+          {/if}
+        </p>
       </div>
 
     {:else if status === 'error'}
@@ -343,7 +433,6 @@
         {#each selected as _, i}
           <div class="dot amber" class:done={i < livenessDone} class:active={i === livenessDone}></div>
         {/each}
-        <!-- match step -->
         <div class="dot" class:done={status === 'success'}></div>
       </div>
       <div class="bottom-text">
@@ -440,7 +529,6 @@
   .skip { font-size: 0.8rem; color: rgba(255,255,255,0.28); text-decoration: none; }
   .skip:hover { color: rgba(255,255,255,0.5); }
 
-  /* success card — mirrors image 2 */
   .result-card {
     display: flex; flex-direction: column; align-items: center; gap: 0.75rem;
     background: rgba(255,255,255,0.04);

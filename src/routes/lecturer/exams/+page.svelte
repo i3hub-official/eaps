@@ -18,13 +18,13 @@
       <h1>My Exams</h1>
       <p class="sub">Welcome back, {data.user.fullName}</p>
     </div>
-    <a href="/lecturer/exams/new" class="btn-primary">+ New Exam</a>
+    <a href="/lecturer/exams/create" class="btn-primary">+ New Exam</a>
   </div>
 
   {#if exams.length === 0}
     <div class="empty">
       <p>You haven't created any exams yet.</p>
-      <a href="/lecturer/exams/new" class="btn-primary">Create your first exam</a>
+      <a href="/lecturer/exams/create" class="btn-primary">Create your first exam</a>
     </div>
   {:else}
     <div class="exam-grid">

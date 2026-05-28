@@ -1,4 +1,4 @@
-<!-- src/routes/lecturer/exams/new/+page.svelte -->
+<!-- src/routes/lecturer/exams/create/+page.svelte -->
 <script lang="ts">
   import type { PageData, ActionData } from './$types';
   import {
@@ -227,7 +227,7 @@
             <label for="title">Exam Title <span class="req">*</span></label>
             <input
               id="title" name="title" type="text" required
-              placeholder="e.g. CSC301 First Semester Examination 2024/2025"
+              placeholder="e.g. CSC301 First Semester Examination 2025/2026"
             />
           </div>
 
@@ -584,7 +584,7 @@
           <div class="two-col">
             <div class="field">
               <label for="session">Academic Session <span class="req">*</span></label>
-              <input id="session" name="session" type="text" value="2024/2025" required placeholder="2024/2025" />
+              <input id="session" name="session" type="text" value="2025/2026" required placeholder="2024/2025" />
             </div>
             <div class="field">
               <label>Semester <span class="req">*</span></label>

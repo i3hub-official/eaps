@@ -55,7 +55,7 @@
         <button class="btn-outline" onclick={() => window.location.reload()}>
           <RefreshCw size={14} /> Refresh
         </button>
-        <a href="/lecturer/exams/new" class="btn-primary">
+        <a href="/lecturer/exams/create" class="btn-primary">
           <Plus size={14} /> New Exam
         </a>
       </div>
@@ -129,7 +129,7 @@
       <div class="empty-state">
         <BookOpen size={36} />
         <p>You haven't created any exams yet.</p>
-        <a href="/lecturer/exams/new" class="btn-primary">
+        <a href="/lecturer/exams/create" class="btn-primary">
           <Plus size={14} /> Create your first exam
         </a>
       </div>

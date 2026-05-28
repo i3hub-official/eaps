@@ -3,6 +3,7 @@ import { redirect, error } from '@sveltejs/kit';
 import type { PageServerLoad } from './$types';
 import { requireStudent } from '$lib/server/auth/guards.js';
 import { isFaceEnrolled } from '$lib/server/db/faces.js';
+import { prisma } from '$lib/server/db/index.js';
 
 export const load: PageServerLoad = async ({ locals, url }) => {
   // 1. Require authenticated student
@@ -12,47 +13,72 @@ export const load: PageServerLoad = async ({ locals, url }) => {
   const hasFaceEnrolled = await isFaceEnrolled(String(user.id));
   
   if (!hasFaceEnrolled) {
-    // Redirect to enrollment page with return URL
     const returnUrl = url.pathname + url.search;
     throw redirect(302, `/enroll?returnTo=${encodeURIComponent(returnUrl)}`);
   }
   
-  // 3. Get examId from query params if present
+  // 3. Get examId from query params
   const examId = url.searchParams.get('examId');
+  const expired = url.searchParams.get('expired');
   
-  // Optional: Verify the exam exists and belongs to this student
+  // 4. Verify exam if examId is provided
   if (examId) {
-    // You can add additional validation here
-    // e.g., check if exam exists, if student is enrolled, if exam is active, etc.
-    const { prisma } = await import('$lib/server/db/index.js');
-    
     const exam = await prisma.exam.findFirst({
       where: {
         id: examId,
-        students: {
-          some: { id: user.id }
-        }
+        course: {
+          registrations: {
+            some: {
+              studentId: user.id
+            }
+          }
+        },
+        status: { in: ['active', 'scheduled'] }
       },
-      select: { id: true, title: true, status: true }
+      select: { 
+        id: true, 
+        title: true, 
+        status: true,
+        durationMinutes: true,
+        course: {
+          select: {
+            code: true,
+            title: true
+          }
+        }
+      }
     });
     
     if (!exam) {
       throw error(404, 'Exam not found or you are not enrolled');
     }
     
-    if (exam.status !== 'ACTIVE') {
-      throw error(400, 'This exam is not currently active');
-    }
+    // Check for existing session
+    const existingSession = await prisma.examSession.findFirst({
+      where: {
+        examId: exam.id,
+        studentId: user.id,
+        status: { in: ['in_progress', 'not_started'] }
+      }
+    });
     
     return { 
-      user: { id: user.id, name: user.name },
-      exam: { id: exam.id, title: exam.title }
+      user: { id: user.id, name: user.fullName },
+      exam: { 
+        id: exam.id, 
+        title: exam.title,
+        courseCode: exam.course.code,
+        durationMinutes: exam.durationMinutes,
+        hasExistingSession: !!existingSession && existingSession.status === 'in_progress',
+        sessionId: existingSession?.id
+      },
+      expired: !!expired
     };
   }
   
-  // 4. Return user data for the page
   return { 
-    user: { id: user.id, name: user.name },
-    exam: null 
+    user: { id: user.id, name: user.fullName },
+    exam: null,
+    expired: false
   };
 };
