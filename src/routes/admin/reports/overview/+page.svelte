@@ -7,27 +7,9 @@
   } from 'lucide-svelte';
 
   // Mock data — replace with actual API calls
-  let stats = $state({
-    totalUsers: 1247,
-    totalStudents: 892,
-    totalLecturers: 78,
-    totalInvigilators: 45,
-    totalExams: 156,
-    activeExams: 12,
-    completedExams: 134,
-    totalViolations: 89,
-    flaggedSessions: 23,
-    avgScore: 67.4,
-    passRate: 72.3,
-    avgDuration: 48
-  });
+  let stats = $state({});
 
-  let recentActivity = $state([
-    { action: 'Exam "CSC 201" completed', time: '2 min ago', type: 'exam' },
-    { action: '5 new violations flagged', time: '15 min ago', type: 'security' },
-    { action: 'Student suspended: John Doe', time: '1 hr ago', type: 'user' },
-    { action: 'New exam scheduled: MTH 101', time: '3 hrs ago', type: 'exam' },
-  ]);
+  let recentActivity = $state([]);
 
   function getTrendIcon(value: number) {
     return value >= 0 ? ArrowUpRight : ArrowDownRight;

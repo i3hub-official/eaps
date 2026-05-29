@@ -1,14 +1,7 @@
 <script lang="ts">
   import { Fingerprint, Search, Shield, Monitor, Smartphone, Globe, Clock, MapPin } from 'lucide-svelte';
 
-  let logins = $state([
-    { id: 'L001', user: 'Admin User', email: 'admin@mouau.edu.ng', ip: '192.168.1.45', device: 'Chrome / Windows', location: 'Umuahia, NG', method: 'password', status: 'success', time: '2026-05-22 14:30:22' },
-    { id: 'L002', user: 'Dr. Adeyemi', email: 'adeyemi@mouau.edu.ng', ip: '192.168.1.67', device: 'Firefox / macOS', location: 'Umuahia, NG', method: 'password', status: 'success', time: '2026-05-22 10:15:00' },
-    { id: 'L003', user: 'Ibrahim Musa', email: 'ibrahim@mouau.edu.ng', ip: '105.112.34.78', device: 'Chrome / Android', location: 'Lagos, NG', method: 'password', status: 'failed', time: '2026-05-22 09:45:12' },
-    { id: 'L004', user: 'Prof. Okonkwo', email: 'okonkwo@mouau.edu.ng', ip: '192.168.1.89', device: 'Safari / iOS', location: 'Umuahia, NG', method: 'password', status: 'success', time: '2026-05-21 16:20:30' },
-    { id: 'L005', user: 'Fatima Bello', email: 'fatima@mouau.edu.ng', ip: '197.210.56.23', device: 'Chrome / Windows', location: 'Abuja, NG', method: 'password', status: 'success', time: '2026-05-21 08:00:00' },
-    { id: 'L006', user: 'Unknown', email: '—', ip: '45.142.212.100', device: 'Bot / Linux', location: 'Unknown', method: 'brute_force', status: 'blocked', time: '2026-05-20 23:15:45' },
-  ]);
+  let logins = $state([]);
 
   let searchQuery = $state('');
   let filtered = $derived(logins.filter(l => l.user.toLowerCase().includes(searchQuery.toLowerCase()) || l.email.toLowerCase().includes(searchQuery.toLowerCase()) || l.ip.includes(searchQuery)));

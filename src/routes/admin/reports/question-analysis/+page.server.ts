@@ -1,5 +1,6 @@
+// src/routes/admin/reports/question-analysis/+page.server.ts
 import type { PageServerLoad } from './$types';
-import { sql } from '$lib/server/db/index.js';
+import { prisma } from '$lib/server/db/index.js';
 import { requireAdmin } from '$lib/server/auth/guards.js';
 
 export const load: PageServerLoad = async ({ locals, url }) => {
@@ -7,43 +8,40 @@ export const load: PageServerLoad = async ({ locals, url }) => {
 
   const searchQuery = url.searchParams.get('q') || '';
 
-  let query = sql`
-    SELECT 
-      q.id,
-      q.body,
-      q.type,
-      e.code as exam_code,
-      COUNT(sa.id)::int as attempts,
-      COUNT(CASE WHEN sa."isCorrect" = true THEN 1 END)::int as correct,
-      AVG(sa."timeSpentSecs")::numeric(10,0) as avg_time
-    FROM "Question" q
-    LEFT JOIN "Exam" e ON q."examId" = e.id
-    LEFT JOIN "StudentAnswer" sa ON sa."questionId" = q.id
-    WHERE 1=1
-  `;
-
-  if (searchQuery) {
-    query = sql`${query} AND (q.body ILIKE ${'%' + searchQuery + '%'} OR e.code ILIKE ${'%' + searchQuery + '%'})`;
-  }
-
-  query = sql`${query} GROUP BY q.id, e.code LIMIT 200`;
-
-  const questions = await query;
+  const questions = await prisma.question.findMany({
+    where: searchQuery
+      ? {
+          OR: [
+            { body:  { contains: searchQuery, mode: 'insensitive' } },
+            { exam:  { title: { contains: searchQuery, mode: 'insensitive' } } },
+          ],
+        }
+      : undefined,
+    include: {
+      exam:           { select: { title: true, course: { select: { code: true } } } },
+      studentAnswers: { select: { isCorrect: true, timeSpentSecs: true } },
+    },
+    take: 200,
+    orderBy: { createdAt: 'desc' },
+  });
 
   const formatted = questions.map(q => {
-    const attempts = q.attempts || 0;
-    const correct = q.correct || 0;
-    const accuracy = attempts > 0 ? ((correct / attempts) * 100).toFixed(1) : '0';
+    const attempts    = q.studentAnswers.length;
+    const correct     = q.studentAnswers.filter(a => a.isCorrect).length;
+    const accuracy    = attempts > 0 ? (correct / attempts) * 100 : 0;
+    const times       = q.studentAnswers.map(a => a.timeSpentSecs ?? 0).filter(t => t > 0);
+    const avgTime     = times.length ? Math.round(times.reduce((a, b) => a + b, 0) / times.length) : 0;
+
     return {
-      id: q.id.slice(0, 4),
-      exam: q.exam_code || '—',
-      body: q.body,
-      type: q.type,
+      id:             q.id.slice(0, 4),
+      exam:           q.exam?.course?.code ?? '—',
+      body:           q.body,
+      type:           q.type,
       attempts,
       correct,
-      accuracy: parseFloat(accuracy),
-      avgTime: Math.round(parseFloat(q.avg_time) || 0),
-      difficulty: parseFloat(accuracy) >= 80 ? 'easy' : parseFloat(accuracy) >= 50 ? 'medium' : 'hard',
+      accuracy:       parseFloat(accuracy.toFixed(1)),
+      avgTime,
+      difficulty:     accuracy >= 80 ? 'easy' : accuracy >= 50 ? 'medium' : 'hard',
       discrimination: 0.65,
     };
   });

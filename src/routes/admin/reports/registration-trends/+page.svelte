@@ -1,23 +1,9 @@
 <script lang="ts">
   import { UserPlus, Users, TrendingUp, TrendingDown, GraduationCap, BookOpen, ShieldCheck, Calendar } from 'lucide-svelte';
 
-  let monthlyData = $state([
-    { month: 'Oct 2025', newUsers: 234, students: 198, lecturers: 18, invigilators: 12, total: 1247 },
-    { month: 'Nov 2025', newUsers: 189, students: 156, lecturers: 15, invigilators: 8, total: 1436 },
-    { month: 'Dec 2025', newUsers: 145, students: 123, lecturers: 12, invigilators: 5, total: 1581 },
-    { month: 'Jan 2026', newUsers: 312, students: 267, lecturers: 22, invigilators: 15, total: 1893 },
-    { month: 'Feb 2026', newUsers: 278, students: 234, lecturers: 20, invigilators: 12, total: 2171 },
-    { month: 'Mar 2026', newUsers: 198, students: 167, lecturers: 14, invigilators: 9, total: 2369 },
-    { month: 'Apr 2026', newUsers: 156, students: 134, lecturers: 11, invigilators: 7, total: 2525 },
-    { month: 'May 2026', newUsers: 89, students: 78, lecturers: 6, invigilators: 4, total: 2614 },
-  ]);
+  let monthlyData = $state([]);
 
-  let courseRegistrations = $state([
-    { session: '2024/2025', semester: 1, count: 1245 },
-    { session: '2024/2025', semester: 2, count: 1189 },
-    { session: '2025/2026', semester: 1, count: 1345 },
-    { session: '2025/2026', semester: 2, count: 1289 },
-  ]);
+  let courseRegistrations = $state([]);
 </script>
 
 <svelte:head><title>Registration Trends — MOUAU eTest</title></svelte:head>

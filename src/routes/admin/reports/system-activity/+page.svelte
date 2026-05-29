@@ -1,22 +1,9 @@
 <script lang="ts">
   import { Monitor, Activity, Clock, AlertTriangle, CheckCircle2, Server, Database, Wifi } from 'lucide-svelte';
 
-  let activities = $state([
-    { type: 'info', message: 'Database backup completed successfully', source: 'System', timestamp: '2026-05-22 03:00:00', duration: '2m 34s' },
-    { type: 'warning', message: 'High memory usage detected on exam server', source: 'Monitor', timestamp: '2026-05-22 14:23:15', duration: '—' },
-    { type: 'success', message: 'Exam session S-3341 auto-submitted after timeout', source: 'Scheduler', timestamp: '2026-05-22 12:00:00', duration: '0.5s' },
-    { type: 'error', message: 'Failed to send notification to user U-0892', source: 'Notification Service', timestamp: '2026-05-22 11:45:22', duration: '—' },
-    { type: 'info', message: 'Face recognition model updated to v2.4.1', source: 'AI Service', timestamp: '2026-05-21 02:00:00', duration: '5m 12s' },
-    { type: 'success', message: 'All 58 scheduled exams started on time', source: 'Scheduler', timestamp: '2026-05-20 08:00:00', duration: '12s' },
-  ]);
+  let activities = $state([]);
 
-  let metrics = $state({
-    uptime: '99.97%',
-    avgResponse: '124ms',
-    activeConnections: 234,
-    dbSize: '2.4 GB',
-    lastBackup: '3 hours ago'
-  });
+  let metrics = $state({});
 
   function getTypeIcon(type: string) {
     return { info: Activity, warning: AlertTriangle, success: CheckCircle2, error: AlertTriangle }[type] || Activity;

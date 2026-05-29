@@ -1,14 +1,7 @@
 <script lang="ts">
   import { ScrollText, Search, Shield, UserPlus, FileEdit, Trash2, Eye, Clock, Filter } from 'lucide-svelte';
 
-  let logs = $state([
-    { id: 'AL001', user: 'Admin User', action: 'USER_CREATED', entity: 'User', entityId: 'U-1024', details: 'Created new student account', ip: '192.168.1.45', timestamp: '2026-05-22 14:30:22' },
-    { id: 'AL002', user: 'Dr. Adeyemi', action: 'EXAM_CREATED', entity: 'Exam', entityId: 'E-512', details: 'Created CSC 201 mid-term exam', ip: '192.168.1.67', timestamp: '2026-05-22 10:15:00' },
-    { id: 'AL003', user: 'Admin User', action: 'USER_SUSPENDED', entity: 'User', entityId: 'U-0892', details: 'Suspended Ibrahim Musa for violations', ip: '192.168.1.45', timestamp: '2026-05-21 16:45:10' },
-    { id: 'AL004', user: 'Prof. Okonkwo', action: 'EXAM_UPDATED', entity: 'Exam', entityId: 'E-498', details: 'Updated MTH 101 duration to 90 min', ip: '192.168.1.89', timestamp: '2026-05-21 09:20:15' },
-    { id: 'AL005', user: 'System', action: 'VIOLATION_FLAGGED', entity: 'ExamSession', entityId: 'S-3341', details: 'Auto-flagged: multiple faces detected', ip: '127.0.0.1', timestamp: '2026-05-20 11:23:44' },
-    { id: 'AL006', user: 'Admin User', action: 'USER_DELETED', entity: 'User', entityId: 'U-0345', details: 'Deleted inactive account', ip: '192.168.1.45', timestamp: '2026-05-19 08:10:00' },
-  ]);
+  let logs = $state([]);
 
   let searchQuery = $state('');
   let filtered = $derived(logs.filter(l => l.user.toLowerCase().includes(searchQuery.toLowerCase()) || l.action.toLowerCase().includes(searchQuery.toLowerCase()) || l.details.toLowerCase().includes(searchQuery.toLowerCase())));

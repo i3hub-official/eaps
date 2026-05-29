@@ -1,13 +1,7 @@
 <script lang="ts">
   import { Shield, AlertTriangle, EyeOff, Clock, TrendingUp, UserX, Monitor } from 'lucide-svelte';
 
-  let incidents = $state([
-    { id: 'INC-001', type: 'multiple_faces', description: 'Multiple faces detected during exam session', severity: 'high', exam: 'PHY 102', student: 'Fatima Bello', detectedAt: '2026-05-22 11:20', status: 'resolved', action: 'invigilator_alerted' },
-    { id: 'INC-002', type: 'copy_attempt', description: 'Copy-paste attempt detected 3 times', severity: 'critical', exam: 'MTH 101', student: 'Ibrahim Musa', detectedAt: '2026-05-18 14:45', status: 'resolved', action: 'exam_paused' },
-    { id: 'INC-003', type: 'devtools_open', description: 'Browser developer tools opened during exam', severity: 'high', exam: 'CSC 201', student: 'Unknown', detectedAt: '2026-05-20 09:15', status: 'investigating', action: 'warning' },
-    { id: 'INC-004', type: 'screenshot_attempt', description: 'Screenshot hotkey detected', severity: 'medium', exam: 'CHM 201', student: 'Chinedu Obi', detectedAt: '2026-05-22 10:30', status: 'resolved', action: 'warning' },
-    { id: 'INC-005', type: 'no_face_detected', description: 'Face not visible for extended period', severity: 'high', exam: 'ENG 101', student: 'Ngozi Adeleke', detectedAt: '2026-05-21 13:45', status: 'resolved', action: 'invigilator_alerted' },
-  ]);
+  let incidents = $state([]);
 
   function getSeverityColor(s: string) {
     return { low: 'sev-low', medium: 'sev-medium', high: 'sev-high', critical: 'sev-critical' }[s] || 'sev-medium';

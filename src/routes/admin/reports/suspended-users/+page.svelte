@@ -1,12 +1,7 @@
 <script lang="ts">
   import { UserX, Clock, AlertTriangle, Shield, Search, GraduationCap, BookOpen, ShieldCheck } from 'lucide-svelte';
 
-  let suspended = $state([
-    { id: 'U001', name: 'Ibrahim Musa', matric: 'MOUAU/2022/112', role: 'student', reason: 'Multiple exam violations (8 incidents)', suspendedAt: '2026-05-18', suspendedBy: 'Admin', duration: '30 days', status: 'active' },
-    { id: 'U002', name: 'Oluwaseun Adeyemi', matric: 'MOUAU/2022/156', role: 'student', reason: 'Copy attempt and fullscreen exit (15 incidents)', suspendedAt: '2026-05-20', suspendedBy: 'Dr. Adeyemi', duration: '60 days', status: 'active' },
-    { id: 'U003', name: 'Chinedu Obi', matric: 'MOUAU/2023/234', role: 'student', reason: 'Screenshot attempt during exam', suspendedAt: '2026-05-22', suspendedBy: 'Prof. Okonkwo', duration: '14 days', status: 'active' },
-    { id: 'U004', name: 'John Doe', matric: 'MOUAU/2023/567', role: 'student', reason: 'No face detected for extended period', suspendedAt: '2026-05-15', suspendedBy: 'Admin', duration: '7 days', status: 'expired' },
-  ]);
+  let suspended = $state([]);
 
   let searchQuery = $state('');
   let filtered = $derived(suspended.filter(u => u.name.toLowerCase().includes(searchQuery.toLowerCase()) || u.matric.toLowerCase().includes(searchQuery.toLowerCase())));

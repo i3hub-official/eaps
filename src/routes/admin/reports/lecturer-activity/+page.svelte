@@ -1,13 +1,7 @@
 <script lang="ts">
   import { BookOpen, ClipboardList, Users, Clock, TrendingUp, Award, BarChart3 } from 'lucide-svelte';
 
-  let lecturers = $state([
-    { id: 'L001', name: 'Dr. Adeyemi Johnson', dept: 'Computer Science', examsCreated: 5, totalStudents: 723, avgPassRate: 76.4, avgScore: 71.2, totalHours: 340, trend: 'up' },
-    { id: 'L002', name: 'Prof. Nkechi Okonkwo', dept: 'Mathematics', examsCreated: 4, totalStudents: 812, avgPassRate: 68.9, avgScore: 62.5, totalHours: 280, trend: 'stable' },
-    { id: 'L003', name: 'Dr. Ibrahim Musa', dept: 'Physics', examsCreated: 3, totalStudents: 534, avgPassRate: 72.1, avgScore: 65.8, totalHours: 225, trend: 'up' },
-    { id: 'L004', name: 'Prof. Fatima Bello', dept: 'Chemistry', examsCreated: 4, totalStudents: 612, avgPassRate: 70.3, avgScore: 64.1, totalHours: 290, trend: 'down' },
-    { id: 'L005', name: 'Dr. Chinedu Obi', dept: 'English', examsCreated: 2, totalStudents: 624, avgPassRate: 89.7, avgScore: 82.4, totalHours: 180, trend: 'up' },
-  ]);
+  let lecturers = $state([]);
 
   let searchQuery = $state('');
   let filtered = $derived(lecturers.filter(l => l.name.toLowerCase().includes(searchQuery.toLowerCase()) || l.dept.toLowerCase().includes(searchQuery.toLowerCase())));

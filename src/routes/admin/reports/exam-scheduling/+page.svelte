@@ -1,16 +1,9 @@
 <script lang="ts">
   import { Calendar, Clock, CheckCircle2, AlertTriangle, XCircle, Timer, Users, BookOpen } from 'lucide-svelte';
 
-  let exams = $state([
-    { id: 'E001', title: 'CSC 201 — Introduction to Programming', date: '2026-05-25', start: '09:00', end: '10:00', duration: 60, status: 'scheduled', students: 145, invigilators: 3, room: 'Online' },
-    { id: 'E002', title: 'MTH 101 — Calculus I', date: '2026-05-26', start: '10:30', end: '12:00', duration: 90, status: 'scheduled', students: 203, invigilators: 4, room: 'Online' },
-    { id: 'E003', title: 'PHY 102 — General Physics', date: '2026-05-24', start: '14:00', end: '15:15', duration: 75, status: 'active', students: 178, invigilators: 3, room: 'Online' },
-    { id: 'E004', title: 'CHM 201 — Organic Chemistry', date: '2026-05-23', start: '09:00', end: '10:00', duration: 60, status: 'completed', students: 134, invigilators: 2, room: 'Online' },
-    { id: 'E005', title: 'ENG 101 — Use of English', date: '2026-05-27', start: '08:00', end: '08:45', duration: 45, status: 'scheduled', students: 312, invigilators: 5, room: 'Online' },
-    { id: 'E006', title: 'BIO 101 — General Biology', date: '2026-05-22', start: '11:00', end: '12:00', duration: 60, status: 'completed', students: 267, invigilators: 4, room: 'Online' },
-  ]);
+  let exams = $state([]);
 
-  let summary = $state({ scheduled: 3, active: 1, completed: 2, cancelled: 0, totalStudents: 1239 });
+  let summary = $state({});
 
   function getStatusColor(s: string) {
     return { scheduled: 'status-scheduled', active: 'status-active', completed: 'status-completed', cancelled: 'status-cancelled' }[s] || 'status-scheduled';

@@ -31,7 +31,6 @@ let status = $state<Status>('intro');
   { id: 'open_mouth',  label: 'Open your mouth' },
   { id: 'turn_left',   label: 'Turn head left'  },
   { id: 'turn_right',  label: 'Turn head right'  },
-  { id: 'raise_brows', label: 'Raise your eyebrows' },
   { id: 'nod',         label: 'Nod your head'   },
 ];
 const CAPTURES_PER = 3;

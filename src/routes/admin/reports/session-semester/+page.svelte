@@ -1,14 +1,7 @@
 <script lang="ts">
   import { Calendar, BookOpen, Users, Award, TrendingUp, TrendingDown, Target } from 'lucide-svelte';
 
-  let sessions = $state([
-    { session: '2023/2024', semester: 1, exams: 45, students: 1890, avgScore: 64.2, passRate: 68.5, trend: 'up' },
-    { session: '2023/2024', semester: 2, exams: 48, students: 1923, avgScore: 66.8, passRate: 71.2, trend: 'up' },
-    { session: '2024/2025', semester: 1, exams: 52, students: 2104, avgScore: 65.1, passRate: 69.8, trend: 'stable' },
-    { session: '2024/2025', semester: 2, exams: 56, students: 2156, avgScore: 67.3, passRate: 72.4, trend: 'up' },
-    { session: '2025/2026', semester: 1, exams: 61, students: 2345, avgScore: 68.9, passRate: 74.1, trend: 'up' },
-    { session: '2025/2026', semester: 2, exams: 58, students: 2289, avgScore: 70.2, passRate: 76.8, trend: 'up' },
-  ]);
+  let sessions = $state([]);
 </script>
 
 <svelte:head><title>Session / Semester Trends — MOUAU eTest</title></svelte:head>

@@ -1,23 +1,9 @@
 <script lang="ts">
   import { Users, GraduationCap, BookOpen, ShieldCheck, UserPlus, UserCheck, UserX, TrendingUp } from 'lucide-svelte';
 
-  let stats = $state({
-    total: 1247,
-    students: 892,
-    lecturers: 78,
-    invigilators: 45,
-    admins: 12,
-    active: 1189,
-    suspended: 58,
-    newThisMonth: 34
-  });
+  let stats = $state({});
 
-  let roleDistribution = $state([
-    { role: 'Students', count: 892, percentage: 71.5, color: '#16a34a' },
-    { role: 'Lecturers', count: 78, percentage: 6.3, color: '#3b82f6' },
-    { role: 'Invigilators', count: 45, percentage: 3.6, color: '#8b5cf6' },
-    { role: 'Admins', count: 12, percentage: 1.0, color: '#f59e0b' },
-  ]);
+  let roleDistribution = $state([]);
 </script>
 
 <svelte:head><title>User Overview — MOUAU eTest</title></svelte:head>

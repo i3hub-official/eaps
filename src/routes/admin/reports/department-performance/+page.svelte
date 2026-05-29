@@ -1,16 +1,7 @@
 <script lang="ts">
   import { Layers, Award, Users, TrendingUp, TrendingDown, Target, Building2 } from 'lucide-svelte';
 
-  let departments = $state([
-    { id: 'D001', name: 'Computer Science', college: 'CPAS', students: 145, exams: 5, avgScore: 72.5, passRate: 78.6, trend: 'up' },
-    { id: 'D002', name: 'Mathematics', college: 'CPAS', students: 156, exams: 4, avgScore: 58.3, passRate: 62.8, trend: 'down' },
-    { id: 'D003', name: 'Physics', college: 'CPAS', students: 128, exams: 3, avgScore: 65.1, passRate: 71.9, trend: 'stable' },
-    { id: 'D004', name: 'Chemistry', college: 'CPAS', students: 98, exams: 4, avgScore: 61.4, passRate: 68.4, trend: 'up' },
-    { id: 'D005', name: 'Biology', college: 'CBS', students: 203, exams: 5, avgScore: 69.8, passRate: 75.9, trend: 'up' },
-    { id: 'D006', name: 'Microbiology', college: 'CBS', students: 64, exams: 3, avgScore: 74.2, passRate: 82.8, trend: 'stable' },
-    { id: 'D007', name: 'Engineering', college: 'COE', students: 134, exams: 6, avgScore: 58.9, passRate: 64.2, trend: 'down' },
-    { id: 'D008', name: 'English', college: 'CAH', students: 46, exams: 3, avgScore: 82.4, passRate: 89.1, trend: 'up' },
-  ]);
+  let departments = $state([]);
 
   let searchQuery = $state('');
   let filtered = $derived(departments.filter(d => d.name.toLowerCase().includes(searchQuery.toLowerCase()) || d.college.toLowerCase().includes(searchQuery.toLowerCase())));
