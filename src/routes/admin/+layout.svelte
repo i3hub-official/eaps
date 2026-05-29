@@ -8,7 +8,13 @@
   import {
     LayoutDashboard, Users, FileText, LogOut, Menu, X,
     Sun, Moon, ShieldAlert, ChevronRight, ShieldCheck,
-    GraduationCap, BookOpen, ChevronDown, Loader2
+    GraduationCap, BookOpen, ChevronDown, Loader2,
+    ClipboardList, AlertTriangle, Activity, ScrollText,
+    TrendingUp, BarChart3, PieChart, Target, Award,
+    School, Building2, Layers, Calendar, Clock,
+    UserCheck, UserX, UserPlus, Bell, Shield,
+    FileBarChart, BrainCircuit, BookMarked, Monitor,
+    EyeOff, ScanFace, Fingerprint
   } from 'lucide-svelte';
 
   let { data, children }: { data: LayoutData; children: import('svelte').Snippet } = $props();
@@ -18,11 +24,16 @@
   let theme = $derived(getTheme());
   let sidebarOpen = $state(false);
   let navLoading = $state<string | null>(null);
-  let usersExpanded = $state(false);
 
-  // Navigation structure with child items
+  // Expandable group states
+  let usersExpanded = $state(false);
+  let reportsExpanded = $state(false);
+
+  // ─── Navigation Structure ───────────────────────────────────────────────────
+
   const navGroups = [
     { href: '/admin', label: 'Dashboard', icon: LayoutDashboard, children: null },
+
     {
       href: '/admin/users',
       label: 'Users',
@@ -34,31 +45,118 @@
         { href: '/admin/users?role=invigilator', label: 'Invigilators', icon: ShieldCheck },
       ]
     },
+
     { href: '/admin/security', label: 'Security', icon: ShieldAlert, children: null },
-    { href: '/admin/reports', label: 'Reports', icon: FileText, children: null },
+
+    {
+      href: '/admin/reports',
+      label: 'Reports',
+      icon: FileText,
+      children: [
+        // ── Overview ──
+        { href: '/admin/reports', label: 'Overview', icon: Activity },
+
+        // ── Exam & Performance ──
+        { href: '/admin/reports/exam-performance', label: 'Exam Performance', icon: ClipboardList },
+        { href: '/admin/reports/student-performance', label: 'Student Performance', icon: TrendingUp },
+        { href: '/admin/reports/course-analysis', label: 'Course Analysis', icon: BookMarked },
+        { href: '/admin/reports/question-analysis', label: 'Question Analysis', icon: BrainCircuit },
+        { href: '/admin/reports/grade-distribution', label: 'Grade Distribution', icon: Award },
+        { href: '/admin/reports/pass-fail', label: 'Pass / Fail Analysis', icon: Target },
+        { href: '/admin/reports/time-score', label: 'Time vs Score', icon: Clock },
+
+        // ── Security & Violations ──
+        { href: '/admin/reports/violations', label: 'Violations Overview', icon: AlertTriangle },
+        { href: '/admin/reports/violation-trends', label: 'Violation Trends', icon: TrendingUp },
+        { href: '/admin/reports/flagged-sessions', label: 'Flagged Sessions', icon: EyeOff },
+        { href: '/admin/reports/security-incidents', label: 'Security Incidents', icon: Shield },
+        { href: '/admin/reports/action-analysis', label: 'Action Taken', icon: FileBarChart },
+
+        // ── User & Demographics ──
+        { href: '/admin/reports/user-overview', label: 'User Overview', icon: Users },
+        { href: '/admin/reports/student-demographics', label: 'Student Demographics', icon: School },
+        { href: '/admin/reports/lecturer-activity', label: 'Lecturer Activity', icon: BookOpen },
+        { href: '/admin/reports/invigilator-assignments', label: 'Invigilator Assignments', icon: UserCheck },
+        { href: '/admin/reports/registration-trends', label: 'Registration Trends', icon: UserPlus },
+        { href: '/admin/reports/suspended-users', label: 'Suspended Users', icon: UserX },
+
+        // ── Institutional ──
+        { href: '/admin/reports/college-performance', label: 'College Performance', icon: Building2 },
+        { href: '/admin/reports/department-performance', label: 'Department Performance', icon: Layers },
+        { href: '/admin/reports/level-analysis', label: 'Level Analysis', icon: BarChart3 },
+        { href: '/admin/reports/course-enrollment', label: 'Course Enrollment', icon: BookMarked },
+        { href: '/admin/reports/session-semester', label: 'Session / Semester', icon: Calendar },
+
+        // ── Operational ──
+        { href: '/admin/reports/audit-logs', label: 'Audit Logs', icon: ScrollText },
+        { href: '/admin/reports/system-activity', label: 'System Activity', icon: Monitor },
+        { href: '/admin/reports/login-history', label: 'Login History', icon: Fingerprint },
+        { href: '/admin/reports/notification-analytics', label: 'Notifications', icon: Bell },
+        { href: '/admin/reports/exam-scheduling', label: 'Exam Scheduling', icon: Calendar },
+      ]
+    },
   ];
+
+  // ─── Active State Logic ─────────────────────────────────────────────────────
 
   const currentPath = $derived($page.url.pathname);
   const currentSearch = $derived($page.url.search);
 
-  function isActive(href: string) {
+  function isActive(href: string, isChild: boolean = false): boolean {
+    // Dashboard exact match
     if (href === '/admin') {
       return currentPath === '/admin';
     }
+
+    // Users parent — only active when on /admin/users with NO role filter
+    if (href === '/admin/users' && !isChild) {
+      return currentPath === '/admin/users' && !currentSearch;
+    }
+
+    // Users child with query params
     if (href.includes('?role=')) {
       return currentPath === '/admin/users' && currentSearch === '?' + href.split('?')[1];
     }
-    return currentPath === href || currentPath.startsWith(href + '/');
+
+    // All Users child link
+    if (href === '/admin/users' && isChild) {
+      return currentPath === '/admin/users' && !currentSearch;
+    }
+
+    // Reports parent — only active when exactly on /admin/reports (no subpath)
+    if (href === '/admin/reports' && !isChild) {
+      return currentPath === '/admin/reports';
+    }
+
+    // Reports Overview child
+    if (href === '/admin/reports' && isChild) {
+      return currentPath === '/admin/reports';
+    }
+
+    // Reports child links (exact match on subpaths)
+    if (href.startsWith('/admin/reports/')) {
+      return currentPath === href;
+    }
+
+    // Security exact match
+    if (href === '/admin/security') {
+      return currentPath === '/admin/security';
+    }
+
+    // Fallback for any other exact match
+    return currentPath === href;
   }
 
-  function isGroupActive(group: any) {
-    if (!group.children) return isActive(group.href);
-    return group.children.some((child: any) => isActive(child.href));
+  function isGroupChildActive(group: { children: any[] | null }): boolean {
+    if (!group.children) return false;
+    return group.children.some((child: { href: string }) => isActive(child.href, true));
   }
+
+  // ─── Navigation Handlers ──────────────────────────────────────────────────
 
   async function handleNavClick(href: string, event: MouseEvent) {
     event.preventDefault();
-    if (navLoading) return; // Prevent simultaneous clicks
+    if (navLoading) return;
 
     navLoading = href;
     sidebarOpen = false;
@@ -66,7 +164,6 @@
     try {
       await goto(href);
     } finally {
-      // Small delay to ensure page transition feels smooth
       setTimeout(() => {
         navLoading = null;
       }, 300);
@@ -77,11 +174,14 @@
     usersExpanded = !usersExpanded;
   }
 
-  // Auto-expand users group if any child is active
+  function toggleReportsGroup() {
+    reportsExpanded = !reportsExpanded;
+  }
+
+  // Auto-expand groups when a child is active
   $effect(() => {
-    if (isGroupActive(navGroups[1])) {
-      usersExpanded = true;
-    }
+    if (isGroupChildActive(navGroups[1])) usersExpanded = true;
+    if (isGroupChildActive(navGroups[3])) reportsExpanded = true;
   });
 </script>
 
@@ -114,7 +214,11 @@
     </div>
 
     <nav class="sidebar-nav">
-      {#each navGroups as group}
+      {#each navGroups as group, groupIndex}
+        {#if groupIndex > 0}
+          <div class="nav-spacer"></div>
+        {/if}
+
         {#if !group.children}
           <!-- Single nav item -->
           <a
@@ -124,44 +228,57 @@
             class:loading={navLoading === group.href}
             onclick={(e) => handleNavClick(group.href, e)}
           >
-            <group.icon size={18} />
-            <span>{group.label}</span>
+            <div class="nav-link-icon">
+              <group.icon size={18} />
+            </div>
+            <span class="nav-link-text">{group.label}</span>
             {#if navLoading === group.href}
               <Loader2 size={14} class="nav-loader" />
             {:else if isActive(group.href)}
-              <ChevronRight size={14} class="nav-arrow" />
+              <div class="active-indicator"></div>
             {/if}
           </a>
         {:else}
           <!-- Group with children -->
-          <div class="nav-group" class:expanded={usersExpanded}>
+          <div
+            class="nav-group"
+            class:expanded={group.label === 'Users' ? usersExpanded : reportsExpanded}
+            class:child-active={isGroupChildActive(group)}
+          >
             <button
               class="nav-link nav-group-trigger"
-              class:active={isGroupActive(group)}
-              onclick={toggleUsersGroup}
+              class:active={isActive(group.href)}
+              onclick={group.label === 'Users' ? toggleUsersGroup : toggleReportsGroup}
               type="button"
             >
-              <group.icon size={18} />
-              <span>{group.label}</span>
+              <div class="nav-link-icon">
+                <group.icon size={18} />
+              </div>
+              <span class="nav-link-text">{group.label}</span>
               <ChevronDown size={14} class="nav-chevron" />
             </button>
 
-            {#if usersExpanded}
+            {#if (group.label === 'Users' ? usersExpanded : reportsExpanded)}
               <div class="nav-children">
-                {#each group.children as child}
+                {#each group.children as child, childIndex}
+                  {#if childIndex > 0}
+                    <div class="child-spacer"></div>
+                  {/if}
                   <a
                     href={child.href}
                     class="nav-link nav-child"
-                    class:active={isActive(child.href)}
+                    class:active={isActive(child.href, true)}
                     class:loading={navLoading === child.href}
                     onclick={(e) => handleNavClick(child.href, e)}
                   >
-                    <child.icon size={16} />
-                    <span>{child.label}</span>
+                    <div class="nav-link-icon child-icon">
+                      <child.icon size={16} />
+                    </div>
+                    <span class="nav-link-text">{child.label}</span>
                     {#if navLoading === child.href}
                       <Loader2 size={12} class="nav-loader" />
-                    {:else if isActive(child.href)}
-                      <div class="child-active-dot"></div>
+                    {:else if isActive(child.href, true)}
+                      <div class="active-indicator child-indicator"></div>
                     {/if}
                   </a>
                 {/each}
@@ -253,6 +370,7 @@
     z-index: 100;
     transform: translateX(-100%);
     transition: transform 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+    overflow: hidden;
   }
 
   .sidebar.sidebar-open {
@@ -331,11 +449,11 @@
   /* Navigation */
   .sidebar-nav {
     flex: 1;
-    padding: 1rem;
+    padding: 1.25rem 1rem;
     display: flex;
     flex-direction: column;
-    gap: 0.125rem;
     overflow-y: auto;
+    min-height: 0;
   }
 
   .sidebar-nav::-webkit-scrollbar {
@@ -349,17 +467,22 @@
     border-radius: 2px;
   }
 
+  /* Spacing between top-level nav items */
+  .nav-spacer {
+    height: 0.5rem;
+  }
+
   .nav-link {
     display: flex;
     align-items: center;
     gap: 0.75rem;
-    padding: 0.7rem 1rem;
-    border-radius: 0.5rem;
+    padding: 0.75rem 1rem;
+    border-radius: 0.625rem;
     text-decoration: none;
     color: var(--color-text);
     font-weight: 500;
     font-size: 0.875rem;
-    transition: all 0.15s;
+    transition: all 0.15s ease;
     position: relative;
     border: none;
     background: none;
@@ -372,8 +495,36 @@
     background: var(--color-surface-hover);
   }
 
+  .nav-link-icon {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 20px;
+    height: 20px;
+    flex-shrink: 0;
+    color: var(--color-muted);
+    transition: color 0.15s ease;
+  }
+
+  .nav-link:hover .nav-link-icon {
+    color: var(--color-text);
+  }
+
+  .nav-link-text {
+    flex: 1;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  /* Active state - ONLY ONE item shows this at a time */
   .nav-link.active {
     background: rgba(22, 163, 74, 0.1);
+    color: #16a34a;
+    font-weight: 600;
+  }
+
+  .nav-link.active .nav-link-icon {
     color: #16a34a;
   }
 
@@ -382,15 +533,25 @@
     pointer-events: none;
   }
 
-  .nav-arrow {
-    margin-left: auto;
-    opacity: 0.5;
+  /* Active indicator dot */
+  .active-indicator {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: #16a34a;
+    flex-shrink: 0;
+    animation: pulse 2s ease-in-out infinite;
+  }
+
+  .active-indicator.child-indicator {
+    width: 5px;
+    height: 5px;
   }
 
   .nav-loader {
-    margin-left: auto;
     animation: spin 0.8s linear infinite;
     color: #16a34a;
+    flex-shrink: 0;
   }
 
   /* Nav Group */
@@ -403,10 +564,21 @@
     justify-content: flex-start;
   }
 
+  /* When a child is active, parent gets subtle styling but NOT the full active treatment */
+  .nav-group.child-active .nav-group-trigger {
+    color: var(--color-text);
+    font-weight: 600;
+  }
+
+  .nav-group.child-active .nav-group-trigger .nav-link-icon {
+    color: #16a34a;
+  }
+
   .nav-chevron {
     margin-left: auto;
     transition: transform 0.2s ease;
     opacity: 0.5;
+    flex-shrink: 0;
   }
 
   .nav-group.expanded .nav-chevron {
@@ -416,34 +588,44 @@
   .nav-children {
     display: flex;
     flex-direction: column;
-    gap: 0.125rem;
-    padding-left: 0.5rem;
-    margin-left: 0.75rem;
+    padding: 0.5rem 0 0.25rem 0;
+    margin-left: 2.75rem;
+    margin-right: 0.5rem;
     border-left: 2px solid var(--color-border);
     animation: slideDown 0.2s ease;
   }
 
+  /* Spacing between child items */
+  .child-spacer {
+    height: 0.25rem;
+  }
+
   .nav-child {
-    padding: 0.6rem 0.75rem;
+    padding: 0.6rem 0.875rem;
     font-size: 0.82rem;
     color: var(--color-muted);
+    margin-left: 0.75rem;
+    border-radius: 0.5rem;
   }
 
   .nav-child:hover {
     color: var(--color-text);
+    background: var(--color-surface-hover);
   }
 
   .nav-child.active {
     background: rgba(22, 163, 74, 0.08);
     color: #16a34a;
+    font-weight: 600;
   }
 
-  .child-active-dot {
-    width: 6px;
-    height: 6px;
-    border-radius: 50%;
-    background: #16a34a;
-    margin-left: auto;
+  .nav-child.active .child-icon {
+    color: #16a34a;
+  }
+
+  .child-icon {
+    width: 18px;
+    height: 18px;
   }
 
   /* Loading bar */
@@ -641,12 +823,20 @@
     100% { transform: translateX(250%); }
   }
 
+  @keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.5; }
+  }
+
   /* Desktop */
   @media (min-width: 1024px) {
     .sidebar {
-      position: sticky;
+      position: fixed;
       transform: translateX(0);
       width: 260px;
+      height: 100dvh;
+      max-height: 100dvh;
+      overflow: hidden;
     }
 
     .sidebar-overlay {
@@ -662,7 +852,7 @@
     }
 
     .main-content {
-      margin-left: 0;
+      margin-left: 260px;
       flex: 1;
     }
 
@@ -674,6 +864,10 @@
   @media (min-width: 1280px) {
     .sidebar {
       width: 280px;
+    }
+
+    .main-content {
+      margin-left: 280px;
     }
   }
 

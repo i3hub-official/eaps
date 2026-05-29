@@ -31,6 +31,7 @@ enum ExamStatus {
 }
 
 enum SessionStatus {
+  active
   not_started
   in_progress
   submitted

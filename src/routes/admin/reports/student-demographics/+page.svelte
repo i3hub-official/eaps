@@ -1,0 +1,132 @@
+<script lang="ts">
+  import { School, GraduationCap, Building2, Layers, BarChart3, Users } from 'lucide-svelte';
+
+  let byLevel = $state([
+    { level: 100, count: 312, percentage: 35.0 },
+    { level: 200, count: 289, percentage: 32.4 },
+    { level: 300, count: 198, percentage: 22.2 },
+    { level: 400, count: 67, percentage: 7.5 },
+    { level: 500, count: 26, percentage: 2.9 },
+  ]);
+
+  let byCollege = $state([
+    { name: 'College of Physical & Applied Sciences', abbreviation: 'CPAS', count: 445, percentage: 49.9 },
+    { name: 'College of Biological Sciences', abbreviation: 'CBS', count: 267, percentage: 29.9 },
+    { name: 'College of Engineering', abbreviation: 'COE', count: 134, percentage: 15.0 },
+    { name: 'College of Arts & Humanities', abbreviation: 'CAH', count: 46, percentage: 5.2 },
+  ]);
+
+  let byDepartment = $state([
+    { name: 'Computer Science', college: 'CPAS', count: 145, percentage: 16.3 },
+    { name: 'Mathematics', college: 'CPAS', count: 156, percentage: 17.5 },
+    { name: 'Physics', college: 'CPAS', count: 128, percentage: 14.3 },
+    { name: 'Chemistry', college: 'CPAS', count: 98, percentage: 11.0 },
+    { name: 'Biology', college: 'CBS', count: 203, percentage: 22.8 },
+    { name: 'Microbiology', college: 'CBS', count: 64, percentage: 7.2 },
+    { name: 'Engineering', college: 'COE', count: 134, percentage: 15.0 },
+    { name: 'English', college: 'CAH', count: 46, percentage: 5.2 },
+  ]);
+</script>
+
+<svelte:head><title>Student Demographics — MOUAU eTest</title></svelte:head>
+
+<div class="page">
+  <header class="page-header">
+    <h1>Student Demographics</h1>
+    <p class="subtitle">Enrollment distribution by level, college, and department</p>
+  </header>
+
+  <section class="demographics-grid">
+    <div class="chart-card">
+      <h3><GraduationCap size={16} /> By Level</h3>
+      <div class="demo-list">
+        {#each byLevel as lvl}
+          <div class="demo-item">
+            <div class="demo-header">
+              <span class="demo-label">{lvl.level} Level</span>
+              <span class="demo-count">{lvl.count} students</span>
+            </div>
+            <div class="demo-bar-container">
+              <div class="demo-bar" style="width: {lvl.percentage}%"></div>
+            </div>
+            <span class="demo-pct">{lvl.percentage}%</span>
+          </div>
+        {/each}
+      </div>
+    </div>
+
+    <div class="chart-card">
+      <h3><Building2 size={16} /> By College</h3>
+      <div class="demo-list">
+        {#each byCollege as college}
+          <div class="demo-item">
+            <div class="demo-header">
+              <span class="demo-label">{college.abbreviation}</span>
+              <span class="demo-count">{college.count}</span>
+            </div>
+            <div class="demo-bar-container">
+              <div class="demo-bar college" style="width: {college.percentage}%"></div>
+            </div>
+            <span class="demo-pct">{college.percentage}%</span>
+          </div>
+        {/each}
+      </div>
+    </div>
+
+    <div class="chart-card wide">
+      <h3><Layers size={16} /> By Department</h3>
+      <div class="dept-grid">
+        {#each byDepartment as dept}
+          <div class="dept-item">
+            <div class="dept-header">
+              <span class="dept-name">{dept.name}</span>
+              <span class="dept-college">{dept.college}</span>
+            </div>
+            <div class="dept-bar-container">
+              <div class="dept-bar" style="width: {dept.percentage}%"></div>
+            </div>
+            <div class="dept-footer">
+              <span>{dept.count} students</span>
+              <span>{dept.percentage}%</span>
+            </div>
+          </div>
+        {/each}
+      </div>
+    </div>
+  </section>
+</div>
+
+<style>
+  .page { max-width: 1200px; }
+  .page-header { margin-bottom: 1.5rem; }
+  .page-header h1 { font-size: 1.5rem; font-weight: 700; color: var(--color-text); margin: 0; }
+  .subtitle { color: var(--color-muted); font-size: 0.9rem; margin-top: 0.25rem; }
+
+  .demographics-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem; }
+  .demographics-grid .wide { grid-column: 1 / -1; }
+  @media (max-width: 768px) { .demographics-grid { grid-template-columns: 1fr; } }
+
+  .chart-card { background: var(--color-surface); border: 1px solid var(--color-border); border-radius: 0.75rem; padding: 1.5rem; }
+  .chart-card h3 { font-size: 1rem; font-weight: 600; color: var(--color-text); margin: 0 0 1.25rem 0; display: flex; align-items: center; gap: 0.5rem; }
+
+  .demo-list { display: flex; flex-direction: column; gap: 1rem; }
+  .demo-item { padding: 0.75rem; background: var(--color-bg); border-radius: 0.5rem; border: 1px solid var(--color-border); }
+  .demo-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem; }
+  .demo-label { font-weight: 600; color: var(--color-text); }
+  .demo-count { font-size: 0.75rem; color: var(--color-muted); }
+  .demo-bar-container { height: 8px; background: var(--color-surface); border-radius: 4px; overflow: hidden; margin-bottom: 0.25rem; }
+  .demo-bar { height: 100%; background: #16a34a; border-radius: 4px; transition: width 0.5s ease; }
+  .demo-bar.college { background: #3b82f6; }
+  .demo-pct { font-size: 0.75rem; font-weight: 700; color: var(--color-text); }
+
+  .dept-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 1rem; }
+  .dept-item { padding: 0.875rem; background: var(--color-bg); border-radius: 0.5rem; border: 1px solid var(--color-border); }
+  .dept-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem; }
+  .dept-name { font-weight: 600; color: var(--color-text); font-size: 0.875rem; }
+  .dept-college { font-size: 0.7rem; color: var(--color-muted); background: var(--color-surface); padding: 0.125rem 0.375rem; border-radius: 0.25rem; }
+  .dept-bar-container { height: 6px; background: var(--color-surface); border-radius: 3px; overflow: hidden; margin-bottom: 0.5rem; }
+  .dept-bar { height: 100%; background: #8b5cf6; border-radius: 3px; transition: width 0.5s ease; }
+  .dept-footer { display: flex; justify-content: space-between; font-size: 0.75rem; }
+  .dept-footer span:first-child { color: var(--color-muted); }
+  .dept-footer span:last-child { font-weight: 700; color: var(--color-text); }
+</style>
