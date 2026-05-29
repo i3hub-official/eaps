@@ -1,12 +1,7 @@
 <script lang="ts">
   import { Building2, Award, Users, TrendingUp, TrendingDown, Target, GraduationCap } from 'lucide-svelte';
 
-  let colleges = $state([
-    { id: 1, name: 'College of Physical & Applied Sciences', abbreviation: 'CPAS', students: 445, exams: 12, avgScore: 66.8, passRate: 72.3, topCourse: 'CSC 201', trend: 'up' },
-    { id: 2, name: 'College of Biological Sciences', abbreviation: 'CBS', students: 267, exams: 8, avgScore: 71.2, passRate: 78.5, topCourse: 'BIO 101', trend: 'up' },
-    { id: 3, name: 'College of Engineering', abbreviation: 'COE', students: 134, exams: 6, avgScore: 58.9, passRate: 64.2, topCourse: 'ENG 201', trend: 'down' },
-    { id: 4, name: 'College of Arts & Humanities', abbreviation: 'CAH', students: 46, exams: 3, avgScore: 82.4, passRate: 89.1, topCourse: 'ENG 101', trend: 'stable' },
-  ]);
+  let colleges = $state([]);
 
   let totalStudents = $derived(colleges.reduce((a, c) => a + c.students, 0));
 </script>

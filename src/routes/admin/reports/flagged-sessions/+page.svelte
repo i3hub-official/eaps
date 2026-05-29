@@ -1,14 +1,9 @@
 <script lang="ts">
   import { EyeOff, Shield, AlertTriangle, Clock, UserX, CheckCircle2 } from 'lucide-svelte';
 
-  let sessions = $state([
-    { id: 'S001', student: 'Ibrahim Musa', matric: 'MOUAU/2022/112', exam: 'MTH 101', flags: 8, status: 'force_submitted', invigilator: 'Dr. Adeyemi', duration: '45 min', score: 32 },
-    { id: 'S002', student: 'Oluwaseun Adeyemi', matric: 'MOUAU/2022/156', exam: 'PHY 102', flags: 15, status: 'flagged', invigilator: 'Prof. Okonkwo', duration: '62 min', score: 28 },
-    { id: 'S003', student: 'Fatima Bello', matric: 'MOUAU/2023/089', exam: 'CHM 201', flags: 3, status: 'submitted', invigilator: 'Dr. Nwosu', duration: '55 min', score: 68 },
-    { id: 'S004', student: 'Chinedu Obi', matric: 'MOUAU/2023/234', exam: 'CSC 201', flags: 6, status: 'flagged', invigilator: 'Prof. Ibrahim', duration: '38 min', score: 45 },
-  ]);
+  let sessions = $state([]);
 
-  let summary = $state({ total: 23, forceSubmitted: 8, underReview: 12, cleared: 3 });
+  let summary = $state({});
 
   function getStatusColor(s: string) {
     return { force_submitted: 'status-force', flagged: 'status-flagged', submitted: 'status-submitted' }[s] || 'status-flagged';

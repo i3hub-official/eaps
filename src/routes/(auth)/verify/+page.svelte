@@ -25,8 +25,6 @@
   let gestureDetected = false;
   let livenessIndex = 0;
   let lastNodY: number | null = null;
-  let lastMouthRatio = 0;
-  let lastEyebrowY: number | null = null;
   let scanY = $state(0);
   let scanDir = 1;
 
@@ -36,7 +34,6 @@
     { id: 'open_mouth',  label: 'Open your mouth' },
     { id: 'turn_left',   label: 'Turn head left'  },
     { id: 'turn_right',  label: 'Turn head right' },
-    { id: 'raise_brows', label: 'Raise your eyebrows' },
     { id: 'nod',         label: 'Nod your head'   },
   ];
   let selected: typeof GESTURES = [];

@@ -1,23 +1,9 @@
 <script lang="ts">
   import { AlertTriangle, Shield, EyeOff, Clock, TrendingUp, TrendingDown, Filter, Search } from 'lucide-svelte';
 
-  let violations = $state([
-    { id: 'V001', student: 'Ibrahim Musa', matric: 'MOUAU/2022/112', exam: 'MTH 101', type: 'tab_switch', action: 'warning', flaggedAt: '2026-05-18 14:23', severity: 'medium' },
-    { id: 'V002', student: 'Oluwaseun Adeyemi', matric: 'MOUAU/2022/156', exam: 'PHY 102', type: 'fullscreen_exit', action: 'invigilator_alerted', flaggedAt: '2026-05-20 10:15', severity: 'high' },
-    { id: 'V003', student: 'Ibrahim Musa', matric: 'MOUAU/2022/112', exam: 'MTH 101', type: 'copy_attempt', action: 'exam_paused', flaggedAt: '2026-05-18 14:45', severity: 'critical' },
-    { id: 'V004', student: 'Chukwuemeka Okafor', matric: 'MOUAU/2023/001', exam: 'CSC 201', type: 'window_blur', action: 'warning', flaggedAt: '2026-05-20 09:30', severity: 'low' },
-    { id: 'V005', student: 'Fatima Bello', matric: 'MOUAU/2023/089', exam: 'CHM 201', type: 'multiple_faces', action: 'invigilator_alerted', flaggedAt: '2026-05-22 11:20', severity: 'high' },
-  ]);
+  let violations = $state([]);
 
-  let summary = $state({
-    total: 89,
-    today: 12,
-    critical: 8,
-    high: 23,
-    medium: 34,
-    low: 24,
-    trend: 'down'
-  });
+  let summary = $state({});
 
   let searchQuery = $state('');
   let filtered = $derived(violations.filter(v => v.student.toLowerCase().includes(searchQuery.toLowerCase()) || v.matric.toLowerCase().includes(searchQuery.toLowerCase()) || v.type.toLowerCase().includes(searchQuery.toLowerCase())));

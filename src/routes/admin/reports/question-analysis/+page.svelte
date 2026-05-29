@@ -1,19 +1,21 @@
+<!-- src/routes/admin/reports/question-analysis/+page.svelte -->
 <script lang="ts">
-  import { BrainCircuit, Search, ArrowUpDown, CheckCircle2, XCircle, Clock, AlertTriangle, BarChart3 } from 'lucide-svelte';
+  import type { PageData } from './$types';
+  import { BrainCircuit, Search, ArrowUpDown } from 'lucide-svelte';
 
-  let questions = $state([
-    { id: 'Q1', exam: 'CSC 201', body: 'What is the time complexity of binary search?', type: 'mcq', attempts: 145, correct: 132, accuracy: 91, avgTime: 45, difficulty: 'easy', discrimination: 0.82 },
-    { id: 'Q2', exam: 'CSC 201', body: 'Explain the difference between stack and heap memory allocation.', type: 'fill_in_the_blank', attempts: 145, correct: 89, accuracy: 61, avgTime: 120, difficulty: 'medium', discrimination: 0.65 },
-    { id: 'Q3', exam: 'MTH 101', body: 'Find the derivative of f(x) = x³ + 2x² - 5x + 1', type: 'mcq', attempts: 203, correct: 156, accuracy: 77, avgTime: 85, difficulty: 'medium', discrimination: 0.71 },
-    { id: 'Q4', exam: 'MTH 101', body: 'Evaluate the integral ∫(2x + 3)dx from 0 to 4', type: 'mcq', attempts: 203, correct: 98, accuracy: 48, avgTime: 140, difficulty: 'hard', discrimination: 0.58 },
-    { id: 'Q5', exam: 'PHY 102', body: 'State Newton's Second Law of Motion', type: 'fill_in_the_blank', attempts: 178, correct: 165, accuracy: 93, avgTime: 35, difficulty: 'easy', discrimination: 0.88 },
-  ]);
+  let { data }: { data: PageData } = $props();
 
   let searchQuery = $state('');
-  let filtered = $derived(questions.filter(q => q.body.toLowerCase().includes(searchQuery.toLowerCase()) || q.exam.toLowerCase().includes(searchQuery.toLowerCase())));
 
-  function getDifficultyColor(d: string) {
-    return { easy: 'diff-easy', medium: 'diff-medium', hard: 'diff-hard' }[d] || 'diff-medium';
+  const filtered = $derived(
+    data.questions.filter(q =>
+      q.body.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      q.exam.toLowerCase().includes(searchQuery.toLowerCase())
+    )
+  );
+
+  function diffClass(d: string) {
+    return { easy: 'diff-easy', medium: 'diff-medium', hard: 'diff-hard' }[d] ?? 'diff-medium';
   }
 </script>
 
@@ -25,18 +27,19 @@
     <p class="subtitle">Difficulty index, discrimination coefficient, and accuracy per question</p>
   </header>
 
-  <section class="filters-bar">
+  <div class="filters-bar">
     <div class="search-box">
-      <Search size={16} />
-      <input type="text" placeholder="Search questions..." bind:value={searchQuery} />
+      <Search size={15} />
+      <input type="text" placeholder="Search questions or exam…" bind:value={searchQuery} />
     </div>
-  </section>
+    <span class="count">{filtered.length} question{filtered.length !== 1 ? 's' : ''}</span>
+  </div>
 
-  <section class="table-section">
+  <div class="table-wrap">
     <table class="data-table">
       <thead>
         <tr>
-          <th>Question <ArrowUpDown size={14} /></th>
+          <th>Question <ArrowUpDown size={12} /></th>
           <th>Exam</th>
           <th>Type</th>
           <th>Attempts</th>
@@ -47,74 +50,147 @@
         </tr>
       </thead>
       <tbody>
-        {#each filtered as q}
+        {#if filtered.length === 0}
           <tr>
-            <td>
-              <div class="question-cell">
-                <div class="question-icon"><BrainCircuit size={16} /></div>
-                <span class="question-body">{q.body}</span>
-              </div>
-            </td>
-            <td>{q.exam}</td>
-            <td><span class="type-badge {q.type}">{q.type === 'mcq' ? 'MCQ' : 'Fill-in'}</span></td>
-            <td>{q.attempts}</td>
-            <td>
-              <div class="accuracy-bar">
-                <div class="accuracy-fill" style="width: {q.accuracy}%"></div>
-                <span>{q.accuracy}%</span>
-              </div>
-            </td>
-            <td>{q.avgTime}s</td>
-            <td><span class="diff-badge {getDifficultyColor(q.difficulty)}">{q.difficulty}</span></td>
-            <td>
-              <div class="disc-bar">
-                <div class="disc-fill" style="width: {q.discrimination * 100}%"></div>
-                <span>{q.discrimination.toFixed(2)}</span>
-              </div>
-            </td>
+            <td colspan="8" class="empty">No questions found.</td>
           </tr>
-        {/each}
+        {:else}
+          {#each filtered as q}
+            <tr>
+              <td>
+                <div class="q-cell">
+                  <span class="q-icon"><BrainCircuit size={15} /></span>
+                  <span class="q-body">{q.body}</span>
+                </div>
+              </td>
+              <td class="mono">{q.exam}</td>
+              <td>
+                <span class="badge {q.type === 'mcq' ? 'badge-mcq' : 'badge-fitb'}">
+                  {q.type === 'mcq' ? 'MCQ' : 'Fill-in'}
+                </span>
+              </td>
+              <td>{q.attempts}</td>
+              <td>
+                <div class="bar-row">
+                  <div class="bar-track">
+                    <div class="bar-fill green" style="width:{q.accuracy}%"></div>
+                  </div>
+                  <span>{q.accuracy}%</span>
+                </div>
+              </td>
+              <td>{q.avgTime}s</td>
+              <td><span class="badge {diffClass(q.difficulty)}">{q.difficulty}</span></td>
+              <td>
+                <div class="bar-row">
+                  <div class="bar-track">
+                    <div class="bar-fill purple" style="width:{q.discrimination * 100}%"></div>
+                  </div>
+                  <span>{q.discrimination.toFixed(2)}</span>
+                </div>
+              </td>
+            </tr>
+          {/each}
+        {/if}
       </tbody>
     </table>
-  </section>
+  </div>
 </div>
 
 <style>
-  .page { max-width: 1200px; }
+  .page { max-width: 1300px; padding: 1.75rem 2rem 4rem; margin: 0 auto; }
+
   .page-header { margin-bottom: 1.5rem; }
-  .page-header h1 { font-size: 1.5rem; font-weight: 700; color: var(--color-text); margin: 0; }
-  .subtitle { color: var(--color-muted); font-size: 0.9rem; margin-top: 0.25rem; }
+  .page-header h1 {
+    font-size: 1.65rem; font-weight: 900; letter-spacing: -0.04em;
+    color: var(--color-text); margin: 0 0 0.25rem;
+  }
+  .subtitle { color: var(--color-muted); font-size: 0.82rem; margin: 0; }
 
-  .filters-bar { display: flex; gap: 1rem; margin-bottom: 1rem; flex-wrap: wrap; }
-  .search-box { display: flex; align-items: center; gap: 0.5rem; background: var(--color-surface); border: 1px solid var(--color-border); border-radius: 0.5rem; padding: 0.5rem 0.75rem; flex: 1; min-width: 200px; }
-  .search-box input { border: none; background: none; outline: none; color: var(--color-text); font-size: 0.875rem; width: 100%; }
+  .filters-bar {
+    display: flex; align-items: center; gap: 0.875rem;
+    margin-bottom: 1.125rem; flex-wrap: wrap;
+  }
+  .search-box {
+    display: flex; align-items: center; gap: 0.5rem;
+    background: var(--color-surface); border: 1px solid var(--color-border);
+    border-radius: 0.6rem; padding: 0.525rem 0.875rem;
+    flex: 1; min-width: 220px;
+    transition: border-color 0.15s, box-shadow 0.15s;
+  }
+  .search-box:focus-within {
+    border-color: #16a34a;
+    box-shadow: 0 0 0 3px rgba(22,163,74,0.1);
+  }
   .search-box :global(svg) { color: var(--color-muted); flex-shrink: 0; }
+  .search-box input {
+    border: none; background: none; outline: none;
+    color: var(--color-text); font-size: 0.875rem; width: 100%;
+    font-family: inherit;
+  }
+  .count {
+    font-size: 0.78rem; font-weight: 600; color: var(--color-muted);
+    white-space: nowrap;
+  }
 
-  .table-section { background: var(--color-surface); border: 1px solid var(--color-border); border-radius: 0.75rem; overflow: hidden; }
-  .data-table { width: 100%; border-collapse: collapse; font-size: 0.875rem; }
-  .data-table th { text-align: left; padding: 0.875rem 1rem; color: var(--color-muted); font-weight: 500; border-bottom: 1px solid var(--color-border); background: var(--color-bg); white-space: nowrap; }
-  .data-table td { padding: 1rem; border-bottom: 1px solid var(--color-border); color: var(--color-text); }
+  .table-wrap {
+    background: var(--color-surface); border: 1px solid var(--color-border);
+    border-radius: 1rem; overflow: hidden;
+  }
+  .data-table { width: 100%; border-collapse: collapse; font-size: 0.855rem; }
+  .data-table th {
+    text-align: left; padding: 0.8rem 1rem;
+    color: var(--color-muted); font-size: 0.72rem; font-weight: 700;
+    text-transform: uppercase; letter-spacing: 0.05em;
+    border-bottom: 1px solid var(--color-border);
+    background: var(--color-bg); white-space: nowrap;
+  }
+  .data-table th :global(svg) { display: inline; vertical-align: middle; margin-left: 0.2rem; opacity: 0.5; }
+  .data-table td {
+    padding: 0.875rem 1rem; border-bottom: 1px solid var(--color-border);
+    color: var(--color-text); vertical-align: middle;
+  }
   .data-table tr:last-child td { border-bottom: none; }
-  .data-table tr:hover td { background: var(--color-surface-hover); }
+  .data-table tbody tr:hover td { background: rgba(22,163,74,0.03); }
 
-  .question-cell { display: flex; align-items: flex-start; gap: 0.75rem; max-width: 400px; }
-  .question-icon { width: 32px; height: 32px; border-radius: 0.5rem; background: rgba(139, 92, 246, 0.1); color: #8b5cf6; display: flex; align-items: center; justify-content: center; flex-shrink: 0; margin-top: 2px; }
-  .question-body { font-size: 0.875rem; color: var(--color-text); line-height: 1.4; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+  .q-cell { display: flex; align-items: flex-start; gap: 0.6rem; max-width: 380px; }
+  .q-icon {
+    width: 28px; height: 28px; flex-shrink: 0;
+    border-radius: 0.45rem;
+    background: rgba(22,163,74,0.1); color: #16a34a;
+    display: flex; align-items: center; justify-content: center;
+    margin-top: 1px;
+  }
+  .q-body {
+    font-size: 0.855rem; line-height: 1.45;
+    display: -webkit-box; -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical; overflow: hidden;
+  }
 
-  .type-badge { padding: 0.25rem 0.5rem; border-radius: 0.375rem; font-size: 0.75rem; font-weight: 600; }
-  .type-badge.mcq { background: rgba(59, 130, 246, 0.1); color: #3b82f6; }
-  .type-badge.fill_in_the_blank { background: rgba(245, 158, 11, 0.1); color: #f59e0b; }
+  .mono { font-size: 0.78rem; font-weight: 700; color: #16a34a; font-family: monospace; }
 
-  .accuracy-bar { display: flex; align-items: center; gap: 0.5rem; }
-  .accuracy-fill { height: 6px; background: #16a34a; border-radius: 3px; min-width: 20px; }
-  .accuracy-bar span { font-size: 0.8rem; font-weight: 600; color: var(--color-text); min-width: 36px; }
+  .badge {
+    display: inline-block; padding: 0.2rem 0.55rem;
+    border-radius: 0.375rem; font-size: 0.7rem; font-weight: 700;
+    text-transform: capitalize; letter-spacing: 0.02em;
+  }
+  .badge-mcq  { background: rgba(59,130,246,0.1); color: #1d4ed8; }
+  .badge-fitb { background: rgba(245,158,11,0.1); color: #92400e; }
+  .diff-easy   { background: rgba(22,163,74,0.1);  color: #15803d; }
+  .diff-medium { background: rgba(245,158,11,0.1); color: #92400e; }
+  .diff-hard   { background: rgba(239,68,68,0.1);  color: #dc2626; }
 
-  .diff-badge { padding: 0.25rem 0.5rem; border-radius: 0.375rem; font-size: 0.75rem; font-weight: 600; text-transform: capitalize; }
-  .diff-easy { background: rgba(22, 163, 74, 0.1); color: #16a34a; }
-  .diff-medium { background: rgba(245, 158, 11, 0.1); color: #f59e0b; }
-  .diff-hard { background: rgba(239, 68, 68, 0.1); color: #ef4444; }
+  .bar-row { display: flex; align-items: center; gap: 0.5rem; }
+  .bar-track {
+    width: 64px; height: 5px; border-radius: 999px;
+    background: var(--color-border); flex-shrink: 0; overflow: hidden;
+  }
+  .bar-fill { height: 100%; border-radius: 999px; min-width: 3px; }
+  .bar-fill.green  { background: #16a34a; }
+  .bar-fill.purple { background: #8b5cf6; }
+  .bar-row span { font-size: 0.78rem; font-weight: 600; min-width: 38px; }
 
-  .disc-bar { display: flex; align-items: center; gap: 0.5rem; }
-  .disc-fill { height: 6px; background: #8b5cf6; border-radius: 3px; min-width: 20px; }
-  .disc-bar span { font-size: 0.8rem; font-weight: 600; color: var(--color-text); min-width: 40px; }
+  .empty {
+    text-align: center; padding: 3rem;
+    color: var(--color-muted); font-size: 0.875rem;
+  }
 </style>

@@ -1,13 +1,7 @@
 <script lang="ts">
   import { ShieldCheck, Users, ClipboardList, Clock, AlertTriangle, CheckCircle2, XCircle } from 'lucide-svelte';
 
-  let invigilators = $state([
-    { id: 'I001', name: 'Dr. Adeyemi Johnson', assignedExams: 5, activeSessions: 2, totalStudents: 312, violationsHandled: 12, responseTime: '45 sec', status: 'active' },
-    { id: 'I002', name: 'Prof. Nkechi Okonkwo', assignedExams: 4, activeSessions: 1, totalStudents: 245, violationsHandled: 8, responseTime: '1.2 min', status: 'active' },
-    { id: 'I003', name: 'Dr. Ibrahim Musa', assignedExams: 3, activeSessions: 0, totalStudents: 178, violationsHandled: 5, responseTime: '38 sec', status: 'offline' },
-    { id: 'I004', name: 'Prof. Fatima Bello', assignedExams: 4, activeSessions: 3, totalStudents: 289, violationsHandled: 15, responseTime: '52 sec', status: 'active' },
-    { id: 'I005', name: 'Dr. Chinedu Obi', assignedExams: 2, activeSessions: 0, totalStudents: 134, violationsHandled: 3, responseTime: '1.5 min', status: 'offline' },
-  ]);
+  let invigilators = $state([]);
 
   let searchQuery = $state('');
   let filtered = $derived(invigilators.filter(i => i.name.toLowerCase().includes(searchQuery.toLowerCase())));

@@ -1,28 +1,9 @@
 <script lang="ts">
   import { TrendingUp, TrendingDown, AlertTriangle, BarChart3, Calendar } from 'lucide-svelte';
 
-  let dailyTrends = $state([
-    { date: '2026-05-15', count: 3, types: { tab_switch: 1, window_blur: 2 } },
-    { date: '2026-05-16', count: 5, types: { tab_switch: 2, fullscreen_exit: 1, copy_attempt: 2 } },
-    { date: '2026-05-17', count: 2, types: { window_blur: 1, multiple_faces: 1 } },
-    { date: '2026-05-18', count: 12, types: { tab_switch: 4, copy_attempt: 3, fullscreen_exit: 2, devtools_open: 3 } },
-    { date: '2026-05-19', count: 8, types: { tab_switch: 3, window_blur: 2, screenshot_attempt: 3 } },
-    { date: '2026-05-20', count: 15, types: { tab_switch: 5, fullscreen_exit: 4, copy_attempt: 3, multiple_faces: 3 } },
-    { date: '2026-05-21', count: 6, types: { window_blur: 2, no_face_detected: 4 } },
-    { date: '2026-05-22', count: 9, types: { tab_switch: 3, copy_attempt: 2, invigilator_manual: 4 } },
-  ]);
+  let dailyTrends = $state([]);
 
-  let typeBreakdown = $state({
-    tab_switch: 18,
-    window_blur: 7,
-    fullscreen_exit: 7,
-    copy_attempt: 10,
-    devtools_open: 3,
-    screenshot_attempt: 3,
-    multiple_faces: 4,
-    no_face_detected: 4,
-    invigilator_manual: 4,
-  });
+  let typeBreakdown = $state({});
 
   let totalViolations = $derived(dailyTrends.reduce((a, d) => a + d.count, 0));
   let avgPerDay = $derived((totalViolations / dailyTrends.length).toFixed(1));

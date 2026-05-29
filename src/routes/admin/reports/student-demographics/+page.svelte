@@ -1,31 +1,11 @@
 <script lang="ts">
   import { School, GraduationCap, Building2, Layers, BarChart3, Users } from 'lucide-svelte';
 
-  let byLevel = $state([
-    { level: 100, count: 312, percentage: 35.0 },
-    { level: 200, count: 289, percentage: 32.4 },
-    { level: 300, count: 198, percentage: 22.2 },
-    { level: 400, count: 67, percentage: 7.5 },
-    { level: 500, count: 26, percentage: 2.9 },
-  ]);
+  let byLevel = $state([]);
 
-  let byCollege = $state([
-    { name: 'College of Physical & Applied Sciences', abbreviation: 'CPAS', count: 445, percentage: 49.9 },
-    { name: 'College of Biological Sciences', abbreviation: 'CBS', count: 267, percentage: 29.9 },
-    { name: 'College of Engineering', abbreviation: 'COE', count: 134, percentage: 15.0 },
-    { name: 'College of Arts & Humanities', abbreviation: 'CAH', count: 46, percentage: 5.2 },
-  ]);
+  let byCollege = $state([]);
 
-  let byDepartment = $state([
-    { name: 'Computer Science', college: 'CPAS', count: 145, percentage: 16.3 },
-    { name: 'Mathematics', college: 'CPAS', count: 156, percentage: 17.5 },
-    { name: 'Physics', college: 'CPAS', count: 128, percentage: 14.3 },
-    { name: 'Chemistry', college: 'CPAS', count: 98, percentage: 11.0 },
-    { name: 'Biology', college: 'CBS', count: 203, percentage: 22.8 },
-    { name: 'Microbiology', college: 'CBS', count: 64, percentage: 7.2 },
-    { name: 'Engineering', college: 'COE', count: 134, percentage: 15.0 },
-    { name: 'English', college: 'CAH', count: 46, percentage: 5.2 },
-  ]);
+  let byDepartment = $state([]);
 </script>
 
 <svelte:head><title>Student Demographics — MOUAU eTest</title></svelte:head>

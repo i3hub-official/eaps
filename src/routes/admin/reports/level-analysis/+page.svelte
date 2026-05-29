@@ -1,13 +1,7 @@
 <script lang="ts">
   import { BarChart3, GraduationCap, Award, Target, TrendingUp, TrendingDown, Users } from 'lucide-svelte';
 
-  let levels = $state([
-    { level: 100, students: 312, exams: 8, avgScore: 68.5, passRate: 74.2, topDept: 'Biology', trend: 'up' },
-    { level: 200, students: 289, exams: 12, avgScore: 71.2, passRate: 78.9, topDept: 'Computer Science', trend: 'up' },
-    { level: 300, students: 198, exams: 10, avgScore: 64.8, passRate: 69.7, topDept: 'Engineering', trend: 'stable' },
-    { level: 400, students: 67, exams: 6, avgScore: 72.4, passRate: 80.6, topDept: 'Mathematics', trend: 'up' },
-    { level: 500, students: 26, exams: 4, avgScore: 75.1, passRate: 84.6, topDept: 'Chemistry', trend: 'stable' },
-  ]);
+  let levels = $state([]);
 </script>
 
 <svelte:head><title>Level Analysis — MOUAU eTest</title></svelte:head>

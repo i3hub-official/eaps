@@ -1,37 +1,51 @@
+<!-- src/routes/admin/reports/exam-performance/+page.svelte -->
 <script lang="ts">
-  import { onMount } from 'svelte';
+  import type { PageData } from './$types';
+  import { goto } from '$app/navigation';
+  import { page } from '$app/stores';
   import {
-    ClipboardList, Search, Filter, ArrowUpDown, TrendingUp,
-    Users, Clock, Award, AlertTriangle, ChevronDown
+    ClipboardList, Search, ArrowUpDown,
+    TrendingUp, Users, Award, AlertTriangle
   } from 'lucide-svelte';
 
-  let exams = $state([
-    { id: '1', title: 'CSC 201 — Introduction to Programming', course: 'CSC 201', date: '2026-05-20', students: 145, avgScore: 72.5, passRate: 78, duration: 60, violations: 3, status: 'completed' },
-    { id: '2', title: 'MTH 101 — Calculus I', course: 'MTH 101', date: '2026-05-18', students: 203, avgScore: 58.3, passRate: 62, duration: 90, violations: 12, status: 'completed' },
-    { id: '3', title: 'PHY 102 — General Physics', course: 'PHY 102', date: '2026-05-22', students: 178, avgScore: 65.1, passRate: 71, duration: 75, violations: 7, status: 'active' },
-    { id: '4', title: 'CHM 201 — Organic Chemistry', course: 'CHM 201', date: '2026-05-25', students: 134, avgScore: 0, passRate: 0, duration: 60, violations: 0, status: 'scheduled' },
-    { id: '5', title: 'ENG 101 — Use of English', course: 'ENG 101', date: '2026-05-15', students: 312, avgScore: 81.2, passRate: 89, duration: 45, violations: 1, status: 'completed' },
-  ]);
+  let { data }: { data: PageData } = $props();
 
-  let searchQuery = $state('');
-  let statusFilter = $state('all');
+  // ── URL-driven filters (server does the work) ─────────────────────
+  let searchQuery  = $state($page.url.searchParams.get('q')      ?? '');
+  let statusFilter = $state($page.url.searchParams.get('status') ?? 'all');
 
-  let filteredExams = $derived(
-    exams.filter(e => {
-      const matchesSearch = e.title.toLowerCase().includes(searchQuery.toLowerCase()) || e.course.toLowerCase().includes(searchQuery.toLowerCase());
-      const matchesStatus = statusFilter === 'all' || e.status === statusFilter;
-      return matchesSearch && matchesStatus;
-    })
+  let debounce: ReturnType<typeof setTimeout> | null = null;
+
+  function applyFilters() {
+    const p = new URLSearchParams();
+    if (searchQuery.trim())            p.set('q',      searchQuery.trim());
+    if (statusFilter !== 'all')        p.set('status', statusFilter);
+    goto(`?${p.toString()}`, { replaceState: true, keepFocus: true });
+  }
+
+  function onSearch() {
+    if (debounce) clearTimeout(debounce);
+    debounce = setTimeout(applyFilters, 350);
+  }
+
+  // ── Summary stats (computed from whatever the server returned) ────
+  const completed  = $derived(data.exams.filter(e => e.status === 'completed'));
+  const totalStudents = $derived(data.exams.reduce((a, e) => a + e.students, 0));
+  const avgScore   = $derived(
+    completed.length
+      ? completed.reduce((a, e) => a + e.avgScore, 0) / completed.length
+      : 0
+  );
+  const avgPass    = $derived(
+    completed.length
+      ? completed.reduce((a, e) => a + e.passRate, 0) / completed.length
+      : 0
   );
 
-  function getStatusColor(status: string) {
-    return {
-      completed: 'status-completed',
-      active: 'status-active',
-      scheduled: 'status-scheduled',
-      cancelled: 'status-cancelled'
-    }[status] || 'status-scheduled';
-  }
+  const STATUS_LABEL: Record<string, string> = {
+    completed: 'Completed', active: 'Active',
+    scheduled: 'Scheduled', cancelled: 'Cancelled', draft: 'Draft',
+  };
 </script>
 
 <svelte:head>
@@ -39,171 +53,298 @@
 </svelte:head>
 
 <div class="page">
+
   <header class="page-header">
-    <h1>Exam Performance</h1>
-    <p class="subtitle">Analyze exam results, scores, and completion metrics</p>
+    <div>
+      <h1>Exam Performance</h1>
+      <p class="subtitle">Results, scores, and completion metrics across all exams</p>
+    </div>
+    <span class="total-badge">{data.exams.length} exam{data.exams.length !== 1 ? 's' : ''}</span>
   </header>
 
-  <!-- Summary Cards -->
-  <section class="summary-row">
+  <!-- ── Summary cards ────────────────────────────────────────────── -->
+  <div class="summary-row">
     <div class="summary-card">
-      <ClipboardList size={20} />
+      <div class="summary-icon"><ClipboardList size={18} /></div>
       <div>
-        <span class="summary-value">{exams.length}</span>
-        <span class="summary-label">Total Exams</span>
+        <span class="summary-value">{data.exams.length}</span>
+        <span class="summary-label">Total exams</span>
       </div>
     </div>
     <div class="summary-card">
-      <Users size={20} />
+      <div class="summary-icon"><Users size={18} /></div>
       <div>
-        <span class="summary-value">{exams.reduce((a, e) => a + e.students, 0).toLocaleString()}</span>
-        <span class="summary-label">Total Students</span>
+        <span class="summary-value">{totalStudents.toLocaleString()}</span>
+        <span class="summary-label">Total sittings</span>
       </div>
     </div>
     <div class="summary-card">
-      <Award size={20} />
+      <div class="summary-icon"><Award size={18} /></div>
       <div>
-        <span class="summary-value">{((exams.filter(e => e.status === 'completed').reduce((a, e) => a + e.avgScore, 0)) / exams.filter(e => e.status === 'completed').length || 0).toFixed(1)}%</span>
-        <span class="summary-label">Avg Score</span>
+        <span class="summary-value">{completed.length ? avgScore.toFixed(1) + '%' : '—'}</span>
+        <span class="summary-label">Avg score</span>
       </div>
     </div>
     <div class="summary-card">
-      <TrendingUp size={20} />
+      <div class="summary-icon"><TrendingUp size={18} /></div>
       <div>
-        <span class="summary-value">{((exams.filter(e => e.status === 'completed').reduce((a, e) => a + e.passRate, 0)) / exams.filter(e => e.status === 'completed').length || 0).toFixed(1)}%</span>
-        <span class="summary-label">Avg Pass Rate</span>
+        <span class="summary-value">{completed.length ? avgPass.toFixed(1) + '%' : '—'}</span>
+        <span class="summary-label">Avg pass rate</span>
       </div>
     </div>
-  </section>
+  </div>
 
-  <!-- Filters -->
-  <section class="filters-bar">
+  <!-- ── Filters ───────────────────────────────────────────────────── -->
+  <div class="filters">
     <div class="search-box">
-      <Search size={16} />
-      <input type="text" placeholder="Search exams..." bind:value={searchQuery} />
+      <Search size={15} />
+      <input
+        type="text"
+        placeholder="Search exam or course code…"
+        bind:value={searchQuery}
+        oninput={onSearch}
+      />
     </div>
-    <select bind:value={statusFilter} class="filter-select">
-      <option value="all">All Status</option>
+    <select bind:value={statusFilter} onchange={applyFilters} class="status-select">
+      <option value="all">All statuses</option>
       <option value="completed">Completed</option>
       <option value="active">Active</option>
       <option value="scheduled">Scheduled</option>
+      <option value="draft">Draft</option>
+      <option value="cancelled">Cancelled</option>
     </select>
-  </section>
+  </div>
 
-  <!-- Exams Table -->
-  <section class="table-section">
-    <table class="data-table">
-      <thead>
-        <tr>
-          <th>Exam <ArrowUpDown size={14} /></th>
-          <th>Date</th>
-          <th>Students</th>
-          <th>Avg Score</th>
-          <th>Pass Rate</th>
-          <th>Duration</th>
-          <th>Violations</th>
-          <th>Status</th>
-        </tr>
-      </thead>
-      <tbody>
-        {#each filteredExams as exam}
+  <!-- ── Table ─────────────────────────────────────────────────────── -->
+  {#if data.exams.length === 0}
+    <div class="empty">
+      <p class="empty-title">No exams found</p>
+      <p class="empty-sub">Try adjusting the search or status filter.</p>
+    </div>
+  {:else}
+    <div class="table-wrap">
+      <table class="table">
+        <thead>
           <tr>
-            <td>
-              <div class="exam-cell">
-                <span class="exam-title">{exam.title}</span>
-                <span class="exam-course">{exam.course}</span>
-              </div>
-            </td>
-            <td>{exam.date}</td>
-            <td>{exam.students}</td>
-            <td>
-              <span class="score-badge" class:high={exam.avgScore >= 70} class:medium={exam.avgScore >= 50 && exam.avgScore < 70} class:low={exam.avgScore < 50}>
-                {exam.avgScore > 0 ? exam.avgScore + '%' : '—'}
-              </span>
-            </td>
-            <td>
-              <div class="pass-bar">
-                <div class="pass-fill" style="width: {exam.passRate}%"></div>
-                <span>{exam.passRate > 0 ? exam.passRate + '%' : '—'}</span>
-              </div>
-            </td>
-            <td>{exam.duration} min</td>
-            <td>
-              <span class="violation-count" class:alert={exam.violations > 5}>
-                <AlertTriangle size={12} />
-                {exam.violations}
-              </span>
-            </td>
-            <td><span class="status-badge {getStatusColor(exam.status)}">{exam.status}</span></td>
+            <th>Exam</th>
+            <th>Date</th>
+            <th>Students</th>
+            <th>Avg score</th>
+            <th>Pass rate</th>
+            <th>Duration</th>
+            <th>Violations</th>
+            <th>Status</th>
           </tr>
-        {/each}
-      </tbody>
-    </table>
-  </section>
+        </thead>
+        <tbody>
+          {#each data.exams as exam (exam.id)}
+            <tr>
+              <!-- Exam title + course -->
+              <td>
+                <div class="exam-cell">
+                  <span class="exam-title">{exam.title}</span>
+                  <span class="exam-course">{exam.course}</span>
+                </div>
+              </td>
+
+              <!-- Date -->
+              <td class="td-muted">{exam.date}</td>
+
+              <!-- Students -->
+              <td class="td-center">{exam.students}</td>
+
+              <!-- Avg score -->
+              <td>
+                {#if exam.students > 0 && exam.avgScore > 0}
+                  <span
+                    class="score-tag"
+                    class:score-high={exam.avgScore >= 70}
+                    class:score-mid={exam.avgScore >= 50 && exam.avgScore < 70}
+                    class:score-low={exam.avgScore > 0 && exam.avgScore < 50}
+                  >{exam.avgScore}%</span>
+                {:else}
+                  <span class="td-muted">—</span>
+                {/if}
+              </td>
+
+              <!-- Pass rate bar -->
+              <td>
+                {#if exam.passRate > 0}
+                  <div class="pass-bar">
+                    <div class="pass-fill" style="width:{Math.min(exam.passRate, 100)}%"></div>
+                    <span>{exam.passRate}%</span>
+                  </div>
+                {:else}
+                  <span class="td-muted">—</span>
+                {/if}
+              </td>
+
+              <!-- Duration -->
+              <td class="td-muted">{exam.duration} min</td>
+
+              <!-- Violations -->
+              <td>
+                <span class="viol" class:viol-alert={exam.violations > 5}>
+                  {#if exam.violations > 5}<AlertTriangle size={12} />{/if}
+                  {exam.violations}
+                </span>
+              </td>
+
+              <!-- Status -->
+              <td>
+                <span class="status-tag status-{exam.status}">
+                  {STATUS_LABEL[exam.status] ?? exam.status}
+                </span>
+              </td>
+            </tr>
+          {/each}
+        </tbody>
+      </table>
+    </div>
+  {/if}
+
 </div>
 
 <style>
-  .page { max-width: 1200px; }
-  .page-header { margin-bottom: 1.5rem; }
-  .page-header h1 { font-size: 1.5rem; font-weight: 700; color: var(--color-text); margin: 0; }
-  .subtitle { color: var(--color-muted); font-size: 0.9rem; margin-top: 0.25rem; }
+  .page {
+    max-width: 1200px;
+    display: flex;
+    flex-direction: column;
+    gap: 1.25rem;
+  }
 
+  /* Header */
+  .page-header {
+    display: flex; align-items: flex-start;
+    justify-content: space-between; gap: 1rem; flex-wrap: wrap;
+  }
+  h1 { font-size: 1.375rem; font-weight: 700; color: var(--color-text); margin: 0; }
+  .subtitle { font-size: .825rem; color: var(--color-muted); margin-top: .2rem; }
+  .total-badge {
+    font-size: .72rem; font-weight: 600;
+    padding: .25rem .75rem;
+    background: var(--color-border); color: var(--color-muted);
+    border-radius: 999px; white-space: nowrap; align-self: center;
+  }
+
+  /* Summary cards */
   .summary-row {
-    display: grid; grid-template-columns: repeat(4, 1fr); gap: 1rem; margin-bottom: 1.5rem;
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: .875rem;
   }
   @media (max-width: 768px) { .summary-row { grid-template-columns: repeat(2, 1fr); } }
 
   .summary-card {
     background: var(--color-surface); border: 1px solid var(--color-border);
-    border-radius: 0.75rem; padding: 1rem; display: flex; align-items: center; gap: 0.75rem;
-    color: #16a34a;
+    border-radius: .75rem; padding: 1rem;
+    display: flex; align-items: center; gap: .75rem;
+  }
+  .summary-icon {
+    width: 36px; height: 36px; border-radius: 9px; flex-shrink: 0;
+    background: rgba(22,163,74,.1); color: #16a34a;
+    display: flex; align-items: center; justify-content: center;
   }
   .summary-card div { display: flex; flex-direction: column; }
-  .summary-value { font-size: 1.25rem; font-weight: 700; color: var(--color-text); }
-  .summary-label { font-size: 0.75rem; color: var(--color-muted); }
+  .summary-value { font-size: 1.2rem; font-weight: 800; color: var(--color-text); letter-spacing: -.03em; }
+  .summary-label { font-size: .68rem; font-weight: 600; color: var(--color-muted); text-transform: uppercase; letter-spacing: .04em; margin-top: .1rem; }
 
-  .filters-bar {
-    display: flex; gap: 1rem; margin-bottom: 1rem; flex-wrap: wrap;
-  }
+  /* Filters */
+  .filters { display: flex; gap: .75rem; flex-wrap: wrap; }
   .search-box {
-    display: flex; align-items: center; gap: 0.5rem;
+    display: flex; align-items: center; gap: .5rem;
     background: var(--color-surface); border: 1px solid var(--color-border);
-    border-radius: 0.5rem; padding: 0.5rem 0.75rem; flex: 1; min-width: 200px;
+    border-radius: .5rem; padding: .5rem .75rem;
+    flex: 1; min-width: 200px; transition: border-color .15s;
   }
-  .search-box input { border: none; background: none; outline: none; color: var(--color-text); font-size: 0.875rem; width: 100%; }
+  .search-box:focus-within { border-color: #22c55e; }
   .search-box :global(svg) { color: var(--color-muted); flex-shrink: 0; }
-  .filter-select {
+  .search-box input {
+    border: none; background: none; outline: none;
+    color: var(--color-text); font-size: .875rem; width: 100%; font-family: inherit;
+  }
+  .status-select {
     background: var(--color-surface); border: 1px solid var(--color-border);
-    border-radius: 0.5rem; padding: 0.5rem 0.75rem; color: var(--color-text);
-    font-size: 0.875rem; cursor: pointer;
+    border-radius: .5rem; padding: .5rem .75rem;
+    color: var(--color-text); font-size: .875rem;
+    cursor: pointer; font-family: inherit; transition: border-color .15s;
+  }
+  .status-select:focus { outline: none; border-color: #22c55e; }
+
+  /* Empty */
+  .empty {
+    padding: 3rem 2rem; text-align: center;
+    background: var(--color-surface); border: 1px solid var(--color-border);
+    border-radius: .75rem; color: var(--color-muted);
+  }
+  .empty-title { font-weight: 600; font-size: .925rem; }
+  .empty-sub   { font-size: .8rem; margin-top: .375rem; }
+
+  /* Table */
+  .table-wrap {
+    background: var(--color-surface); border: 1px solid var(--color-border);
+    border-radius: .75rem; overflow: hidden; overflow-x: auto;
+  }
+  .table {
+    width: 100%; border-collapse: collapse;
+    font-size: .8rem; white-space: nowrap;
+  }
+  .table th {
+    text-align: left; padding: .75rem 1rem;
+    font-size: .65rem; font-weight: 700; text-transform: uppercase;
+    letter-spacing: .05em; color: var(--color-muted);
+    background: var(--color-bg); border-bottom: 1px solid var(--color-border);
+  }
+  .table td {
+    padding: .875rem 1rem;
+    border-bottom: 1px solid var(--color-border);
+    color: var(--color-text); vertical-align: middle;
+  }
+  .table tr:last-child td { border-bottom: none; }
+  .table tbody tr:hover td {
+    background: color-mix(in srgb, var(--color-surface) 50%, var(--color-bg));
   }
 
-  .table-section { background: var(--color-surface); border: 1px solid var(--color-border); border-radius: 0.75rem; overflow: hidden; }
-  .data-table { width: 100%; border-collapse: collapse; font-size: 0.875rem; }
-  .data-table th { text-align: left; padding: 0.875rem 1rem; color: var(--color-muted); font-weight: 500; border-bottom: 1px solid var(--color-border); background: var(--color-bg); white-space: nowrap; }
-  .data-table td { padding: 1rem; border-bottom: 1px solid var(--color-border); color: var(--color-text); }
-  .data-table tr:last-child td { border-bottom: none; }
-  .data-table tr:hover td { background: var(--color-surface-hover); }
+  .td-muted  { color: var(--color-muted); }
+  .td-center { text-align: center; }
 
-  .exam-cell { display: flex; flex-direction: column; }
-  .exam-title { font-weight: 600; color: var(--color-text); }
-  .exam-course { font-size: 0.75rem; color: var(--color-muted); }
+  .exam-cell { display: flex; flex-direction: column; gap: .15rem; }
+  .exam-title  { font-weight: 600; font-size: .825rem; }
+  .exam-course { font-size: .7rem; color: var(--color-muted); }
 
-  .score-badge { padding: 0.25rem 0.5rem; border-radius: 0.375rem; font-size: 0.8rem; font-weight: 600; }
-  .score-badge.high { background: rgba(22, 163, 74, 0.1); color: #16a34a; }
-  .score-badge.medium { background: rgba(245, 158, 11, 0.1); color: #f59e0b; }
-  .score-badge.low { background: rgba(239, 68, 68, 0.1); color: #ef4444; }
+  /* Score tag */
+  .score-tag {
+    padding: .2rem .5rem; border-radius: .375rem;
+    font-size: .75rem; font-weight: 600;
+  }
+  .score-high { background: rgba(22,163,74,.1);  color: #16a34a; }
+  .score-mid  { background: rgba(245,158,11,.1); color: #d97706; }
+  .score-low  { background: rgba(239,68,68,.1);  color: #ef4444; }
 
-  .pass-bar { display: flex; align-items: center; gap: 0.5rem; }
-  .pass-fill { height: 6px; background: #16a34a; border-radius: 3px; min-width: 20px; }
-  .pass-bar span { font-size: 0.8rem; font-weight: 600; color: var(--color-text); min-width: 36px; }
+  /* Pass bar */
+  .pass-bar { display: flex; align-items: center; gap: .5rem; min-width: 90px; }
+  .pass-fill {
+    flex: 1; height: 5px; background: #16a34a;
+    border-radius: 3px; min-width: 4px; max-width: 60px;
+    transition: width .3s;
+  }
+  .pass-bar span { font-size: .75rem; font-weight: 600; min-width: 36px; }
 
-  .violation-count { display: flex; align-items: center; gap: 0.25rem; font-size: 0.8rem; font-weight: 600; color: var(--color-muted); }
-  .violation-count.alert { color: #ef4444; }
+  /* Violations */
+  .viol {
+    display: inline-flex; align-items: center; gap: .25rem;
+    font-size: .75rem; font-weight: 600; color: var(--color-muted);
+  }
+  .viol-alert { color: #ef4444; }
 
-  .status-badge { padding: 0.25rem 0.625rem; border-radius: 2rem; font-size: 0.75rem; font-weight: 600; text-transform: capitalize; }
-  .status-completed { background: rgba(22, 163, 74, 0.1); color: #16a34a; }
-  .status-active { background: rgba(59, 130, 246, 0.1); color: #3b82f6; }
-  .status-scheduled { background: rgba(139, 92, 246, 0.1); color: #8b5cf6; }
-  .status-cancelled { background: rgba(239, 68, 68, 0.1); color: #ef4444; }
+  /* Status tags */
+  .status-tag {
+    padding: .2rem .6rem; border-radius: 999px;
+    font-size: .68rem; font-weight: 600; text-transform: capitalize;
+  }
+  .status-completed { background: rgba(22,163,74,.1);  color: #16a34a; }
+  .status-active    { background: rgba(59,130,246,.1); color: #3b82f6; }
+  .status-scheduled { background: rgba(139,92,246,.1); color: #8b5cf6; }
+  .status-draft     { background: var(--color-border); color: var(--color-muted); }
+  .status-cancelled { background: rgba(239,68,68,.1);  color: #ef4444; }
 </style>

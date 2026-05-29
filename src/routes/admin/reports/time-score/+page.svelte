@@ -1,20 +1,9 @@
 <script lang="ts">
   import { Clock, TrendingUp, Target, Zap, BarChart3 } from 'lucide-svelte';
 
-  let correlations = $state([
-    { exam: 'CSC 201', avgTime: 52, avgScore: 72.5, correlation: 0.34, insight: 'Positive — students who took more time scored slightly better' },
-    { exam: 'MTH 101', avgTime: 78, avgScore: 58.3, correlation: -0.12, insight: 'Negative — longer time associated with lower scores (struggling students)' },
-    { exam: 'PHY 102', avgTime: 65, avgScore: 65.1, correlation: 0.28, insight: 'Positive — moderate correlation between time and score' },
-    { exam: 'CHM 201', avgTime: 58, avgScore: 61.4, correlation: 0.15, insight: 'Weak positive — time has minimal impact on score' },
-    { exam: 'ENG 101', avgTime: 38, avgScore: 81.2, correlation: 0.05, insight: 'Very weak — most students finished quickly with high scores' },
-  ]);
+  let correlations = $state([]);
 
-  let timeRanges = $state([
-    { range: '0-30 min', count: 234, avgScore: 68.5, label: 'Fast' },
-    { range: '31-60 min', count: 567, avgScore: 71.2, label: 'Average' },
-    { range: '61-90 min', count: 312, avgScore: 62.8, label: 'Slow' },
-    { range: '90+ min', count: 134, avgScore: 55.4, label: 'Very Slow' },
-  ]);
+  let timeRanges = $state([]);
 </script>
 
 <svelte:head><title>Time vs Score — MOUAU eTest</title></svelte:head>

@@ -1,14 +1,7 @@
 <script lang="ts">
   import { BookMarked, Users, TrendingUp, TrendingDown, GraduationCap, Award, Search } from 'lucide-svelte';
 
-  let courses = $state([
-    { code: 'CSC 201', title: 'Introduction to Programming', dept: 'Computer Science', enrolled: 145, capacity: 200, trend: 'up', semester: 1, session: '2025/2026' },
-    { code: 'MTH 101', title: 'Calculus I', dept: 'Mathematics', enrolled: 203, capacity: 250, trend: 'stable', semester: 1, session: '2025/2026' },
-    { code: 'PHY 102', title: 'General Physics', dept: 'Physics', enrolled: 178, capacity: 200, trend: 'up', semester: 2, session: '2025/2026' },
-    { code: 'CHM 201', title: 'Organic Chemistry', dept: 'Chemistry', enrolled: 134, capacity: 180, trend: 'down', semester: 1, session: '2025/2026' },
-    { code: 'ENG 101', title: 'Use of English', dept: 'English', enrolled: 312, capacity: 400, trend: 'up', semester: 1, session: '2025/2026' },
-    { code: 'BIO 101', title: 'General Biology', dept: 'Biology', enrolled: 267, capacity: 300, trend: 'stable', semester: 2, session: '2025/2026' },
-  ]);
+  let courses = $state([]);
 
   let searchQuery = $state('');
   let filtered = $derived(courses.filter(c => c.code.toLowerCase().includes(searchQuery.toLowerCase()) || c.title.toLowerCase().includes(searchQuery.toLowerCase()) || c.dept.toLowerCase().includes(searchQuery.toLowerCase())));

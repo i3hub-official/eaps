@@ -1,22 +1,9 @@
 <script lang="ts">
   import { Bell, TrendingUp, TrendingDown, Users, Eye, CheckCircle2, Clock, Send } from 'lucide-svelte';
 
-  let stats = $state({
-    totalSent: 4523,
-    readRate: 68.5,
-    avgOpenTime: '2.3 min',
-    pending: 12,
-    failed: 34
-  });
+  let stats = $state({});
 
-  let notifications = $state([
-    { title: 'Exam Starting Soon', sent: 1245, read: 1120, readRate: 90.0, avgTime: '1.2 min', type: 'exam' },
-    { title: 'Result Published', sent: 892, read: 756, readRate: 84.8, avgTime: '3.5 min', type: 'result' },
-    { title: 'Violation Warning', sent: 45, read: 42, readRate: 93.3, avgTime: '0.8 min', type: 'security' },
-    { title: 'System Maintenance', sent: 2345, read: 1234, readRate: 52.6, avgTime: '5.1 min', type: 'system' },
-    { title: 'New Course Available', sent: 567, read: 289, readRate: 51.0, avgTime: '4.2 min', type: 'course' },
-    { title: 'Password Reset', sent: 78, read: 72, readRate: 92.3, avgTime: '0.5 min', type: 'security' },
-  ]);
+  let notifications = $state([]);
 </script>
 
 <svelte:head><title>Notification Analytics — MOUAU eTest</title></svelte:head>

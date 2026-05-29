@@ -1,14 +1,7 @@
 <script lang="ts">
   import { BookMarked, Search, ArrowUpDown, TrendingUp, Users, Award, Clock, AlertTriangle } from 'lucide-svelte';
 
-  let courses = $state([
-    { code: 'CSC 201', title: 'Introduction to Programming', dept: 'Computer Science', students: 145, exams: 3, avgScore: 72.5, passRate: 78, avgTime: 52, difficulty: 'medium', trend: 'up' },
-    { code: 'MTH 101', title: 'Calculus I', dept: 'Mathematics', students: 203, exams: 4, avgScore: 58.3, passRate: 62, avgTime: 78, difficulty: 'hard', trend: 'down' },
-    { code: 'PHY 102', title: 'General Physics', dept: 'Physics', students: 178, exams: 2, avgScore: 65.1, passRate: 71, avgTime: 65, difficulty: 'medium', trend: 'up' },
-    { code: 'CHM 201', title: 'Organic Chemistry', dept: 'Chemistry', students: 134, exams: 3, avgScore: 61.4, passRate: 68, avgTime: 58, difficulty: 'hard', trend: 'stable' },
-    { code: 'ENG 101', title: 'Use of English', dept: 'English', students: 312, exams: 2, avgScore: 81.2, passRate: 89, avgTime: 38, difficulty: 'easy', trend: 'up' },
-    { code: 'BIO 101', title: 'General Biology', dept: 'Biology', students: 267, exams: 3, avgScore: 69.8, passRate: 75, avgTime: 48, difficulty: 'medium', trend: 'stable' },
-  ]);
+  let courses = $state([]);
 
   let searchQuery = $state('');
   let filtered = $derived(courses.filter(c => c.code.toLowerCase().includes(searchQuery.toLowerCase()) || c.title.toLowerCase().includes(searchQuery.toLowerCase())));

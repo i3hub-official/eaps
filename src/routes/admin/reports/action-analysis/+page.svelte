@@ -1,19 +1,9 @@
 <script lang="ts">
   import { FileBarChart, AlertTriangle, Shield, PauseCircle, Send, TrendingUp } from 'lucide-svelte';
 
-  let actions = $state({
-    warning: { count: 45, percentage: 50.6, trend: 'up', avgResponseTime: '2 min' },
-    invigilator_alerted: { count: 28, percentage: 31.5, trend: 'stable', avgResponseTime: '45 sec' },
-    exam_paused: { count: 12, percentage: 13.5, trend: 'down', avgResponseTime: '1 min' },
-    auto_submitted: { count: 4, percentage: 4.5, trend: 'down', avgResponseTime: 'Instant' },
-  });
+  let actions = $state({});
 
-  let actionHistory = $state([
-    { action: 'warning', count: 45, effective: 38, ineffective: 7, effectiveness: 84.4 },
-    { action: 'invigilator_alerted', count: 28, effective: 25, ineffective: 3, effectiveness: 89.3 },
-    { action: 'exam_paused', count: 12, effective: 11, ineffective: 1, effectiveness: 91.7 },
-    { action: 'auto_submitted', count: 4, effective: 4, ineffective: 0, effectiveness: 100.0 },
-  ]);
+  let actionHistory = $state([]);
 
   function getActionIcon(action: string) {
     const icons = { warning: AlertTriangle, invigilator_alerted: Shield, exam_paused: PauseCircle, auto_submitted: Send };

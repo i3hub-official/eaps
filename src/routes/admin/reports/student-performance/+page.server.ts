@@ -1,3 +1,4 @@
+// src/routes/admin/reports/student-performance/+page.server.ts
 import type { PageServerLoad } from './$types';
 import { sql } from '$lib/server/db/index.js';
 import { requireAdmin } from '$lib/server/auth/guards.js';
@@ -6,60 +7,76 @@ export const load: PageServerLoad = async ({ locals, url }) => {
   requireAdmin(locals.user);
 
   const levelFilter = url.searchParams.get('level');
-  const searchQuery = url.searchParams.get('q') || '';
+  const search      = url.searchParams.get('q')?.trim() ?? '';
 
-  let query = sql`
-    SELECT 
-      u.id,
-      u."fullName",
-      u."matricNumber",
-      d.name as dept,
-      u.level,
-      COUNT(DISTINCT es.id)::int as exams_taken,
-      AVG(er.score)::numeric(10,1) as avg_score,
-      MAX(er.score)::numeric(10,1) as highest,
-      MIN(er.score)::numeric(10,1) as lowest,
-      COUNT(CASE WHEN er.passed = true THEN 1 END)::int as passed,
-      COUNT(v.id)::int as violations
-    FROM "User" u
-    LEFT JOIN "Department" d ON u."departmentId" = d.id
-    LEFT JOIN "ExamSession" es ON es."studentId" = u.id
-    LEFT JOIN "ExamResult" er ON er."sessionId" = es.id
-    LEFT JOIN "Violation" v ON v."sessionId" = es.id
-    WHERE u.role = 'student'
-  `;
+  // ── Build query dynamically with positional $N params ─────────────
+  // sql() is a plain function: sql(text, params[]) — NOT a template tag.
+  // Conditions are accumulated and interpolated at build time.
+  const conditions: string[] = [`u.role = 'student'`];
+  const params: unknown[]    = [];
 
   if (levelFilter) {
-    query = sql`${query} AND u.level = ${parseInt(levelFilter)}`;
+    params.push(parseInt(levelFilter, 10));
+    conditions.push(`u.level = $${params.length}`);
   }
 
-  if (searchQuery) {
-    query = sql`${query} AND (u."fullName" ILIKE ${'%' + searchQuery + '%'} OR u."matricNumber" ILIKE ${'%' + searchQuery + '%'})`;
+  if (search) {
+    params.push(`%${search}%`);
+    const n = params.length;
+    conditions.push(`(u."fullName" ILIKE $${n} OR u."matricNumber" ILIKE $${n})`);
   }
 
-  query = sql`${query} GROUP BY u.id, d.name LIMIT 100`;
+  const where = conditions.join(' AND ');
 
-  const students = await query;
+  // Column names come from @map / @@map in schema.prisma — never Prisma camelCase
+  const query = `
+    SELECT
+      u.id,
+      u.full_name,
+      u.matric_number,
+      d.name                                                  AS dept,
+      u.level,
+      COUNT(DISTINCT es.id)::int                              AS exams_taken,
+      ROUND(AVG(er.percentage)::numeric, 1)                   AS avg_score,
+      ROUND(MAX(er.percentage)::numeric, 1)                   AS highest,
+      ROUND(MIN(er.percentage)::numeric, 1)                   AS lowest,
+      COUNT(CASE WHEN er.passed = true THEN 1 END)::int       AS passed,
+      COUNT(v.id)::int                                        AS violations
+    FROM users u
+    LEFT JOIN departments   d  ON d.id             = u.department_id
+    LEFT JOIN exam_sessions es ON es.student_id    = u.id
+    LEFT JOIN exam_results  er ON er.session_id    = es.id
+    LEFT JOIN violations    v  ON v.session_id     = es.id
+    WHERE ${where}
+    GROUP BY u.id, u.full_name, u.matric_number, u.level, d.name
+    ORDER BY avg_score DESC NULLS LAST
+    LIMIT 100
+  `;
 
-  const formatted = students.map(s => {
-    const avgScore = parseFloat(s.avg_score) || 0;
-    const examsTaken = s.exams_taken || 0;
-    const passed = s.passed || 0;
+  const rows = await sql(query, params);
+
+  const students = rows.map(s => {
+    const avgScore   = parseFloat(s.avg_score as string)  || 0;
+    const examsTaken = (s.exams_taken as number) || 0;
+    const passed     = (s.passed     as number)  || 0;
+
     return {
-      id: s.id,
-      name: s.fullName,
-      matric: s.matricNumber || '—',
-      dept: s.dept || '—',
-      level: s.level || 0,
+      id:          s.id          as string,
+      name:        s.full_name   as string,
+      matric:      (s.matric_number as string | null) ?? '—',
+      dept:        (s.dept          as string | null) ?? '—',
+      level:       (s.level         as number | null) ?? 0,
       examsTaken,
-      avgScore: parseFloat(avgScore.toFixed(1)),
-      highest: parseFloat(s.highest) || 0,
-      lowest: parseFloat(s.lowest) || 0,
-      passRate: examsTaken > 0 ? ((passed / examsTaken) * 100).toFixed(1) : '0',
-      violations: s.violations || 0,
-      trend: avgScore >= 60 ? 'up' : 'down',
+      avgScore:    parseFloat(avgScore.toFixed(1)),
+      highest:     parseFloat(s.highest as string) || 0,
+      lowest:      parseFloat(s.lowest  as string) || 0,
+      passRate:    examsTaken > 0
+                     ? parseFloat(((passed / examsTaken) * 100).toFixed(1))
+                     : 0,
+      violations:  (s.violations as number) || 0,
+      trend:       avgScore >= 60 ? 'up' : 'down',
     };
   });
 
-  return { students: formatted };
+  return { students };
 };
