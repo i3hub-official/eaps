@@ -5,44 +5,40 @@ import { requireAdmin } from '$lib/server/auth/guards.js';
 export const load: PageServerLoad = async ({ locals, url }) => {
   requireAdmin(locals.user);
 
-  const searchQuery = url.searchParams.get('q') || '';
+  const search = url.searchParams.get('q')?.trim() || '';
+  const pattern = `%${search}%`;
 
-  let query = sql`
-    SELECT 
-      al.id,
-      al.action,
-      al.entity,
-      al."entityId",
-      al.metadata,
-      al."ipAddress",
-      al."createdAt",
-      u."fullName" as user_name
-    FROM "AuditLog" al
-    LEFT JOIN "User" u ON al."userId" = u.id
-    WHERE 1=1
-  `;
-
-  if (searchQuery) {
-    query = sql`${query} AND (
-      u."fullName" ILIKE ${'%' + searchQuery + '%'} OR 
-      al.action ILIKE ${'%' + searchQuery + '%'} OR 
-      al.entity ILIKE ${'%' + searchQuery + '%'}
-    )`;
-  }
-
-  query = sql`${query} ORDER BY al."createdAt" DESC LIMIT 200`;
-
-  const logs = await query;
+  const logs = await sql(
+    `SELECT
+       al.id,
+       al.action,
+       al.entity,
+       al.entity_id,
+       al.metadata,
+       al.ip_address,
+       al.created_at,
+       u.full_name AS user_name
+     FROM audit_logs al
+     LEFT JOIN users u ON al.user_id = u.id
+     ${search ? `WHERE u.full_name ILIKE $1
+        OR al.action    ILIKE $1
+        OR al.entity    ILIKE $1` : ''}
+     ORDER BY al.created_at DESC
+     LIMIT 200`,
+    search ? [pattern] : []
+  );
 
   const formatted = logs.map((l: any, i: number) => ({
-    id: `AL${String(i + 1).padStart(3, '0')}`,
-    user: l.user_name || 'System',
-    action: l.action,
-    entity: l.entity || '—',
-    entityId: l.entityId ? l.entityId.slice(0, 8) : '—',
-    details: JSON.stringify(l.metadata || {}).slice(0, 100),
-    ip: l.ipAddress || '—',
-    timestamp: l.createdAt ? new Date(l.createdAt).toISOString().replace('T', ' ').slice(0, 19) : '—',
+    id:        `AL${String(i + 1).padStart(3, '0')}`,
+    user:      l.user_name  || 'System',
+    action:    l.action,
+    entity:    l.entity     || '—',
+    entityId:  l.entity_id  ? String(l.entity_id).slice(0, 8) : '—',
+    details:   JSON.stringify(l.metadata ?? {}).slice(0, 100),
+    ip:        l.ip_address || '—',
+    timestamp: l.created_at
+      ? new Date(l.created_at).toISOString().replace('T', ' ').slice(0, 19)
+      : '—',
   }));
 
   return { logs: formatted };

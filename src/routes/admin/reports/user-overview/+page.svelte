@@ -1,9 +1,10 @@
+<!-- src/routes/admin/reports/users/+page.svelte -->
 <script lang="ts">
+  import type { PageData } from './$types';
   import { Users, GraduationCap, BookOpen, ShieldCheck, UserPlus, UserCheck, UserX, TrendingUp } from 'lucide-svelte';
 
-  let stats = $state({});
-
-  let roleDistribution = $state([]);
+  let { data }: { data: PageData } = $props();
+  const { stats, roleDistribution } = data;
 </script>
 
 <svelte:head><title>User Overview — MOUAU eTest</title></svelte:head>
@@ -93,27 +94,27 @@
 
   .metric-card { background: var(--color-surface); border: 1px solid var(--color-border); border-radius: 0.75rem; padding: 1.25rem; display: flex; align-items: center; gap: 0.875rem; }
   .metric-icon { width: 40px; height: 40px; border-radius: 0.5rem; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
-  .metric-icon.total { background: rgba(59, 130, 246, 0.1); color: #3b82f6; }
-  .metric-icon.students { background: rgba(22, 163, 74, 0.1); color: #16a34a; }
-  .metric-icon.lecturers { background: rgba(139, 92, 246, 0.1); color: #8b5cf6; }
-  .metric-icon.invigilators { background: rgba(245, 158, 11, 0.1); color: #f59e0b; }
-  .metric-icon.active { background: rgba(16, 185, 129, 0.1); color: #10b981; }
-  .metric-icon.suspended { background: rgba(239, 68, 68, 0.1); color: #ef4444; }
+  .metric-icon.total        { background: rgba(59,130,246,0.1);  color: #3b82f6; }
+  .metric-icon.students     { background: rgba(22,163,74,0.1);   color: #16a34a; }
+  .metric-icon.lecturers    { background: rgba(139,92,246,0.1);  color: #8b5cf6; }
+  .metric-icon.invigilators { background: rgba(245,158,11,0.1);  color: #f59e0b; }
+  .metric-icon.active       { background: rgba(16,185,129,0.1);  color: #10b981; }
+  .metric-icon.suspended    { background: rgba(239,68,68,0.1);   color: #ef4444; }
 
   .metric-content { flex: 1; display: flex; flex-direction: column; }
   .metric-value { font-size: 1.25rem; font-weight: 700; color: var(--color-text); }
   .metric-label { font-size: 0.75rem; color: var(--color-muted); }
 
   .metric-trend { display: flex; align-items: center; gap: 0.25rem; font-size: 0.75rem; font-weight: 600; padding: 0.25rem 0.5rem; border-radius: 0.375rem; }
-  .metric-trend.up { color: #16a34a; background: rgba(22, 163, 74, 0.1); }
+  .metric-trend.up { color: #16a34a; background: rgba(22,163,74,0.1); }
 
   .chart-card { background: var(--color-surface); border: 1px solid var(--color-border); border-radius: 0.75rem; padding: 1.5rem; }
-  .chart-card h3 { font-size: 1rem; font-weight: 600; color: var(--color-text); margin: 0 0 1.25rem 0; }
+  .chart-card h3 { font-size: 1rem; font-weight: 600; color: var(--color-text); margin: 0 0 1.25rem; }
 
   .distribution-chart { display: flex; flex-direction: column; gap: 1rem; }
   .dist-row { display: flex; align-items: center; gap: 1rem; }
   .dist-info { display: flex; align-items: center; gap: 0.5rem; width: 180px; flex-shrink: 0; }
-  .dist-dot { width: 10px; height: 10px; border-radius: 50%; }
+  .dist-dot { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
   .dist-role { font-size: 0.875rem; font-weight: 600; color: var(--color-text); }
   .dist-count { font-size: 0.75rem; color: var(--color-muted); margin-left: auto; }
   .dist-bar-container { flex: 1; height: 8px; background: var(--color-bg); border-radius: 4px; overflow: hidden; }

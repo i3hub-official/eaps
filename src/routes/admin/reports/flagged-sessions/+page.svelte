@@ -1,135 +1,301 @@
+<!-- src/routes/(admin)/security/flagged/+page.svelte -->
 <script lang="ts">
-  import { EyeOff, Shield, AlertTriangle, Clock, UserX, CheckCircle2 } from 'lucide-svelte';
+  import type { PageData } from './$types';
+  import {
+    EyeOff, Shield, AlertTriangle, UserX, CheckCircle2
+  } from 'lucide-svelte';
 
-  let sessions = $state([]);
+  let { data }: { data: PageData } = $props();
 
-  let summary = $state({});
+  const { sessions, summary } = data;
 
-  function getStatusColor(s: string) {
-    return { force_submitted: 'status-force', flagged: 'status-flagged', submitted: 'status-submitted' }[s] || 'status-flagged';
+  function statusClass(s: string) {
+    return (
+      {
+        force_submitted: 'status-force',
+        flagged:         'status-flagged',
+        submitted:       'status-submitted',
+      }[s] ?? 'status-flagged'
+    );
+  }
+
+  function flagClass(count: number) {
+    if (count > 10) return 'flags-critical';
+    if (count > 5)  return 'flags-high';
+    return 'flags-medium';
+  }
+
+  function fmtStatus(s: string) {
+    return s.replace(/_/g, ' ');
   }
 </script>
 
 <svelte:head><title>Flagged Sessions — MOUAU eTest</title></svelte:head>
 
 <div class="page">
+
   <header class="page-header">
-    <h1>Flagged Sessions</h1>
-    <p class="subtitle">Exam sessions with multiple violations requiring review</p>
+    <div>
+      <h1>Flagged Sessions</h1>
+      <p class="subtitle">Exam sessions with violations requiring review</p>
+    </div>
   </header>
 
-  <section class="summary-row">
-    <div class="summary-card alert">
-      <EyeOff size={20} />
-      <div>
-        <span class="summary-value">{summary.total}</span>
-        <span class="summary-label">Flagged Sessions</span>
+  <!-- Summary -->
+  <div class="summary-row">
+    <div class="stat-card">
+      <div class="stat-icon orange"><EyeOff size={17} /></div>
+      <div class="stat-body">
+        <span class="stat-val">{summary.total}</span>
+        <span class="stat-lbl">Flagged total</span>
       </div>
     </div>
-    <div class="summary-card critical">
-      <UserX size={20} />
-      <div>
-        <span class="summary-value">{summary.forceSubmitted}</span>
-        <span class="summary-label">Force Submitted</span>
+    <div class="stat-card">
+      <div class="stat-icon red"><UserX size={17} /></div>
+      <div class="stat-body">
+        <span class="stat-val">{summary.forceSubmitted}</span>
+        <span class="stat-lbl">Force submitted</span>
       </div>
     </div>
-    <div class="summary-card">
-      <AlertTriangle size={20} />
-      <div>
-        <span class="summary-value">{summary.underReview}</span>
-        <span class="summary-label">Under Review</span>
+    <div class="stat-card">
+      <div class="stat-icon amber"><AlertTriangle size={17} /></div>
+      <div class="stat-body">
+        <span class="stat-val">{summary.underReview}</span>
+        <span class="stat-lbl">Under review</span>
       </div>
     </div>
-    <div class="summary-card success">
-      <CheckCircle2 size={20} />
-      <div>
-        <span class="summary-value">{summary.cleared}</span>
-        <span class="summary-label">Cleared</span>
+    <div class="stat-card">
+      <div class="stat-icon green"><CheckCircle2 size={17} /></div>
+      <div class="stat-body">
+        <span class="stat-val">{summary.cleared}</span>
+        <span class="stat-lbl">Cleared</span>
       </div>
     </div>
-  </section>
+  </div>
 
-  <section class="table-section">
-    <table class="data-table">
-      <thead>
-        <tr>
-          <th>Session ID</th>
-          <th>Student</th>
-          <th>Exam</th>
-          <th>Flags</th>
-          <th>Status</th>
-          <th>Invigilator</th>
-          <th>Duration</th>
-          <th>Score</th>
-        </tr>
-      </thead>
-      <tbody>
-        {#each sessions as s}
+  <!-- Table -->
+  <div class="table-card">
+    <div class="table-toolbar">
+      <h2>
+        Session Log
+        <span class="count-badge">{sessions.length}</span>
+      </h2>
+    </div>
+
+    <div class="table-scroll">
+      <table>
+        <thead>
           <tr>
-            <td><span class="session-id">{s.id}</span></td>
-            <td>
-              <div class="student-cell">
-                <span class="student-name">{s.student}</span>
-                <span class="student-matric">{s.matric}</span>
-              </div>
-            </td>
-            <td>{s.exam}</td>
-            <td>
-              <span class="flag-count" class:critical={s.flags > 10} class:high={s.flags > 5 && s.flags <= 10}>
-                <AlertTriangle size={12} />
-                {s.flags}
-              </span>
-            </td>
-            <td><span class="status-badge {getStatusColor(s.status)}">{s.status.replace('_', ' ')}</span></td>
-            <td>{s.invigilator}</td>
-            <td>{s.duration}</td>
-            <td><span class="score" class:fail={s.score < 40}>{s.score}%</span></td>
+            <th>ID</th>
+            <th>Student</th>
+            <th>Exam</th>
+            <th>Flags</th>
+            <th>Status</th>
+            <th>Invigilator</th>
+            <th>Duration</th>
+            <th>Score</th>
           </tr>
-        {/each}
-      </tbody>
-    </table>
-  </section>
+        </thead>
+        <tbody>
+          {#if sessions.length === 0}
+            <tr>
+              <td colspan="8" class="empty-row">No flagged sessions.</td>
+            </tr>
+          {:else}
+            {#each sessions as s}
+              <tr>
+                <td><code class="sid">{s.id}</code></td>
+
+                <td>
+                  <span class="student-name">{s.student}</span>
+                  <span class="student-matric">{s.matric}</span>
+                </td>
+
+                <td class="exam-cell">{s.exam}</td>
+
+                <td>
+                  <span class="flag-chip {flagClass(s.flags)}">
+                    <AlertTriangle size={11} />
+                    {s.flags}
+                  </span>
+                </td>
+
+                <td>
+                  <span class="badge {statusClass(s.status)}">
+                    {fmtStatus(s.status)}
+                  </span>
+                </td>
+
+                <td class="muted-cell">{s.invigilator}</td>
+
+                <td class="muted-cell">{s.duration}</td>
+
+                <td>
+                  {#if s.score !== null}
+                    <span class="score" class:fail={s.score < 40}>
+                      {s.score.toFixed(1)}%
+                    </span>
+                  {:else}
+                    <span class="muted-cell">—</span>
+                  {/if}
+                </td>
+              </tr>
+            {/each}
+          {/if}
+        </tbody>
+      </table>
+    </div>
+  </div>
+
 </div>
 
 <style>
-  .page { max-width: 1200px; }
-  .page-header { margin-bottom: 1.5rem; }
-  .page-header h1 { font-size: 1.5rem; font-weight: 700; color: var(--color-text); margin: 0; }
-  .subtitle { color: var(--color-muted); font-size: 0.9rem; margin-top: 0.25rem; }
+  .page {
+    max-width: 1100px;
+    display: flex;
+    flex-direction: column;
+    gap: 1.5rem;
+  }
 
-  .summary-row { display: grid; grid-template-columns: repeat(4, 1fr); gap: 1rem; margin-bottom: 1.5rem; }
-  @media (max-width: 768px) { .summary-row { grid-template-columns: repeat(2, 1fr); } }
+  /* ── Header ──────────────────────────────────────────── */
+  h1 { font-size: 1.4rem; font-weight: 800; margin: 0; letter-spacing: -0.02em; color: var(--color-text); }
+  .subtitle { font-size: 0.82rem; color: var(--color-muted); margin: 0.2rem 0 0; }
 
-  .summary-card { background: var(--color-surface); border: 1px solid var(--color-border); border-radius: 0.75rem; padding: 1rem; display: flex; align-items: center; gap: 0.75rem; color: #f59e0b; }
-  .summary-card.alert { color: #ef4444; }
-  .summary-card.critical { color: #dc2626; }
-  .summary-card.success { color: #16a34a; }
-  .summary-card div { display: flex; flex-direction: column; }
-  .summary-value { font-size: 1.25rem; font-weight: 700; color: var(--color-text); }
-  .summary-label { font-size: 0.75rem; color: var(--color-muted); }
+  /* ── Summary ─────────────────────────────────────────── */
+  .summary-row {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 1rem;
+  }
+  @media (max-width: 640px) { .summary-row { grid-template-columns: repeat(2, 1fr); } }
 
-  .table-section { background: var(--color-surface); border: 1px solid var(--color-border); border-radius: 0.75rem; overflow: hidden; }
-  .data-table { width: 100%; border-collapse: collapse; font-size: 0.875rem; }
-  .data-table th { text-align: left; padding: 0.875rem 1rem; color: var(--color-muted); font-weight: 500; border-bottom: 1px solid var(--color-border); background: var(--color-bg); white-space: nowrap; }
-  .data-table td { padding: 1rem; border-bottom: 1px solid var(--color-border); color: var(--color-text); }
-  .data-table tr:last-child td { border-bottom: none; }
-  .data-table tr:hover td { background: var(--color-surface-hover); }
+  .stat-card {
+    background: var(--color-surface);
+    border: 1px solid var(--color-border);
+    border-radius: 0.875rem;
+    padding: 0.875rem 1rem;
+    display: flex; align-items: center; gap: 0.75rem;
+  }
 
-  .session-id { font-family: monospace; font-size: 0.8rem; color: var(--color-muted); background: var(--color-bg); padding: 0.25rem 0.5rem; border-radius: 0.25rem; }
+  .stat-icon {
+    width: 36px; height: 36px; border-radius: 0.5rem;
+    display: flex; align-items: center; justify-content: center; flex-shrink: 0;
+  }
+  .stat-icon.red    { background: rgba(220,38,38,0.1);   color: #dc2626; }
+  .stat-icon.orange { background: rgba(249,115,22,0.1);  color: #ea580c; }
+  .stat-icon.amber  { background: rgba(245,158,11,0.1);  color: #d97706; }
+  .stat-icon.green  { background: rgba(22,163,74,0.1);   color: #16a34a; }
 
-  .student-cell { display: flex; flex-direction: column; }
-  .student-name { font-weight: 600; color: var(--color-text); }
-  .student-matric { font-size: 0.75rem; color: var(--color-muted); }
+  .stat-body { display: flex; flex-direction: column; gap: 0.1rem; }
+  .stat-val  { font-size: 1.3rem; font-weight: 800; color: var(--color-text); font-variant-numeric: tabular-nums; line-height: 1.1; }
+  .stat-lbl  { font-size: 0.7rem; color: var(--color-muted); font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em; }
 
-  .flag-count { display: flex; align-items: center; gap: 0.25rem; font-size: 0.8rem; font-weight: 700; padding: 0.25rem 0.5rem; border-radius: 0.375rem; background: rgba(245, 158, 11, 0.1); color: #f59e0b; }
-  .flag-count.high { background: rgba(239, 68, 68, 0.1); color: #ef4444; }
-  .flag-count.critical { background: rgba(220, 38, 38, 0.15); color: #dc2626; }
+  /* ── Table card ──────────────────────────────────────── */
+  .table-card {
+    background: var(--color-surface);
+    border: 1px solid var(--color-border);
+    border-radius: 0.875rem;
+    overflow: hidden;
+  }
 
-  .status-badge { padding: 0.25rem 0.625rem; border-radius: 2rem; font-size: 0.75rem; font-weight: 600; text-transform: capitalize; }
-  .status-force { background: rgba(220, 38, 38, 0.15); color: #dc2626; }
-  .status-flagged { background: rgba(239, 68, 68, 0.1); color: #ef4444; }
-  .status-submitted { background: rgba(22, 163, 74, 0.1); color: #16a34a; }
+  .table-toolbar {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 1rem 1.25rem;
+    border-bottom: 1px solid var(--color-border);
+  }
 
-  .score { font-weight: 700; }
-  .score.fail { color: #ef4444; }
+  h2 {
+    font-size: 0.875rem; font-weight: 700; margin: 0;
+    color: var(--color-text);
+    display: flex; align-items: center; gap: 0.5rem;
+  }
+
+  .count-badge {
+    font-size: 0.68rem; font-weight: 700;
+    padding: 0.15rem 0.45rem;
+    background: rgba(249,115,22,0.1); color: #ea580c;
+    border-radius: 999px;
+  }
+
+  /* ── Table ───────────────────────────────────────────── */
+  .table-scroll { overflow-x: auto; }
+
+  table { width: 100%; border-collapse: collapse; font-size: 0.82rem; white-space: nowrap; }
+
+  thead { background: var(--color-bg); }
+
+  th {
+    padding: 0.625rem 1rem; text-align: left;
+    font-size: 0.7rem; font-weight: 700; color: var(--color-muted);
+    text-transform: uppercase; letter-spacing: 0.06em;
+    border-bottom: 1px solid var(--color-border);
+  }
+
+  td {
+    padding: 0.75rem 1rem;
+    border-bottom: 1px solid var(--color-border);
+    color: var(--color-text);
+    vertical-align: middle;
+  }
+
+  tr:last-child td { border-bottom: none; }
+  tr:hover td { background: var(--color-bg); }
+
+  /* ── Cell content ────────────────────────────────────── */
+  .sid {
+    font-family: monospace; font-size: 0.72rem; color: var(--color-muted);
+    background: var(--color-bg); border: 1px solid var(--color-border);
+    padding: 0.15rem 0.4rem; border-radius: 0.3rem;
+  }
+
+  /* Student cell — flex column without a wrapper div */
+  td:nth-child(2) {
+    display: flex; flex-direction: column; gap: 0.1rem;
+  }
+
+  .student-name   { font-weight: 600; font-size: 0.82rem; color: var(--color-text); }
+  .student-matric { font-size: 0.7rem; color: var(--color-muted); font-family: monospace; }
+
+  .exam-cell {
+    max-width: 200px;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    color: var(--color-muted); font-size: 0.78rem;
+  }
+
+  /* Flag chip */
+  .flag-chip {
+    display: inline-flex; align-items: center; gap: 0.3rem;
+    padding: 0.2rem 0.5rem; border-radius: 0.35rem;
+    font-size: 0.72rem; font-weight: 700;
+  }
+  .flags-medium   { background: rgba(245,158,11,0.1);  color: #d97706; }
+  .flags-high     { background: rgba(249,115,22,0.12); color: #ea580c; }
+  .flags-critical { background: rgba(220,38,38,0.12);  color: #dc2626; }
+
+  /* Status / generic badge */
+  .badge {
+    display: inline-flex; padding: 0.2rem 0.6rem;
+    border-radius: 999px; font-size: 0.7rem; font-weight: 700;
+    text-transform: capitalize; white-space: nowrap;
+  }
+  .status-force     { background: rgba(220,38,38,0.12);  color: #dc2626; }
+  .status-flagged   { background: rgba(249,115,22,0.12); color: #ea580c; }
+  .status-submitted { background: rgba(22,163,74,0.1);   color: #16a34a; }
+
+  .muted-cell { color: var(--color-muted); font-size: 0.78rem; }
+
+  .score      { font-weight: 700; font-size: 0.82rem; color: var(--color-text); font-variant-numeric: tabular-nums; }
+  .score.fail { color: #dc2626; }
+
+  /* ── Empty ───────────────────────────────────────────── */
+  .empty-row {
+    text-align: center; padding: 3rem 1rem !important;
+    color: var(--color-muted); font-size: 0.875rem;
+  }
+
+  /* ── Dark mode ───────────────────────────────────────── */
+  :global(.dark) .stat-icon.red    { background: rgba(220,38,38,0.15); }
+  :global(.dark) .stat-icon.orange { background: rgba(249,115,22,0.15); }
+  :global(.dark) .stat-icon.amber  { background: rgba(245,158,11,0.15); }
+  :global(.dark) .stat-icon.green  { background: rgba(22,163,74,0.15); }
 </style>

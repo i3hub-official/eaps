@@ -8,38 +8,54 @@ export const load: PageServerLoad = async ({ locals }) => {
   const sixMonthsAgo = new Date();
   sixMonthsAgo.setMonth(sixMonthsAgo.getMonth() - 6);
 
-  const users = await sql`
-    SELECT "createdAt", role FROM "User" WHERE "createdAt" >= ${sixMonthsAgo}
-  `;
+  const [users, courseRegistrations] = await Promise.all([
+    sql(
+      `SELECT created_at, role FROM users WHERE created_at >= $1`,
+      [sixMonthsAgo]
+    ),
+    sql(
+      `SELECT session, semester, COUNT(*)::int AS count
+       FROM course_registrations
+       GROUP BY session, semester
+       ORDER BY session DESC, semester ASC`
+    ),
+  ]);
 
-  const monthlyMap = new Map<string, { newUsers: number; students: number; lecturers: number; invigilators: number }>();
+  const monthlyMap = new Map<string, {
+    newUsers: number;
+    students: number;
+    lecturers: number;
+    invigilators: number;
+  }>();
 
-  users.forEach((u: any) => {
-    const date = new Date(u.createdAt);
+  for (const u of users) {
+    const date  = new Date(u.created_at);
     const label = date.toLocaleDateString('en-US', { month: 'short', year: 'numeric' });
+
     if (!monthlyMap.has(label)) {
       monthlyMap.set(label, { newUsers: 0, students: 0, lecturers: 0, invigilators: 0 });
     }
+
     const m = monthlyMap.get(label)!;
     m.newUsers++;
-    if (u.role === 'student') m.students++;
-    else if (u.role === 'lecturer') m.lecturers++;
+    if      (u.role === 'student')     m.students++;
+    else if (u.role === 'lecturer')    m.lecturers++;
     else if (u.role === 'invigilator') m.invigilators++;
-  });
+  }
 
   const monthlyData = Array.from(monthlyMap.entries())
     .map(([month, data]) => ({ month, ...data }))
     .sort((a, b) => new Date(a.month).getTime() - new Date(b.month).getTime());
 
-  const courseRegistrations = await sql`
-    SELECT session, semester, COUNT(*)::int as count FROM "CourseRegistration" GROUP BY session, semester
-  `;
+  const maxCount = Math.max(...courseRegistrations.map((r: any) => r.count || 0), 1);
 
-  const formattedRegs = courseRegistrations.map((r: any) => ({
-    session: r.session,
-    semester: r.semester,
-    count: r.count || 0,
-  }));
-
-  return { monthlyData, courseRegistrations: formattedRegs };
+  return {
+    monthlyData,
+    courseRegistrations: courseRegistrations.map((r: any) => ({
+      session:  r.session,
+      semester: r.semester,
+      count:    r.count || 0,
+    })),
+    maxCount,
+  };
 };

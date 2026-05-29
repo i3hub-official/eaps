@@ -1,86 +1,229 @@
+<!-- src/routes/(admin)/security/incidents/+page.svelte -->
 <script lang="ts">
-  import { Shield, AlertTriangle, EyeOff, Clock, TrendingUp, UserX, Monitor } from 'lucide-svelte';
+  import type { PageData } from './$types';
+  import { Shield } from 'lucide-svelte';
 
-  let incidents = $state([]);
+  let { data }: { data: PageData } = $props();
 
-  function getSeverityColor(s: string) {
-    return { low: 'sev-low', medium: 'sev-medium', high: 'sev-high', critical: 'sev-critical' }[s] || 'sev-medium';
-  }
-  function getStatusColor(s: string) {
-    return { resolved: 'status-resolved', investigating: 'status-investigating', open: 'status-open' }[s] || 'status-open';
+  const { incidents } = data;
+
+  const SEV_CLASS: Record<string, string> = {
+    low:      'sev-low',
+    medium:   'sev-medium',
+    high:     'sev-high',
+    critical: 'sev-critical',
+  };
+
+  const STATUS_CLASS: Record<string, string> = {
+    resolved:      'status-resolved',
+    investigating: 'status-investigating',
+    open:          'status-open',
+  };
+
+  function fmt(key: string) {
+    return key.replace(/_/g, ' ');
   }
 </script>
 
 <svelte:head><title>Security Incidents — MOUAU eTest</title></svelte:head>
 
 <div class="page">
+
   <header class="page-header">
-    <h1>Security Incidents</h1>
-    <p class="subtitle">Detailed security event log with incident classification</p>
+    <div>
+      <h1>Security Incidents</h1>
+      <p class="subtitle">High-severity violations requiring administrative review</p>
+    </div>
+    <div class="header-badge">
+      <Shield size={14} />
+      <span>{incidents.length} incidents</span>
+    </div>
   </header>
 
-  <section class="table-section">
-    <table class="data-table">
-      <thead>
-        <tr>
-          <th>Incident ID</th>
-          <th>Type</th>
-          <th>Description</th>
-          <th>Severity</th>
-          <th>Exam</th>
-          <th>Student</th>
-          <th>Detected</th>
-          <th>Status</th>
-          <th>Action</th>
-        </tr>
-      </thead>
-      <tbody>
-        {#each incidents as inc}
+  <div class="table-card">
+    <div class="table-scroll">
+      <table>
+        <thead>
           <tr>
-            <td><span class="incident-id">{inc.id}</span></td>
-            <td><span class="type-badge">{inc.type.replace('_', ' ')}</span></td>
-            <td class="desc-cell">{inc.description}</td>
-            <td><span class="severity-badge {getSeverityColor(inc.severity)}">{inc.severity}</span></td>
-            <td>{inc.exam}</td>
-            <td>{inc.student}</td>
-            <td class="time-cell">{inc.detectedAt}</td>
-            <td><span class="status-badge {getStatusColor(inc.status)}">{inc.status}</span></td>
-            <td><span class="action-badge">{inc.action.replace('_', ' ')}</span></td>
+            <th>ID</th>
+            <th>Type</th>
+            <th>Description</th>
+            <th>Severity</th>
+            <th>Exam</th>
+            <th>Student</th>
+            <th>Detected</th>
+            <th>Status</th>
+            <th>Action taken</th>
           </tr>
-        {/each}
-      </tbody>
-    </table>
-  </section>
+        </thead>
+        <tbody>
+          {#if incidents.length === 0}
+            <tr>
+              <td colspan="9" class="empty-row">No security incidents recorded.</td>
+            </tr>
+          {:else}
+            {#each incidents as inc}
+              <tr>
+                <td><code class="iid">{inc.id}</code></td>
+
+                <td><span class="type-pill">{fmt(inc.type)}</span></td>
+
+                <td class="desc-cell">{inc.description}</td>
+
+                <td>
+                  <span class="badge {SEV_CLASS[inc.severity] ?? 'sev-medium'}">
+                    {inc.severity}
+                  </span>
+                </td>
+
+                <td class="muted-cell truncate">{inc.exam}</td>
+
+                <td class="student-cell">{inc.student}</td>
+
+                <td class="time-cell">{inc.detectedAt}</td>
+
+                <td>
+                  <span class="badge {STATUS_CLASS[inc.status] ?? 'status-open'}">
+                    {inc.status}
+                  </span>
+                </td>
+
+                <td><span class="action-pill">{fmt(inc.action)}</span></td>
+              </tr>
+            {/each}
+          {/if}
+        </tbody>
+      </table>
+    </div>
+  </div>
+
 </div>
 
 <style>
-  .page { max-width: 1200px; }
-  .page-header { margin-bottom: 1.5rem; }
-  .page-header h1 { font-size: 1.5rem; font-weight: 700; color: var(--color-text); margin: 0; }
-  .subtitle { color: var(--color-muted); font-size: 0.9rem; margin-top: 0.25rem; }
+  .page {
+    max-width: 1100px;
+    display: flex;
+    flex-direction: column;
+    gap: 1.5rem;
+  }
 
-  .table-section { background: var(--color-surface); border: 1px solid var(--color-border); border-radius: 0.75rem; overflow: hidden; }
-  .data-table { width: 100%; border-collapse: collapse; font-size: 0.875rem; }
-  .data-table th { text-align: left; padding: 0.875rem 1rem; color: var(--color-muted); font-weight: 500; border-bottom: 1px solid var(--color-border); background: var(--color-bg); white-space: nowrap; }
-  .data-table td { padding: 1rem; border-bottom: 1px solid var(--color-border); color: var(--color-text); }
-  .data-table tr:last-child td { border-bottom: none; }
-  .data-table tr:hover td { background: var(--color-surface-hover); }
+  /* ── Header ──────────────────────────────────────────── */
+  .page-header {
+    display: flex;
+    align-items: flex-end;
+    justify-content: space-between;
+    gap: 1rem;
+    flex-wrap: wrap;
+  }
 
-  .incident-id { font-family: monospace; font-size: 0.8rem; color: var(--color-muted); background: var(--color-bg); padding: 0.25rem 0.5rem; border-radius: 0.25rem; }
-  .type-badge { padding: 0.25rem 0.5rem; border-radius: 0.375rem; font-size: 0.75rem; font-weight: 600; background: var(--color-bg); color: var(--color-text); text-transform: capitalize; }
-  .desc-cell { max-width: 300px; font-size: 0.8rem; line-height: 1.4; }
+  h1 { font-size: 1.4rem; font-weight: 800; margin: 0; letter-spacing: -0.02em; color: var(--color-text); }
+  .subtitle { font-size: 0.82rem; color: var(--color-muted); margin: 0.2rem 0 0; }
 
-  .severity-badge { padding: 0.25rem 0.5rem; border-radius: 0.375rem; font-size: 0.75rem; font-weight: 600; text-transform: capitalize; }
-  .sev-low { background: rgba(22, 163, 74, 0.1); color: #16a34a; }
-  .sev-medium { background: rgba(245, 158, 11, 0.1); color: #f59e0b; }
-  .sev-high { background: rgba(239, 68, 68, 0.1); color: #ef4444; }
-  .sev-critical { background: rgba(220, 38, 38, 0.15); color: #dc2626; }
+  .header-badge {
+    display: inline-flex; align-items: center; gap: 0.4rem;
+    padding: 0.35rem 0.75rem;
+    background: rgba(220,38,38,0.08);
+    border: 1px solid rgba(220,38,38,0.2);
+    border-radius: 999px;
+    font-size: 0.75rem; font-weight: 700; color: #dc2626;
+    flex-shrink: 0;
+  }
 
-  .status-badge { padding: 0.25rem 0.5rem; border-radius: 0.375rem; font-size: 0.75rem; font-weight: 600; text-transform: capitalize; }
-  .status-resolved { background: rgba(22, 163, 74, 0.1); color: #16a34a; }
-  .status-investigating { background: rgba(245, 158, 11, 0.1); color: #f59e0b; }
-  .status-open { background: rgba(239, 68, 68, 0.1); color: #ef4444; }
+  /* ── Table card ──────────────────────────────────────── */
+  .table-card {
+    background: var(--color-surface);
+    border: 1px solid var(--color-border);
+    border-radius: 0.875rem;
+    overflow: hidden;
+  }
 
-  .action-badge { padding: 0.25rem 0.5rem; border-radius: 0.375rem; font-size: 0.75rem; font-weight: 600; background: var(--color-bg); color: var(--color-text); text-transform: capitalize; }
-  .time-cell { font-size: 0.8rem; color: var(--color-muted); font-family: monospace; }
+  .table-scroll { overflow-x: auto; }
+
+  table { width: 100%; border-collapse: collapse; font-size: 0.82rem; white-space: nowrap; }
+
+  thead { background: var(--color-bg); }
+
+  th {
+    padding: 0.625rem 1rem; text-align: left;
+    font-size: 0.7rem; font-weight: 700; color: var(--color-muted);
+    text-transform: uppercase; letter-spacing: 0.06em;
+    border-bottom: 1px solid var(--color-border);
+  }
+
+  td {
+    padding: 0.75rem 1rem;
+    border-bottom: 1px solid var(--color-border);
+    color: var(--color-text);
+    vertical-align: middle;
+  }
+
+  tr:last-child td { border-bottom: none; }
+  tr:hover td { background: var(--color-bg); }
+
+  /* ── Cell types ──────────────────────────────────────── */
+  .iid {
+    font-family: monospace; font-size: 0.72rem; color: var(--color-muted);
+    background: var(--color-bg); border: 1px solid var(--color-border);
+    padding: 0.15rem 0.4rem; border-radius: 0.3rem;
+  }
+
+  .type-pill,
+  .action-pill {
+    padding: 0.2rem 0.55rem;
+    background: var(--color-bg);
+    border: 1px solid var(--color-border);
+    border-radius: 0.35rem;
+    font-size: 0.72rem; font-weight: 600;
+    text-transform: capitalize;
+    color: var(--color-text);
+    white-space: nowrap;
+  }
+
+  .desc-cell {
+    max-width: 240px;
+    white-space: normal;
+    font-size: 0.78rem;
+    line-height: 1.4;
+    color: var(--color-muted);
+  }
+
+  .muted-cell { color: var(--color-muted); font-size: 0.78rem; }
+
+  .truncate {
+    max-width: 160px;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+
+  .student-cell { font-weight: 600; font-size: 0.82rem; }
+
+  .time-cell {
+    font-family: monospace; font-size: 0.75rem; color: var(--color-muted);
+  }
+
+  /* ── Badges ──────────────────────────────────────────── */
+  .badge {
+    display: inline-flex;
+    padding: 0.2rem 0.6rem;
+    border-radius: 999px;
+    font-size: 0.7rem; font-weight: 700;
+    text-transform: capitalize; white-space: nowrap;
+  }
+
+  .sev-low      { background: rgba(22,163,74,0.1);   color: #16a34a; }
+  .sev-medium   { background: rgba(245,158,11,0.1);  color: #d97706; }
+  .sev-high     { background: rgba(249,115,22,0.12); color: #ea580c; }
+  .sev-critical { background: rgba(220,38,38,0.12);  color: #dc2626; }
+
+  .status-open          { background: rgba(220,38,38,0.1);   color: #dc2626; }
+  .status-investigating { background: rgba(245,158,11,0.1);  color: #d97706; }
+  .status-resolved      { background: rgba(22,163,74,0.1);   color: #16a34a; }
+
+  /* ── Empty ───────────────────────────────────────────── */
+  .empty-row {
+    text-align: center; padding: 3rem 1rem !important;
+    color: var(--color-muted); font-size: 0.875rem;
+  }
+
+  /* ── Dark mode ───────────────────────────────────────── */
+  :global(.dark) .header-badge { background: rgba(220,38,38,0.12); }
 </style>

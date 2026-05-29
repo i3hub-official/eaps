@@ -5,48 +5,49 @@ import { requireAdmin } from '$lib/server/auth/guards.js';
 export const load: PageServerLoad = async ({ locals, url }) => {
   requireAdmin(locals.user);
 
-  const searchQuery = url.searchParams.get('q') || '';
+  const search = url.searchParams.get('q')?.trim() || '';
 
-  let query = sql`
-    SELECT 
-      d.id,
-      d.name,
-      c.abbreviation as college,
-      COUNT(DISTINCT u.id)::int as students,
-      COUNT(DISTINCT e.id)::int as exams,
-      AVG(er.score)::numeric(10,1) as avg_score,
-      COUNT(CASE WHEN er.passed = true THEN 1 END)::int as passed,
-      COUNT(er.id)::int as total_results
-    FROM "Department" d
-    LEFT JOIN "College" c ON d."collegeId" = c.id
-    LEFT JOIN "User" u ON u."departmentId" = d.id AND u.role = 'student'
-    LEFT JOIN "ExamSession" es ON es."studentId" = u.id
-    LEFT JOIN "ExamResult" er ON er."sessionId" = es.id
-    LEFT JOIN "Exam" e ON e."courseId" IN (SELECT id FROM "Course" WHERE "departmentId" = d.id)
-    WHERE 1=1
-  `;
-
-  if (searchQuery) {
-    query = sql`${query} AND d.name ILIKE ${'%' + searchQuery + '%'}`;
-  }
-
-  query = sql`${query} GROUP BY d.id, c.abbreviation`;
-
-  const departments = await query;
+  const departments = await sql(
+    `SELECT
+       d.id,
+       d.name,
+       c.abbreviation                                                     AS college,
+       COUNT(DISTINCT u.id)::int                                          AS students,
+       COUNT(DISTINCT e.id)::int                                          AS exams,
+       ROUND(AVG(er.score)::numeric, 1)                                   AS avg_score,
+       COUNT(er.id) FILTER (WHERE er.passed = true)::int                  AS passed,
+       COUNT(er.id)::int                                                  AS total_results
+     FROM departments d
+     LEFT JOIN colleges c       ON d.college_id = c.id
+     LEFT JOIN users u          ON u.department_id = d.id AND u.role = 'student'
+     LEFT JOIN exam_sessions es ON es.student_id = u.id
+     LEFT JOIN exam_results er  ON er.session_id = es.id
+     LEFT JOIN exams e          ON e.course_id IN (
+       SELECT id FROM courses WHERE department_id = d.id
+     )
+     ${search ? `WHERE d.name ILIKE $1 OR c.abbreviation ILIKE $1` : ''}
+     GROUP BY d.id, d.name, c.abbreviation
+     ORDER BY students DESC`,
+    search ? [`%${search}%`] : []
+  );
 
   const formatted = departments.map((d: any) => {
     const totalResults = d.total_results || 0;
-    const passed = d.passed || 0;
-    const avgScore = parseFloat(d.avg_score) || 0;
+    const passed       = d.passed       || 0;
+    const avgScore     = parseFloat(d.avg_score) || 0;
+    const ratio        = totalResults > 0 ? passed / totalResults : 0;
+
     return {
-      id: d.id,
-      name: d.name,
-      college: d.college || '—',
-      students: d.students || 0,
-      exams: d.exams || 0,
-      avgScore: parseFloat(avgScore.toFixed(1)),
-      passRate: totalResults > 0 ? parseFloat(((passed / totalResults) * 100).toFixed(1)) : 0,
-      trend: totalResults > 0 && (passed / totalResults) >= 0.7 ? 'up' : totalResults > 0 && (passed / totalResults) >= 0.5 ? 'stable' : 'down',
+      id:        d.id,
+      name:      d.name,
+      college:   d.college  || '—',
+      students:  d.students || 0,
+      exams:     d.exams    || 0,
+      avgScore:  parseFloat(avgScore.toFixed(1)),
+      passRate:  totalResults > 0
+        ? parseFloat(((passed / totalResults) * 100).toFixed(1))
+        : 0,
+      trend: ratio >= 0.7 ? 'up' : ratio >= 0.5 ? 'stable' : 'down',
     };
   });
 

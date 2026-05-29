@@ -1,9 +1,12 @@
 <script lang="ts">
-  import { UserPlus, Users, TrendingUp, TrendingDown, GraduationCap, BookOpen, ShieldCheck, Calendar } from 'lucide-svelte';
+  import type { PageData } from './$types';
+  import { BookOpen, Calendar } from 'lucide-svelte';
 
-  let monthlyData = $state([]);
+  let { data }: { data: PageData } = $props();
+  const { monthlyData, courseRegistrations, maxCount } = data;
 
-  let courseRegistrations = $state([]);
+  // Scale bar heights relative to the tallest month
+  const chartMax = Math.max(...monthlyData.map((m: any) => m.newUsers), 1);
 </script>
 
 <svelte:head><title>Registration Trends — MOUAU eTest</title></svelte:head>
@@ -14,86 +17,161 @@
     <p class="subtitle">User registration growth and course enrollment patterns over time</p>
   </header>
 
-  <section class="trend-chart-section">
+  <!-- Monthly registrations chart -->
+  <section class="chart-card">
     <h3><Calendar size={16} /> Monthly User Registration</h3>
-    <div class="trend-chart">
-      {#each monthlyData as month}
-        <div class="trend-bar-group">
-          <div class="trend-bar-stack">
-            <div class="trend-segment students" style="height: {(month.students / 300) * 100}%"></div>
-            <div class="trend-segment lecturers" style="height: {(month.lecturers / 300) * 100}%"></div>
-            <div class="trend-segment invigilators" style="height: {(month.invigilators / 300) * 100}%"></div>
+
+    {#if monthlyData.length === 0}
+      <p class="empty">No registration data in the last 6 months.</p>
+    {:else}
+      <div class="trend-chart">
+        {#each monthlyData as month}
+          <div class="bar-group">
+            <span class="bar-total">{month.newUsers}</span>
+            <div class="bar-stack">
+              <div class="segment invigilators"
+                style="height: {(month.invigilators / chartMax) * 140}px"></div>
+              <div class="segment lecturers"
+                style="height: {(month.lecturers / chartMax) * 140}px"></div>
+              <div class="segment students"
+                style="height: {(month.students / chartMax) * 140}px"></div>
+            </div>
+            <span class="bar-month">{month.month}</span>
           </div>
-          <span class="trend-month">{month.month}</span>
-          <span class="trend-total">{month.newUsers}</span>
-        </div>
-      {/each}
-    </div>
-    <div class="trend-legend">
-      <span><span class="legend-dot students"></span> Students</span>
-      <span><span class="legend-dot lecturers"></span> Lecturers</span>
-      <span><span class="legend-dot invigilators"></span> Invigilators</span>
-    </div>
+        {/each}
+      </div>
+
+      <div class="legend">
+        <span><span class="dot students"></span> Students</span>
+        <span><span class="dot lecturers"></span> Lecturers</span>
+        <span><span class="dot invigilators"></span> Invigilators</span>
+      </div>
+    {/if}
   </section>
 
-  <section class="course-reg-section">
-    <h3><BookOpen size={16} /> Course Registration by Session</h3>
-    <div class="reg-grid">
-      {#each courseRegistrations as reg}
-        <div class="reg-card">
-          <div class="reg-header">
-            <span class="reg-session">{reg.session}</span>
-            <span class="reg-semester">Semester {reg.semester}</span>
+  <!-- Course registrations -->
+  <section class="chart-card">
+    <h3><BookOpen size={16} /> Course Registrations by Session</h3>
+
+    {#if courseRegistrations.length === 0}
+      <p class="empty">No course registration data available.</p>
+    {:else}
+      <div class="reg-grid">
+        {#each courseRegistrations as reg}
+          <div class="reg-card">
+            <div class="reg-header">
+              <span class="reg-session">{reg.session}</span>
+              <span class="reg-semester">Semester {reg.semester}</span>
+            </div>
+            <div class="reg-count">{reg.count.toLocaleString()}</div>
+            <div class="reg-label">registrations</div>
+            <div class="reg-track">
+              <div class="reg-fill" style="width: {(reg.count / maxCount) * 100}%"></div>
+            </div>
           </div>
-          <div class="reg-count">{reg.count.toLocaleString()}</div>
-          <div class="reg-label">registrations</div>
-          <div class="reg-bar-container">
-            <div class="reg-bar" style="width: {(reg.count / 1345) * 100}%"></div>
-          </div>
-        </div>
-      {/each}
-    </div>
+        {/each}
+      </div>
+    {/if}
   </section>
 </div>
 
 <style>
-  .page { max-width: 1200px; }
-  .page-header { margin-bottom: 1.5rem; }
+  .page { max-width: 1200px; display: flex; flex-direction: column; gap: 1.5rem; }
+  .page-header { margin-bottom: 0; }
   .page-header h1 { font-size: 1.5rem; font-weight: 700; color: var(--color-text); margin: 0; }
   .subtitle { color: var(--color-muted); font-size: 0.9rem; margin-top: 0.25rem; }
 
-  .trend-chart-section { background: var(--color-surface); border: 1px solid var(--color-border); border-radius: 0.75rem; padding: 1.5rem; margin-bottom: 1.5rem; }
-  .trend-chart-section h3 { font-size: 1rem; font-weight: 600; color: var(--color-text); margin: 0 0 1.25rem 0; display: flex; align-items: center; gap: 0.5rem; }
+  .chart-card {
+    background: var(--color-surface); border: 1px solid var(--color-border);
+    border-radius: 0.75rem; padding: 1.5rem;
+  }
+  .chart-card h3 {
+    font-size: 1rem; font-weight: 600; color: var(--color-text);
+    margin: 0 0 1.25rem; display: flex; align-items: center; gap: 0.5rem;
+  }
 
-  .trend-chart { display: flex; align-items: flex-end; gap: 1rem; height: 200px; padding-bottom: 2.5rem; position: relative; }
-  .trend-bar-group { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 0.375rem; position: relative; }
-  .trend-bar-stack { width: 100%; display: flex; flex-direction: column-reverse; align-items: center; border-radius: 0.25rem; overflow: hidden; }
-  .trend-segment { width: 100%; min-height: 2px; transition: height 0.5s ease; }
-  .trend-segment.students { background: #16a34a; }
-  .trend-segment.lecturers { background: #3b82f6; }
-  .trend-segment.invigilators { background: #f59e0b; }
-  .trend-month { font-size: 0.7rem; color: var(--color-muted); position: absolute; bottom: -1.75rem; white-space: nowrap; }
-  .trend-total { font-size: 0.75rem; font-weight: 700; color: var(--color-text); position: absolute; top: -1.25rem; }
+  .empty { font-size: 0.85rem; color: var(--color-muted); text-align: center; padding: 2rem 0; margin: 0; }
 
-  .trend-legend { display: flex; gap: 1.5rem; margin-top: 1rem; padding-top: 1rem; border-top: 1px solid var(--color-border); }
-  .trend-legend span { display: flex; align-items: center; gap: 0.375rem; font-size: 0.8rem; color: var(--color-text); }
-  .legend-dot { width: 10px; height: 10px; border-radius: 50%; }
-  .legend-dot.students { background: #16a34a; }
-  .legend-dot.lecturers { background: #3b82f6; }
-  .legend-dot.invigilators { background: #f59e0b; }
+  /* ── Bar chart ──────────────────────────────────── */
+  .trend-chart {
+    display: flex; align-items: flex-end; gap: 0.75rem;
+    height: 180px; padding-bottom: 2rem; position: relative;
+  }
 
-  .course-reg-section { background: var(--color-surface); border: 1px solid var(--color-border); border-radius: 0.75rem; padding: 1.5rem; }
-  .course-reg-section h3 { font-size: 1rem; font-weight: 600; color: var(--color-text); margin: 0 0 1.25rem 0; display: flex; align-items: center; gap: 0.5rem; }
+  .bar-group {
+    flex: 1; display: flex; flex-direction: column;
+    align-items: center; position: relative; gap: 0;
+  }
 
-  .reg-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 1rem; }
-  @media (max-width: 768px) { .reg-grid { grid-template-columns: repeat(2, 1fr); } }
+  .bar-total {
+    font-size: 0.68rem; font-weight: 700; color: var(--color-text);
+    margin-bottom: 0.25rem;
+  }
 
-  .reg-card { padding: 1.25rem; background: var(--color-bg); border-radius: 0.5rem; border: 1px solid var(--color-border); }
-  .reg-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.75rem; }
+  .bar-stack {
+    width: 100%; display: flex; flex-direction: column;
+    border-radius: 0.25rem; overflow: hidden; gap: 1px;
+  }
+
+  .segment { width: 100%; min-height: 2px; transition: height 0.5s ease; }
+  .segment.students     { background: #16a34a; }
+  .segment.lecturers    { background: #3b82f6; }
+  .segment.invigilators { background: #f59e0b; }
+
+  .bar-month {
+    position: absolute; bottom: -1.6rem;
+    font-size: 0.65rem; color: var(--color-muted); white-space: nowrap;
+  }
+
+  .legend {
+    display: flex; gap: 1.5rem;
+    margin-top: 1.25rem; padding-top: 1rem;
+    border-top: 1px solid var(--color-border);
+  }
+  .legend span {
+    display: flex; align-items: center; gap: 0.375rem;
+    font-size: 0.8rem; color: var(--color-text);
+  }
+  .dot { width: 9px; height: 9px; border-radius: 50%; }
+  .dot.students     { background: #16a34a; }
+  .dot.lecturers    { background: #3b82f6; }
+  .dot.invigilators { background: #f59e0b; }
+
+  /* ── Registration cards ─────────────────────────── */
+  .reg-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+    gap: 1rem;
+  }
+
+  .reg-card {
+    padding: 1.1rem; background: var(--color-bg);
+    border-radius: 0.5rem; border: 1px solid var(--color-border);
+  }
+
+  .reg-header {
+    display: flex; justify-content: space-between; align-items: center;
+    margin-bottom: 0.75rem;
+  }
+
   .reg-session { font-weight: 700; color: var(--color-text); font-size: 0.875rem; }
-  .reg-semester { font-size: 0.75rem; color: var(--color-muted); background: var(--color-surface); padding: 0.125rem 0.375rem; border-radius: 0.25rem; }
-  .reg-count { font-size: 1.5rem; font-weight: 700; color: #16a34a; }
-  .reg-label { font-size: 0.75rem; color: var(--color-muted); margin-bottom: 0.75rem; }
-  .reg-bar-container { height: 6px; background: var(--color-surface); border-radius: 3px; overflow: hidden; }
-  .reg-bar { height: 100%; background: #16a34a; border-radius: 3px; transition: width 0.5s ease; }
+  .reg-semester {
+    font-size: 0.7rem; color: var(--color-muted);
+    background: var(--color-surface); padding: 0.125rem 0.375rem;
+    border-radius: 0.25rem;
+  }
+
+  .reg-count { font-size: 1.5rem; font-weight: 800; color: #16a34a; line-height: 1; }
+  [data-theme="dark"] .reg-count { color: #22c55e; }
+  .reg-label { font-size: 0.72rem; color: var(--color-muted); margin: 0.2rem 0 0.75rem; }
+
+  .reg-track {
+    height: 6px; background: var(--color-surface);
+    border-radius: 3px; overflow: hidden;
+  }
+  .reg-fill {
+    height: 100%; background: #16a34a;
+    border-radius: 3px; transition: width 0.5s ease;
+  }
+  [data-theme="dark"] .reg-fill { background: #22c55e; }
 </style>

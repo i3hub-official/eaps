@@ -1,53 +1,87 @@
+// src/routes/(admin)/security/flagged/+page.server.ts
 import type { PageServerLoad } from './$types';
-import { sql } from '$lib/server/db/index.js';
 import { requireAdmin } from '$lib/server/auth/guards.js';
+import { prisma } from '$lib/server/db/index.js';
 
 export const load: PageServerLoad = async ({ locals }) => {
   requireAdmin(locals.user);
 
-  const sessions = await sql`
-    SELECT 
-      es.id,
-      es.status,
-      es."startedAt",
-      es."submittedAt",
-      u."fullName" as student,
-      u."matricNumber" as matric,
-      e.code as exam,
-      inv."fullName" as invigilator,
-      er.score,
-      COUNT(v.id)::int as flags
-    FROM "ExamSession" es
-    LEFT JOIN "User" u ON es."studentId" = u.id
-    LEFT JOIN "Exam" e ON es."examId" = e.id
-    LEFT JOIN "User" inv ON es."invigilatorId" = inv.id
-    LEFT JOIN "ExamResult" er ON er."sessionId" = es.id
-    LEFT JOIN "Violation" v ON v."sessionId" = es.id
-    WHERE es.status IN ('flagged', 'force_submitted')
-    GROUP BY es.id, u."fullName", u."matricNumber", e.code, inv."fullName", er.score
-    ORDER BY es."createdAt" DESC
-  `;
+  // ── All queries in parallel ──────────────────────────────────────────────
+  const [sessions, total, forceSubmitted, underReview] = await Promise.all([
 
-  const formatted = sessions.map((s: any, i: number) => ({
-    id: `S${String(i + 1).padStart(3, '0')}`,
-    student: s.student || 'Unknown',
-    matric: s.matric || '—',
-    exam: s.exam || '—',
-    flags: s.flags || 0,
-    status: s.status,
-    invigilator: s.invigilator || 'Unassigned',
-    duration: s.startedAt && s.submittedAt
-      ? `${Math.round((new Date(s.submittedAt).getTime() - new Date(s.startedAt).getTime()) / 60000)} min`
-      : '—',
-    score: s.score ? parseFloat(s.score) : 0,
-  }));
+    prisma.examSession.findMany({
+      where: { status: { in: ['flagged', 'force_submitted'] } },
+      select: {
+        id:          true,
+        status:      true,
+        startedAt:   true,
+        submittedAt: true,
+        student: {
+          select: { fullName: true, matricNumber: true },
+        },
+        exam: {
+          select: {
+            title: true,
+            course: { select: { code: true } },
+          },
+        },
+        invigilator: {
+          select: { fullName: true },
+        },
+        examResult: {
+          select: { score: true },
+        },
+        _count: {
+          select: { violations: true },
+        },
+      },
+      orderBy: { createdAt: 'desc' },
+    }),
 
-  const summary = {
-    total: await sql`SELECT COUNT(*)::int as count FROM "ExamSession" WHERE status IN ('flagged', 'force_submitted')`.then(r => r[0]?.count || 0),
-    forceSubmitted: await sql`SELECT COUNT(*)::int as count FROM "ExamSession" WHERE status = 'force_submitted'`.then(r => r[0]?.count || 0),
-    underReview: await sql`SELECT COUNT(*)::int as count FROM "ExamSession" WHERE status = 'flagged'`.then(r => r[0]?.count || 0),
-    cleared: 0,
+    prisma.examSession.count({
+      where: { status: { in: ['flagged', 'force_submitted'] } },
+    }),
+
+    prisma.examSession.count({ where: { status: 'force_submitted' } }),
+
+    prisma.examSession.count({ where: { status: 'flagged' } }),
+  ]);
+
+  // ── Format ───────────────────────────────────────────────────────────────
+  const formatted = sessions.map((s, i) => {
+    const durationMin =
+      s.startedAt && s.submittedAt
+        ? Math.round(
+            (s.submittedAt.getTime() - s.startedAt.getTime()) / 60_000,
+          )
+        : null;
+
+    const examLabel = s.exam?.course?.code
+      ? `${s.exam.course.code} — ${s.exam.title}`
+      : (s.exam?.title ?? '—');
+
+    return {
+      id:          `S${String(i + 1).padStart(3, '0')}`,
+      student:     s.student?.fullName    ?? 'Unknown',
+      matric:      s.student?.matricNumber ?? '—',
+      exam:        examLabel,
+      flags:       s._count.violations,
+      status:      s.status,
+      invigilator: s.invigilator?.fullName ?? 'Unassigned',
+      duration:    durationMin !== null ? `${durationMin} min` : '—',
+      score:       s.examResult?.score != null
+                     ? parseFloat(s.examResult.score.toString())
+                     : null,
+    };
+  });
+
+  return {
+    sessions: formatted,
+    summary: {
+      total,
+      forceSubmitted,
+      underReview,
+      cleared: 0, // extend later with a 'cleared' status if added to schema
+    },
   };
-
-  return { sessions: formatted, summary };
 };

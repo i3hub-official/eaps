@@ -5,42 +5,38 @@ import { requireAdmin } from '$lib/server/auth/guards.js';
 export const load: PageServerLoad = async ({ locals, url }) => {
   requireAdmin(locals.user);
 
-  const searchQuery = url.searchParams.get('q') || '';
+  const search = url.searchParams.get('q')?.trim() || '';
 
-  let query = sql`
-    SELECT 
-      u.id,
-      u."fullName",
-      COUNT(DISTINCT ei."examId")::int as assigned_exams,
-      COUNT(DISTINCT CASE WHEN es.status = 'active' THEN es.id END)::int as active_sessions,
-      COUNT(DISTINCT es_all.id)::int as total_students,
-      COUNT(v.id)::int as violations_handled
-    FROM "User" u
-    LEFT JOIN "ExamInvigilator" ei ON ei."invigilatorId" = u.id
-    LEFT JOIN "Exam" e ON e.id = ei."examId"
-    LEFT JOIN "ExamSession" es_all ON es_all."examId" = e.id
-    LEFT JOIN "ExamSession" es ON es."invigilatorId" = u.id
-    LEFT JOIN "Violation" v ON v."sessionId" = es_all.id
-    WHERE u.role = 'invigilator'
-  `;
-
-  if (searchQuery) {
-    query = sql`${query} AND u."fullName" ILIKE ${'%' + searchQuery + '%'}`;
-  }
-
-  query = sql`${query} GROUP BY u.id`;
-
-  const invigilators = await query;
+  const invigilators = await sql(
+    `SELECT
+       u.id,
+       u.full_name,
+       COUNT(DISTINCT ei.exam_id)::int                                           AS assigned_exams,
+       COUNT(DISTINCT es.id) FILTER (WHERE es.status = 'in_progress')::int       AS active_sessions,
+       COUNT(DISTINCT es_all.id)::int                                            AS total_students,
+       COUNT(v.id)::int                                                          AS violations_handled
+     FROM users u
+     LEFT JOIN exam_invigilators ei   ON ei.invigilator_id = u.id
+     LEFT JOIN exams e                ON e.id = ei.exam_id
+     LEFT JOIN exam_sessions es_all   ON es_all.exam_id = e.id
+     LEFT JOIN exam_sessions es       ON es.invigilator_id = u.id
+     LEFT JOIN violations v           ON v.session_id = es_all.id
+     WHERE u.role = 'invigilator'
+       ${search ? `AND u.full_name ILIKE $1` : ''}
+     GROUP BY u.id, u.full_name
+     ORDER BY active_sessions DESC, assigned_exams DESC`,
+    search ? [`%${search}%`] : []
+  );
 
   const formatted = invigilators.map((i: any) => ({
-    id: i.id,
-    name: i.fullName,
-    assignedExams: i.assigned_exams || 0,
-    activeSessions: i.active_sessions || 0,
-    totalStudents: i.total_students || 0,
+    id:                i.id,
+    name:              i.full_name,
+    assignedExams:     i.assigned_exams     || 0,
+    activeSessions:    i.active_sessions    || 0,
+    totalStudents:     i.total_students     || 0,
     violationsHandled: i.violations_handled || 0,
-    responseTime: '45 sec',
-    status: (i.active_sessions || 0) > 0 ? 'active' : 'offline',
+    responseTime:      '—',
+    status:            (i.active_sessions || 0) > 0 ? 'active' : 'offline',
   }));
 
   return { invigilators: formatted };

@@ -1,10 +1,17 @@
 <script lang="ts">
-  import { Layers, Award, Users, TrendingUp, TrendingDown, Target, Building2 } from 'lucide-svelte';
+  import type { PageData } from './$types';
+  import { Layers, TrendingUp, TrendingDown, Minus } from 'lucide-svelte';
 
-  let departments = $state([]);
+  let { data }: { data: PageData } = $props();
 
   let searchQuery = $state('');
-  let filtered = $derived(departments.filter(d => d.name.toLowerCase().includes(searchQuery.toLowerCase()) || d.college.toLowerCase().includes(searchQuery.toLowerCase())));
+
+  const filtered = $derived(
+    data.departments.filter((d: any) =>
+      d.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      d.college.toLowerCase().includes(searchQuery.toLowerCase())
+    )
+  );
 </script>
 
 <svelte:head><title>Department Performance — MOUAU eTest</title></svelte:head>
@@ -18,55 +25,75 @@
   <section class="filters-bar">
     <div class="search-box">
       <Layers size={16} />
-      <input type="text" placeholder="Search departments..." bind:value={searchQuery} />
+      <input type="text" placeholder="Search departments or colleges..." bind:value={searchQuery} />
     </div>
   </section>
 
   <section class="table-section">
-    <table class="data-table">
-      <thead>
-        <tr>
-          <th>Department</th>
-          <th>College</th>
-          <th>Students</th>
-          <th>Exams</th>
-          <th>Avg Score</th>
-          <th>Pass Rate</th>
-          <th>Trend</th>
-        </tr>
-      </thead>
-      <tbody>
-        {#each filtered as dept}
-          <tr>
-            <td>
-              <div class="dept-cell">
-                <div class="dept-icon"><Layers size={16} /></div>
-                <span class="dept-name">{dept.name}</span>
-              </div>
-            </td>
-            <td><span class="college-badge">{dept.college}</span></td>
-            <td>{dept.students}</td>
-            <td>{dept.exams}</td>
-            <td>
-              <span class="score-badge" class:high={dept.avgScore >= 70} class:medium={dept.avgScore >= 50 && dept.avgScore < 70} class:low={dept.avgScore < 50}>
-                {dept.avgScore}%
-              </span>
-            </td>
-            <td>
-              <div class="pass-bar">
-                <div class="pass-fill" style="width: {dept.passRate}%"></div>
-                <span>{dept.passRate}%</span>
-              </div>
-            </td>
-            <td>
-              <span class="trend-icon" class:up={dept.trend === 'up'} class:down={dept.trend === 'down'} class:stable={dept.trend === 'stable'}>
-                <TrendingUp size={16} />
-              </span>
-            </td>
-          </tr>
-        {/each}
-      </tbody>
-    </table>
+    {#if filtered.length === 0}
+      <div class="empty">
+        <Layers size={28} />
+        <p>{data.departments.length === 0 ? 'No department data available.' : 'No results found.'}</p>
+      </div>
+    {:else}
+      <div class="table-wrap">
+        <table class="data-table">
+          <thead>
+            <tr>
+              <th>Department</th>
+              <th>College</th>
+              <th>Students</th>
+              <th>Exams</th>
+              <th>Avg Score</th>
+              <th>Pass Rate</th>
+              <th>Trend</th>
+            </tr>
+          </thead>
+          <tbody>
+            {#each filtered as dept}
+              <tr>
+                <td>
+                  <div class="dept-cell">
+                    <div class="dept-icon"><Layers size={15} /></div>
+                    <span class="dept-name">{dept.name}</span>
+                  </div>
+                </td>
+                <td><span class="college-badge">{dept.college}</span></td>
+                <td>{dept.students.toLocaleString()}</td>
+                <td>{dept.exams}</td>
+                <td>
+                  <span
+                    class="score-badge"
+                    class:high={dept.avgScore >= 70}
+                    class:medium={dept.avgScore >= 50 && dept.avgScore < 70}
+                    class:low={dept.avgScore < 50}
+                  >
+                    {dept.avgScore}%
+                  </span>
+                </td>
+                <td>
+                  <div class="pass-bar">
+                    <div class="pass-track">
+                      <div class="pass-fill" style="width: {dept.passRate}%"></div>
+                    </div>
+                    <span>{dept.passRate}%</span>
+                  </div>
+                </td>
+                <td>
+                  {#if dept.trend === 'up'}
+                    <span class="trend up"><TrendingUp size={15} /></span>
+                  {:else if dept.trend === 'down'}
+                    <span class="trend down"><TrendingDown size={15} /></span>
+                  {:else}
+                    <span class="trend stable"><Minus size={15} /></span>
+                  {/if}
+                </td>
+              </tr>
+            {/each}
+          </tbody>
+        </table>
+      </div>
+    {/if}
   </section>
 </div>
 
@@ -77,34 +104,77 @@
   .subtitle { color: var(--color-muted); font-size: 0.9rem; margin-top: 0.25rem; }
 
   .filters-bar { display: flex; gap: 1rem; margin-bottom: 1rem; flex-wrap: wrap; }
-  .search-box { display: flex; align-items: center; gap: 0.5rem; background: var(--color-surface); border: 1px solid var(--color-border); border-radius: 0.5rem; padding: 0.5rem 0.75rem; flex: 1; min-width: 200px; }
-  .search-box input { border: none; background: none; outline: none; color: var(--color-text); font-size: 0.875rem; width: 100%; }
+  .search-box {
+    display: flex; align-items: center; gap: 0.5rem;
+    background: var(--color-surface); border: 1px solid var(--color-border);
+    border-radius: 0.5rem; padding: 0.5rem 0.75rem;
+    flex: 1; min-width: 200px;
+  }
+  .search-box input {
+    border: none; background: none; outline: none;
+    color: var(--color-text); font-size: 0.875rem; width: 100%;
+  }
   .search-box :global(svg) { color: var(--color-muted); flex-shrink: 0; }
 
-  .table-section { background: var(--color-surface); border: 1px solid var(--color-border); border-radius: 0.75rem; overflow: hidden; }
-  .data-table { width: 100%; border-collapse: collapse; font-size: 0.875rem; }
-  .data-table th { text-align: left; padding: 0.875rem 1rem; color: var(--color-muted); font-weight: 500; border-bottom: 1px solid var(--color-border); background: var(--color-bg); white-space: nowrap; }
-  .data-table td { padding: 1rem; border-bottom: 1px solid var(--color-border); color: var(--color-text); }
-  .data-table tr:last-child td { border-bottom: none; }
-  .data-table tr:hover td { background: var(--color-surface-hover); }
+  .table-section {
+    background: var(--color-surface); border: 1px solid var(--color-border);
+    border-radius: 0.75rem; overflow: hidden;
+  }
+  .table-wrap { overflow-x: auto; }
 
-  .dept-cell { display: flex; align-items: center; gap: 0.75rem; }
-  .dept-icon { width: 32px; height: 32px; border-radius: 0.5rem; background: rgba(139, 92, 246, 0.1); color: #8b5cf6; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+  .data-table { width: 100%; border-collapse: collapse; font-size: 0.875rem; }
+  .data-table th {
+    text-align: left; padding: 0.875rem 1rem;
+    color: var(--color-muted); font-size: 0.75rem; font-weight: 600;
+    text-transform: uppercase; letter-spacing: 0.04em;
+    border-bottom: 1px solid var(--color-border);
+    background: var(--color-bg); white-space: nowrap;
+  }
+  .data-table td {
+    padding: 0.875rem 1rem; border-bottom: 1px solid var(--color-border);
+    color: var(--color-text);
+  }
+  .data-table tr:last-child td { border-bottom: none; }
+  .data-table tr:hover td { background: var(--color-bg); }
+
+  .dept-cell { display: flex; align-items: center; gap: 0.65rem; }
+  .dept-icon {
+    width: 30px; height: 30px; border-radius: 0.45rem; flex-shrink: 0;
+    background: rgba(139,92,246,0.1); color: #8b5cf6;
+    display: flex; align-items: center; justify-content: center;
+  }
   .dept-name { font-weight: 600; color: var(--color-text); }
 
-  .college-badge { padding: 0.25rem 0.5rem; border-radius: 0.375rem; font-size: 0.75rem; font-weight: 600; background: rgba(59, 130, 246, 0.1); color: #3b82f6; }
+  .college-badge {
+    padding: 0.2rem 0.55rem; border-radius: 0.375rem;
+    font-size: 0.72rem; font-weight: 700;
+    background: rgba(59,130,246,0.1); color: #3b82f6;
+  }
 
-  .score-badge { padding: 0.25rem 0.5rem; border-radius: 0.375rem; font-size: 0.8rem; font-weight: 600; }
-  .score-badge.high { background: rgba(22, 163, 74, 0.1); color: #16a34a; }
-  .score-badge.medium { background: rgba(245, 158, 11, 0.1); color: #f59e0b; }
-  .score-badge.low { background: rgba(239, 68, 68, 0.1); color: #ef4444; }
+  .score-badge {
+    padding: 0.2rem 0.5rem; border-radius: 0.375rem;
+    font-size: 0.78rem; font-weight: 700;
+  }
+  .score-badge.high   { background: rgba(22,163,74,0.1);  color: #16a34a; }
+  .score-badge.medium { background: rgba(245,158,11,0.1); color: #f59e0b; }
+  .score-badge.low    { background: rgba(239,68,68,0.1);  color: #ef4444; }
 
   .pass-bar { display: flex; align-items: center; gap: 0.5rem; }
-  .pass-fill { height: 6px; background: #16a34a; border-radius: 3px; min-width: 20px; }
-  .pass-bar span { font-size: 0.8rem; font-weight: 600; color: var(--color-text); min-width: 40px; }
+  .pass-track {
+    width: 60px; height: 6px; background: var(--color-bg);
+    border: 1px solid var(--color-border); border-radius: 3px; overflow: hidden; flex-shrink: 0;
+  }
+  .pass-fill { height: 100%; background: #16a34a; border-radius: 3px; transition: width 0.4s ease; }
+  .pass-bar span { font-size: 0.78rem; font-weight: 600; min-width: 36px; }
 
-  .trend-icon { display: flex; align-items: center; justify-content: center; }
-  .trend-icon.up { color: #16a34a; }
-  .trend-icon.down { color: #ef4444; transform: rotate(180deg); }
-  .trend-icon.stable { color: var(--color-muted); }
+  .trend { display: inline-flex; align-items: center; }
+  .trend.up     { color: #16a34a; }
+  .trend.down   { color: #ef4444; }
+  .trend.stable { color: var(--color-muted); }
+
+  .empty {
+    display: flex; flex-direction: column; align-items: center; gap: 0.75rem;
+    padding: 3rem 2rem; color: var(--color-muted); text-align: center;
+  }
+  .empty p { margin: 0; font-size: 0.875rem; }
 </style>
