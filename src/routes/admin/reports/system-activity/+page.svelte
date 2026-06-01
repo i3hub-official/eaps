@@ -1,9 +1,9 @@
+<!-- src/routes/admin/reports/system-activity/+page.svelte -->
 <script lang="ts">
+  import type { PageData } from './$types';
   import { Monitor, Activity, Clock, AlertTriangle, CheckCircle2, Server, Database, Wifi } from 'lucide-svelte';
 
-  let activities = $state([]);
-
-  let metrics = $state({});
+  let { data }: { data: PageData } = $props();
 
   function getTypeIcon(type: string) {
     return { info: Activity, warning: AlertTriangle, success: CheckCircle2, error: AlertTriangle }[type] || Activity;
@@ -25,35 +25,35 @@
     <div class="metric-card">
       <Server size={18} />
       <div>
-        <span class="metric-value">{metrics.uptime}</span>
+        <span class="metric-value">{data.metrics.uptime}</span>
         <span class="metric-label">Uptime</span>
       </div>
     </div>
     <div class="metric-card">
       <Clock size={18} />
       <div>
-        <span class="metric-value">{metrics.avgResponse}</span>
+        <span class="metric-value">{data.metrics.avgResponse}</span>
         <span class="metric-label">Avg Response</span>
       </div>
     </div>
     <div class="metric-card">
       <Wifi size={18} />
       <div>
-        <span class="metric-value">{metrics.activeConnections}</span>
+        <span class="metric-value">{data.metrics.activeConnections}</span>
         <span class="metric-label">Active Conn.</span>
       </div>
     </div>
     <div class="metric-card">
       <Database size={18} />
       <div>
-        <span class="metric-value">{metrics.dbSize}</span>
+        <span class="metric-value">{data.metrics.dbSize}</span>
         <span class="metric-label">DB Size</span>
       </div>
     </div>
     <div class="metric-card">
       <Monitor size={18} />
       <div>
-        <span class="metric-value">{metrics.lastBackup}</span>
+        <span class="metric-value">{data.metrics.lastBackup}</span>
         <span class="metric-label">Last Backup</span>
       </div>
     </div>
@@ -62,7 +62,7 @@
   <section class="activity-section">
     <h3>Recent Activity</h3>
     <div class="activity-list">
-      {#each activities as activity}
+      {#each data.activities as activity}
         {@const ActivityIcon = getTypeIcon(activity.type)}
         <div class="activity-item {getTypeColor(activity.type)}">
           <div class="activity-icon">

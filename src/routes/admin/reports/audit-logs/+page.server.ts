@@ -1,3 +1,4 @@
+// src/routes/admin/reports/audit-logs/+page.server.ts
 import type { PageServerLoad } from './$types';
 import { sql } from '$lib/server/db/index.js';
 import { requireAdmin } from '$lib/server/auth/guards.js';

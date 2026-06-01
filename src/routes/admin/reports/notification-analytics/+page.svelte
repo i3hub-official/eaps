@@ -1,9 +1,9 @@
+<!-- src/routes/admin/reports/notification-analytics/+page.svelte -->
 <script lang="ts">
-  import { Bell, TrendingUp, TrendingDown, Users, Eye, CheckCircle2, Clock, Send } from 'lucide-svelte';
+  import type { PageData } from './$types';
+  import { Bell, TrendingDown, Eye, Clock, Send } from 'lucide-svelte';
 
-  let stats = $state({});
-
-  let notifications = $state([]);
+  let { data }: { data: PageData } = $props();
 </script>
 
 <svelte:head><title>Notification Analytics — MOUAU eTest</title></svelte:head>
@@ -18,35 +18,35 @@
     <div class="metric-card">
       <Send size={18} />
       <div>
-        <span class="metric-value">{stats.totalSent.toLocaleString()}</span>
+        <span class="metric-value">{data.stats.totalSent.toLocaleString()}</span>
         <span class="metric-label">Total Sent</span>
       </div>
     </div>
     <div class="metric-card">
       <Eye size={18} />
       <div>
-        <span class="metric-value">{stats.readRate}%</span>
+        <span class="metric-value">{data.stats.readRate}%</span>
         <span class="metric-label">Read Rate</span>
       </div>
     </div>
     <div class="metric-card">
       <Clock size={18} />
       <div>
-        <span class="metric-value">{stats.avgOpenTime}</span>
+        <span class="metric-value">{data.stats.avgOpenTime}</span>
         <span class="metric-label">Avg Open Time</span>
       </div>
     </div>
     <div class="metric-card">
       <Bell size={18} />
       <div>
-        <span class="metric-value">{stats.pending}</span>
+        <span class="metric-value">{data.stats.pending}</span>
         <span class="metric-label">Pending</span>
       </div>
     </div>
     <div class="metric-card fail">
       <TrendingDown size={18} />
       <div>
-        <span class="metric-value">{stats.failed}</span>
+        <span class="metric-value">{data.stats.failed}</span>
         <span class="metric-label">Failed</span>
       </div>
     </div>
@@ -65,7 +65,7 @@
         </tr>
       </thead>
       <tbody>
-        {#each notifications as n}
+        {#each data.notifications as n}
           <tr>
             <td>
               <div class="notif-cell">
@@ -118,13 +118,13 @@
   .notif-title { font-weight: 600; color: var(--color-text); }
 
   .type-badge { padding: 0.25rem 0.5rem; border-radius: 0.375rem; font-size: 0.75rem; font-weight: 600; text-transform: capitalize; }
-  .type-badge.exam { background: rgba(59, 130, 246, 0.1); color: #3b82f6; }
-  .type-badge.result { background: rgba(22, 163, 74, 0.1); color: #16a34a; }
-  .type-badge.security { background: rgba(239, 68, 68, 0.1); color: #ef4444; }
-  .type-badge.system { background: rgba(148, 163, 184, 0.1); color: #94a3b8; }
-  .type-badge.course { background: rgba(139, 92, 246, 0.1); color: #8b5cf6; }
+  .type-badge.exam     { background: rgba(59, 130, 246, 0.1);  color: #3b82f6; }
+  .type-badge.result   { background: rgba(22, 163, 74, 0.1);   color: #16a34a; }
+  .type-badge.security { background: rgba(239, 68, 68, 0.1);   color: #ef4444; }
+  .type-badge.system   { background: rgba(148, 163, 184, 0.1); color: #94a3b8; }
+  .type-badge.course   { background: rgba(139, 92, 246, 0.1);  color: #8b5cf6; }
 
   .read-bar { display: flex; align-items: center; gap: 0.5rem; }
-  .read-fill { height: 6px; background: #16a34a; border-radius: 3px; min-width: 20px; }
+  .read-fill { height: 6px; background: #16a34a; border-radius: 3px; min-width: 4px; max-width: 80px; }
   .read-bar span { font-size: 0.8rem; font-weight: 600; color: var(--color-text); min-width: 40px; }
 </style>

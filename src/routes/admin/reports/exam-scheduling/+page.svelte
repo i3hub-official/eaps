@@ -1,13 +1,45 @@
+<!-- src/routes/admin/reports/exam-scheduling/+page.svelte -->
+
 <script lang="ts">
   import { Calendar, Clock, CheckCircle2, AlertTriangle, XCircle, Timer, Users, BookOpen } from 'lucide-svelte';
 
   let exams = $state([]);
-
-  let summary = $state({});
+  let summary = $state({
+    scheduled: 0,
+    active: 0,
+    completed: 0,
+    cancelled: 0,
+    totalStudents: 0
+  });
+  let loading = $state(true);
 
   function getStatusColor(s: string) {
     return { scheduled: 'status-scheduled', active: 'status-active', completed: 'status-completed', cancelled: 'status-cancelled' }[s] || 'status-scheduled';
   }
+
+  // Load data from the server load function
+  import { page } from '$app/stores';
+  import { onMount } from 'svelte';
+
+  onMount(() => {
+    // The data is already available via page.data from the server load
+    // We'll set up a reactive effect to handle it
+    const unsubscribe = page.subscribe($page => {
+      if ($page.data) {
+        exams = $page.data.exams || [];
+        summary = $page.data.summary || {
+          scheduled: 0,
+          active: 0,
+          completed: 0,
+          cancelled: 0,
+          totalStudents: 0
+        };
+        loading = false;
+      }
+    });
+    
+    return unsubscribe;
+  });
 </script>
 
 <svelte:head><title>Exam Scheduling — MOUAU eTest</title></svelte:head>
@@ -18,74 +50,89 @@
     <p class="subtitle">Schedule overview, upcoming exams, and status tracking</p>
   </header>
 
-  <section class="summary-row">
-    <div class="summary-card">
-      <Calendar size={20} />
-      <div>
-        <span class="summary-value">{summary.scheduled}</span>
-        <span class="summary-label">Scheduled</span>
-      </div>
+  {#if loading}
+    <div class="loading-state">
+      <div class="spinner"></div>
+      <p>Loading exam schedule...</p>
     </div>
-    <div class="summary-card active">
-      <Clock size={20} />
-      <div>
-        <span class="summary-value">{summary.active}</span>
-        <span class="summary-label">Active Now</span>
+  {:else}
+    <section class="summary-row">
+      <div class="summary-card">
+        <Calendar size={20} />
+        <div>
+          <span class="summary-value">{summary.scheduled || 0}</span>
+          <span class="summary-label">Scheduled</span>
+        </div>
       </div>
-    </div>
-    <div class="summary-card completed">
-      <CheckCircle2 size={20} />
-      <div>
-        <span class="summary-value">{summary.completed}</span>
-        <span class="summary-label">Completed</span>
+      <div class="summary-card active">
+        <Clock size={20} />
+        <div>
+          <span class="summary-value">{summary.active || 0}</span>
+          <span class="summary-label">Active Now</span>
+        </div>
       </div>
-    </div>
-    <div class="summary-card">
-      <Users size={20} />
-      <div>
-        <span class="summary-value">{summary.totalStudents.toLocaleString()}</span>
-        <span class="summary-label">Total Students</span>
+      <div class="summary-card completed">
+        <CheckCircle2 size={20} />
+        <div>
+          <span class="summary-value">{summary.completed || 0}</span>
+          <span class="summary-label">Completed</span>
+        </div>
       </div>
-    </div>
-  </section>
+      <div class="summary-card">
+        <Users size={20} />
+        <div>
+          <span class="summary-value">{(summary.totalStudents || 0).toLocaleString()}</span>
+          <span class="summary-label">Total Students</span>
+        </div>
+      </div>
+    </section>
 
-  <section class="table-section">
-    <table class="data-table">
-      <thead>
-        <tr>
-          <th>Exam</th>
-          <th>Date</th>
-          <th>Time</th>
-          <th>Duration</th>
-          <th>Students</th>
-          <th>Invigilators</th>
-          <th>Status</th>
-        </tr>
-      </thead>
-      <tbody>
-        {#each exams as exam}
-          <tr>
-            <td>
-              <div class="exam-cell">
-                <div class="exam-icon"><BookOpen size={16} /></div>
-                <span class="exam-title">{exam.title}</span>
-              </div>
-            </td>
-            <td>{exam.date}</td>
-            <td>{exam.start} — {exam.end}</td>
-            <td>{exam.duration} min</td>
-            <td>{exam.students}</td>
-            <td>{exam.invigilators}</td>
-            <td><span class="status-badge {getStatusColor(exam.status)}">{exam.status}</span></td>
-          </tr>
-        {/each}
-      </tbody>
-    </table>
-  </section>
+    <section class="table-section">
+      {#if exams.length === 0}
+        <div class="empty-state">
+          <Calendar size={48} strokeWidth={1.5} />
+          <p>No exams scheduled yet</p>
+          <span>Create your first exam schedule to get started</span>
+        </div>
+      {:else}
+        <table class="data-table">
+          <thead>
+            <tr>
+              <th>Exam</th>
+              <th>Date</th>
+              <th>Time</th>
+              <th>Duration</th>
+              <th>Students</th>
+              <th>Invigilators</th>
+              <th>Status</th>
+            </tr>
+          </thead>
+          <tbody>
+            {#each exams as exam}
+              <tr>
+                <td>
+                  <div class="exam-cell">
+                    <div class="exam-icon"><BookOpen size={16} /></div>
+                    <span class="exam-title">{exam.title}</span>
+                  </div>
+                </td>
+                <td>{exam.date || '—'}</td>
+                <td>{exam.start || '—'} — {exam.end || '—'}</td>
+                <td>{exam.duration || 0} min</td>
+                <td>{exam.students || 0}</td>
+                <td>{exam.invigilators || 0}</td>
+                <td><span class="status-badge {getStatusColor(exam.status)}">{exam.status || 'unknown'}</span></td>
+              </tr>
+            {/each}
+          </tbody>
+        </table>
+      {/if}
+    </section>
+  {/if}
 </div>
 
 <style>
-  .page { max-width: 1200px; }
+  .page { max-width: 1200px; margin: 0 auto; padding: 1rem; }
   .page-header { margin-bottom: 1.5rem; }
   .page-header h1 { font-size: 1.5rem; font-weight: 700; color: var(--color-text); margin: 0; }
   .subtitle { color: var(--color-muted); font-size: 0.9rem; margin-top: 0.25rem; }
@@ -116,4 +163,13 @@
   .status-active { background: rgba(245, 158, 11, 0.1); color: #f59e0b; }
   .status-completed { background: rgba(22, 163, 74, 0.1); color: #16a34a; }
   .status-cancelled { background: rgba(239, 68, 68, 0.1); color: #ef4444; }
+
+  .loading-state { display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 4rem 2rem; text-align: center; color: var(--color-muted); }
+  .spinner { width: 40px; height: 40px; border: 3px solid var(--color-border); border-top-color: #3b82f6; border-radius: 50%; animation: spin 0.8s linear infinite; margin-bottom: 1rem; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  .empty-state { display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 3rem 2rem; text-align: center; color: var(--color-muted); }
+  .empty-state svg { color: var(--color-border); margin-bottom: 1rem; opacity: 0.5; }
+  .empty-state p { font-size: 1rem; font-weight: 500; margin: 0 0 0.25rem 0; color: var(--color-text); }
+  .empty-state span { font-size: 0.875rem; }
 </style>

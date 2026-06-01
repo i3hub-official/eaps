@@ -1,13 +1,26 @@
+<!-- src/routes/admin/reports/login-history/+page.svelte -->
 <script lang="ts">
-  import { Fingerprint, Search, Shield, Monitor, Smartphone, Globe, Clock, MapPin } from 'lucide-svelte';
+  import type { PageData } from './$types';
+  import { Search, Monitor, MapPin } from 'lucide-svelte';
 
-  let logins = $state([]);
+  let { data }: { data: PageData } = $props();
 
   let searchQuery = $state('');
-  let filtered = $derived(logins.filter(l => l.user.toLowerCase().includes(searchQuery.toLowerCase()) || l.email.toLowerCase().includes(searchQuery.toLowerCase()) || l.ip.includes(searchQuery)));
+  let filtered = $derived(
+    data.logins.filter((l: any) =>
+      l.user.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      l.email.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      l.ip.includes(searchQuery)
+    )
+  );
 
   function getStatusColor(s: string) {
-    return { success: 'status-success', failed: 'status-failed', blocked: 'status-blocked' }[s] || 'status-success';
+    return {
+      success:  'status-success',
+      failed:   'status-failed',
+      blocked:  'status-blocked',
+      expired:  'status-expired',
+    }[s] || 'status-success';
   }
 </script>
 
@@ -104,9 +117,10 @@
   .method-badge { padding: 0.25rem 0.5rem; border-radius: 0.375rem; font-size: 0.75rem; font-weight: 600; background: var(--color-bg); color: var(--color-text); text-transform: capitalize; }
 
   .status-badge { padding: 0.25rem 0.625rem; border-radius: 2rem; font-size: 0.75rem; font-weight: 600; text-transform: capitalize; }
-  .status-success { background: rgba(22, 163, 74, 0.1); color: #16a34a; }
-  .status-failed { background: rgba(245, 158, 11, 0.1); color: #f59e0b; }
-  .status-blocked { background: rgba(239, 68, 68, 0.1); color: #ef4444; }
+  .status-success  { background: rgba(22, 163, 74, 0.1);  color: #16a34a; }
+  .status-failed   { background: rgba(245, 158, 11, 0.1); color: #f59e0b; }
+  .status-blocked  { background: rgba(239, 68, 68, 0.1);  color: #ef4444; }
+  .status-expired  { background: rgba(148, 163, 184, 0.1); color: #94a3b8; }
 
   .time-cell { font-size: 0.8rem; color: var(--color-muted); font-family: monospace; }
 </style>
