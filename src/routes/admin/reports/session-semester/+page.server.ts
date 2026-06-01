@@ -5,21 +5,22 @@ import { requireAdmin } from '$lib/server/auth/guards.js';
 export const load: PageServerLoad = async ({ locals }) => {
   requireAdmin(locals.user);
 
-  const sessions = await sql`
-    SELECT 
-      e.session,
-      e.semester,
-      COUNT(DISTINCT e.id)::int as exams,
-      COUNT(DISTINCT es.id)::int as students,
-      AVG(er.score)::numeric(10,1) as avg_score,
-      COUNT(CASE WHEN er.passed = true THEN 1 END)::int as passed,
-      COUNT(er.id)::int as total_results
-    FROM "Exam" e
-    LEFT JOIN "ExamSession" es ON es."examId" = e.id
-    LEFT JOIN "ExamResult" er ON er."sessionId" = es.id
-    GROUP BY e.session, e.semester
-    ORDER BY e.session, e.semester
-  `;
+  const sessions = await sql(
+    `SELECT
+       e.session,
+       e.semester,
+       COUNT(DISTINCT e.id)::int    AS exams,
+       COUNT(DISTINCT es.id)::int   AS students,
+       AVG(er.score)::numeric(10,1) AS avg_score,
+       COUNT(CASE WHEN er.passed = true THEN 1 END)::int AS passed,
+       COUNT(er.id)::int            AS total_results
+     FROM "Exam" e
+     LEFT JOIN "ExamSession" es ON es."examId" = e.id
+     LEFT JOIN "ExamResult"   er ON er."sessionId" = es.id
+     GROUP BY e.session, e.semester
+     ORDER BY e.session, e.semester`,
+    []
+  );
 
   const formatted = sessions.map((s: any) => {
     const totalResults = s.total_results || 0;

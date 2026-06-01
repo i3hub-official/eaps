@@ -1,7 +1,8 @@
 <script lang="ts">
+  import type { PageData } from './$types';
   import { Calendar, BookOpen, Users, Award, TrendingUp, TrendingDown, Target } from 'lucide-svelte';
 
-  let sessions = $state([]);
+  let { data }: { data: PageData } = $props();
 </script>
 
 <svelte:head><title>Session / Semester Trends — MOUAU eTest</title></svelte:head>
@@ -13,7 +14,7 @@
   </header>
 
   <section class="session-grid">
-    {#each sessions as s}
+    {#each data.sessions as s}
       <div class="session-card">
         <div class="session-header">
           <div class="session-badge">
@@ -34,7 +35,7 @@
           </div>
           <div class="stat">
             <Users size={14} />
-            <span class="stat-value">{s.students.toLocaleString()}</span>
+            <span class="stat-value">{(s.students ?? 0).toLocaleString()}</span>
             <span class="stat-label">Students</span>
           </div>
           <div class="stat">
@@ -54,6 +55,13 @@
         </div>
       </div>
     {/each}
+
+    {#if data.sessions.length === 0}
+      <div class="empty">
+        <Calendar size={32} />
+        <p>No session data found.</p>
+      </div>
+    {/if}
   </section>
 </div>
 
@@ -83,4 +91,6 @@
 
   .session-pass-bar { height: 8px; background: var(--color-bg); border-radius: 4px; overflow: hidden; }
   .pass-fill { height: 100%; background: linear-gradient(90deg, #16a34a, #22c55e); border-radius: 4px; transition: width 0.5s ease; }
+
+  .empty { grid-column: 1 / -1; display: flex; flex-direction: column; align-items: center; gap: 0.75rem; padding: 3rem; color: var(--color-muted); }
 </style>
