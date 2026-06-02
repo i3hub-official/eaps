@@ -950,24 +950,34 @@
 	.close-sidebar:hover { color: var(--color-text); background: var(--color-bg); }
 
 	/* Sidebar Search */
-	.sidebar-search {
-		margin: 0.75rem 1rem;
-		padding: 0.5rem 0.75rem;
-		background: var(--color-bg);
-		border: 1px solid var(--color-border);
-		border-radius: 0.5rem;
-		display: flex;
-		align-items: center;
-		gap: 0.5rem;
-	}
-	.sidebar-search input {
-		background: none;
-		border: none;
-		outline: none;
-		flex: 1;
-		font-size: 0.8rem;
-		color: var(--color-text);
-	}
+.sidebar-search {
+	margin: 0.75rem 1rem;
+	padding: 0.5rem 0.75rem;
+	background: var(--color-bg);
+	border: 1px solid var(--color-border);
+	border-radius: 0.5rem;
+	display: flex;
+	align-items: center;
+	gap: 0.5rem;
+}
+.sidebar-search input {
+	background: none;
+	border: none;
+	outline: none;
+	flex: 1;
+	font-size: 0.8rem;
+	color: var(--color-text);
+}
+/* Remove default blue focus ring and add green focus style */
+.sidebar-search input:focus {
+	outline: none;
+	box-shadow: none;
+}
+/* Apply green focus to the container instead */
+.sidebar-search:focus-within {
+	border-color: #16a34a;
+	box-shadow: 0 0 0 2px rgba(22, 163, 74, 0.3);
+}
 	.sidebar-search svg { color: var(--color-muted); }
 
 	/* Pinned Section */
