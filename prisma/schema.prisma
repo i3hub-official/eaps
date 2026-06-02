@@ -63,6 +63,24 @@ enum ViolationAction {
   auto_submitted
 }
 
+enum ApiScope {
+  read_users
+  write_users
+  read_exams
+  write_exams
+  read_results
+  read_reports
+  read_violations
+  write_violations
+  admin_full
+}
+
+enum ApiKeyStatus {
+  active
+  revoked
+  expired
+}
+
 // ─── Institutional hierarchy ──────────────────────────────────────────────────
 
 model College {
@@ -87,7 +105,7 @@ model Department {
   code      String   @unique
   createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz()
 
-  college College @relation(fields: [collegeId], references: [id], onDelete: Cascade)
+  college College  @relation(fields: [collegeId], references: [id], onDelete: Cascade)
   users   User[]
   courses Course[]
 
@@ -152,6 +170,8 @@ model User {
   examResults         ExamResult[]
   auditLogs           AuditLog[]
   notifications       Notification[]
+  createdApiKeys      ApiKey[]             @relation("ApiKeyCreatedBy")
+  revokedApiKeys      ApiKey[]             @relation("ApiKeyRevokedBy")
 
   @@index([role])
   @@index([collegeId])
@@ -177,7 +197,7 @@ model User {
 
 model FaceDescriptor {
   studentId  String   @id @map("student_id") @db.Uuid
-  descriptor Json     // 128-element float array — e.g. [0.123, -0.456, ...]
+  descriptor Json // 128-element float array — e.g. [0.123, -0.456, ...]
   enrolledAt DateTime @default(now()) @map("enrolled_at") @db.Timestamptz()
   updatedAt  DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz()
 
@@ -258,8 +278,8 @@ model Exam {
   showResultAfter    Boolean    @default(false) @map("show_result_after")
   maxViolations      Int        @default(5) @map("max_violations") @db.SmallInt
   session            String
-  levels      Int[]      @default([]) @db.SmallInt
-  department  String?
+  levels             Int[]      @default([]) @db.SmallInt
+  department         String?
   semester           Int        @db.SmallInt
   createdAt          DateTime   @default(now()) @map("created_at") @db.Timestamptz()
   updatedAt          DateTime   @default(now()) @updatedAt @map("updated_at") @db.Timestamptz()
@@ -270,7 +290,6 @@ model Exam {
   examSessions ExamSession[]
   invigilators ExamInvigilator[]
   examResults  ExamResult[]
-  
 
   @@index([courseId])
   @@index([status])
@@ -502,4 +521,49 @@ model Notification {
 
   @@index([userId])
   @@map("notifications")
+}
+
+// ─── API Keys ────────────────────────────────────────────────────────────────
+model ApiKey {
+  id           String       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name         String // human-readable label
+  keyHash      String       @unique @map("key_hash") // bcrypt hash of the raw key
+  keyPrefix    String       @map("key_prefix") // first 8 chars shown in UI  e.g. "mk_live_"
+  scopes       ApiScope[] // array of granted scopes
+  status       ApiKeyStatus @default(active)
+  createdById  String       @map("created_by_id") @db.Uuid
+  lastUsedAt   DateTime?    @map("last_used_at") @db.Timestamptz()
+  expiresAt    DateTime?    @map("expires_at") @db.Timestamptz()
+  revokedAt    DateTime?    @map("revoked_at") @db.Timestamptz()
+  revokedById  String?      @map("revoked_by_id") @db.Uuid
+  ipWhitelist  String[]     @default([]) @map("ip_whitelist") // optional CIDR list
+  requestCount Int          @default(0) @map("request_count")
+  createdAt    DateTime     @default(now()) @map("created_at") @db.Timestamptz()
+  updatedAt    DateTime     @default(now()) @updatedAt @map("updated_at") @db.Timestamptz()
+
+  createdBy User  @relation("ApiKeyCreatedBy", fields: [createdById], references: [id])
+  revokedBy User? @relation("ApiKeyRevokedBy", fields: [revokedById], references: [id])
+
+  accessLogs ApiAccessLog[]
+
+  @@index([status])
+  @@index([createdById])
+  @@map("api_keys")
+}
+
+model ApiAccessLog {
+  id         String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  keyId      String   @map("key_id") @db.Uuid
+  endpoint   String
+  method     String   @db.VarChar(10)
+  statusCode Int      @map("status_code") @db.SmallInt
+  ipAddress  String?  @map("ip_address")
+  durationMs Int?     @map("duration_ms") @db.SmallInt
+  createdAt  DateTime @default(now()) @map("created_at") @db.Timestamptz()
+
+  key ApiKey @relation(fields: [keyId], references: [id], onDelete: Cascade)
+
+  @@index([keyId])
+  @@index([createdAt])
+  @@map("api_access_logs")
 }

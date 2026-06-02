@@ -9,3 +9,4 @@ export * from './violations.js';
 export * from './results.js';
 export * from './faces.js';
 export * from './audit.js'
+export * from './api-keys.js';

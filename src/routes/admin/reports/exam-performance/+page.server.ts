@@ -3,80 +3,52 @@ import type { PageServerLoad } from './$types';
 import { sql } from '$lib/server/db/index.js';
 import { requireAdmin } from '$lib/server/auth/guards.js';
 
-export const load: PageServerLoad = async ({ locals, url }) => {
+export const load: PageServerLoad = async ({ locals }) => {
   requireAdmin(locals.user);
 
-  const statusFilter = url.searchParams.get('status')?.trim() ?? '';
-  const search       = url.searchParams.get('q')?.trim()      ?? '';
+  const [exams, totalsRows] = await Promise.all([
+    sql(`
+      SELECT
+        e.id, e.title, e.status, e.pass_mark, e.total_marks,
+        c.code AS course,
+        COUNT(DISTINCT es.id)::int                                           AS sessions,
+        ROUND(AVG(es.score)::numeric, 1)                                     AS avg_score,
+        COUNT(DISTINCT CASE WHEN er.passed = true THEN er.id END)::int       AS passed,
+        COUNT(DISTINCT er.id)::int                                           AS total_results
+      FROM exams e
+      LEFT JOIN courses c        ON e.course_id = c.id
+      LEFT JOIN exam_sessions es ON es.exam_id  = e.id
+      LEFT JOIN exam_results  er ON er.exam_id  = e.id
+      GROUP BY e.id, c.code
+      ORDER BY e.created_at DESC
+      LIMIT 100
+    `, []),
+    sql(`
+      SELECT
+        COUNT(*)::int                                                AS total,
+        COUNT(CASE WHEN status = 'completed' THEN 1 END)::int       AS completed,
+        COUNT(CASE WHEN status = 'active'    THEN 1 END)::int       AS active
+      FROM exams
+    `, []),
+  ]);
 
-  // ── Build WHERE conditions with positional $N params ──────────────
-  const conditions: string[] = ['1=1'];
-  const params: unknown[]    = [];
-
-  if (statusFilter && statusFilter !== 'all') {
-    params.push(statusFilter);
-    conditions.push(`e.status = $${params.length}::\"ExamStatus\"`);
-  }
-
-  if (search) {
-    params.push(`%${search}%`);
-    const n = params.length;
-    conditions.push(`(e.title ILIKE $${n} OR c.code ILIKE $${n})`);
-  }
-
-  const where = conditions.join(' AND ');
-
-  // ── Column names from @@map / @map in schema.prisma ───────────────
-  //   Exam:        scheduled_start, duration_minutes, course_id  (mapped)
-  //   Course:      code                                           (not mapped)
-  //   ExamSession: exam_id                                        (mapped)
-  //   ExamResult:  exam_id, passed                               (mapped)
-  const query = `
-    SELECT
-      e.id,
-      e.title,
-      e.status,
-      e.scheduled_start,
-      e.duration_minutes,
-      c.code                                                AS course,
-      COUNT(DISTINCT es.id)::int                           AS students,
-      ROUND(AVG(er.percentage)::numeric, 1)                AS avg_score,
-      COUNT(CASE WHEN er.passed = true THEN 1 END)::int    AS passed,
-      COUNT(er.id)::int                                    AS total_results,
-      SUM(COALESCE(es.violation_count, 0))::int            AS violations
-    FROM exams e
-    LEFT JOIN courses      c  ON c.id        = e.course_id
-    LEFT JOIN exam_sessions es ON es.exam_id = e.id
-    LEFT JOIN exam_results  er ON er.exam_id = e.id
-    WHERE ${where}
-    GROUP BY e.id, e.title, e.status, e.scheduled_start, e.duration_minutes, c.code
-    ORDER BY e.scheduled_start DESC NULLS LAST
-    LIMIT 200
-  `;
-
-  const rows = await sql(query, params);
-
-  const exams = rows.map(e => {
-    const totalResults = (e.total_results as number) || 0;
-    const passed       = (e.passed       as number) || 0;
-
-    return {
-      id:         e.id                                          as string,
-      title:      e.title                                       as string,
-      course:     (e.course          as string | null) ?? '—',
-      status:     e.status                                      as string,
-      date:       e.scheduled_start
-                    ? new Date(e.scheduled_start as string).toISOString().split('T')[0]
-                    : '—',
-      duration:   (e.duration_minutes as number) || 0,
-      students:   (e.students         as number) || 0,
-      avgScore:   parseFloat(e.avg_score as string) || 0,
-      passRate:   totalResults > 0
-                    ? parseFloat(((passed / totalResults) * 100).toFixed(1))
-                    : 0,
-      violations: (e.violations as number) || 0,
-    };
-  });
-
-  return { exams };
+  return {
+    exams: exams.map((e: any) => ({
+      id:       e.id.slice(0, 8),
+      title:    `${e.course ?? '—'} — ${e.title}`,
+      status:   e.status,
+      sessions: e.sessions      || 0,
+      avgScore: e.avg_score     ?? '—',
+      passed:   e.passed        || 0,
+      total:    e.total_results || 0,
+      passRate: e.total_results > 0
+        ? parseFloat(((e.passed / e.total_results) * 100).toFixed(1))
+        : 0,
+    })),
+    summary: {
+      total:     totalsRows[0]?.total     || 0,
+      completed: totalsRows[0]?.completed || 0,
+      active:    totalsRows[0]?.active    || 0,
+    },
+  };
 };

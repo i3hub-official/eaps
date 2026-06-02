@@ -10,6 +10,7 @@
   --color-primary:        #2563eb;
   --color-primary-hover:  #1d4ed8;
   --color-primary-subtle: #eff6ff;
+  --color-focus:          #16a34a;  /* ADD THIS - green focus color */
 
   --color-bg:             #f8fafc;
   --color-surface:        #ffffff;
@@ -23,6 +24,7 @@
   --color-primary:        #3b82f6;
   --color-primary-hover:  #2563eb;
   --color-primary-subtle: #1e3a5f;
+  --color-focus:          #22c55e;  /* ADD THIS - brighter green for dark mode */
 
   --color-bg:             #0f172a;
   --color-surface:        #1e293b;
@@ -65,7 +67,7 @@ img { max-width: 100%; display: block; }
 
 /* ── Focus ring ────────────────────────────────────────────────────────────── */
 :focus-visible {
-  outline: 2px solid var(--color-primary);
+  outline: 2px solid var(--color-focus, #16a34a);  /* CHANGED from --color-primary to --color-focus */
   outline-offset: 2px;
 }
 
