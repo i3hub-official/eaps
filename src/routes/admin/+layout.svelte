@@ -525,7 +525,7 @@
 							<Pin size={12} />
 						</div>
 						{#if navLoading === group.href}
-							<LoaderCircle size={14} class="nav-loader" />
+							<LoaderCircle size={16} class="nav-loader" />
 						{:else if isActive(group.href)}
 							<div class="active-indicator"></div>
 						{/if}
@@ -757,7 +757,7 @@
 		</header>
 
 		<div class="page-content">
-			<slot />
+			{@render children()}
 		</div>
 	</main>
 
