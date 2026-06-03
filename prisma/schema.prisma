@@ -81,6 +81,14 @@ enum ApiKeyStatus {
   expired
 }
 
+enum NotificationType {
+  info
+  warning
+  alert
+  error
+  critical
+}
+
 // ─── Institutional hierarchy ──────────────────────────────────────────────────
 
 model College {
@@ -172,6 +180,7 @@ model User {
   notifications       Notification[]
   createdApiKeys      ApiKey[]             @relation("ApiKeyCreatedBy")
   revokedApiKeys      ApiKey[]             @relation("ApiKeyRevokedBy")
+  userPreferences     UserPreference[]
 
   @@index([role])
   @@index([collegeId])
@@ -566,4 +575,14 @@ model ApiAccessLog {
   @@index([keyId])
   @@index([createdAt])
   @@map("api_access_logs")
+}
+
+model UserPreference {
+  userId    String   @id @map("user_id") @db.Uuid
+  prefs     Json     @default("{}") // flexible JSON object for various preferences
+  updatedAt DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz()
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("user_preferences")
 }
