@@ -170,7 +170,7 @@
       </div>
       <h1 class="dash-title">
         Command Centre
-        <Sparkles size={24} class="title-sparkle" />
+        <!-- <Sparkles size={24} class="title-sparkle" /> -->
       </h1>
       <p class="dash-subtitle">MOUAU eTest · Super Administrator</p>
     </div>
