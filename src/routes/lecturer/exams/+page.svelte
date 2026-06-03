@@ -50,8 +50,6 @@
   const sortedExams = $derived(
     [...exams].sort((a, b) => (ORDER[a.status] ?? 9) - (ORDER[b.status] ?? 9))
   );
-
-  const firstName = $derived(data.user.fullName?.split(' ')[0] ?? 'Lecturer');
 </script>
 
 <svelte:head><title>Lecturer Dashboard — MOUAU eTest</title></svelte:head>
