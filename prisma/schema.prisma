@@ -136,6 +136,7 @@ model User {
 
   // ── Contact ──────────────────────────────────────────────────────────────
   phone String?
+  title String? // "Prof.", "Dr.", "Mr.", "Mrs.", "Engr.", etc.
 
   // ── Academic identity ─────────────────────────────────────────────────────
   matricNumber String? @unique @map("matric_number")
@@ -312,6 +313,7 @@ model Question {
   examId     String       @map("exam_id") @db.Uuid
   type       QuestionType
   body       String
+  topic String? // e.g. "Thermodynamics", "Algebra" — drives weakness/strength analysis in results
   imageUrl   String?      @map("image_url")
   marks      Int          @default(1) @db.SmallInt
   orderIndex Int?         @map("order_index") @db.SmallInt
