@@ -4,13 +4,12 @@
   import { onMount } from 'svelte';
   import {
     Settings, Monitor, Bell, Shield, Layout, Palette,
-    CheckCircle, Save, RefreshCw, Sun, Moon, Eye,
-    BellOff, BellRing, ToggleLeft, Sliders
+    CheckCircle, Save, RefreshCw, Sun, Moon
   } from 'lucide-svelte';
 
   let { data }: { data: PageData } = $props();
 
-  // ── Default preferences ──────────────────────────────────────────
+  // ── Types ────────────────────────────────────────────────────────
   type Prefs = {
     theme: 'light' | 'dark' | 'system';
     sidebarCompact: boolean;
@@ -45,23 +44,63 @@
     defaultReportsRange: '30d',
   };
 
-  let prefs = $state<Prefs>({ ...DEFAULTS });
-  let saved = $state(false);
-  let dirty = $state(false);
+  let prefs  = $state<Prefs>({ ...DEFAULTS });
+  let saved  = $state(false);
+  let dirty  = $state(false);
 
+  // ── Read theme pref on mount ─────────────────────────────────────
+  // Priority:
+  //   1. The 'theme' key (written by app.html / layout toggles) → map to prefs.theme
+  //   2. Fall back to whatever is saved in 'admin:preferences'
   onMount(() => {
     try {
       const stored = localStorage.getItem('admin:preferences');
       if (stored) Object.assign(prefs, JSON.parse(stored));
     } catch {}
+
+    // Always sync prefs.theme from the canonical 'theme' key so the
+    // segmented control reflects what app.html actually applied.
+    try {
+      const lsTheme = localStorage.getItem('theme') as 'light' | 'dark' | null;
+      if (lsTheme === 'light' || lsTheme === 'dark') {
+        prefs.theme = lsTheme;
+      } else if (!lsTheme) {
+        // Nothing stored → system
+        prefs.theme = 'system';
+      }
+    } catch {}
   });
 
+  // ── Apply theme live whenever prefs.theme changes ────────────────
+  $effect(() => {
+    const t = prefs.theme;
+    if (typeof document === 'undefined') return;
+
+    const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+    const resolved    = t === 'system' ? (prefersDark ? 'dark' : 'light') : t;
+
+    // Write canonical key (read by app.html on next load)
+    if (t === 'system') {
+      localStorage.removeItem('theme');
+    } else {
+      localStorage.setItem('theme', t);
+    }
+
+    // Apply immediately to the live document
+    document.documentElement.setAttribute('data-theme', resolved);
+    if (resolved === 'dark') {
+      document.documentElement.classList.add('dark');
+    } else {
+      document.documentElement.classList.remove('dark');
+    }
+  });
+
+  // ── Save all prefs ───────────────────────────────────────────────
   function save() {
-    try { localStorage.setItem('admin:preferences', JSON.stringify(prefs)); }
-    catch {}
+    try { localStorage.setItem('admin:preferences', JSON.stringify(prefs)); } catch {}
     saved = true;
     dirty = false;
-    setTimeout(() => saved = false, 2500);
+    setTimeout(() => (saved = false), 2500);
   }
 
   function reset() {
@@ -71,7 +110,6 @@
 
   function touch() { dirty = true; }
 
-  // Toggle helper for boolean prefs
   function toggle(key: keyof Prefs) {
     (prefs as any)[key] = !(prefs as any)[key];
     touch();
@@ -120,6 +158,7 @@
                 class="seg-btn"
                 class:seg-active={prefs.theme === opt.val}
                 onclick={() => { prefs.theme = opt.val as any; touch(); }}
+                type="button"
               >
                 <opt.icon size={13} /> {opt.label}
               </button>
@@ -138,6 +177,7 @@
                 class="seg-btn"
                 class:seg-active={prefs.tableRowDensity === d}
                 onclick={() => { prefs.tableRowDensity = d as any; touch(); }}
+                type="button"
               >{d.charAt(0).toUpperCase() + d.slice(1)}</button>
             {/each}
           </div>
@@ -148,7 +188,7 @@
             <span>Reduce animations</span>
             <span class="pr-desc">Disables transitions and motion effects</span>
           </div>
-          <button class="toggle" class:on={prefs.animationsReduced} onclick={() => toggle('animationsReduced')} aria-label="Toggle">
+          <button class="toggle" class:on={prefs.animationsReduced} onclick={() => toggle('animationsReduced')} aria-label="Toggle" type="button">
             <div class="toggle-thumb"></div>
           </button>
         </div>
@@ -166,7 +206,7 @@
             <span>Compact sidebar</span>
             <span class="pr-desc">Show only icons in the sidebar</span>
           </div>
-          <button class="toggle" class:on={prefs.sidebarCompact} onclick={() => toggle('sidebarCompact')} aria-label="Toggle">
+          <button class="toggle" class:on={prefs.sidebarCompact} onclick={() => toggle('sidebarCompact')} aria-label="Toggle" type="button">
             <div class="toggle-thumb"></div>
           </button>
         </div>
@@ -176,7 +216,7 @@
             <span>Show quick actions</span>
             <span class="pr-desc">Floating action buttons at the bottom right</span>
           </div>
-          <button class="toggle" class:on={prefs.showQuickActions} onclick={() => toggle('showQuickActions')} aria-label="Toggle">
+          <button class="toggle" class:on={prefs.showQuickActions} onclick={() => toggle('showQuickActions')} aria-label="Toggle" type="button">
             <div class="toggle-thumb"></div>
           </button>
         </div>
@@ -186,7 +226,7 @@
             <span>Show breadcrumbs</span>
             <span class="pr-desc">Navigation trail in the top bar</span>
           </div>
-          <button class="toggle" class:on={prefs.showBreadcrumbs} onclick={() => toggle('showBreadcrumbs')} aria-label="Toggle">
+          <button class="toggle" class:on={prefs.showBreadcrumbs} onclick={() => toggle('showBreadcrumbs')} aria-label="Toggle" type="button">
             <div class="toggle-thumb"></div>
           </button>
         </div>
@@ -224,10 +264,10 @@
       <div class="card-head"><Bell size={15} /> Notification Preferences</div>
       <div class="pref-rows">
         {#each [
-          { key: 'notifyOnViolation',   label: 'Exam violations',      desc: 'Alert when a student exceeds violation threshold' },
-          { key: 'notifyOnExamStart',   label: 'Exam starts',          desc: 'Alert when a scheduled exam goes live' },
-          { key: 'notifyOnNewUser',     label: 'New user registration', desc: 'Alert when a new account is created' },
-          { key: 'notifyOnFailedLogin', label: 'Failed login attempts', desc: 'Alert on suspicious login activity' },
+          { key: 'notifyOnViolation',   label: 'Exam violations',       desc: 'Alert when a student exceeds violation threshold' },
+          { key: 'notifyOnExamStart',   label: 'Exam starts',           desc: 'Alert when a scheduled exam goes live'            },
+          { key: 'notifyOnNewUser',     label: 'New user registration',  desc: 'Alert when a new account is created'              },
+          { key: 'notifyOnFailedLogin', label: 'Failed login attempts',  desc: 'Alert on suspicious login activity'               },
         ] as item}
           <div class="pref-row">
             <div class="pr-label">
@@ -239,6 +279,7 @@
               class:on={(prefs as any)[item.key]}
               onclick={() => toggle(item.key as keyof Prefs)}
               aria-label="Toggle"
+              type="button"
             >
               <div class="toggle-thumb"></div>
             </button>
@@ -258,9 +299,9 @@
             <span class="pr-desc">Auto-logout after inactivity (minutes)</span>
           </div>
           <div class="number-input-wrap">
-            <button onclick={() => { if (prefs.sessionTimeoutMinutes > 5) { prefs.sessionTimeoutMinutes -= 5; touch(); } }}>−</button>
+            <button type="button" onclick={() => { if (prefs.sessionTimeoutMinutes > 5) { prefs.sessionTimeoutMinutes -= 5; touch(); } }}>−</button>
             <span class="number-val">{prefs.sessionTimeoutMinutes}</span>
-            <button onclick={() => { if (prefs.sessionTimeoutMinutes < 120) { prefs.sessionTimeoutMinutes += 5; touch(); } }}>+</button>
+            <button type="button" onclick={() => { if (prefs.sessionTimeoutMinutes < 120) { prefs.sessionTimeoutMinutes += 5; touch(); } }}>+</button>
           </div>
         </div>
 
@@ -269,7 +310,7 @@
             <span>Confirm before deleting</span>
             <span class="pr-desc">Show a confirmation dialog for destructive actions</span>
           </div>
-          <button class="toggle" class:on={prefs.requireConfirmOnDelete} onclick={() => toggle('requireConfirmOnDelete')} aria-label="Toggle">
+          <button class="toggle" class:on={prefs.requireConfirmOnDelete} onclick={() => toggle('requireConfirmOnDelete')} aria-label="Toggle" type="button">
             <div class="toggle-thumb"></div>
           </button>
         </div>
@@ -285,8 +326,8 @@
 
   .page-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 1rem; flex-wrap: wrap; }
   .ph-icon { width: 44px; height: 44px; border-radius: .75rem; background: linear-gradient(135deg,#8b5cf6,#7c3aed); display: flex; align-items: center; justify-content: center; color: white; flex-shrink: 0; }
-  h1 { font-size: 1.2rem; font-weight: 800; color: var(--color-text); }
-  p  { font-size: .8rem; color: var(--color-muted); }
+  h1 { font-size: 1.2rem; font-weight: 800; color: var(--color-text); margin: 0; }
+  p  { font-size: .8rem; color: var(--color-muted); margin: 0; }
   .ph-actions { display: flex; align-items: center; gap: .5rem; flex-wrap: wrap; }
 
   .btn-primary { display: flex; align-items: center; gap: .5rem; padding: .55rem 1.1rem; background: #8b5cf6; color: white; border: none; border-radius: .5rem; font-size: .82rem; font-weight: 600; cursor: pointer; font-family: inherit; transition: background .15s; }
@@ -299,11 +340,9 @@
 
   .prefs-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(420px, 1fr)); gap: 1rem; }
 
-  /* Card */
   .card { background: var(--color-surface); border: 1px solid var(--color-border); border-radius: .875rem; overflow: hidden; }
   .card-head { display: flex; align-items: center; gap: .5rem; padding: .875rem 1.25rem; border-bottom: 1px solid var(--color-border); font-size: .85rem; font-weight: 700; color: var(--color-text); background: var(--color-bg); }
 
-  /* Preference rows */
   .pref-rows { display: flex; flex-direction: column; }
   .pref-row { display: flex; align-items: center; justify-content: space-between; gap: 1rem; padding: .875rem 1.25rem; border-bottom: 1px solid var(--color-border); }
   .pref-row:last-child { border-bottom: none; }
@@ -318,18 +357,9 @@
   .seg-active { background: var(--color-surface); color: var(--color-text); font-weight: 700; box-shadow: 0 1px 4px rgba(0,0,0,.1); }
 
   /* Toggle switch */
-  .toggle {
-    width: 40px; height: 22px; border-radius: 11px;
-    background: var(--color-border); border: none; cursor: pointer;
-    position: relative; transition: background .2s; flex-shrink: 0; padding: 0;
-  }
+  .toggle { width: 40px; height: 22px; border-radius: 11px; background: var(--color-border); border: none; cursor: pointer; position: relative; transition: background .2s; flex-shrink: 0; padding: 0; }
   .toggle.on { background: #8b5cf6; }
-  .toggle-thumb {
-    position: absolute; top: 2px; left: 2px;
-    width: 18px; height: 18px; border-radius: 50%;
-    background: white; transition: transform .2s;
-    box-shadow: 0 1px 4px rgba(0,0,0,.2);
-  }
+  .toggle-thumb { position: absolute; top: 2px; left: 2px; width: 18px; height: 18px; border-radius: 50%; background: white; transition: transform .2s; box-shadow: 0 1px 4px rgba(0,0,0,.2); }
   .toggle.on .toggle-thumb { transform: translateX(18px); }
 
   /* Select */
