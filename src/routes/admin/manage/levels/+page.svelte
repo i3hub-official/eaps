@@ -5,57 +5,79 @@
 
   let { data, form }: { data: PageData; form: any } = $props();
 
-  let editingLevel = $state<number | null>(null);
-  let editedValue = $state('');
+  let editingId = $state<number | null>(null);
+  let editedLevel = $state('');
+  let editedName = $state('');
+  let editedOrder = $state('');
   let searchQuery = $state('');
   let loadingAction = $state<string | null>(null);
   let showResetModal = $state(false);
   let showAddModal = $state(false);
   let newLevelValue = $state('');
+  let newLevelName = $state('');
+  let newLevelOrder = $state('');
 
-  let levels = $state<number[]>(data.levels || [100, 200, 300, 400, 500, 600]);
+  // data.levels is an array of { id, level, name, order, isDefault, _count: {...} }
+  let levels = $state(data.levels ?? []);
 
   const filteredLevels = $derived(
-    levels.filter(l => l.toString().includes(searchQuery))
+    levels.filter((l: any) =>
+      l.level.toString().includes(searchQuery) ||
+      (l.name?.toLowerCase() ?? '').includes(searchQuery.toLowerCase())
+    )
   );
 
   const DEFAULT_LEVELS = [100, 200, 300, 400, 500, 600];
 
-  function startEdit(level: number) {
-    editingLevel = level;
-    editedValue = level.toString();
+  function startEdit(l: any) {
+    editingId = l.id;
+    editedLevel = l.level.toString();
+    editedName = l.name ?? '';
+    editedOrder = l.order?.toString() ?? '';
   }
 
   function cancelEdit() {
-    editingLevel = null;
-    editedValue = '';
+    editingId = null;
+    editedLevel = '';
+    editedName = '';
+    editedOrder = '';
   }
 
-  async function saveEdit(originalLevel: number) {
-    const newLevel = parseInt(editedValue);
-    if (isNaN(newLevel) || newLevel < 100 || newLevel > 800) {
+  async function saveEdit(id: number) {
+    const levelNum = parseInt(editedLevel);
+    if (isNaN(levelNum) || levelNum < 100 || levelNum > 800) {
       form = { error: 'Please enter a valid level between 100 and 800' };
       return;
     }
-    if (levels.includes(newLevel) && newLevel !== originalLevel) {
+    if (levelNum % 100 !== 0) {
+      form = { error: 'Level must be a multiple of 100' };
+      return;
+    }
+    const existing = levels.find((l: any) => l.level === levelNum && l.id !== id);
+    if (existing) {
       form = { error: 'Level already exists' };
       return;
     }
 
     loadingAction = 'edit';
     try {
-      const response = await fetch('/api/admin/levels', {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ original: originalLevel, updated: newLevel })
-      });
+      const body = new FormData();
+      body.append('id', id.toString());
+      body.append('level', editedLevel);
+      body.append('name', editedName || `${levelNum} Level`);
+      body.append('order', editedOrder || '0');
+
+      const response = await fetch('?/edit', { method: 'POST', body });
       const result = await response.json();
-      if (response.ok) {
-        const index = levels.indexOf(originalLevel);
-        if (index !== -1) levels[index] = newLevel;
-        levels = [...levels].sort((a, b) => a - b);
-        editingLevel = null;
-        form = { success: true, message: `Level updated to ${newLevel}` };
+
+      if (result.type === 'success' || result.success) {
+        const idx = levels.findIndex((l: any) => l.id === id);
+        if (idx !== -1) {
+          levels[idx] = { ...levels[idx], level: levelNum, name: editedName || `${levelNum} Level`, order: parseInt(editedOrder) || 0 };
+          levels = [...levels].sort((a: any, b: any) => (a.order - b.order) || (a.level - b.level));
+        }
+        editingId = null;
+        form = { success: true, message: `Level updated to ${levelNum}` };
       } else {
         form = { error: result.error || 'Failed to update level' };
       }
@@ -66,23 +88,26 @@
     }
   }
 
-  async function deleteLevel(level: number) {
-    if (level >= 100 && level <= 600) {
-      form = { error: 'Default levels (100-600) cannot be deleted' };
+  async function deleteLevel(id: number) {
+    const levelObj = levels.find((l: any) => l.id === id);
+    if (!levelObj) return;
+
+    if (levelObj.isDefault) {
+      form = { error: 'Default levels cannot be deleted' };
       return;
     }
 
-    loadingAction = `delete-${level}`;
+    loadingAction = `delete-${id}`;
     try {
-      const response = await fetch('/api/admin/levels', {
-        method: 'DELETE',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ level })
-      });
+      const body = new FormData();
+      body.append('id', id.toString());
+
+      const response = await fetch('?/delete', { method: 'POST', body });
       const result = await response.json();
-      if (response.ok) {
-        levels = levels.filter(l => l !== level);
-        form = { success: true, message: `Level ${level} deleted` };
+
+      if (result.type === 'success' || result.success) {
+        levels = levels.filter((l: any) => l.id !== id);
+        form = { success: true, message: `Level ${levelObj.level} deleted` };
       } else {
         form = { error: result.error || 'Failed to delete level' };
       }
@@ -99,23 +124,35 @@
       form = { error: 'Please enter a valid level between 100 and 800' };
       return;
     }
-    if (levels.includes(levelNum)) {
+    if (levelNum % 100 !== 0) {
+      form = { error: 'Level must be a multiple of 100' };
+      return;
+    }
+    if (levels.some((l: any) => l.level === levelNum)) {
       form = { error: 'Level already exists' };
       return;
     }
 
     loadingAction = 'add';
     try {
-      const response = await fetch('/api/admin/levels', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ level: levelNum })
-      });
+      const body = new FormData();
+      body.append('level', newLevelValue);
+      body.append('name', newLevelName || `${levelNum} Level`);
+      body.append('order', newLevelOrder || '0');
+
+      const response = await fetch('?/create', { method: 'POST', body });
       const result = await response.json();
-      if (response.ok) {
-        levels = [...levels, levelNum].sort((a, b) => a - b);
+
+      if (result.type === 'success' || result.success) {
+        // Re-fetch to get the new ID from Prisma
+        const refresh = await fetch('/admin/manage/levels');
+        const newData = await refresh.json();
+        levels = newData.levels ?? [...levels, { id: Date.now(), level: levelNum, name: newLevelName || `${levelNum} Level`, order: parseInt(newLevelOrder) || 0, isDefault: false }];
+        levels = [...levels].sort((a: any, b: any) => (a.order - b.order) || (a.level - b.level));
         showAddModal = false;
         newLevelValue = '';
+        newLevelName = '';
+        newLevelOrder = '';
         form = { success: true, message: `Level ${levelNum} added` };
       } else {
         form = { error: result.error || 'Failed to add level' };
@@ -130,10 +167,18 @@
   async function resetToDefault() {
     loadingAction = 'reset';
     try {
-      const response = await fetch('/api/admin/levels/reset', { method: 'POST' });
+      const response = await fetch('?/reset', { method: 'POST', body: new FormData() });
       const result = await response.json();
-      if (response.ok) {
-        levels = [...DEFAULT_LEVELS];
+
+      if (result.type === 'success' || result.success) {
+        levels = DEFAULT_LEVELS.map((l, i) => ({
+          id: i + 1,
+          level: l,
+          name: `${l} Level`,
+          order: i,
+          isDefault: true,
+          _count: { users: 0, exams: 0, registrations: 0 }
+        }));
         showResetModal = false;
         form = { success: true, message: 'Levels reset to defaults' };
       } else {
@@ -149,10 +194,18 @@
   function closeAddModal() {
     showAddModal = false;
     newLevelValue = '';
+    newLevelName = '';
+    newLevelOrder = '';
   }
 
   function closeResetModal() {
     showResetModal = false;
+  }
+
+  function formatCount(l: any): string {
+    const total = (l._count?.users ?? 0) + (l._count?.exams ?? 0) + (l._count?.registrations ?? 0);
+    if (total === 0) return 'No usage';
+    return `${l._count?.users ?? 0} students, ${l._count?.exams ?? 0} exams, ${l._count?.registrations ?? 0} registrations`;
   }
 </script>
 
@@ -215,21 +268,34 @@
     </div>
   {:else}
     <div class="levels-grid">
-      {#each filteredLevels as level}
-        <div class="level-card" class:editing={editingLevel === level}>
-          {#if editingLevel === level}
+      {#each filteredLevels as level (level.id)}
+        <div class="level-card" class:editing={editingId === level.id} class:default={level.isDefault}>
+          {#if editingId === level.id}
             <div class="level-edit">
-              <input
-                type="number"
-                bind:value={editedValue}
-                min="100"
-                max="800"
-                step="100"
-                autofocus
-                onkeypress={(e) => e.key === 'Enter' && saveEdit(level)}
-              />
+              <div class="edit-fields">
+                <input
+                  type="number"
+                  bind:value={editedLevel}
+                  min="100"
+                  max="800"
+                  step="100"
+                  placeholder="Level"
+                  autofocus
+                  onkeypress={(e) => e.key === 'Enter' && saveEdit(level.id)}
+                />
+                <input
+                  type="text"
+                  bind:value={editedName}
+                  placeholder="Name"
+                />
+                <input
+                  type="number"
+                  bind:value={editedOrder}
+                  placeholder="Order"
+                />
+              </div>
               <div class="edit-actions">
-                <button class="save-btn" onclick={() => saveEdit(level)} disabled={loadingAction === 'edit'} title="Save">
+                <button class="save-btn" onclick={() => saveEdit(level.id)} disabled={loadingAction === 'edit'} title="Save">
                   {#if loadingAction === 'edit'}
                     <Loader2 size={14} class="spin" />
                   {:else}
@@ -243,8 +309,9 @@
             </div>
           {:else}
             <div class="level-content">
-              <span class="level-number">{level}</span>
-              <span class="level-label">Level</span>
+              <span class="level-number">{level.level}</span>
+              <span class="level-name">{level.name}</span>
+              <span class="level-usage">{formatCount(level)}</span>
             </div>
             <div class="level-actions">
               <button class="action-btn edit" onclick={() => startEdit(level)} title="Edit level">
@@ -252,11 +319,11 @@
               </button>
               <button
                 class="action-btn delete"
-                onclick={() => deleteLevel(level)}
-                title={level >= 100 && level <= 600 ? 'Default levels cannot be deleted' : 'Delete level'}
-                disabled={level >= 100 && level <= 600 || loadingAction === `delete-${level}`}
+                onclick={() => deleteLevel(level.id)}
+                title={level.isDefault ? 'Default levels cannot be deleted' : 'Delete level'}
+                disabled={level.isDefault || loadingAction === `delete-${level.id}`}
               >
-                {#if loadingAction === `delete-${level}`}
+                {#if loadingAction === `delete-${level.id}`}
                   <Loader2 size={14} class="spin" />
                 {:else}
                   <Trash2 size={14} />
@@ -273,7 +340,7 @@
     <div class="info-icon"><AlertCircle size={18} /></div>
     <div class="info-content">
       <strong>About Levels</strong>
-      <p>Levels define the academic progression of students. Default levels are 100, 200, 300, 400, 500, and 600. You can add custom levels like 700, 800, or remove existing ones. Note that levels 100-600 are system defaults and cannot be deleted.</p>
+      <p>Levels define the academic progression of students. Default levels are 100, 200, 300, 400, 500, and 600. You can add custom levels like 700, 800, or rename existing ones. Note that default levels cannot be deleted if they have associated students, exams, or registrations.</p>
     </div>
   </div>
 
@@ -304,6 +371,24 @@
             />
             <p class="hint">Enter a level between 100 and 800 (must be a multiple of 100)</p>
           </div>
+          <div class="form-group">
+            <label for="add-name">Display Name</label>
+            <input
+              id="add-name"
+              type="text"
+              bind:value={newLevelName}
+              placeholder="e.g., 700 Level"
+            />
+          </div>
+          <div class="form-group">
+            <label for="add-order">Sort Order</label>
+            <input
+              id="add-order"
+              type="number"
+              bind:value={newLevelOrder}
+              placeholder="0"
+            />
+          </div>
         </div>
         <div class="modal-footer">
           <button type="button" class="btn-secondary" onclick={closeAddModal}>Cancel</button>
@@ -327,8 +412,8 @@
         <h2 id="reset-title">Reset to Default Levels?</h2>
         <p class="reset-desc">This will remove all custom levels and reset to:</p>
         <div class="default-levels">
-          {#each DEFAULT_LEVELS as lvl, i}
-            <span class="level-chip">{lvl}</span>{i < DEFAULT_LEVELS.length - 1 ? '' : ''}
+          {#each DEFAULT_LEVELS as lvl}
+            <span class="level-chip">{lvl}</span>
           {/each}
         </div>
         <div class="warning-box">
@@ -472,7 +557,7 @@
   .empty-desc { font-size: 0.8rem; color: var(--color-muted); margin: 0; }
 
   /* ── Levels Grid ─────────────────────────────────────────────── */
-  .levels-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 1rem; }
+  .levels-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 1rem; }
 
   .level-card {
     background: var(--color-surface);
@@ -481,29 +566,42 @@
     padding: 1.125rem 1rem;
     display: flex; justify-content: space-between; align-items: center;
     transition: all 0.2s;
+    position: relative;
   }
   .level-card:hover { border-color: rgba(59,130,246,0.3); transform: translateY(-2px); box-shadow: 0 4px 12px rgba(0,0,0,0.06); }
   .level-card.editing { border-color: #3b82f6; box-shadow: 0 0 0 3px rgba(59,130,246,0.1); }
+  .level-card.default::before {
+    content: '';
+    position: absolute; top: 0; left: 0; right: 0;
+    height: 3px;
+    background: linear-gradient(90deg, #3b82f6, #1d4ed8);
+    border-radius: 0.75rem 0.75rem 0 0;
+  }
 
-  .level-content { display: flex; flex-direction: column; align-items: flex-start; }
+  .level-content { display: flex; flex-direction: column; align-items: flex-start; gap: 0.15rem; }
   .level-number { font-size: 1.5rem; font-weight: 800; color: var(--color-text); line-height: 1; }
-  .level-label { font-size: 0.7rem; color: var(--color-muted); text-transform: uppercase; letter-spacing: 0.06em; margin-top: 0.25rem; }
+  .level-name { font-size: 0.75rem; color: var(--color-muted); }
+  .level-usage { font-size: 0.65rem; color: var(--color-muted); opacity: 0.7; margin-top: 0.25rem; }
 
   .level-actions { display: flex; gap: 0.25rem; opacity: 0.5; transition: opacity 0.15s; }
   .level-card:hover .level-actions { opacity: 1; }
 
   .level-edit {
-    display: flex; gap: 0.5rem; align-items: center; width: 100%;
+    display: flex; flex-direction: column; gap: 0.5rem;
+    width: 100%;
   }
-  .level-edit input {
-    width: 80px; padding: 0.5rem;
-    border: 1px solid var(--color-border); border-radius: 0.5rem;
+  .edit-fields {
+    display: flex; flex-direction: column; gap: 0.35rem;
+  }
+  .edit-fields input {
+    padding: 0.45rem 0.625rem;
+    border: 1px solid var(--color-border); border-radius: 0.375rem;
     background: var(--color-bg); color: var(--color-text);
-    font-size: 0.875rem; font-weight: 600; text-align: center;
+    font-size: 0.8rem; width: 100%;
     transition: border-color 0.15s, box-shadow 0.15s;
   }
-  .level-edit input:focus { outline: none; border-color: #3b82f6; box-shadow: 0 0 0 3px rgba(59,130,246,0.1); }
-  .edit-actions { display: flex; gap: 0.25rem; }
+  .edit-fields input:focus { outline: none; border-color: #3b82f6; box-shadow: 0 0 0 2px rgba(59,130,246,0.1); }
+  .edit-actions { display: flex; gap: 0.25rem; justify-content: flex-end; }
 
   .action-btn {
     display: inline-flex; align-items: center; justify-content: center;
@@ -520,7 +618,7 @@
 
   .save-btn, .cancel-btn {
     display: inline-flex; align-items: center; justify-content: center;
-    width: 30px; height: 30px;
+    width: 28px; height: 28px;
     background: none; border: none; cursor: pointer;
     border-radius: 0.375rem; transition: all 0.15s;
   }
@@ -595,9 +693,10 @@
   .modal-body {
     padding: 1.25rem;
     display: flex; flex-direction: column;
+    gap: 1rem;
     overflow-y: auto;
   }
-  .form-group { display: flex; flex-direction: column; gap: 0.4rem; margin-bottom: 0.5rem; }
+  .form-group { display: flex; flex-direction: column; gap: 0.4rem; }
   label { font-size: 0.72rem; font-weight: 700; color: var(--color-muted); text-transform: uppercase; letter-spacing: 0.06em; }
   .req { color: #dc2626; }
   input {
