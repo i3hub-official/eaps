@@ -13,7 +13,7 @@
     Calendar, Clock, UserCheck, UserX, UserPlus, Bell,
     Shield, FileBarChart, BrainCircuit, BookMarked, Monitor,
     EyeOff, Fingerprint, Command, Search, Home,
-    ChevronRight, Settings, Pin, Key, PlayCircle, Plus, User, Hash, Database
+    ChevronRight, Settings, Pin, Key, PlayCircle, Plus, User, Hash, Database, PlusCircle
   } from 'lucide-svelte';
 
   let { data, children }: { data: LayoutData; children: import('svelte').Snippet } = $props();
@@ -33,16 +33,22 @@
 
     // Restore persisted state
     sidebarOpen      = loadStored('admin:sidebarOpen', false);
-    usersExpanded    = loadStored('admin:usersExpanded', false);
-    examsExpanded    = loadStored('admin:examsExpanded', false);
-    reportsExpanded  = loadStored('admin:reportsExpanded', false);
+    expandedGroups   = loadStored<Record<string, boolean>>('admin:expandedGroups', {
+      management: false,
+      users: false,
+      exams: false,
+      reports: false,
+      apiKeys: false
+    });
     pinnedItems      = loadStored<string[]>('admin:pinned', []);
     showQuickActions = loadStored('admin:quickActions', true);
 
     // Auto-expand groups based on current path
-    if (isGroupChildActive(navGroups[1])) { usersExpanded   = true; store('admin:usersExpanded',   true); }
-    if (isGroupChildActive(navGroups[2])) { examsExpanded   = true; store('admin:examsExpanded',   true); }
-    if (isGroupChildActive(navGroups[4])) { reportsExpanded = true; store('admin:reportsExpanded', true); }
+    if (isGroupChildActive(navGroups[1])) { expandedGroups = { ...expandedGroups, management: true }; store('admin:expandedGroups', expandedGroups); }
+    if (isGroupChildActive(navGroups[2])) { expandedGroups = { ...expandedGroups, users: true }; store('admin:expandedGroups', expandedGroups); }
+    if (isGroupChildActive(navGroups[3])) { expandedGroups = { ...expandedGroups, exams: true }; store('admin:expandedGroups', expandedGroups); }
+    if (isGroupChildActive(navGroups[5])) { expandedGroups = { ...expandedGroups, reports: true }; store('admin:expandedGroups', expandedGroups); }
+    if (isGroupChildActive(navGroups[6])) { expandedGroups = { ...expandedGroups, apiKeys: true }; store('admin:expandedGroups', expandedGroups); }
 
     // Keyboard shortcuts
     const onKey = (e: KeyboardEvent) => {
@@ -85,16 +91,26 @@
   let searchQuery      = $state('');
   let timeLeft         = $state(60);
   let countdownTimer: ReturnType<typeof setInterval> | null = null;
-  let usersExpanded    = $state(false);
-  let examsExpanded    = $state(false);
-  let reportsExpanded  = $state(false);
+  let expandedGroups   = $state<Record<string, boolean>>({
+    management: false,
+    users: false,
+    exams: false,
+    reports: false,
+    apiKeys: false
+  });
   let pinnedItems      = $state<string[]>([]);
 
-  function setSidebarOpen(v: boolean)      { sidebarOpen     = v; store('admin:sidebarOpen',     v); }
-  function setUsersExpanded(v: boolean)    { usersExpanded   = v; store('admin:usersExpanded',   v); }
-  function setExamsExpanded(v: boolean)    { examsExpanded   = v; store('admin:examsExpanded',   v); }
-  function setReportsExpanded(v: boolean)  { reportsExpanded = v; store('admin:reportsExpanded', v); }
-  function setShowQuickActions(v: boolean) { showQuickActions = v; store('admin:quickActions',   v); }
+  function setSidebarOpen(v: boolean) { sidebarOpen = v; store('admin:sidebarOpen', v); }
+  
+  function toggleGroup(groupKey: string) {
+    expandedGroups = {
+      ...expandedGroups,
+      [groupKey]: !expandedGroups[groupKey]
+    };
+    store('admin:expandedGroups', expandedGroups);
+  }
+
+  function setShowQuickActions(v: boolean) { showQuickActions = v; store('admin:quickActions', v); }
 
   function togglePin(href: string) {
     const next = pinnedItems.includes(href)
@@ -123,12 +139,13 @@
 
   // ── Nav structure ────────────────────────────────────────────────
   const navGroups = [
-    { href: '/admin',          label: 'Dashboard', icon: LayoutDashboard, children: null },
+    { href: '/admin', label: 'Dashboard', icon: LayoutDashboard, children: null, groupKey: null },
 
     {
       href: '/admin/manage',
       label: 'Management',
       icon: Database,
+      groupKey: 'management',
       children: [
         { href: '/admin/manage/colleges', label: 'Colleges', icon: Building2 },
         { href: '/admin/manage/departments', label: 'Departments', icon: Layers },
@@ -138,58 +155,82 @@
       ],
     },
 
-    { href: '/admin/users',    label: 'Users',  icon: Users, children: [
-        { href: '/admin/users',                  label: 'All Users',    icon: Users        },
-        { href: '/admin/users?role=student',     label: 'Students',     icon: GraduationCap},
-        { href: '/admin/users?role=lecturer',    label: 'Lecturers',    icon: BookOpen     },
-        { href: '/admin/users?role=invigilator', label: 'Invigilators', icon: ShieldCheck  },
+    {
+      href: '/admin/users',
+      label: 'Users',
+      icon: Users,
+      groupKey: 'users',
+      children: [
+        { href: '/admin/users', label: 'All Users', icon: Users },
+        { href: '/admin/users?role=student', label: 'Students', icon: GraduationCap },
+        { href: '/admin/users?role=lecturer', label: 'Lecturers', icon: BookOpen },
+        { href: '/admin/users?role=invigilator', label: 'Invigilators', icon: ShieldCheck },
       ],
     },
 
-    { href: '/admin/exams',    label: 'Exams',  icon: ClipboardList, children: [
-        { href: '/admin/exams',                  label: 'All Exams',    icon: ClipboardList },
-        { href: '/admin/exams?status=active',    label: 'Active',       icon: PlayCircle    },
-        { href: '/admin/exams?status=scheduled', label: 'Scheduled',    icon: Calendar      },
-        { href: '/admin/exams/create',           label: 'Create Exam',  icon: Plus          },
+    {
+      href: '/admin/exams',
+      label: 'Exams',
+      icon: ClipboardList,
+      groupKey: 'exams',
+      children: [
+        { href: '/admin/exams', label: 'All Exams', icon: ClipboardList },
+        { href: '/admin/exams?status=active', label: 'Active', icon: PlayCircle },
+        { href: '/admin/exams?status=scheduled', label: 'Scheduled', icon: Calendar },
+        { href: '/admin/exams/create', label: 'Create Exam', icon: Plus },
       ],
     },
 
-    { href: '/admin/security', label: 'Security', icon: ShieldAlert, children: null },
+    { href: '/admin/security', label: 'Security', icon: ShieldAlert, children: null, groupKey: null },
 
-    { href: '/admin/reports',  label: 'Reports', icon: FileText, children: [
-        { href: '/admin/reports',                         label: 'Overview',               icon: Activity     },
-        { href: '/admin/reports/exam-performance',        label: 'Exam Performance',       icon: ClipboardList},
-        { href: '/admin/reports/student-performance',     label: 'Student Performance',    icon: TrendingUp   },
-        { href: '/admin/reports/course-analysis',         label: 'Course Analysis',        icon: BookMarked   },
-        { href: '/admin/reports/question-analysis',       label: 'Question Analysis',      icon: BrainCircuit },
-        { href: '/admin/reports/grade-distribution',      label: 'Grade Distribution',     icon: Award        },
-        { href: '/admin/reports/pass-fail',               label: 'Pass / Fail Analysis',   icon: Target       },
-        { href: '/admin/reports/time-score',              label: 'Time vs Score',          icon: Clock        },
-        { href: '/admin/reports/violations',              label: 'Violations Overview',    icon: AlertTriangle},
-        { href: '/admin/reports/violation-trends',        label: 'Violation Trends',       icon: TrendingUp   },
-        { href: '/admin/reports/flagged-sessions',        label: 'Flagged Sessions',       icon: EyeOff       },
-        { href: '/admin/reports/security-incidents',      label: 'Security Incidents',     icon: Shield       },
-        { href: '/admin/reports/action-analysis',         label: 'Action Taken',           icon: FileBarChart },
-        { href: '/admin/reports/user-overview',           label: 'User Overview',          icon: Users        },
-        { href: '/admin/reports/student-demographics',    label: 'Student Demographics',   icon: School       },
-        { href: '/admin/reports/lecturer-activity',       label: 'Lecturer Activity',      icon: BookOpen     },
-        { href: '/admin/reports/invigilator-assignments', label: 'Invigilator Assignments', icon: UserCheck    },
-        { href: '/admin/reports/registration-trends',     label: 'Registration Trends',    icon: UserPlus     },
-        { href: '/admin/reports/suspended-users',         label: 'Suspended Users',        icon: UserX        },
-        { href: '/admin/reports/college-performance',     label: 'College Performance',    icon: Building2    },
-        { href: '/admin/reports/department-performance',  label: 'Department Performance', icon: Layers       },
-        { href: '/admin/reports/level-analysis',          label: 'Level Analysis',         icon: BarChart3    },
-        { href: '/admin/reports/course-enrollment',       label: 'Course Enrollment',      icon: BookMarked   },
-        { href: '/admin/reports/session-semester',        label: 'Session / Semester',     icon: Calendar     },
-        { href: '/admin/reports/audit-logs',              label: 'Audit Logs',             icon: ScrollText   },
-        { href: '/admin/reports/system-activity',         label: 'System Activity',        icon: Monitor      },
-        { href: '/admin/reports/login-history',           label: 'Login History',          icon: Fingerprint  },
-        { href: '/admin/reports/notification-analytics',  label: 'Notifications',          icon: Bell         },
-        { href: '/admin/reports/exam-scheduling',         label: 'Exam Scheduling',        icon: Calendar     },
+    {
+      href: '/admin/reports',
+      label: 'Reports',
+      icon: FileText,
+      groupKey: 'reports',
+      children: [
+        { href: '/admin/reports', label: 'Overview', icon: Activity },
+        { href: '/admin/reports/exam-performance', label: 'Exam Performance', icon: ClipboardList },
+        { href: '/admin/reports/student-performance', label: 'Student Performance', icon: TrendingUp },
+        { href: '/admin/reports/course-analysis', label: 'Course Analysis', icon: BookMarked },
+        { href: '/admin/reports/question-analysis', label: 'Question Analysis', icon: BrainCircuit },
+        { href: '/admin/reports/grade-distribution', label: 'Grade Distribution', icon: Award },
+        { href: '/admin/reports/pass-fail', label: 'Pass / Fail Analysis', icon: Target },
+        { href: '/admin/reports/time-score', label: 'Time vs Score', icon: Clock },
+        { href: '/admin/reports/violations', label: 'Violations Overview', icon: AlertTriangle },
+        { href: '/admin/reports/violation-trends', label: 'Violation Trends', icon: TrendingUp },
+        { href: '/admin/reports/flagged-sessions', label: 'Flagged Sessions', icon: EyeOff },
+        { href: '/admin/reports/security-incidents', label: 'Security Incidents', icon: Shield },
+        { href: '/admin/reports/action-analysis', label: 'Action Taken', icon: FileBarChart },
+        { href: '/admin/reports/user-overview', label: 'User Overview', icon: Users },
+        { href: '/admin/reports/student-demographics', label: 'Student Demographics', icon: School },
+        { href: '/admin/reports/lecturer-activity', label: 'Lecturer Activity', icon: BookOpen },
+        { href: '/admin/reports/invigilator-assignments', label: 'Invigilator Assignments', icon: UserCheck },
+        { href: '/admin/reports/registration-trends', label: 'Registration Trends', icon: UserPlus },
+        { href: '/admin/reports/suspended-users', label: 'Suspended Users', icon: UserX },
+        { href: '/admin/reports/college-performance', label: 'College Performance', icon: Building2 },
+        { href: '/admin/reports/department-performance', label: 'Department Performance', icon: Layers },
+        { href: '/admin/reports/level-analysis', label: 'Level Analysis', icon: BarChart3 },
+        { href: '/admin/reports/course-enrollment', label: 'Course Enrollment', icon: BookMarked },
+        { href: '/admin/reports/session-semester', label: 'Session / Semester', icon: Calendar },
+        { href: '/admin/reports/audit-logs', label: 'Audit Logs', icon: ScrollText },
+        { href: '/admin/reports/system-activity', label: 'System Activity', icon: Monitor },
+        { href: '/admin/reports/login-history', label: 'Login History', icon: Fingerprint },
+        { href: '/admin/reports/notification-analytics', label: 'Notifications', icon: Bell },
+        { href: '/admin/reports/exam-scheduling', label: 'Exam Scheduling', icon: Calendar },
       ],
     },
 
-    { href: '/admin/api-keys', label: 'API Keys', icon: Key, children: null },
+    {
+      href: '/admin/api-keys',
+      label: 'API Keys',
+      icon: Key,
+      groupKey: 'apiKeys',
+      children: [
+        { href: '/admin/api-keys', label: 'Create Key', icon: PlusCircle },
+        { href: '/admin/api-keys/playground', label: 'Playground', icon: PlayCircle },
+      ],
+    },
   ] as const;
 
   // ── Active-state helpers ─────────────────────────────────────────
@@ -198,18 +239,20 @@
 
   function isActive(href: string, isChild = false): boolean {
     if (href === '/admin') return currentPath === '/admin';
+    // manage routes
+    if (href.startsWith('/admin/manage/')) return currentPath === href;
     // users
     if (href === '/admin/users' && !isChild) return currentPath === '/admin/users' && !currentSearch;
-    if (href === '/admin/users' &&  isChild) return currentPath === '/admin/users' && !currentSearch;
+    if (href === '/admin/users' && isChild) return currentPath === '/admin/users' && !currentSearch;
     if (href.includes('?role=')) return currentPath === '/admin/users' && currentSearch === '?' + href.split('?')[1];
     // exams
     if (href === '/admin/exams' && !isChild) return currentPath === '/admin/exams' && !currentSearch;
-    if (href === '/admin/exams' &&  isChild) return currentPath === '/admin/exams' && !currentSearch;
+    if (href === '/admin/exams' && isChild) return currentPath === '/admin/exams' && !currentSearch;
     if (href.includes('?status=')) return currentPath === '/admin/exams' && currentSearch === '?' + href.split('?')[1];
     if (href === '/admin/exams/create') return currentPath === '/admin/exams/create';
     // reports
     if (href === '/admin/reports' && !isChild) return currentPath === '/admin/reports';
-    if (href === '/admin/reports' &&  isChild) return currentPath === '/admin/reports';
+    if (href === '/admin/reports' && isChild) return currentPath === '/admin/reports';
     if (href.startsWith('/admin/reports/')) return currentPath === href;
     // profile
     if (href === '/admin/profile') return currentPath === '/admin/profile';
@@ -220,6 +263,8 @@
     // security / api-keys
     if (href === '/admin/security') return currentPath === '/admin/security';
     if (href === '/admin/api-keys') return currentPath === '/admin/api-keys';
+    if (href === '/admin/api-keys/create') return currentPath === '/admin/api-keys/create';
+    if (href === '/admin/api-keys/playground') return currentPath === '/admin/api-keys/playground';
     return currentPath === href;
   }
 
@@ -235,7 +280,16 @@
     let cur = '/admin';
     for (const part of parts) {
       cur += `/${part}`;
-      const label = part.split('-').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
+      let label = part;
+      if (part === 'api-keys' && currentPath.includes('/api-keys/')) {
+        label = 'API Keys';
+      } else if (part === 'create') {
+        label = 'Create Key';
+      } else if (part === 'playground') {
+        label = 'Playground';
+      } else {
+        label = part.split('-').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
+      }
       crumbs.push({ href: cur, label });
     }
     return crumbs;
@@ -263,7 +317,7 @@
     if (navLoading) return;
     navLoading = href;
     setSidebarOpen(false);
-    userMenuOpen      = false;
+    userMenuOpen = false;
     notificationsOpen = false;
     try { await goto(href); }
     finally { setTimeout(() => { navLoading = null; }, 300); }
@@ -371,19 +425,13 @@
           </div>
         {:else}
           <!-- Expandable group -->
-          {@const isUsers   = group.label === 'Users'}
-          {@const isExams   = group.label === 'Exams'}
-          {@const isExpanded = isUsers ? usersExpanded : isExams ? examsExpanded : reportsExpanded}
+          {@const isExpanded = expandedGroups[group.groupKey] || false}
           {@const childActive = isGroupChildActive(group)}
           <div class="nav-group-wrap" class:child-active={childActive}>
             <button
               class="nav-item nav-group-btn"
               class:child-active={childActive}
-              onclick={() => {
-                if (isUsers)       setUsersExpanded(!usersExpanded);
-                else if (isExams)  setExamsExpanded(!examsExpanded);
-                else               setReportsExpanded(!reportsExpanded);
-              }}
+              onclick={() => group.groupKey && toggleGroup(group.groupKey)}
             >
               <span class="nav-item-icon"><group.icon size={16} /></span>
               <span class="nav-item-label">{group.label}</span>

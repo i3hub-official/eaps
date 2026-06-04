@@ -87,7 +87,7 @@
       </thead>
       <tbody>
         {#if registrations.length === 0}
-          <tr><td colspan="8" class="empty">No course registrations found.</td></td>
+          <tr><td colspan="8" class="empty">No course registrations found.</td></tr>
         {:else}
           {#each registrations as reg}
             <tr>
