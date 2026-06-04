@@ -192,9 +192,8 @@ export const actions: Actions = {
       
       // Check if level is in use
       if (level._count.users > 0 || level._count.exams > 0 || level._count.registrations > 0) {
-        return fail(400, { 
-          error: `Cannot delete level ${level.level} because it's used by ${level._count.users} student(s), ${level._count.exams} exam(s), and ${level._count.registrations} registration(s). Update those records first.` 
-        });
+        const errorMsg = `Cannot delete level ${level.level} because it's used by ${level._count.users} student(s), ${level._count.exams} exam(s), and ${level._count.registrations} registration(s). Update those records first.`;
+        return fail(400, { error: errorMsg });
       }
       
       // Delete the level
@@ -213,10 +212,21 @@ export const actions: Actions = {
   reorder: async ({ request, locals }) => {
     requireAdmin(locals.user);
     const data = await request.formData();
-    const levelIds = JSON.parse(data.get('levelIds') as string);
+    const levelIdsJson = data.get('levelIds') as string;
+    
+    if (!levelIdsJson) {
+      return fail(400, { error: 'No level order data provided' });
+    }
+    
+    let levelIds: number[];
+    try {
+      levelIds = JSON.parse(levelIdsJson);
+    } catch {
+      return fail(400, { error: 'Invalid level order data format' });
+    }
     
     if (!Array.isArray(levelIds)) {
-      return fail(400, { error: 'Invalid order data' });
+      return fail(400, { error: 'Level order data must be an array' });
     }
     
     try {
@@ -303,10 +313,20 @@ export const actions: Actions = {
     requireAdmin(locals.user);
     const data = await request.formData();
     const levelsJson = data.get('levels') as string;
-    const levelsToImport = JSON.parse(levelsJson);
+    
+    if (!levelsJson) {
+      return fail(400, { error: 'No levels data provided' });
+    }
+    
+    let levelsToImport: Array<{ level: number; name?: string; order?: number }>;
+    try {
+      levelsToImport = JSON.parse(levelsJson);
+    } catch {
+      return fail(400, { error: 'Invalid JSON format for levels data' });
+    }
     
     if (!Array.isArray(levelsToImport)) {
-      return fail(400, { error: 'Invalid levels data' });
+      return fail(400, { error: 'Levels data must be an array' });
     }
     
     const results = {
@@ -343,7 +363,7 @@ export const actions: Actions = {
             }
           });
           results.created++;
-        } catch {
+        } catch (err) {
           results.errors.push(`Failed to import level: ${level}`);
         }
       }
@@ -354,7 +374,11 @@ export const actions: Actions = {
     
     const message = `${results.created} levels imported. ${results.errors.length} errors.`;
     if (results.errors.length > 0) {
-      return fail(400, { error: message, details: results.errors });
+      // Return errors as a string array that can be displayed properly
+      return fail(400, { 
+        error: message,
+        errors: results.errors
+      });
     }
     
     return { success: true, message };
