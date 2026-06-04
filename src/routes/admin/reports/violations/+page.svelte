@@ -164,7 +164,6 @@
   </div>
 
 </div>
-
 <style>
   .page {
     max-width: 1100px;
@@ -199,7 +198,7 @@
   }
   .stat-icon.red    { background: rgba(220,38,38,0.1);   color: #dc2626; }
   .stat-icon.amber  { background: rgba(245,158,11,0.1);  color: #d97706; }
-  .stat-icon.orange { background: rgba(249,115,22,0.1);  color: #ea580c; }
+  .stat-icon.blue   { background: rgba(59,130,246,0.1);  color: #3b82f6; }
 
   .stat-body { display: flex; flex-direction: column; gap: 0.1rem; }
   .stat-val  { font-size: 1.3rem; font-weight: 800; color: var(--color-text); font-variant-numeric: tabular-nums; line-height: 1.1; }
@@ -237,8 +236,8 @@
     font-size: 0.68rem;
     font-weight: 700;
     padding: 0.15rem 0.45rem;
-    background: rgba(22,163,74,0.1);
-    color: #16a34a;
+    background: rgba(59,130,246,0.1);
+    color: #3b82f6;
     border-radius: 999px;
   }
 
@@ -256,8 +255,8 @@
   }
 
   .search-wrap:focus-within {
-    border-color: #16a34a;
-    box-shadow: 0 0 0 3px rgba(22,163,74,0.08);
+    border-color: #3b82f6;
+    box-shadow: 0 0 0 3px rgba(59,130,246,0.08);
   }
 
   .search-wrap input {
@@ -353,13 +352,13 @@
 
   .sev-low      { background: rgba(22,163,74,0.1);   color: #16a34a; }
   .sev-medium   { background: rgba(245,158,11,0.1);  color: #d97706; }
-  .sev-high     { background: rgba(249,115,22,0.12); color: #ea580c; }
+  .sev-high     { background: rgba(59,130,246,0.12); color: #3b82f6; }
   .sev-critical { background: rgba(220,38,38,0.12);  color: #dc2626; }
 
   .act-warning  { background: rgba(245,158,11,0.1);  color: #d97706; }
-  .act-alert    { background: rgba(249,115,22,0.12); color: #ea580c; }
+  .act-alert    { background: rgba(59,130,246,0.12); color: #3b82f6; }
   .act-paused   { background: rgba(220,38,38,0.12);  color: #dc2626; }
-  .act-auto     { background: rgba(139,92,246,0.1);  color: #7c3aed; }
+  .act-auto     { background: rgba(99,102,241,0.1);  color: #6366f1; }
 
   .time-cell {
     font-size: 0.75rem;
@@ -378,5 +377,5 @@
   /* ── Dark mode ───────────────────────────────────────── */
   :global(.dark) .stat-icon.red    { background: rgba(220,38,38,0.15); }
   :global(.dark) .stat-icon.amber  { background: rgba(245,158,11,0.15); }
-  :global(.dark) .stat-icon.orange { background: rgba(249,115,22,0.15); }
+  :global(.dark) .stat-icon.blue   { background: rgba(59,130,246,0.15); }
 </style>

@@ -190,7 +190,7 @@
   .create-header { display: flex; align-items: center; gap: .875rem; }
   .header-icon {
     width: 44px; height: 44px; border-radius: .75rem;
-    background: linear-gradient(135deg,#0ea5e9,#0284c7);
+    background: linear-gradient(135deg, #3b82f6, #1d4ed8);
     display: flex; align-items: center; justify-content: center; color: white; flex-shrink: 0;
   }
   h1 { font-size: 1.2rem; font-weight: 800; color: var(--color-text); }
@@ -219,7 +219,7 @@
     font-family: inherit; outline: none; transition: border-color .15s;
     -webkit-appearance: none;
   }
-  input:focus, select:focus { border-color: #16a34a; }
+  input:focus, select:focus { border-color: #3b82f6; }
 
   /* Level chips */
   .level-chips { display: flex; gap: .375rem; flex-wrap: wrap; }
@@ -229,11 +229,11 @@
     font-size: .78rem; font-weight: 600; color: var(--color-muted);
     cursor: pointer; font-family: inherit; transition: all .15s;
   }
-  .level-chip.selected { border-color: #16a34a; color: #16a34a; background: rgba(22,163,74,.08); }
+  .level-chip.selected { border-color: #3b82f6; color: #3b82f6; background: rgba(59, 130, 246, .08); }
 
   /* Toggle */
   .toggle-label { display: flex; align-items: flex-start; gap: .625rem; cursor: pointer; }
-  .toggle-label input[type="checkbox"] { margin-top: .2rem; flex-shrink: 0; width: 16px; height: 16px; accent-color: #16a34a; }
+  .toggle-label input[type="checkbox"] { margin-top: .2rem; flex-shrink: 0; width: 16px; height: 16px; accent-color: #3b82f6; }
   .toggle-content { display: flex; flex-direction: column; gap: .2rem; }
   .toggle-title { display: flex; align-items: center; gap: .375rem; font-size: .82rem; font-weight: 600; color: var(--color-text); }
   .toggle-desc { font-size: .72rem; color: var(--color-muted); }
@@ -242,11 +242,11 @@
   .form-foot { display: flex; align-items: center; justify-content: flex-end; gap: .75rem; padding-top: .5rem; }
   .btn-primary {
     display: flex; align-items: center; gap: .5rem;
-    padding: .6rem 1.25rem; background: #16a34a; color: white;
+    padding: .6rem 1.25rem; background: #3b82f6; color: white;
     border: none; border-radius: .5rem; font-size: .85rem; font-weight: 600;
     cursor: pointer; font-family: inherit; transition: background .15s;
   }
-  .btn-primary:hover { background: #15803d; }
+  .btn-primary:hover { background: #1d4ed8; }
   .btn-primary:disabled { opacity: .5; cursor: not-allowed; }
   .btn-ghost {
     display: flex; align-items: center; gap: .5rem;

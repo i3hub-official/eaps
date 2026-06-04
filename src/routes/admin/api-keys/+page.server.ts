@@ -2,7 +2,7 @@
 import type { PageServerLoad, Actions } from './$types';
 import { fail } from '@sveltejs/kit';
 import { requireAdmin } from '$lib/server/auth/guards.js';
-import { createApiKey, listApiKeys, revokeApiKey, deleteApiKey, updateApiKey, getApiKeyStats } from '$lib/server/db/api-keys.ts';
+import { createApiKey, listApiKeys, revokeApiKey, deleteApiKey, updateApiKey, getApiKeyStats } from '$lib/server/db/api-keys.js';
 import type { ApiScope } from '@prisma/client';
 
 export const load: PageServerLoad = async ({ locals }) => {

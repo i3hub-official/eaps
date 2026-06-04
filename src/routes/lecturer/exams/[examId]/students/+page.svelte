@@ -170,7 +170,7 @@
   .page-header h1 { font-size: 1.2rem; font-weight: 800; color: var(--color-text); }
   .page-header p  { font-size: .8rem; color: var(--color-muted); margin-top: .2rem; }
   .breadcrumb { font-size: .72rem; color: var(--color-muted); margin-bottom: .3rem; }
-  .breadcrumb a { color: #a855f7; text-decoration: none; }
+  .breadcrumb a { color: var(--lc-600); text-decoration: none; }
   .breadcrumb a:hover { text-decoration: underline; }
 
   /* Status bar */
@@ -215,7 +215,7 @@
   .student-avatar { width: 30px; height: 30px; border-radius: 50%; object-fit: cover; flex-shrink: 0; }
   .student-initials {
     width: 30px; height: 30px; border-radius: 50%;
-    background: linear-gradient(135deg,#a855f7,#7c3aed);
+    background: linear-gradient(135deg, var(--lc-500), var(--lc-700));
     display: flex; align-items: center; justify-content: center;
     font-weight: 700; font-size: .75rem; color: white; flex-shrink: 0;
   }
@@ -236,7 +236,7 @@
   .ss-none    { background: rgba(156,163,175,.12); color: #9ca3af; }
   .ss-active  { background: rgba(22,163,74,.12);   color: #16a34a; }
   .ss-done    { background: rgba(14,165,233,.12);  color: #0ea5e9; }
-  .ss-force   { background: rgba(245,158,11,.12);  color: #ca8a04; }
+  .ss-force   { background: var(--lc-soft);  color: var(--lc-600); }
   .ss-flagged { background: rgba(220,38,38,.12);   color: #dc2626; }
 
   .grade-badge {

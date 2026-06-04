@@ -89,6 +89,14 @@ enum NotificationType {
   critical
 }
 
+// Risk Level enum
+enum RiskLevel {
+  low
+  medium
+  high
+  critical
+}
+
 // ─── Institutional hierarchy ──────────────────────────────────────────────────
 
 model College {
@@ -122,8 +130,27 @@ model Department {
   @@map("departments")
 }
 
+model Level {
+  id        Int      @id @default(autoincrement())
+  level     Int      @unique
+  name      String? // Optional: "100 Level", "200 Level", etc.
+  isDefault Boolean  @default(false)
+  order     Int      @default(0) // For custom sorting
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz()
+  updatedAt DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz()
+
+  // Relations
+  users         User[]               @relation("UserLevel")
+  exams         Exam[]               @relation("ExamLevels")
+  registrations CourseRegistration[]
+  examLevels    ExamLevel[]
+
+  @@map("levels")
+}
+
 // ─── Users ────────────────────────────────────────────────────────────────────
 
+// User model - corrected Level relationship
 model User {
   id           String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   email        String   @unique
@@ -136,14 +163,17 @@ model User {
 
   // ── Contact ──────────────────────────────────────────────────────────────
   phone String?
-  title String? // "Prof.", "Dr.", "Mr.", "Mrs.", "Engr.", etc.
+  title String?
 
   // ── Academic identity ─────────────────────────────────────────────────────
   matricNumber String? @unique @map("matric_number")
   staffId      String? @unique @map("staff_id")
   jambRegNo    String? @unique @map("jamb_reg_no")
-  level        Int?    @db.SmallInt
-  session      String?
+
+  // Level - reference to Level model (one-to-many: one level has many users)
+  levelId Int?    @map("level_id")
+  level   Level?  @relation("UserLevel", fields: [levelId], references: [id])
+  session String?
 
   // ── Institution ───────────────────────────────────────────────────────────
   collegeId    Int?        @map("college_id")
@@ -165,8 +195,6 @@ model User {
   suspendedById String?   @map("suspended_by_id")
 
   // ── Face enrollment ───────────────────────────────────────────────────────
-  // One-to-one — a student has at most one enrolled face descriptor.
-  // Stored separately so it can be updated/deleted without touching the user row.
   faceDescriptor FaceDescriptor?
 
   // ── Relations ─────────────────────────────────────────────────────────────
@@ -183,6 +211,12 @@ model User {
   revokedApiKeys      ApiKey[]             @relation("ApiKeyRevokedBy")
   userPreferences     UserPreference[]
 
+  // ─── Face verification & similarity ───────────────────────────────────────
+  verificationLogs  FaceVerificationLog[] @relation("StudentVerifications")
+  faceSimilaritiesA FaceSimilarity[]      @relation("StudentA")
+  faceSimilaritiesB FaceSimilarity[]      @relation("StudentB")
+  passwordResets    PasswordReset[]
+
   @@index([role])
   @@index([collegeId])
   @@index([departmentId])
@@ -190,7 +224,21 @@ model User {
   @@index([jambRegNo])
   @@index([staffId])
   @@index([isSuspended])
+  @@index([levelId])
   @@map("users")
+}
+
+model PasswordReset {
+  token     String    @id
+  userId    String    @map("user_id") @db.Uuid
+  expiresAt DateTime  @map("expires_at") @db.Timestamptz()
+  usedAt    DateTime? @map("used_at") @db.Timestamptz()
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([expiresAt])
+  @@map("password_resets")
 }
 
 // ─── Face Descriptors ─────────────────────────────────────────────────────────
@@ -214,6 +262,52 @@ model FaceDescriptor {
   student User @relation(fields: [studentId], references: [id], onDelete: Cascade)
 
   @@map("face_descriptors")
+}
+
+// Face similarity for academic integrity
+model FaceSimilarity {
+  id                 String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  examId             String    @map("exam_id") @db.Uuid
+  studentAId         String    @map("student_a_id") @db.Uuid
+  studentBId         String    @map("student_b_id") @db.Uuid
+  similarityScore    Decimal   @map("similarity_score") @db.Decimal(5, 3)
+  sharedAnswers      Int       @default(0) @map("shared_answers") @db.SmallInt
+  sharedWrongAnswers Int       @default(0) @map("shared_wrong_answers") @db.SmallInt
+  totalQuestions     Int       @default(0) @map("total_questions") @db.SmallInt
+  riskLevel          RiskLevel @map("risk_level")
+  generatedAt        DateTime  @default(now()) @map("generated_at") @db.Timestamptz()
+
+  exam     Exam @relation(fields: [examId], references: [id], onDelete: Cascade)
+  studentA User @relation("StudentA", fields: [studentAId], references: [id])
+  studentB User @relation("StudentB", fields: [studentBId], references: [id])
+
+  @@unique([examId, studentAId, studentBId])
+  @@index([examId])
+  @@index([examId, riskLevel])
+  @@index([examId, similarityScore(sort: Desc)])
+  @@index([examId, studentAId, studentBId])
+  @@map("face_similarity")
+}
+
+// Face verification audit logs
+model FaceVerificationLog {
+  id              String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  studentId       String   @map("student_id") @db.Uuid
+  examId          String?  @map("exam_id") @db.Uuid
+  similarityScore Decimal? @map("similarity_score") @db.Decimal(5, 2)
+  distance        Decimal? @db.Decimal(6, 4)
+  success         Boolean
+  ipAddress       String?  @map("ip_address")
+  userAgent       String?  @map("user_agent")
+  verifiedAt      DateTime @default(now()) @map("verified_at") @db.Timestamptz()
+
+  student User  @relation("StudentVerifications", fields: [studentId], references: [id], onDelete: Cascade)
+  exam    Exam? @relation(fields: [examId], references: [id], onDelete: SetNull)
+
+  @@index([studentId])
+  @@index([examId])
+  @@index([verifiedAt(sort: Desc)])
+  @@map("face_verification_logs")
 }
 
 // ─── Auth Sessions ────────────────────────────────────────────────────────────
@@ -257,11 +351,13 @@ model CourseRegistration {
   studentId String   @map("student_id") @db.Uuid
   courseId  String   @map("course_id") @db.Uuid
   session   String
+  levelId   Int?     @map("level_id") // CHANGE: was `level Int?`
   semester  Int      @db.SmallInt
   createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz()
 
   student User   @relation(fields: [studentId], references: [id], onDelete: Cascade)
   course  Course @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  level   Level? @relation(fields: [levelId], references: [id]) // ADD this relation
 
   @@unique([studentId, courseId, session, semester])
   @@map("course_registrations")
@@ -288,22 +384,36 @@ model Exam {
   showResultAfter    Boolean    @default(false) @map("show_result_after")
   maxViolations      Int        @default(5) @map("max_violations") @db.SmallInt
   session            String
-  levels             Int[]      @default([]) @db.SmallInt
   department         String?
   semester           Int        @db.SmallInt
   createdAt          DateTime   @default(now()) @map("created_at") @db.Timestamptz()
   updatedAt          DateTime   @default(now()) @updatedAt @map("updated_at") @db.Timestamptz()
 
-  course       Course            @relation(fields: [courseId], references: [id])
-  lecturer     User              @relation("LecturerExams", fields: [createdBy], references: [id])
-  questions    Question[]
-  examSessions ExamSession[]
-  invigilators ExamInvigilator[]
-  examResults  ExamResult[]
+  course               Course                @relation(fields: [courseId], references: [id])
+  lecturer             User                  @relation("LecturerExams", fields: [createdBy], references: [id])
+  questions            Question[]
+  examSessions         ExamSession[]
+  invigilators         ExamInvigilator[]
+  examResults          ExamResult[]
+  levels               Level[]               @relation("ExamLevels")
+  examLevels           ExamLevel[]
+  faceSimilarities     FaceSimilarity[]
+  faceVerificationLogs FaceVerificationLog[]
 
   @@index([courseId])
   @@index([status])
   @@map("exams")
+}
+
+model ExamLevel {
+  examId  String @map("exam_id") @db.Uuid
+  levelId Int    @map("level_id")
+
+  exam  Exam  @relation(fields: [examId], references: [id], onDelete: Cascade)
+  level Level @relation(fields: [levelId], references: [id], onDelete: Cascade)
+
+  @@id([examId, levelId])
+  @@map("exam_levels")
 }
 
 // ─── Questions ────────────────────────────────────────────────────────────────
@@ -313,7 +423,7 @@ model Question {
   examId     String       @map("exam_id") @db.Uuid
   type       QuestionType
   body       String
-  topic String? // e.g. "Thermodynamics", "Algebra" — drives weakness/strength analysis in results
+  topic      String? // e.g. "Thermodynamics", "Algebra" — drives weakness/strength analysis in results
   imageUrl   String?      @map("image_url")
   marks      Int          @default(1) @db.SmallInt
   orderIndex Int?         @map("order_index") @db.SmallInt

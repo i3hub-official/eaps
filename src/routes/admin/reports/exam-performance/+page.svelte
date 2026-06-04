@@ -242,7 +242,7 @@
   }
   .summary-icon {
     width: 36px; height: 36px; border-radius: 9px; flex-shrink: 0;
-    background: rgba(22,163,74,.1); color: #16a34a;
+    background: rgba(59,130,246,.1); color: #3b82f6;
     display: flex; align-items: center; justify-content: center;
   }
   .summary-card div { display: flex; flex-direction: column; }
@@ -257,7 +257,7 @@
     border-radius: .5rem; padding: .5rem .75rem;
     flex: 1; min-width: 200px; transition: border-color .15s;
   }
-  .search-box:focus-within { border-color: #22c55e; }
+  .search-box:focus-within { border-color: #3b82f6; }
   .search-box :global(svg) { color: var(--color-muted); flex-shrink: 0; }
   .search-box input {
     border: none; background: none; outline: none;
@@ -269,7 +269,7 @@
     color: var(--color-text); font-size: .875rem;
     cursor: pointer; font-family: inherit; transition: border-color .15s;
   }
-  .status-select:focus { outline: none; border-color: #22c55e; }
+  .status-select:focus { outline: none; border-color: #3b82f6; }
 
   /* Empty */
   .empty {
@@ -324,7 +324,7 @@
   /* Pass bar */
   .pass-bar { display: flex; align-items: center; gap: .5rem; min-width: 90px; }
   .pass-fill {
-    flex: 1; height: 5px; background: #16a34a;
+    flex: 1; height: 5px; background: #3b82f6;
     border-radius: 3px; min-width: 4px; max-width: 60px;
     transition: width .3s;
   }
@@ -342,9 +342,9 @@
     padding: .2rem .6rem; border-radius: 999px;
     font-size: .68rem; font-weight: 600; text-transform: capitalize;
   }
-  .status-completed { background: rgba(22,163,74,.1);  color: #16a34a; }
-  .status-active    { background: rgba(59,130,246,.1); color: #3b82f6; }
-  .status-scheduled { background: rgba(139,92,246,.1); color: #8b5cf6; }
+  .status-completed { background: rgba(59,130,246,.1);  color: #3b82f6; }
+  .status-active    { background: rgba(22,163,74,.1);  color: #16a34a; }
+  .status-scheduled { background: rgba(99,102,241,.1); color: #6366f1; }
   .status-draft     { background: var(--color-border); color: var(--color-muted); }
   .status-cancelled { background: rgba(239,68,68,.1);  color: #ef4444; }
 </style>

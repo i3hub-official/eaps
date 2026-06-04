@@ -341,7 +341,7 @@
 
   .exam-badge {
     padding: 0.25rem 0.6rem; border-radius: 0.45rem; flex-shrink: 0;
-    background: rgba(217,119,6,0.1); color: #d97706;
+    background: var(--iv-soft); color: var(--iv-600);
     font-size: 0.72rem; font-weight: 800; letter-spacing: 0.05em;
     margin-top: 2px;
   }
@@ -398,7 +398,7 @@
   .kpi-icon.total      { background: rgba(100,116,139,0.1); color: #64748b; }
   .kpi-icon.active     { background: rgba(34,197,94,0.1);   color: #16a34a; }
   .kpi-icon.done       { background: rgba(59,130,246,0.1);  color: #2563eb; }
-  .kpi-icon.paused     { background: rgba(245,158,11,0.1);  color: #d97706; }
+  .kpi-icon.paused     { background: var(--iv-soft);  color: var(--iv-600); }
   .kpi-icon.violations { background: rgba(220,38,38,0.08);  color: #dc2626; }
 
   .kpi-body { display: flex; flex-direction: column; gap: 0; }
@@ -409,7 +409,7 @@
   }
   .kpi-val.green { color: #16a34a; }
   .kpi-val.blue  { color: #2563eb; }
-  .kpi-val.amber { color: #d97706; }
+  .kpi-val.amber { color: var(--iv-600); }
   .kpi-val.red   { color: #dc2626; }
   .kpi-lbl {
     font-size: 0.6rem; font-weight: 700; color: var(--color-muted);
@@ -440,7 +440,7 @@
     font-size: 0.8rem; width: 220px; outline: none;
     transition: border-color 0.15s;
   }
-  .search-input:focus { border-color: #d97706; }
+  .search-input:focus { border-color: var(--iv-500); }
   .search-clear {
     position: absolute; right: 0.5rem;
     background: none; border: none; cursor: pointer;
@@ -459,9 +459,9 @@
     font-size: 0.73rem; font-weight: 600; cursor: pointer;
     font-family: inherit; transition: all 0.15s; white-space: nowrap;
   }
-  .filter-tab:hover { border-color: #d97706; color: #d97706; }
+  .filter-tab:hover { border-color: var(--iv-500); color: var(--iv-500); }
   .filter-tab.active {
-    background: #d97706; border-color: #d97706; color: white;
+    background: var(--iv-500); border-color: var(--iv-500); color: white;
   }
 
   .tab-count {
@@ -514,7 +514,7 @@
     font-size: 0.78rem; font-weight: 600; color: var(--color-text);
     cursor: pointer; font-family: inherit; transition: all 0.15s;
   }
-  .clear-btn:hover { border-color: #d97706; color: #d97706; }
+  .clear-btn:hover { border-color: var(--iv-500); color: var(--iv-500); }
 
   /* ── Responsive ───────────────────────────────────────────────── */
   @media (max-width: 768px) {

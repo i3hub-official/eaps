@@ -179,8 +179,8 @@
   .header-badge {
     display: inline-flex; align-items: center; gap: 0.4rem;
     padding: 0.35rem 0.75rem;
-    background: rgba(22,163,74,0.08); border: 1px solid rgba(22,163,74,0.2);
-    border-radius: 999px; font-size: 0.75rem; font-weight: 700; color: #16a34a;
+    background: rgba(59,130,246,0.08); border: 1px solid rgba(59,130,246,0.2);
+    border-radius: 999px; font-size: 0.75rem; font-weight: 700; color: #3b82f6;
     flex-shrink: 0;
   }
 
@@ -334,5 +334,5 @@
   }
 
   /* ── Dark mode ───────────────────────────────────────── */
-  :global(.dark) .header-badge { background: rgba(22,163,74,0.12); }
+  :global(.dark) .header-badge { background: rgba(59,130,246,0.12); }
 </style>

@@ -106,7 +106,7 @@
   .data-table tr:hover td { background: var(--color-surface-hover); }
 
   .user-cell { display: flex; align-items: center; gap: 0.75rem; }
-  .user-avatar { width: 32px; height: 32px; border-radius: 50%; background: linear-gradient(135deg, #16a34a, #15803d); display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 0.8rem; color: white; flex-shrink: 0; }
+  .user-avatar { width: 32px; height: 32px; border-radius: 50%; background: linear-gradient(135deg, #3b82f6, #1d4ed8); display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 0.8rem; color: white; flex-shrink: 0; }
   .user-name { font-weight: 600; color: var(--color-text); display: block; }
   .user-email { font-size: 0.75rem; color: var(--color-muted); }
 
@@ -117,7 +117,7 @@
   .method-badge { padding: 0.25rem 0.5rem; border-radius: 0.375rem; font-size: 0.75rem; font-weight: 600; background: var(--color-bg); color: var(--color-text); text-transform: capitalize; }
 
   .status-badge { padding: 0.25rem 0.625rem; border-radius: 2rem; font-size: 0.75rem; font-weight: 600; text-transform: capitalize; }
-  .status-success  { background: rgba(22, 163, 74, 0.1);  color: #16a34a; }
+  .status-success  { background: rgba(59, 130, 246, 0.1);  color: #3b82f6; }
   .status-failed   { background: rgba(245, 158, 11, 0.1); color: #f59e0b; }
   .status-blocked  { background: rgba(239, 68, 68, 0.1);  color: #ef4444; }
   .status-expired  { background: rgba(148, 163, 184, 0.1); color: #94a3b8; }

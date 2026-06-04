@@ -710,7 +710,7 @@
     width: 48px;
     height: 48px;
     border-radius: 0.75rem;
-    background: rgba(22, 163, 74, 0.1);
+    background: rgba(59, 130, 246, 0.1);
     display: flex;
     align-items: center;
     justify-content: center;
@@ -750,8 +750,8 @@
   }
 
   .btn-outline:hover {
-    border-color: var(--color-primary);
-    color: var(--color-primary);
+    border-color: #3b82f6;
+    color: #3b82f6;
   }
 
   .btn-primary {
@@ -759,8 +759,8 @@
     align-items: center;
     gap: 0.5rem;
     padding: 0.5rem 1rem;
-    background: #16a34a;
-    border: 1px solid #16a34a;
+    background: #3b82f6;
+    border: 1px solid #3b82f6;
     border-radius: 0.5rem;
     font-size: 0.8rem;
     font-weight: 600;
@@ -770,8 +770,8 @@
   }
 
   .btn-primary:hover {
-    background: #15803d;
-    border-color: #15803d;
+    background: #1d4ed8;
+    border-color: #1d4ed8;
   }
 
   .btn-primary:disabled {
@@ -820,10 +820,10 @@
     justify-content: center;
   }
 
-  .status-icon.green { background: rgba(22, 163, 74, 0.1); color: #16a34a; }
+  .status-icon.green { background: rgba(59, 130, 246, 0.1); color: #3b82f6; }
   .status-icon.blue { background: rgba(59, 130, 246, 0.1); color: #3b82f6; }
   .status-icon.amber { background: rgba(245, 158, 11, 0.1); color: #f59e0b; }
-  .status-icon.purple { background: rgba(139, 92, 246, 0.1); color: #8b5cf6; }
+  .status-icon.purple { background: rgba(99, 102, 241, 0.1); color: #6366f1; }
 
   .status-info {
     flex: 1;
@@ -902,7 +902,7 @@
 
   .tab.active {
     color: white;
-    background: #16a34a;
+    background: #3b82f6;
   }
 
   /* Tab Content */
@@ -1019,7 +1019,7 @@
   .compliance-score {
     font-size: 1.25rem;
     font-weight: 800;
-    color: #16a34a;
+    color: #3b82f6;
   }
 
   .compliance-grid {
@@ -1111,8 +1111,8 @@
     align-items: flex-start;
     gap: 0.75rem;
     padding: 1rem 1.25rem;
-    background: rgba(22, 163, 74, 0.05);
-    border: 1px solid rgba(22, 163, 74, 0.2);
+    background: rgba(59, 130, 246, 0.05);
+    border: 1px solid rgba(59, 130, 246, 0.2);
     border-radius: 0.75rem;
     color: var(--color-text);
     font-size: 0.85rem;
@@ -1326,8 +1326,8 @@
   }
 
   .btn-small:hover {
-    border-color: var(--color-primary);
-    color: var(--color-primary);
+    border-color: #3b82f6;
+    color: #3b82f6;
   }
 
   .action-badge {
@@ -1340,7 +1340,7 @@
   .action-created { background: #dcfce7; color: #16a34a; }
   .action-updated { background: #dbeafe; color: #3b82f6; }
   .action-deleted { background: #fee2e2; color: #dc2626; }
-  .action-login { background: #f3e8ff; color: #9333ea; }
+  .action-login { background: #ede9fe; color: #6366f1; }
   .action-default { background: var(--color-border); color: var(--color-muted); }
 
   .status-icon.success { color: #16a34a; }
@@ -1350,7 +1350,7 @@
     width: 28px;
     height: 28px;
     border-radius: 50%;
-    background: linear-gradient(135deg, #16a34a, #15803d);
+    background: linear-gradient(135deg, #3b82f6, #1d4ed8);
     display: inline-flex;
     align-items: center;
     justify-content: center;

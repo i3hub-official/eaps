@@ -173,7 +173,6 @@
     </div>
   {/if}
 </div>
-
 <style>
   .page { max-width: 1200px; display: flex; flex-direction: column; gap: 1.25rem; }
 
@@ -200,7 +199,7 @@
     flex: 1; min-width: 200px;
     transition: border-color .15s;
   }
-  .search-box:focus-within { border-color: #22c55e; }
+  .search-box:focus-within { border-color: #3b82f6; }
   .search-box :global(svg) { color: var(--color-muted); flex-shrink: 0; }
   .search-box input {
     border: none; background: none; outline: none;
@@ -213,7 +212,7 @@
     color: var(--color-text); font-size: .875rem; cursor: pointer;
     font-family: inherit; transition: border-color .15s;
   }
-  .level-select:focus { outline: none; border-color: #22c55e; }
+  .level-select:focus { outline: none; border-color: #3b82f6; }
 
   /* Empty */
   .empty {
@@ -254,7 +253,7 @@
   .student-cell { display: flex; align-items: center; gap: .625rem; }
   .avatar {
     width: 30px; height: 30px; border-radius: 50%;
-    background: linear-gradient(135deg, #16a34a, #15803d);
+    background: linear-gradient(135deg, #3b82f6, #1d4ed8);
     display: flex; align-items: center; justify-content: center;
     font-weight: 700; font-size: .75rem; color: white; flex-shrink: 0;
   }
@@ -281,7 +280,7 @@
     display: flex; align-items: center; gap: .5rem; min-width: 90px;
   }
   .pass-fill {
-    flex: 1; height: 5px; background: #16a34a;
+    flex: 1; height: 5px; background: #3b82f6;
     border-radius: 3px; min-width: 4px; max-width: 60px;
     transition: width .3s;
   }

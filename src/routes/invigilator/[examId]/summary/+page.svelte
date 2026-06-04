@@ -226,7 +226,7 @@
   .page-header h1 { font-size: 1.2rem; font-weight: 800; color: var(--color-text); }
   .page-header p  { font-size: .8rem; color: var(--color-muted); margin-top: .2rem; }
   .breadcrumb { font-size: .72rem; color: var(--color-muted); margin-bottom: .3rem; }
-  .breadcrumb a { color: #14b8a6; text-decoration: none; }
+  .breadcrumb a { color: var(--iv-500); text-decoration: none; }
   .breadcrumb a:hover { text-decoration: underline; }
 
   /* Stats */
@@ -240,7 +240,7 @@
   .tabs { display: flex; gap: .375rem; border-bottom: 2px solid var(--color-border); }
   .tab { display: flex; align-items: center; gap: .375rem; padding: .6rem 1rem; background: none; border: none; border-bottom: 2px solid transparent; margin-bottom: -2px; font-size: .82rem; font-weight: 600; color: var(--color-muted); cursor: pointer; font-family: inherit; }
   .tab:hover { color: var(--color-text); }
-  .tab-active { color: #14b8a6; border-bottom-color: #14b8a6; }
+  .tab-active { color: var(--iv-500); border-bottom-color: var(--iv-500); }
 
   /* Two col */
   .two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; }
@@ -275,7 +275,7 @@
 
   .sess-badge { font-size: .68rem; font-weight: 700; padding: .2rem .5rem; border-radius: 2rem; white-space: nowrap; }
   .sb-done    { background: rgba(14,165,233,.12);  color: #0ea5e9; }
-  .sb-force   { background: rgba(245,158,11,.12);  color: #ca8a04; }
+  .sb-force   { background: var(--iv-soft);  color: var(--iv-600); }
   .sb-active  { background: rgba(22,163,74,.12);   color: #16a34a; }
   .sb-flagged { background: rgba(220,38,38,.12);   color: #dc2626; }
   .sb-none    { background: rgba(156,163,175,.12); color: #9ca3af; }
@@ -297,7 +297,7 @@
   .vlog-dot { width: 6px; height: 6px; border-radius: 50%; background: #dc2626; flex-shrink: 0; margin-top: .35rem; }
   .vlog-content { flex: 1; display: flex; flex-wrap: wrap; gap: .375rem; align-items: center; }
   .vlog-type   { font-size: .8rem; font-weight: 700; color: var(--color-text); }
-  .vlog-action { font-size: .75rem; color: #f59e0b; font-weight: 600; }
+  .vlog-action { font-size: .75rem; color: var(--iv-500); font-weight: 600; }
   .vlog-note   { font-size: .73rem; color: var(--color-muted); font-style: italic; }
   .vlog-time   { font-size: .7rem; color: var(--color-muted); white-space: nowrap; flex-shrink: 0; }
 

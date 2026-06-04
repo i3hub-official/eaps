@@ -114,9 +114,9 @@
   }
 
   .segment { width: 100%; min-height: 2px; transition: height 0.5s ease; }
-  .segment.students     { background: #16a34a; }
-  .segment.lecturers    { background: #3b82f6; }
-  .segment.invigilators { background: #f59e0b; }
+  .segment.students     { background: #3b82f6; }
+  .segment.lecturers    { background: #6366f1; }
+  .segment.invigilators { background: #f97316; }
 
   .bar-month {
     position: absolute; bottom: -1.6rem;
@@ -133,9 +133,9 @@
     font-size: 0.8rem; color: var(--color-text);
   }
   .dot { width: 9px; height: 9px; border-radius: 50%; }
-  .dot.students     { background: #16a34a; }
-  .dot.lecturers    { background: #3b82f6; }
-  .dot.invigilators { background: #f59e0b; }
+  .dot.students     { background: #3b82f6; }
+  .dot.lecturers    { background: #6366f1; }
+  .dot.invigilators { background: #f97316; }
 
   /* ── Registration cards ─────────────────────────── */
   .reg-grid {
@@ -161,8 +161,8 @@
     border-radius: 0.25rem;
   }
 
-  .reg-count { font-size: 1.5rem; font-weight: 800; color: #16a34a; line-height: 1; }
-  [data-theme="dark"] .reg-count { color: #22c55e; }
+  .reg-count { font-size: 1.5rem; font-weight: 800; color: #3b82f6; line-height: 1; }
+  [data-theme="dark"] .reg-count { color: #60a5fa; }
   .reg-label { font-size: 0.72rem; color: var(--color-muted); margin: 0.2rem 0 0.75rem; }
 
   .reg-track {
@@ -170,8 +170,8 @@
     border-radius: 3px; overflow: hidden;
   }
   .reg-fill {
-    height: 100%; background: #16a34a;
+    height: 100%; background: #3b82f6;
     border-radius: 3px; transition: width 0.5s ease;
   }
-  [data-theme="dark"] .reg-fill { background: #22c55e; }
+  [data-theme="dark"] .reg-fill { background: #60a5fa; }
 </style>

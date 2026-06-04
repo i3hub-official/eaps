@@ -9,6 +9,6 @@
   notifications={data.notifications}
   unreadCount={data.unreadCount}
   {form}
-  accentColor="#a855f7"
-  accentBg="rgba(168,85,247,.12)"
+  accentColor="var(--lc-500)"
+  accentBg="var(--lc-soft)"
 />

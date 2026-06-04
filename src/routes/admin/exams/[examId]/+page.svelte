@@ -245,9 +245,9 @@
   /* Header */
   .detail-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 1rem; flex-wrap: wrap; }
   .dh-left { display: flex; align-items: flex-start; gap: .875rem; }
-  .dh-icon { width: 44px; height: 44px; border-radius: .75rem; background: linear-gradient(135deg,#0ea5e9,#0284c7); display: flex; align-items: center; justify-content: center; color: white; flex-shrink: 0; }
+  .dh-icon { width: 44px; height: 44px; border-radius: .75rem; background: linear-gradient(135deg, #3b82f6, #1d4ed8); display: flex; align-items: center; justify-content: center; color: white; flex-shrink: 0; }
   .dh-breadcrumb { font-size: .72rem; color: var(--color-muted); margin-bottom: .25rem; }
-  .dh-breadcrumb a { color: #16a34a; text-decoration: none; }
+  .dh-breadcrumb a { color: #3b82f6; text-decoration: none; }
   .dh-title { font-size: 1.15rem; font-weight: 800; color: var(--color-text); line-height: 1.3; }
   .dh-meta { display: flex; flex-wrap: wrap; gap: .75rem; margin-top: .375rem; font-size: .75rem; color: var(--color-muted); }
   .dh-meta span { display: flex; align-items: center; gap: .3rem; }
@@ -256,7 +256,7 @@
   .exam-status-badge { font-size: .72rem; font-weight: 700; padding: .3rem .75rem; border-radius: 2rem; text-transform: capitalize; }
   .badge-active    { background: rgba(22,163,74,.12);  color: #16a34a; }
   .badge-completed { background: rgba(59,130,246,.12); color: #3b82f6; }
-  .badge-scheduled { background: rgba(168,85,247,.12); color: #a855f7; }
+  .badge-scheduled { background: rgba(139,92,246,.12); color: #8b5cf6; }
   .badge-cancelled { background: rgba(239,68,68,.12);  color: #ef4444; }
   .badge-draft     { background: var(--color-bg); color: var(--color-muted); border: 1px solid var(--color-border); }
 
@@ -273,7 +273,7 @@
   .stat-card { display: flex; align-items: center; gap: .75rem; padding: 1rem 1.25rem; background: var(--color-surface); border: 1px solid var(--color-border); border-radius: .75rem; }
   .stat-icon { width: 36px; height: 36px; border-radius: .5rem; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
   .si-blue   { background: rgba(59,130,246,.12);  color: #3b82f6; }
-  .si-purple { background: rgba(168,85,247,.12);  color: #a855f7; }
+  .si-purple { background: rgba(139,92,246,.12);  color: #8b5cf6; }
   .si-green  { background: rgba(22,163,74,.12);   color: #16a34a; }
   .si-teal   { background: rgba(20,184,166,.12);  color: #14b8a6; }
   .si-orange { background: rgba(249,115,22,.12);  color: #f97316; }
@@ -285,7 +285,7 @@
   .tabs { display: flex; gap: .375rem; border-bottom: 2px solid var(--color-border); padding-bottom: 0; }
   .tab { display: flex; align-items: center; gap: .375rem; padding: .6rem 1rem; background: none; border: none; border-bottom: 2px solid transparent; margin-bottom: -2px; font-size: .82rem; font-weight: 600; color: var(--color-muted); cursor: pointer; font-family: inherit; transition: all .15s; }
   .tab:hover { color: var(--color-text); }
-  .tab-active { color: #16a34a; border-bottom-color: #16a34a; }
+  .tab-active { color: #3b82f6; border-bottom-color: #3b82f6; }
 
   /* Cards row */
   .cards-row { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 1rem; }
@@ -300,7 +300,7 @@
   .invig-list { display: flex; flex-direction: column; gap: .125rem; padding: .75rem; }
   .invig-item { display: flex; align-items: center; gap: .625rem; padding: .5rem; border-radius: .5rem; }
   .invig-item:hover { background: var(--color-bg); }
-  .invig-avatar { width: 30px; height: 30px; border-radius: 50%; background: linear-gradient(135deg,#16a34a,#15803d); display: flex; align-items: center; justify-content: center; color: white; font-weight: 700; font-size: .75rem; flex-shrink: 0; }
+  .invig-avatar { width: 30px; height: 30px; border-radius: 50%; background: linear-gradient(135deg, #3b82f6, #1d4ed8); display: flex; align-items: center; justify-content: center; color: white; font-weight: 700; font-size: .75rem; flex-shrink: 0; }
   .invig-name { font-size: .82rem; font-weight: 600; color: var(--color-text); }
   .invig-email { font-size: .7rem; color: var(--color-muted); }
 

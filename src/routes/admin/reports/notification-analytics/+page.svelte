@@ -100,7 +100,7 @@
   @media (max-width: 900px) { .metrics-row { grid-template-columns: repeat(2, 1fr); } }
   @media (max-width: 500px) { .metrics-row { grid-template-columns: 1fr; } }
 
-  .metric-card { background: var(--color-surface); border: 1px solid var(--color-border); border-radius: 0.75rem; padding: 1rem; display: flex; align-items: center; gap: 0.75rem; color: #16a34a; }
+  .metric-card { background: var(--color-surface); border: 1px solid var(--color-border); border-radius: 0.75rem; padding: 1rem; display: flex; align-items: center; gap: 0.75rem; color: #3b82f6; }
   .metric-card.fail { color: #ef4444; }
   .metric-card div { display: flex; flex-direction: column; }
   .metric-value { font-size: 1.125rem; font-weight: 700; color: var(--color-text); }
@@ -114,7 +114,7 @@
   .data-table tr:hover td { background: var(--color-surface-hover); }
 
   .notif-cell { display: flex; align-items: center; gap: 0.75rem; }
-  .notif-icon { width: 32px; height: 32px; border-radius: 0.5rem; background: rgba(245, 158, 11, 0.1); color: #f59e0b; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+  .notif-icon { width: 32px; height: 32px; border-radius: 0.5rem; background: rgba(59, 130, 246, 0.1); color: #3b82f6; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
   .notif-title { font-weight: 600; color: var(--color-text); }
 
   .type-badge { padding: 0.25rem 0.5rem; border-radius: 0.375rem; font-size: 0.75rem; font-weight: 600; text-transform: capitalize; }
@@ -122,9 +122,9 @@
   .type-badge.result   { background: rgba(22, 163, 74, 0.1);   color: #16a34a; }
   .type-badge.security { background: rgba(239, 68, 68, 0.1);   color: #ef4444; }
   .type-badge.system   { background: rgba(148, 163, 184, 0.1); color: #94a3b8; }
-  .type-badge.course   { background: rgba(139, 92, 246, 0.1);  color: #8b5cf6; }
+  .type-badge.course   { background: rgba(99, 102, 241, 0.1);  color: #6366f1; }
 
   .read-bar { display: flex; align-items: center; gap: 0.5rem; }
-  .read-fill { height: 6px; background: #16a34a; border-radius: 3px; min-width: 4px; max-width: 80px; }
+  .read-fill { height: 6px; background: #3b82f6; border-radius: 3px; min-width: 4px; max-width: 80px; }
   .read-bar span { font-size: 0.8rem; font-weight: 600; color: var(--color-text); min-width: 40px; }
 </style>

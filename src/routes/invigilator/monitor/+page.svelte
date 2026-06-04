@@ -44,7 +44,7 @@
     transition: all 0.2s;
   }
   .exam-card:hover {
-    border-color: var(--color-primary);
+    border-color: var(--iv-500);
     transform: translateY(-2px);
   }
 </style>

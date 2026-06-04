@@ -55,7 +55,7 @@
         Lecturer Portal
       </div>
       <h1 class="dash-title">My Dashboard</h1>
-      <p class="dash-subtitle">Welcome back, <strong>{data.user.fullName}</strong></p>
+      <p class="dash-subtitle">Welcome back, <strong>{data.user.title} {data.user.fullName}</strong></p>
     </div>
     <div class="header-actions">
       <button class="btn-outline" type="button" onclick={() => window.location.reload()}>
@@ -228,6 +228,13 @@
     --green-600: #16a34a;
     --green-700: #15803d;
     --green-soft: rgba(34,197,94,0.08);
+
+    /* Lecturers - Indigo */
+    --indigo-400: #818cf8;
+    --indigo-500: #6366f1;
+    --indigo-600: #4f46e5;
+    --indigo-700: #4338ca;
+    --indigo-soft: rgba(99, 102, 241, 0.08);
   }
 
   .dashboard {
@@ -247,17 +254,17 @@
   .dash-eyebrow {
     display: inline-flex; align-items: center; gap: 0.4rem;
     font-size: 0.7rem; font-weight: 700; letter-spacing: 0.08em;
-    text-transform: uppercase; color: var(--green-600); margin-bottom: 0.3rem;
+    text-transform: uppercase; color: var(--indigo-600); margin-bottom: 0.3rem;
   }
 
   .dash-dot {
-    width: 7px; height: 7px; border-radius: 50%; background: var(--green-600);
+    width: 7px; height: 7px; border-radius: 50%; background: var(--indigo-600);
   }
   .dash-dot.pulse { animation: dot-pulse 2s ease-in-out infinite; }
 
   @keyframes dot-pulse {
-    0%,100% { box-shadow: 0 0 0 0 rgba(22,163,74,0.5); }
-    70%      { box-shadow: 0 0 0 6px rgba(22,163,74,0); }
+    0%,100% { box-shadow: 0 0 0 0 rgba(79, 70, 229, 0.5); }
+    70%      { box-shadow: 0 0 0 6px rgba(79, 70, 229, 0); }
   }
 
   .dash-title {
@@ -277,20 +284,20 @@
     font-size: 0.8rem; font-weight: 600; color: var(--color-text);
     cursor: pointer; transition: all 0.15s; font-family: inherit;
   }
-  .btn-outline:hover { border-color: var(--green-600); color: var(--green-600); }
+  .btn-outline:hover { border-color: var(--indigo-600); color: var(--indigo-600); }
 
   .btn-primary {
     display: inline-flex; align-items: center; gap: 0.45rem;
-    padding: 0.5rem 1.1rem; background: var(--green-600);
+    padding: 0.5rem 1.1rem; background: var(--indigo-600);
     border: none; border-radius: 0.5rem;
     font-size: 0.8rem; font-weight: 700; color: white;
     cursor: pointer; transition: all 0.15s; text-decoration: none; font-family: inherit;
     white-space: nowrap;
   }
   .btn-primary:hover {
-    background: var(--green-700);
+    background: var(--indigo-700);
     transform: translateY(-1px);
-    box-shadow: 0 4px 14px rgba(22,163,74,0.3);
+    box-shadow: 0 4px 14px rgba(79, 70, 229, 0.3);
   }
 
   /* ── KPI Strip ───────────────────────────────────────────────── */
@@ -318,7 +325,7 @@
   }
   .kpi-green::before   { background: var(--green-500); }
   .kpi-blue::before    { background: #3b82f6; }
-  .kpi-violet::before  { background: #a78bfa; }
+  .kpi-indigo::before  { background: var(--indigo-500); }
   .kpi-slate::before   { background: #64748b; }
   .kpi-teal::before    { background: #14b8a6; }
   .kpi-emerald::before { background: var(--green-400); }
@@ -330,7 +337,7 @@
   }
   .kpi-green   .kpi-icon { color: var(--green-600); }
   .kpi-blue    .kpi-icon { color: #3b82f6; }
-  .kpi-violet  .kpi-icon { color: #a78bfa; }
+  .kpi-indigo  .kpi-icon { color: var(--indigo-600); }
   .kpi-slate   .kpi-icon { color: #64748b; }
   .kpi-teal    .kpi-icon { color: #14b8a6; }
   .kpi-emerald .kpi-icon { color: var(--green-600); }
@@ -352,9 +359,9 @@
 
   .kpi-live-badge {
     font-size: 0.6rem; font-weight: 800; letter-spacing: 0.12em;
-    color: var(--green-600);
-    background: var(--green-soft);
-    border: 1px solid rgba(22,163,74,0.3);
+    color: var(--indigo-600);
+    background: var(--indigo-soft);
+    border: 1px solid rgba(79, 70, 229, 0.3);
     padding: 0.12rem 0.5rem; border-radius: 999px; width: fit-content;
     animation: blink 1.5s step-end infinite;
   }
@@ -387,7 +394,7 @@
   }
   .panel-link {
     display: inline-flex; align-items: center; gap: 0.2rem;
-    font-size: 0.75rem; font-weight: 600; color: var(--green-600);
+    font-size: 0.75rem; font-weight: 600; color: var(--indigo-600);
     text-decoration: none; transition: gap 0.15s;
   }
   .panel-link:hover { gap: 0.4rem; }
@@ -412,7 +419,7 @@
   .exam-card:hover {
     transform: translateY(-2px);
     box-shadow: 0 8px 24px rgba(0,0,0,0.07);
-    border-color: rgba(22,163,74,0.3);
+    border-color: rgba(79, 70, 229, 0.3);
   }
 
   .card-accent {
@@ -427,7 +434,7 @@
 
   .course-badge {
     font-size: 0.7rem; font-weight: 800; padding: 0.2rem 0.6rem;
-    background: var(--green-soft); color: var(--green-600);
+    background: var(--indigo-soft); color: var(--indigo-600);
     border-radius: 999px; letter-spacing: 0.04em;
   }
 
@@ -491,20 +498,20 @@
   .act {
     display: inline-flex; align-items: center; gap: 0.35rem;
     padding: 0.38rem 0.75rem;
-    background: var(--green-600); border: 1px solid var(--green-600);
+    background: var(--indigo-600); border: 1px solid var(--indigo-600);
     border-radius: 0.45rem; font-size: 0.73rem; font-weight: 700;
     text-decoration: none; color: white; cursor: pointer;
     font-family: inherit; transition: all 0.12s; white-space: nowrap;
   }
-  .act:hover { background: var(--green-700); border-color: var(--green-700); }
+  .act:hover { background: var(--indigo-700); border-color: var(--indigo-700); }
 
   .act.act-outline {
     background: transparent; border-color: var(--color-border);
     color: var(--color-text); margin-left: auto;
   }
   .act.act-outline:hover {
-    border-color: var(--green-600); color: var(--green-600);
-    background: var(--green-soft);
+    border-color: var(--indigo-600); color: var(--indigo-600);
+    background: var(--indigo-soft);
   }
 
   /* ── Empty state ─────────────────────────────────────────────── */
@@ -515,9 +522,9 @@
 
   .empty-icon {
     width: 64px; height: 64px; border-radius: 1rem;
-    background: var(--green-soft); border: 1px solid rgba(22,163,74,0.15);
+    background: var(--indigo-soft); border: 1px solid rgba(79, 70, 229, 0.15);
     display: flex; align-items: center; justify-content: center;
-    color: var(--green-600); margin-bottom: 0.25rem;
+    color: var(--indigo-600); margin-bottom: 0.25rem;
   }
 
   .empty-title { font-size: 1rem; font-weight: 700; color: var(--color-text); margin: 0; }

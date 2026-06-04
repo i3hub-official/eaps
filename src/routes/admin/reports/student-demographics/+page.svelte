@@ -85,7 +85,6 @@
     </div>
   </section>
 </div>
-
 <style>
   .page { max-width: 1200px; }
   .page-header { margin-bottom: 1.5rem; }
@@ -107,7 +106,7 @@
   .demo-label { font-weight: 600; color: var(--color-text); font-size: 0.875rem; }
   .demo-count { font-size: 0.75rem; color: var(--color-muted); }
   .demo-bar-container { height: 8px; background: var(--color-surface); border-radius: 4px; overflow: hidden; margin-bottom: 0.25rem; }
-  .demo-bar { height: 100%; background: #16a34a; border-radius: 4px; transition: width 0.5s ease; }
+  .demo-bar { height: 100%; background: #3b82f6; border-radius: 4px; transition: width 0.5s ease; }
   .demo-bar.college { background: #3b82f6; }
   .demo-pct { font-size: 0.75rem; font-weight: 700; color: var(--color-text); }
 
@@ -117,7 +116,7 @@
   .dept-name { font-weight: 600; color: var(--color-text); font-size: 0.875rem; }
   .dept-college { font-size: 0.7rem; color: var(--color-muted); background: var(--color-surface); padding: 0.125rem 0.375rem; border-radius: 0.25rem; }
   .dept-bar-container { height: 6px; background: var(--color-surface); border-radius: 3px; overflow: hidden; margin-bottom: 0.5rem; }
-  .dept-bar { height: 100%; background: #8b5cf6; border-radius: 3px; transition: width 0.5s ease; }
+  .dept-bar { height: 100%; background: #3b82f6; border-radius: 3px; transition: width 0.5s ease; }
   .dept-footer { display: flex; justify-content: space-between; font-size: 0.75rem; }
   .dept-footer span:first-child { color: var(--color-muted); }
   .dept-footer span:last-child { font-weight: 700; color: var(--color-text); }

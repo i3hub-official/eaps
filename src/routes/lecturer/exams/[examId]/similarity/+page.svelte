@@ -131,11 +131,10 @@
     {/if}
   </section>
 </div>
-
 <style>
   .page { padding: 2rem; max-width: 960px; margin: 0 auto; display: flex; flex-direction: column; gap: 2rem; }
   .page-header { display: flex; align-items: flex-start; gap: 1rem; }
-  .back { color: var(--color-primary); text-decoration: none; font-size: 0.875rem; margin-top: 0.3rem; }
+  .back { color: var(--lc-600); text-decoration: none; font-size: 0.875rem; margin-top: 0.3rem; }
   h1   { font-size: 1.3rem; font-weight: 700; margin: 0; }
   .sub { font-size: 0.85rem; color: var(--color-muted); margin: 0.2rem 0 0; }
 
@@ -143,7 +142,7 @@
   h2 { font-size: 1rem; font-weight: 700; margin: 0; display: flex; align-items: center; gap: 0.5rem; }
   .badge {
     font-size: 0.72rem; font-weight: 700; padding: 0.15rem 0.5rem;
-    background: var(--color-primary-subtle); color: var(--color-primary); border-radius: 999px;
+    background: var(--lc-soft); color: var(--lc-600); border-radius: 999px;
   }
   .section-desc { font-size: 0.85rem; color: var(--color-muted); margin: 0; }
 
@@ -167,7 +166,8 @@
   .student-pills { display: flex; gap: 0.35rem; flex-wrap: wrap; }
   .pill {
     font-size: 0.75rem; padding: 0.2rem 0.6rem;
-    background: var(--color-border); border-radius: 999px;
+    background: var(--lc-soft); color: var(--lc-600);
+    border-radius: 999px;
   }
 
   .fitb-group {

@@ -1,4 +1,4 @@
-<!-- src/routes/(invigilator)/monitor/[examId]/+page.svelte -->
+<!-- src/routes/invigilator/monitor/[examId]/+page.svelte -->
 <script lang="ts">
   import { onMount, onDestroy } from 'svelte';
   import type { PageData } from './$types';
@@ -246,7 +246,7 @@
   .hlbl   { font-size: 0.65rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--color-muted); }
   .hstat.green  .hval { color: #16a34a; }
   .hstat.blue   .hval { color: #1d4ed8; }
-  .hstat.orange .hval { color: #c2410c; }
+  .hstat.orange .hval { color: var(--iv-600); }
   .hstat.red    .hval { color: #dc2626; }
 
   /* ── Filters ── */
@@ -264,7 +264,7 @@
     color: var(--color-text); font-size: 0.875rem;
     width: 240px; outline: none;
   }
-  .search:focus { border-color: var(--color-primary); }
+  .search:focus { border-color: var(--iv-500); }
 
   .filter-tabs { display: flex; gap: 0.35rem; flex-wrap: wrap; }
   .tab {
@@ -272,8 +272,8 @@
     border-radius: 999px; background: none; color: var(--color-muted);
     font-size: 0.75rem; font-weight: 500; cursor: pointer; transition: all 0.15s;
   }
-  .tab:hover  { border-color: var(--color-primary); color: var(--color-primary); }
-  .tab.active { background: var(--color-primary); border-color: var(--color-primary); color: #fff; }
+  .tab:hover  { border-color: var(--iv-500); color: var(--iv-500); }
+  .tab.active { background: var(--iv-500); border-color: var(--iv-500); color: #fff; }
 
   /* ── Grid ── */
   .sessions-grid {

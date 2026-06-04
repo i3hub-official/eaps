@@ -78,7 +78,7 @@
   .mono { font-variant-numeric: tabular-nums; }
   .pass { color: #16a34a; font-weight: 600; }
   .fail { color: #dc2626; font-weight: 600; }
-  .link { color: var(--color-primary); text-decoration: none; font-size: 0.8rem; font-weight: 500; }
+  .link { color: var(--indigo-600); text-decoration: none; font-size: 0.8rem; font-weight: 500; }
   .link:hover { text-decoration: underline; }
 
   .empty { text-align: center; color: var(--color-muted); padding: 4rem 2rem;

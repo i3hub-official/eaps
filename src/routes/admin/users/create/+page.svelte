@@ -119,13 +119,23 @@
     const y = new Date().getFullYear() - 1 + i;
     return `${y}/${y + 1}`;
   });
+
+  // Role-specific styles
+  function getRoleColor(value: string) {
+    switch(value) {
+      case 'lecturer': return { bg: 'rgba(99, 102, 241, 0.1)', border: '#6366f1', text: '#6366f1', hover: '#4f46e5' };
+      case 'invigilator': return { bg: 'rgba(249, 115, 22, 0.1)', border: '#f97316', text: '#f97316', hover: '#ea580c' };
+      case 'admin': return { bg: 'rgba(59, 130, 246, 0.1)', border: '#3b82f6', text: '#3b82f6', hover: '#1d4ed8' };
+      default: return { bg: 'rgba(59, 130, 246, 0.1)', border: '#3b82f6', text: '#3b82f6', hover: '#1d4ed8' };
+    }
+  }
 </script>
 
 <div class="create-page" class:mounted>
 
   <!-- Page header -->
   <div class="page-header">
-    <div class="header-icon">
+    <div class="header-icon" style="background: {getRoleColor(role).bg}; color: {getRoleColor(role).text};">
       <UserPlus size={20} />
     </div>
     <div>
@@ -156,13 +166,13 @@
       <div class="card-head">User Role</div>
       <div class="role-grid">
         {#each [
-          { value: 'lecturer',    label: 'Lecturer',    icon: BookOpen,   desc: 'Creates and manages exams' },
-          { value: 'invigilator', label: 'Invigilator', icon: ShieldCheck, desc: 'Monitors exam sessions' },
-          { value: 'admin',       label: 'Admin',       icon: Shield,      desc: 'Full system access' },
+          { value: 'lecturer',    label: 'Lecturer',    icon: BookOpen,   desc: 'Creates and manages exams', color: { bg: 'rgba(99,102,241,0.1)', border: '#6366f1', text: '#6366f1' } },
+          { value: 'invigilator', label: 'Invigilator', icon: ShieldCheck, desc: 'Monitors exam sessions', color: { bg: 'rgba(249,115,22,0.1)', border: '#f97316', text: '#f97316' } },
+          { value: 'admin',       label: 'Admin',       icon: Shield,      desc: 'Full system access', color: { bg: 'rgba(59,130,246,0.1)', border: '#3b82f6', text: '#3b82f6' } },
         ] as r}
-          <label class="role-card" class:role-selected={role === r.value}>
+          <label class="role-card" class:role-selected={role === r.value} data-role={r.value}>
             <input type="radio" name="role" value={r.value} bind:group={role} />
-            <div class="role-icon">
+            <div class="role-icon" style={role === r.value ? `background: ${r.color.bg}; border-color: ${r.color.border}; color: ${r.color.text};` : ''}>
               <r.icon size={18} />
             </div>
             <div class="role-label">{r.label}</div>
@@ -363,7 +373,7 @@
     <!-- ── Actions ───────────────────────────────────────────────── -->
     <div class="form-foot" style="--delay: 0.32s">
       <a href="/admin/users" class="btn-ghost">Cancel</a>
-      <button type="submit" class="btn-primary" disabled={loading || !generatedPassword}>
+      <button type="submit" class="btn-primary" disabled={loading || !generatedPassword} style="background: {getRoleColor(role).border};">
         {#if loading}
           <RefreshCw size={14} class="spin" />
         {:else}
@@ -393,6 +403,7 @@
     transform: translateY(14px);
     transition: opacity 0.38s ease, transform 0.38s ease;
     transition-delay: var(--delay, 0s);
+    margin-bottom: 20px !important;
   }
 
   .create-page.mounted .page-header,
@@ -418,12 +429,11 @@
     width: 44px;
     height: 44px;
     border-radius: .75rem;
-    background: #16a34a;
     display: flex;
     align-items: center;
     justify-content: center;
-    color: white;
     flex-shrink: 0;
+    transition: all 0.3s ease;
   }
 
   h1 {
@@ -457,13 +467,13 @@
     border: 1px solid var(--color-border);
     border-radius: .875rem;
     overflow: visible;
-     position: relative;
-  z-index: 1;
+    position: relative;
+    z-index: 1;
   }
 
   .card:has(.dropdown-menu) {
-  z-index: 1000;
-}
+    z-index: 1000;
+  }
 
   .card-head {
     padding: .875rem 1.25rem;
@@ -475,13 +485,15 @@
     border-radius: .875rem .875rem 0 0;
   }
 
-  /* ── Role grid ───────────────────────────────────────────────── */
+  /* ── Role grid - Responsive stacking ─────────────────────────── */
   .role-grid {
-    display: grid;
-    grid-template-columns: repeat(3, 1fr);
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0;
   }
 
   .role-card {
+    flex: 1;
     display: flex;
     flex-direction: column;
     align-items: center;
@@ -492,14 +504,34 @@
     transition: background .15s;
     text-align: center;
     position: relative;
+    min-width: 0;
   }
 
-  .role-card:last-child { border-right: none; }
-  .role-card input { display: none; }
-  .role-card:hover { background: var(--color-surface-hover, rgba(0,0,0,.03)); }
+  .role-card:last-child { 
+    border-right: none; 
+  }
+
+  .role-card input { 
+    display: none; 
+  }
+  
+  .role-card:hover { 
+    background: var(--color-surface-hover, rgba(0,0,0,.03)); 
+  }
 
   .role-selected {
-    background: rgba(22,163,74,.06);
+    background: rgba(0, 0, 0, 0.02);
+  }
+
+  /* Role-specific indicator bars */
+  .role-card[data-role="lecturer"].role-selected::after {
+    background: #6366f1;
+  }
+  .role-card[data-role="invigilator"].role-selected::after {
+    background: #f97316;
+  }
+  .role-card[data-role="admin"].role-selected::after {
+    background: #3b82f6;
   }
 
   /* Animated bottom indicator */
@@ -511,7 +543,6 @@
     transform: translateX(-50%) scaleX(0);
     width: 40%;
     height: 2px;
-    background: #16a34a;
     border-radius: 2px 2px 0 0;
     transition: transform .2s ease;
   }
@@ -533,13 +564,6 @@
     transition: all .2s;
   }
 
-  .role-selected .role-icon {
-    background: rgba(22,163,74,.1);
-    border-color: #16a34a;
-    color: #16a34a;
-    transform: scale(1.08);
-  }
-
   .role-label {
     font-size: .82rem;
     font-weight: 700;
@@ -550,6 +574,65 @@
     font-size: .68rem;
     color: var(--color-muted);
     line-height: 1.35;
+  }
+
+  /* Responsive role grid - stacks vertically on mobile */
+  @media (max-width: 640px) {
+    .role-grid {
+      flex-direction: column;
+    }
+    
+    .role-card {
+      flex-direction: row;
+      text-align: left;
+      padding: 1rem 1.25rem;
+      border-right: none;
+      border-bottom: 1px solid var(--color-border);
+      gap: .75rem;
+    }
+    
+    .role-card:last-child {
+      border-bottom: none;
+    }
+    
+    .role-card::after {
+      width: 3px;
+      height: 60%;
+      top: 20%;
+      left: 0;
+      bottom: auto;
+      transform: translateY(0) scaleY(0);
+      border-radius: 0 2px 2px 0;
+    }
+    
+    .role-selected::after {
+      transform: scaleY(1);
+    }
+    
+    .role-icon {
+      width: 44px;
+      height: 44px;
+      flex-shrink: 0;
+    }
+    
+    .role-card .role-desc {
+      display: none;
+    }
+  }
+
+  /* Tablet breakpoint - keep horizontal but adjust padding */
+  @media (min-width: 641px) and (max-width: 768px) {
+    .role-card {
+      padding: 1.25rem 0.75rem;
+    }
+    
+    .role-desc {
+      font-size: 0.62rem;
+    }
+    
+    .role-label {
+      font-size: 0.75rem;
+    }
   }
 
   /* ── Form grid ───────────────────────────────────────────────── */
@@ -594,8 +677,15 @@
 
   input:not([type="radio"]):not([type="hidden"]):focus,
   select:focus {
-    border-color: #16a34a;
-    box-shadow: 0 0 0 3px rgba(22,163,74,.1);
+    border-color: #3b82f6;
+    box-shadow: 0 0 0 3px rgba(59, 130, 246, .1);
+  }
+
+  /* Responsive form grid */
+  @media (max-width: 768px) {
+    .field-half, .field-quarter {
+      grid-column: span 12;
+    }
   }
 
   /* ── Custom dropdown ─────────────────────────────────────────── */
@@ -622,13 +712,13 @@
   }
 
   .dropdown-trigger:hover:not(.disabled) {
-    border-color: #16a34a;
+    border-color: #3b82f6;
   }
 
   .dropdown-trigger:focus {
     outline: none;
-    border-color: #16a34a;
-    box-shadow: 0 0 0 3px rgba(22,163,74,.1);
+    border-color: #3b82f6;
+    box-shadow: 0 0 0 3px rgba(59, 130, 246, .1);
   }
 
   .dropdown-trigger.disabled {
@@ -719,7 +809,7 @@
 
   .item-code {
     font-weight: 700;
-    color: #16a34a;
+    color: #3b82f6;
     min-width: 50px;
     font-size: .75rem;
   }
@@ -813,25 +903,25 @@
   }
 
   .pw-btn:hover {
-    border-color: var(--color-primary, #16a34a);
+    border-color: #3b82f6;
     color: var(--color-text);
   }
 
   .pw-btn.copy {
-    background: rgba(22,163,74,.08);
-    border-color: rgba(22,163,74,.3);
-    color: #16a34a;
+    background: rgba(59, 130, 246, .08);
+    border-color: rgba(59, 130, 246, .3);
+    color: #3b82f6;
   }
 
   .pw-btn.copy:hover {
-    background: rgba(22,163,74,.15);
-    border-color: #16a34a;
+    background: rgba(59, 130, 246, .15);
+    border-color: #3b82f6;
   }
 
   .pw-btn.copied {
-    background: rgba(22,163,74,.12);
-    border-color: #16a34a;
-    color: #16a34a;
+    background: rgba(59, 130, 246, .12);
+    border-color: #3b82f6;
+    color: #3b82f6;
     animation: pop .25s ease;
   }
 
@@ -859,6 +949,18 @@
     to   { opacity: 1; transform: translateY(0); }
   }
 
+  /* Responsive password box */
+  @media (max-width: 640px) {
+    .pw-box {
+      flex-direction: column;
+      align-items: stretch;
+    }
+    
+    .pw-actions {
+      justify-content: center;
+    }
+  }
+
   /* ── Footer ──────────────────────────────────────────────────── */
   .form-foot {
     display: flex;
@@ -871,7 +973,6 @@
     align-items: center;
     gap: .5rem;
     padding: .6rem 1.25rem;
-    background: #16a34a;
     color: white;
     border: none;
     border-radius: .5rem;
@@ -879,13 +980,12 @@
     font-weight: 600;
     cursor: pointer;
     font-family: inherit;
-    transition: background .15s, transform .15s, box-shadow .15s;
+    transition: transform .15s, box-shadow .15s;
   }
 
   .btn-primary:hover:not(:disabled) {
-    background: #15803d;
     transform: translateY(-1px);
-    box-shadow: 0 4px 12px rgba(22,163,74,.3);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
   }
 
   .btn-primary:active:not(:disabled) {
@@ -926,14 +1026,16 @@
     to { transform: rotate(360deg); }
   }
 
-  /* ── Responsive ──────────────────────────────────────────────── */
-  @media (max-width: 640px) {
-    .role-grid { grid-template-columns: 1fr; }
-    .role-card { border-right: none; border-bottom: 1px solid var(--color-border); flex-direction: row; text-align: left; padding: 1rem 1.25rem; }
-    .role-card:last-child { border-bottom: none; }
-    .role-card::after { width: 3px; height: 60%; top: 20%; left: 0; bottom: auto; transform: translateY(0) scaleY(0); border-radius: 0 2px 2px 0; }
-    .role-selected::after { transform: scaleY(1); }
-    .field-half, .field-quarter { grid-column: span 12; }
-    .pw-box { flex-direction: column; align-items: flex-start; }
+  /* Responsive footer buttons */
+  @media (max-width: 480px) {
+    .form-foot {
+      flex-direction: column;
+    }
+    
+    .btn-primary,
+    .btn-ghost {
+      justify-content: center;
+      width: 100%;
+    }
   }
 </style>

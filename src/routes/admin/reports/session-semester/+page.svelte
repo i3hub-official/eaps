@@ -355,7 +355,7 @@
   /* Pass bar */
   .pass-bar-wrap { display: flex; align-items: center; gap: 0.5rem; }
   .pass-bar { flex: 1; height: 5px; background: var(--color-border); border-radius: 3px; overflow: hidden; min-width: 60px; }
-  .pass-fill { height: 100%; border-radius: 3px; transition: width 0.4s ease; }
+  .pass-fill { height: 100%; border-radius: 3px; transition: width 0.4s ease; background: #3b82f6; }
   .pass-val { font-size: 0.75rem; font-weight: 600; min-width: 36px; text-align: right; }
 
   /* Trend */

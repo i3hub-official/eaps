@@ -155,7 +155,7 @@
 <style>
   .assignments-page { display: flex; flex-direction: column; gap: 1.5rem; }
   .page-header { display: flex; align-items: center; gap: .875rem; }
-  .ph-icon { width: 44px; height: 44px; border-radius: .75rem; background: linear-gradient(135deg,#14b8a6,#0d9488); display: flex; align-items: center; justify-content: center; color: white; flex-shrink: 0; }
+  .ph-icon { width: 44px; height: 44px; border-radius: .75rem; background: linear-gradient(135deg, var(--iv-400), var(--iv-600)); display: flex; align-items: center; justify-content: center; color: white; flex-shrink: 0; }
   h1 { font-size: 1.2rem; font-weight: 800; color: var(--color-text); }
   p  { font-size: .8rem; color: var(--color-muted); }
 
@@ -181,18 +181,18 @@
     background: none;
   }
   .exam-card-active {
-    border-color: #16a34a; background: rgba(22,163,74,.04);
-    box-shadow: 0 0 0 4px rgba(22,163,74,.08);
+    border-color: var(--iv-500); background: var(--iv-soft);
+    box-shadow: 0 0 0 4px rgba(249,115,22,.08);
   }
-  .exam-card-active:hover { background: rgba(22,163,74,.08); transform: translateY(-2px); }
+  .exam-card-active:hover { background: rgba(249,115,22,.12); transform: translateY(-2px); }
   .ec-head { display: flex; align-items: center; justify-content: space-between; }
   .ec-course { font-size: .75rem; font-weight: 700; color: var(--color-muted); }
   .ab-badge { font-size: .65rem; font-weight: 800; padding: .2rem .5rem; border-radius: 2rem; text-transform: uppercase; letter-spacing: .04em; }
-  .ab-active { background: rgba(22,163,74,.12); color: #16a34a; }
+  .ab-active { background: var(--iv-soft); color: var(--iv-600); }
   .ec-title { font-size: .95rem; font-weight: 700; color: var(--color-text); }
   .ec-meta { display: flex; flex-wrap: wrap; gap: .75rem; font-size: .73rem; color: var(--color-muted); }
   .ec-meta span { display: flex; align-items: center; gap: .3rem; }
-  .ec-action { display: flex; align-items: center; gap: .25rem; font-size: .78rem; font-weight: 700; color: #16a34a; margin-top: .25rem; }
+  .ec-action { display: flex; align-items: center; gap: .25rem; font-size: .78rem; font-weight: 700; color: var(--iv-600); margin-top: .25rem; }
 
   /* Table */
   .table-card { background: var(--color-surface); border: 1px solid var(--color-border); border-radius: .875rem; overflow: hidden; }

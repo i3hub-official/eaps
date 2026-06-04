@@ -137,7 +137,6 @@
     </div>
   </div>
 </div>
-
 <style>
   .page { max-width: 1200px; padding: 1.75rem 2rem 4rem; margin: 0 auto; }
 
@@ -165,6 +164,7 @@
     display: flex; align-items: center; justify-content: center;
   }
   .sum-icon.green { background: rgba(22,163,74,0.1);  color: #16a34a; }
+  .sum-icon.blue  { background: rgba(59,130,246,0.1); color: #3b82f6; }
   .sum-icon.red   { background: rgba(239,68,68,0.1);  color: #ef4444; }
   .summary-card div { display: flex; flex-direction: column; gap: 0.15rem; }
   .summary-value { font-size: 1.3rem; font-weight: 800; color: var(--color-text); line-height: 1; }
@@ -183,7 +183,7 @@
   }
   .table-scroll::-webkit-scrollbar { height: 4px; }
   .table-scroll::-webkit-scrollbar-thumb { background: var(--color-border); border-radius: 2px; }
-  .table-scroll::-webkit-scrollbar-thumb:hover { background: #16a34a; }
+  .table-scroll::-webkit-scrollbar-thumb:hover { background: #3b82f6; }
 
   .data-table {
     width: 100%; border-collapse: collapse; font-size: 0.855rem;
@@ -201,8 +201,8 @@
     color: var(--color-text); vertical-align: middle; white-space: nowrap;
   }
   .data-table tr:last-child td { border-bottom: none; }
-  .data-table tbody tr:hover td { background: rgba(22,163,74,0.03); }
-  .data-table tr.highlight td { background: rgba(22,163,74,0.05); }
+  .data-table tbody tr:hover td { background: rgba(59,130,246,0.03); }
+  .data-table tr.highlight td { background: rgba(59,130,246,0.05); }
 
   /* Column widths */
   .col-dept  { min-width: 220px; white-space: normal !important; }
@@ -217,7 +217,7 @@
     background: var(--color-bg); border: 1px solid var(--color-border);
     color: var(--color-muted);
   }
-  .row-icon.overall { background: rgba(22,163,74,0.1); border-color: rgba(22,163,74,0.2); color: #16a34a; }
+  .row-icon.overall { background: rgba(59,130,246,0.1); border-color: rgba(59,130,246,0.2); color: #3b82f6; }
   .dept-name { font-weight: 600; color: var(--color-text); white-space: normal; }
 
   .count { font-weight: 700; font-size: 0.875rem; }
@@ -232,7 +232,7 @@
   }
   .bar-fill {
     height: 100%; border-radius: 999px;
-    background: linear-gradient(90deg, #16a34a, #22c55e);
+    background: linear-gradient(90deg, #3b82f6, #60a5fa);
     min-width: 3px; transition: width 0.4s ease;
   }
   .bar-label { font-size: 0.78rem; font-weight: 700; min-width: 40px; }
@@ -267,9 +267,9 @@
     font-size: 0.8rem; font-weight: 600; font-family: inherit;
     cursor: pointer; transition: all 0.15s;
   }
-  .page-btn:hover:not(:disabled) { border-color: #16a34a; color: #16a34a; }
+  .page-btn:hover:not(:disabled) { border-color: #3b82f6; color: #3b82f6; }
   .page-btn:disabled { opacity: 0.35; cursor: not-allowed; }
   .page-btn.num.active {
-    background: #16a34a; border-color: #16a34a; color: white;
+    background: #3b82f6; border-color: #3b82f6; color: white;
   }
 </style>

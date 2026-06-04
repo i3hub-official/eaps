@@ -83,7 +83,6 @@
     </div>
   </section>
 </div>
-
 <style>
   .page { max-width: 1200px; }
   .page-header { margin-bottom: 1.5rem; }
@@ -96,9 +95,9 @@
   .metric-icon { width: 40px; height: 40px; border-radius: 0.5rem; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
   .metric-icon.total        { background: rgba(59,130,246,0.1);  color: #3b82f6; }
   .metric-icon.students     { background: rgba(22,163,74,0.1);   color: #16a34a; }
-  .metric-icon.lecturers    { background: rgba(139,92,246,0.1);  color: #8b5cf6; }
+  .metric-icon.lecturers    { background: rgba(99,102,241,0.1);  color: #6366f1; }
   .metric-icon.invigilators { background: rgba(245,158,11,0.1);  color: #f59e0b; }
-  .metric-icon.active       { background: rgba(16,185,129,0.1);  color: #10b981; }
+  .metric-icon.active       { background: rgba(22,163,74,0.1);   color: #16a34a; }
   .metric-icon.suspended    { background: rgba(239,68,68,0.1);   color: #ef4444; }
 
   .metric-content { flex: 1; display: flex; flex-direction: column; }

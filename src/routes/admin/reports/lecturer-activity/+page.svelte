@@ -98,7 +98,6 @@
     {/if}
   </section>
 </div>
-
 <style>
   .page { max-width: 1200px; }
   .page-header { margin-bottom: 1.5rem; }
@@ -144,7 +143,7 @@
   .lecturer-cell { display: flex; align-items: center; gap: 0.65rem; }
   .lecturer-avatar {
     width: 30px; height: 30px; border-radius: 50%; flex-shrink: 0;
-    background: linear-gradient(135deg, #8b5cf6, #a78bfa);
+    background: linear-gradient(135deg, #6366f1, #818cf8);
     display: flex; align-items: center; justify-content: center;
     font-weight: 700; font-size: 0.75rem; color: #fff;
   }
@@ -155,7 +154,7 @@
     width: 64px; height: 6px; background: var(--color-bg);
     border: 1px solid var(--color-border); border-radius: 3px; overflow: hidden; flex-shrink: 0;
   }
-  .pass-fill { height: 100%; background: #16a34a; border-radius: 3px; transition: width 0.4s ease; }
+  .pass-fill { height: 100%; background: #3b82f6; border-radius: 3px; transition: width 0.4s ease; }
   .pass-bar span { font-size: 0.78rem; font-weight: 600; color: var(--color-text); min-width: 36px; }
 
   .score-badge {

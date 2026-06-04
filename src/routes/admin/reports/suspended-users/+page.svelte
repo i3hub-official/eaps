@@ -93,7 +93,6 @@
     {/if}
   </section>
 </div>
-
 <style>
   .page { max-width: 1200px; }
   .page-header { margin-bottom: 1.5rem; }
@@ -139,7 +138,7 @@
   .user-cell { display: flex; align-items: center; gap: 0.65rem; }
   .user-avatar {
     width: 30px; height: 30px; border-radius: 50%; flex-shrink: 0;
-    background: linear-gradient(135deg, #ef4444, #dc2626);
+    background: linear-gradient(135deg, #3b82f6, #1d4ed8);
     display: flex; align-items: center; justify-content: center;
     font-weight: 700; font-size: 0.75rem; color: #fff;
   }
@@ -163,7 +162,7 @@
     font-size: 0.72rem; font-weight: 700; text-transform: capitalize;
   }
   .status-badge.active  { background: rgba(239,68,68,0.1); color: #ef4444; }
-  .status-badge.expired { background: rgba(22,163,74,0.1);  color: #16a34a; }
+  .status-badge.expired { background: rgba(59,130,246,0.1);  color: #3b82f6; }
 
   .empty {
     display: flex; flex-direction: column; align-items: center; gap: 0.75rem;

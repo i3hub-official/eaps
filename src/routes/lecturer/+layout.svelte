@@ -9,7 +9,8 @@
     LayoutDashboard, BookOpen, ClipboardList, X,
     Sun, Moon, LogOut, ChevronRight, LoaderCircle,
     PlusCircle, BarChart2, ChevronDown,
-    Bell, CheckCheck, FileText, Clock, Menu
+    Bell, CheckCheck, FileText, Clock, Menu, User,
+    Users, Search, AlertTriangle, Settings
   } from 'lucide-svelte';
 
   let { data, children }: { data: LayoutData; children: import('svelte').Snippet } = $props();
@@ -21,6 +22,7 @@
   let sidebarOpen       = $state(false);
   let navLoading        = $state<string | null>(null);
   let examsExpanded     = $state(false);
+  let resultsExpanded   = $state(false);
   let showSignoutModal  = $state(false);
   let isSigningOut      = $state(false);
   let showNotifications = $state(false);
@@ -33,17 +35,26 @@
   const totalExams    = $derived(data.stats?.totalExams    ?? 0);
 
   const navGroups = [
-    { href: '/lecturer',       label: 'Dashboard', icon: LayoutDashboard, children: null },
+    { href: '/lecturer', label: 'Dashboard', icon: LayoutDashboard, children: null },
     {
       href: '/lecturer/exams',
       label: 'Exams',
       icon: ClipboardList,
       children: [
-        { href: '/lecturer/exams',        label: 'All Exams',   icon: ClipboardList },
-        { href: '/lecturer/exams/create', label: 'Create Exam', icon: PlusCircle    },
-        { href: '/lecturer/results',      label: 'Results',     icon: BarChart2     },
+        { href: '/lecturer/exams',        label: 'All Exams',     icon: ClipboardList },
+        { href: '/lecturer/exams/create', label: 'Create Exam',   icon: PlusCircle },
       ],
     },
+    {
+      href: '/lecturer/results',
+      label: 'Results',
+      icon: BarChart2,
+      children: [
+        { href: '/lecturer/results', label: 'All Results', icon: BarChart2 },
+      ],
+    },
+    { href: '/lecturer/notifications', label: 'Notifications', icon: Bell, children: null, badge: unreadCount },
+    { href: '/lecturer/profile',       label: 'Profile',       icon: User, children: null },
   ];
 
   const currentPath   = $derived($page.url.pathname);
@@ -54,15 +65,26 @@
     if (!parts.length) return [];
     const crumbs: { label: string; href: string }[] = [{ label: 'Home', href: '/lecturer' }];
     const labelMap: Record<string, string> = {
-      exams: 'Exams', create: 'Create Exam',
-      results: 'Results', questions: 'Questions', similarity: 'Similarity',
+      exams: 'Exams', 
+      create: 'Create Exam',
+      results: 'Results', 
+      questions: 'Questions', 
+      similarity: 'Similarity',
+      students: 'Students',
+      profile: 'Profile',
+      notifications: 'Notifications'
     };
     let built = '/lecturer';
     for (const part of parts) {
       built += '/' + part;
-      const label = /^[0-9a-f-]{36}$/i.test(part)
-        ? 'Exam Details'
-        : (labelMap[part] ?? part.charAt(0).toUpperCase() + part.slice(1));
+      let label = part;
+      if (/^[0-9a-f-]{36}$/i.test(part)) {
+        label = 'Exam Details';
+      } else if (labelMap[part]) {
+        label = labelMap[part];
+      } else {
+        label = part.charAt(0).toUpperCase() + part.slice(1);
+      }
       crumbs.push({ label, href: built });
     }
     return crumbs;
@@ -73,9 +95,20 @@
     if (href.includes('?')) return currentPath === href.split('?')[0] && currentSearch === '?' + href.split('?')[1];
     return currentPath === href || currentPath.startsWith(href + '/');
   }
+  
   function isGroupActive(group: any) {
     if (!group.children) return isActive(group.href);
     return group.children.some((c: any) => isActive(c.href));
+  }
+
+  // Check if any child route of exams is active
+  function isExamsActive() {
+    return currentPath.startsWith('/lecturer/exams') || currentPath.startsWith('/lecturer/results');
+  }
+
+  // Check if results subroutes are active
+  function isResultsActive() {
+    return currentPath.startsWith('/lecturer/results');
   }
 
   async function navigate(href: string, e: MouseEvent) {
@@ -122,7 +155,10 @@
     }
   });
 
-  $effect(() => { if (isGroupActive(navGroups[1])) examsExpanded = true; });
+  $effect(() => { 
+    if (isExamsActive()) examsExpanded = true;
+    if (isResultsActive()) resultsExpanded = true;
+  });
 
   function relativeTime(date: string) {
     const diff = Date.now() - new Date(date).getTime();
@@ -228,7 +264,12 @@
                 <group.icon size={16} strokeWidth={2} />
               {/if}
             </div>
-            {#if !collapsed}<span class="nav-label">{group.label}</span>{/if}
+            {#if !collapsed}
+              <span class="nav-label">{group.label}</span>
+              {#if group.badge && group.badge > 0}
+                <span class="nav-badge">{group.badge > 99 ? '99+' : group.badge}</span>
+              {/if}
+            {/if}
             {#if isActive(group.href)}<span class="active-pip"></span>{/if}
           </a>
         {:else}
@@ -239,15 +280,20 @@
               {#if isGroupActive(group)}<span class="active-pip"></span>{/if}
             </a>
           {:else}
-            <div class="nav-group" class:expanded={examsExpanded}>
+            <div class="nav-group" class:expanded={group.label === 'Exams' ? examsExpanded : resultsExpanded}>
               <button class="nav-link nav-group-trigger" class:active={isGroupActive(group)}
-                      onclick={() => examsExpanded = !examsExpanded} type="button">
+                      onclick={() => {
+                        if (group.label === 'Exams') examsExpanded = !examsExpanded;
+                        if (group.label === 'Results') resultsExpanded = !resultsExpanded;
+                      }} type="button">
                 <div class="nav-icon"><group.icon size={16} strokeWidth={2} /></div>
                 <span class="nav-label">{group.label}</span>
-                {#if pendingGrades > 0}<span class="nav-badge">{pendingGrades}</span>{/if}
+                {#if group.label === 'Exams' && pendingGrades > 0}
+                  <span class="nav-badge">{pendingGrades}</span>
+                {/if}
                 <ChevronDown size={13} class="nav-chevron" />
               </button>
-              {#if examsExpanded}
+              {#if (group.label === 'Exams' && examsExpanded) || (group.label === 'Results' && resultsExpanded)}
                 <div class="nav-children">
                   {#each group.children as child}
                     <a href={child.href} class="nav-child"
@@ -280,17 +326,24 @@
         {#if theme === 'dark'}<Sun size={15} />{:else}<Moon size={15} />{/if}
         {#if !collapsed}<span>{theme === 'dark' ? 'Light Mode' : 'Dark Mode'}</span>{/if}
       </button>
-      <button class="avatar-btn" onclick={() => showSignoutModal = true} type="button"
-              aria-label="Account" title={collapsed ? data.user?.fullName : undefined}>
+      
+      <a 
+        href="/lecturer/profile" 
+        class="avatar-btn"
+        onclick={(e) => navigate('/lecturer/profile', e)}
+        aria-label="Profile"
+        title={collapsed ? data.user?.fullName : undefined}
+      >
         <div class="avatar"><span>{initials}</span></div>
         {#if !collapsed}
           <div class="avatar-info">
-            <span class="avatar-name">{data.user?.fullName?.split(' ')[0] ?? 'Lecturer'}</span>
+            <span class="avatar-name">{data.user.title} {data.user?.fullName?.split(' ')[0] ?? 'Lecturer'}</span>
             <span class="avatar-role">Lecturer</span>
           </div>
           <ChevronRight size={12} class="avatar-chevron" />
         {/if}
-      </button>
+      </a>
+      
       <button class="icon-btn signout-btn" type="button" onclick={() => showSignoutModal = true}
               aria-label="Sign out" title={collapsed ? 'Sign out' : undefined}>
         <LogOut size={15} />
@@ -388,15 +441,15 @@
 </div>
 
 <style>
-  /* ── Color tokens — BLUE/INDIGO (distinct from admin green) ──────── */
+  /* ── Color tokens — INDIGO for lecturers ──────────────────────── */
   :root {
-   --lc-50:  #f0fdf4;
-  --lc-100: #dcfce7;
-  --lc-400: #22c55e;
-  --lc-500: #16a34a;
-  --lc-600: #15803d;
-  --lc-700: #166534;
-  --lc-soft: rgba(22, 163, 74, 0.08);
+    --lc-50:  #f5f3ff;
+    --lc-100: #ede9fe;
+    --lc-400: #818cf8;
+    --lc-500: #6366f1;
+    --lc-600: #4f46e5;
+    --lc-700: #4338ca;
+    --lc-soft: rgba(99, 102, 241, 0.08);
     --sidebar-w: 240px;
     --sidebar-collapsed: 60px;
     --topbar-h: 52px;
@@ -456,7 +509,7 @@
     width: 34px; height: 34px; border-radius: .625rem; flex-shrink: 0;
     background: linear-gradient(135deg, var(--lc-700), var(--lc-500));
     display: flex; align-items: center; justify-content: center; color: white;
-    box-shadow: 0 2px 8px rgba(37,99,235,.3);
+    box-shadow: 0 2px 8px rgba(79, 70, 229, 0.3);
   }
   .brand-text { display: flex; flex-direction: column; line-height: 1; }
   .brand-name { font-size: .82rem; font-weight: 800; letter-spacing: -.02em; color: var(--color-text); white-space: nowrap; }
@@ -490,8 +543,8 @@
   .stat-dot.pulse { background: var(--lc-500); animation: dot-pulse 2s ease-in-out infinite; }
   .stat-pill.amber .stat-num { color: #f59e0b; }
   @keyframes dot-pulse {
-    0%,100% { box-shadow: 0 0 0 0 rgba(59,130,246,.4); }
-    50%      { box-shadow: 0 0 0 4px rgba(59,130,246,0); }
+    0%,100% { box-shadow: 0 0 0 0 rgba(99, 102, 241, .4); }
+    50%      { box-shadow: 0 0 0 4px rgba(99, 102, 241, 0); }
   }
 
   /* Nav */
@@ -521,7 +574,7 @@
     width: 28px; height: 28px; border-radius: .45rem; flex-shrink: 0;
     display: flex; align-items: center; justify-content: center; transition: background .15s;
   }
-  .nav-link.active .nav-icon { background: rgba(59,130,246,.12); }
+  .nav-link.active .nav-icon { background: rgba(99, 102, 241, .12); }
   .nav-label { flex: 1; }
 
   .active-pip {
@@ -543,7 +596,7 @@
   .nav-children {
     display: flex; flex-direction: column; gap: .1rem;
     padding-left: .5rem; margin-left: .875rem;
-    border-left: 2px solid rgba(59,130,246,.3);
+    border-left: 2px solid rgba(99, 102, 241, .3);
     animation: slide-down .18s ease;
   }
   .nav-child {
@@ -590,6 +643,7 @@
     padding: .5rem .625rem; border-radius: var(--radius-btn); width: 100%;
     border: 1px solid var(--color-border); background: none; cursor: pointer;
     font-family: inherit; white-space: nowrap; overflow: hidden; transition: all .15s;
+    text-decoration: none;
   }
   .avatar-btn:hover { border-color: var(--lc-600); background: var(--lc-soft); }
 
@@ -602,6 +656,8 @@
   .avatar-info { display: flex; flex-direction: column; line-height: 1; min-width: 0; flex: 1; }
   .avatar-name { font-size: .78rem; font-weight: 700; color: var(--color-text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .avatar-role { font-size: .57rem; font-weight: 700; color: var(--color-muted); text-transform: uppercase; letter-spacing: .05em; margin-top: 1px; }
+  .avatar-chevron { color: var(--color-muted); opacity: .6; flex-shrink: 0; }
+  .avatar-btn:hover .avatar-chevron { color: var(--lc-600); opacity: 1; }
 
   /* ── Main ─────────────────────────────────────────────────────────── */
   .layout-main { display: flex; flex-direction: column; min-height: 100vh; min-width: 0; }
@@ -647,7 +703,7 @@
     transition: all .15s; position: relative; flex-shrink: 0;
   }
   .topbar-btn:hover { background: var(--color-surface-hover); }
-  .notif-btn.has-unread { border-color: rgba(37,99,235,.4); color: var(--lc-600); }
+  .notif-btn.has-unread { border-color: rgba(99, 102, 241, .4); color: var(--lc-600); }
 
   .notif-badge {
     position: absolute; top: -5px; right: -5px;
@@ -686,7 +742,7 @@
   .notif-item { width: 100%; display: flex; gap: .5rem; padding: .7rem 1rem; border: none; background: transparent; cursor: pointer; text-align: left; font-family: inherit; border-bottom: 1px solid var(--color-border); transition: background .12s; }
   .notif-item:last-child { border-bottom: none; }
   .notif-item:hover { background: var(--color-bg); }
-  .notif-item.unread { background: rgba(59,130,246,.03); }
+  .notif-item.unread { background: rgba(99, 102, 241, .03); }
   .notif-dot-col { width: 14px; flex-shrink: 0; display: flex; align-items: flex-start; padding-top: 4px; }
   .notif-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--lc-600); }
   .notif-body { flex: 1; min-width: 0; }

@@ -83,7 +83,6 @@
     </div>
   </section>
 </div>
-
 <style>
   .page { max-width: 1200px; }
   .page-header { margin-bottom: 1.5rem; }
@@ -94,7 +93,7 @@
   @media (max-width: 900px) { .metrics-row { grid-template-columns: repeat(2, 1fr); } }
   @media (max-width: 500px) { .metrics-row { grid-template-columns: 1fr; } }
 
-  .metric-card { background: var(--color-surface); border: 1px solid var(--color-border); border-radius: 0.75rem; padding: 1rem; display: flex; align-items: center; gap: 0.75rem; color: #16a34a; }
+  .metric-card { background: var(--color-surface); border: 1px solid var(--color-border); border-radius: 0.75rem; padding: 1rem; display: flex; align-items: center; gap: 0.75rem; color: #3b82f6; }
   .metric-card div { display: flex; flex-direction: column; }
   .metric-value { font-size: 1.125rem; font-weight: 700; color: var(--color-text); }
   .metric-label { font-size: 0.75rem; color: var(--color-muted); }

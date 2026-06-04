@@ -298,19 +298,19 @@
   .dash-eyebrow {
     display: inline-flex; align-items: center; gap: 0.4rem;
     font-size: 0.72rem; font-weight: 700; letter-spacing: 0.08em;
-    text-transform: uppercase; color: #a78bfa; margin-bottom: 0.3rem;
+    text-transform: uppercase; color: var(--iv-500); margin-bottom: 0.3rem;
   }
   .dash-dot {
-    width: 7px; height: 7px; border-radius: 50%; background: #a78bfa;
+    width: 7px; height: 7px; border-radius: 50%; background: var(--iv-500);
   }
   .dash-dot.pulse {
     animation: pulse 2s ease-in-out infinite;
-    box-shadow: 0 0 0 0 rgba(167,139,250,0.5);
+    box-shadow: 0 0 0 0 rgba(249,115,22,0.5);
   }
   @keyframes pulse {
-    0%   { box-shadow: 0 0 0 0 rgba(167,139,250,.5); }
-    70%  { box-shadow: 0 0 0 6px rgba(167,139,250,0); }
-    100% { box-shadow: 0 0 0 0 rgba(167,139,250,0); }
+    0%   { box-shadow: 0 0 0 0 rgba(249,115,22,.5); }
+    70%  { box-shadow: 0 0 0 6px rgba(249,115,22,0); }
+    100% { box-shadow: 0 0 0 0 rgba(249,115,22,0); }
   }
   .dash-title {
     font-size: 2.25rem; font-weight: 900; letter-spacing: -0.04em;
@@ -328,7 +328,7 @@
     color: var(--color-text); cursor: pointer; transition: all 0.15s;
     text-decoration: none;
   }
-  .btn-outline:hover { border-color: #a78bfa; color: #a78bfa; }
+  .btn-outline:hover { border-color: var(--iv-500); color: var(--iv-500); }
 
   /* ── KPI Strip ───────────────────────────────────────── */
   .kpi-strip {
@@ -355,7 +355,7 @@
     border-radius: 1rem 1rem 0 0;
   }
   .kpi-blue::before   { background: #3b82f6; }
-  .kpi-violet::before { background: #a78bfa; }
+  .kpi-violet::before { background: var(--iv-500); }
   .kpi-amber::before  { background: #f59e0b; }
   .kpi-slate::before  { background: #64748b; }
 
@@ -365,7 +365,7 @@
     background: var(--color-bg);
   }
   .kpi-blue   .kpi-icon { color: #3b82f6; }
-  .kpi-violet .kpi-icon { color: #a78bfa; }
+  .kpi-violet .kpi-icon { color: var(--iv-500); }
   .kpi-amber  .kpi-icon { color: #f59e0b; }
   .kpi-slate  .kpi-icon { color: #64748b; }
 
@@ -385,8 +385,8 @@
   .kpi-trend.up { color: #22c55e; }
   .kpi-live-badge {
     font-size: 0.62rem; font-weight: 800; letter-spacing: 0.1em;
-    color: #f59e0b; background: rgba(245,158,11,0.12);
-    border: 1px solid rgba(245,158,11,0.25);
+    color: var(--iv-500); background: var(--iv-soft);
+    border: 1px solid rgba(249,115,22,0.25);
     padding: 0.1rem 0.4rem; border-radius: 999px; width: fit-content;
     animation: blink 1.5s step-end infinite;
   }
@@ -427,7 +427,7 @@
   }
   .live-badge {
     font-size: 0.62rem; font-weight: 800; letter-spacing: 0.08em;
-    color: #f59e0b; animation: blink 1.5s step-end infinite;
+    color: var(--iv-500); animation: blink 1.5s step-end infinite;
   }
 
   /* ── Exam List ───────────────────────────────────────── */
@@ -461,7 +461,7 @@
   .course-badge {
     font-size: 0.68rem; font-weight: 700;
     padding: 0.15rem 0.5rem;
-    background: rgba(167,139,250,0.1); color: #a78bfa;
+    background: var(--iv-soft); color: var(--iv-500);
     border-radius: 999px; white-space: nowrap;
   }
   .status-pill {
@@ -487,7 +487,7 @@
     text-decoration: none; color: var(--color-text);
     transition: all 0.15s; white-space: nowrap; flex-shrink: 0;
   }
-  .monitor-btn:hover { border-color: #a78bfa; color: #a78bfa; }
+  .monitor-btn:hover { border-color: var(--iv-500); color: var(--iv-500); }
   .monitor-btn.monitor-live {
     background: #22c55e; border-color: #22c55e; color: white;
   }
@@ -497,11 +497,11 @@
   .right-col { display: flex; flex-direction: column; gap: 1.25rem; }
 
   /* ── Live panel ──────────────────────────────────────── */
-  .panel-live { border-color: rgba(245,158,11,0.3); }
-  .panel-live .panel-head { border-color: rgba(245,158,11,0.2); background: rgba(245,158,11,0.04); }
+  .panel-live { border-color: rgba(249,115,22,0.3); }
+  .panel-live .panel-head { border-color: rgba(249,115,22,0.2); background: var(--iv-soft); }
   .live-body { padding: 1rem 1.25rem; display: flex; flex-direction: column; gap: 0.75rem; }
   .live-exam { display: flex; flex-direction: column; gap: 0.25rem; }
-  .live-course { font-size: 0.7rem; font-weight: 700; color: #f59e0b; }
+  .live-course { font-size: 0.7rem; font-weight: 700; color: var(--iv-500); }
   .live-title  { font-size: 0.9rem; font-weight: 600; color: var(--color-text); }
 
   /* ── Mini list ───────────────────────────────────────── */
@@ -518,9 +518,10 @@
     width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; margin-top: 0.35rem;
   }
   .mini-dot.blue { background: #3b82f6; }
+  .mini-dot.orange { background: var(--iv-500); }
 
   .mini-info { display: flex; flex-direction: column; gap: 0.1rem; flex: 1; min-width: 0; }
-  .mini-course { font-size: 0.68rem; font-weight: 700; color: #3b82f6; }
+  .mini-course { font-size: 0.68rem; font-weight: 700; color: var(--iv-500); }
   .mini-title  { font-size: 0.8rem; font-weight: 600; color: var(--color-text); }
   .mini-time   { font-size: 0.72rem; color: var(--color-muted); }
   .mini-countdown { font-size: 0.7rem; font-weight: 700; color: #3b82f6; white-space: nowrap; margin-top: 0.2rem; }

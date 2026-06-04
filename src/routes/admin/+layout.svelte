@@ -13,7 +13,7 @@
     Calendar, Clock, UserCheck, UserX, UserPlus, Bell,
     Shield, FileBarChart, BrainCircuit, BookMarked, Monitor,
     EyeOff, Fingerprint, Command, Search, Home,
-    ChevronRight, Settings, Pin, Key, PlayCircle, Plus
+    ChevronRight, Settings, Pin, Key, PlayCircle, Plus, User, Hash, Database
   } from 'lucide-svelte';
 
   let { data, children }: { data: LayoutData; children: import('svelte').Snippet } = $props();
@@ -125,6 +125,19 @@
   const navGroups = [
     { href: '/admin',          label: 'Dashboard', icon: LayoutDashboard, children: null },
 
+    {
+      href: '/admin/manage',
+      label: 'Management',
+      icon: Database,
+      children: [
+        { href: '/admin/manage/colleges', label: 'Colleges', icon: Building2 },
+        { href: '/admin/manage/departments', label: 'Departments', icon: Layers },
+        { href: '/admin/manage/courses', label: 'Courses', icon: BookMarked },
+        { href: '/admin/manage/levels', label: 'Levels', icon: GraduationCap },
+        { href: '/admin/manage/course-registrations', label: 'Course Registrations', icon: UserPlus },
+      ],
+    },
+
     { href: '/admin/users',    label: 'Users',  icon: Users, children: [
         { href: '/admin/users',                  label: 'All Users',    icon: Users        },
         { href: '/admin/users?role=student',     label: 'Students',     icon: GraduationCap},
@@ -160,7 +173,7 @@
         { href: '/admin/reports/user-overview',           label: 'User Overview',          icon: Users        },
         { href: '/admin/reports/student-demographics',    label: 'Student Demographics',   icon: School       },
         { href: '/admin/reports/lecturer-activity',       label: 'Lecturer Activity',      icon: BookOpen     },
-        { href: '/admin/reports/invigilator-assignments', label: 'Invigilator Assignments',icon: UserCheck    },
+        { href: '/admin/reports/invigilator-assignments', label: 'Invigilator Assignments', icon: UserCheck    },
         { href: '/admin/reports/registration-trends',     label: 'Registration Trends',    icon: UserPlus     },
         { href: '/admin/reports/suspended-users',         label: 'Suspended Users',        icon: UserX        },
         { href: '/admin/reports/college-performance',     label: 'College Performance',    icon: Building2    },
@@ -198,6 +211,12 @@
     if (href === '/admin/reports' && !isChild) return currentPath === '/admin/reports';
     if (href === '/admin/reports' &&  isChild) return currentPath === '/admin/reports';
     if (href.startsWith('/admin/reports/')) return currentPath === href;
+    // profile
+    if (href === '/admin/profile') return currentPath === '/admin/profile';
+    // notifications
+    if (href === '/admin/notifications') return currentPath === '/admin/notifications';
+    // preferences
+    if (href === '/admin/preferences') return currentPath === '/admin/preferences';
     // security / api-keys
     if (href === '/admin/security') return currentPath === '/admin/security';
     if (href === '/admin/api-keys') return currentPath === '/admin/api-keys';
@@ -496,9 +515,9 @@
           </button>
           {#if userMenuOpen}
             <div class="user-menu-panel">
-              <a href="/admin/profile"       onclick={(e) => handleNavClick('/admin/profile',       e)}><Settings size={13} /> Profile</a>
-              <a href="/admin/notifications" onclick={(e) => handleNavClick('/admin/notifications', e)}><Bell     size={13} /> Notifications</a>
-              <a href="/admin/preferences"   onclick={(e) => handleNavClick('/admin/preferences',   e)}><Settings size={13} /> Preferences</a>
+              <a href="/admin/profile"       onclick={(e) => handleNavClick('/admin/profile', e)}><User     size={13} /> Profile</a>
+              <a href="/admin/notifications" onclick={(e) => handleNavClick('/admin/notifications', e)}><Bell    size={13} /> Notifications</a>
+              <a href="/admin/preferences"   onclick={(e) => handleNavClick('/admin/preferences', e)}><Settings size={13} /> Preferences</a>
               <hr />
               <button onclick={() => { toggleTheme(); userMenuOpen = false; }}>
                 {#if theme === 'dark'}<Sun size={13} /> Light Mode{:else}<Moon size={13} /> Dark Mode{/if}
@@ -613,11 +632,11 @@
   .sb-logo { display: flex; align-items: center; gap: .625rem; }
   .sb-logo-icon {
     width: 34px; height: 34px; border-radius: .5rem;
-    background: linear-gradient(135deg,#16a34a,#15803d);
+    background: linear-gradient(135deg, #3b82f6, #1d4ed8);
     display: flex; align-items: center; justify-content: center; color: white; flex-shrink: 0;
   }
   .sb-logo-name { font-size: .85rem; font-weight: 800; color: var(--color-text); line-height: 1.2; }
-  .sb-logo-tag  { font-size: .6rem; font-weight: 600; color: #16a34a; text-transform: uppercase; }
+  .sb-logo-tag  { font-size: .6rem; font-weight: 600; color: #3b82f6; text-transform: uppercase; }
   .sb-close {
     background: none; border: none; color: var(--color-muted);
     cursor: pointer; padding: .25rem; border-radius: .25rem;
@@ -632,7 +651,7 @@
     border-radius: .5rem; flex-shrink: 0;
     transition: border-color .15s;
   }
-  .sb-search:focus-within { border-color: #22c55e; }
+  .sb-search:focus-within { border-color: #3b82f6; }
   .sb-search input {
     background: none; border: none; outline: none;
     font-size: .78rem; color: var(--color-text); width: 100%; font-family: inherit;
@@ -666,23 +685,23 @@
   }
   .nav-item:hover, .nav-group-btn:hover, .nav-child:hover { background: var(--color-surface-hover); }
   .nav-item.active, .nav-child.active {
-    background: rgba(22,163,74,.1); color: #16a34a; font-weight: 600;
+    background: rgba(59, 130, 246, .1); color: #3b82f6; font-weight: 600;
   }
   .nav-item.loading, .nav-child.loading { opacity: .6; pointer-events: none; }
   .nav-group-btn.child-active { color: var(--color-text); font-weight: 600; }
-  .nav-group-btn.child-active .nav-item-icon { color: #16a34a; }
+  .nav-group-btn.child-active .nav-item-icon { color: #3b82f6; }
 
   .nav-item-icon {
     display: flex; align-items: center; justify-content: center;
     width: 18px; height: 18px; flex-shrink: 0; color: var(--color-muted);
   }
   .nav-item.active .nav-item-icon,
-  .nav-child.active .nav-item-icon { color: #16a34a; }
+  .nav-child.active .nav-item-icon { color: #3b82f6; }
   .nav-item-label { flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
   .active-dot {
     width: 6px; height: 6px; border-radius: 50%;
-    background: #16a34a; flex-shrink: 0;
+    background: #3b82f6; flex-shrink: 0;
     animation: dot-pulse 2s ease-in-out infinite;
   }
   @keyframes dot-pulse { 0%,100%{opacity:1}50%{opacity:.4} }
@@ -696,7 +715,7 @@
   .pin-action.unpin { opacity: 1; }
   .nav-item:hover .pin-action,
   .nav-child:hover .pin-action { opacity: .7; }
-  .pin-action:hover { opacity: 1 !important; color: #16a34a; }
+  .pin-action:hover { opacity: 1 !important; color: #3b82f6; }
 
   /* Children */
   .nav-children {
@@ -711,7 +730,7 @@
 
   /* Loading bar */
   .sb-progress { height: 2px; background: var(--color-border); flex-shrink: 0; overflow: hidden; }
-  .sb-progress-bar { height: 100%; width: 35%; background: #16a34a; animation: progress-slide 1s ease-in-out infinite; }
+  .sb-progress-bar { height: 100%; width: 35%; background: #3b82f6; animation: progress-slide 1s ease-in-out infinite; }
   @keyframes progress-slide { 0%{transform:translateX(-100%)} 100%{transform:translateX(300%)} }
 
   /* Sidebar footer */
@@ -726,7 +745,7 @@
     font-size: .72rem; font-weight: 500; color: var(--color-muted);
     cursor: pointer; font-family: inherit; transition: all .15s;
   }
-  .sb-shortcuts-btn:hover { color: var(--color-text); border-color: #22c55e; }
+  .sb-shortcuts-btn:hover { color: var(--color-text); border-color: #3b82f6; }
 
   .sb-user {
     display: flex; align-items: center; gap: .625rem;
@@ -735,7 +754,7 @@
   }
   .sb-avatar {
     width: 30px; height: 30px; border-radius: 50%;
-    background: linear-gradient(135deg,#16a34a,#15803d);
+    background: linear-gradient(135deg, #3b82f6, #1d4ed8);
     display: flex; align-items: center; justify-content: center;
     font-weight: 700; font-size: .8rem; color: white; flex-shrink: 0;
   }
@@ -775,15 +794,15 @@
     text-decoration: none; white-space: nowrap;
     transition: color .15s;
   }
-  .bc-link:hover { color: #16a34a; }
+  .bc-link:hover { color: #3b82f6; }
   .bc-link.bc-current { color: var(--color-text); font-weight: 600; }
 
   /* Topbar right */
   .topbar-right { display: flex; align-items: center; gap: .5rem; }
   .topbar-loading {
     display: flex; align-items: center; gap: .4rem;
-    padding: .3rem .625rem; background: rgba(22,163,74,.1);
-    border-radius: .375rem; font-size: .72rem; font-weight: 600; color: #16a34a;
+    padding: .3rem .625rem; background: rgba(59, 130, 246, .1);
+    border-radius: .375rem; font-size: .72rem; font-weight: 600; color: #3b82f6;
   }
   .icon-btn {
     width: 34px; height: 34px; border-radius: .5rem;
@@ -818,10 +837,10 @@
     border: 1px solid var(--color-border); border-radius: .5rem;
     cursor: pointer; transition: border-color .15s;
   }
-  .topbar-user-btn:hover { border-color: #22c55e; }
+  .topbar-user-btn:hover { border-color: #3b82f6; }
   .tb-avatar {
     width: 26px; height: 26px; border-radius: 50%;
-    background: linear-gradient(135deg,#16a34a,#15803d);
+    background: linear-gradient(135deg, #3b82f6, #1d4ed8);
     display: flex; align-items: center; justify-content: center;
     font-weight: 700; font-size: .72rem; color: white;
   }
@@ -857,13 +876,13 @@
   .quick-actions.qa-visible { transform: translateX(0); }
   .qa-btn {
     display: flex; align-items: center; gap: .5rem;
-    padding: .55rem 1rem; background: #16a34a;
+    padding: .55rem 1rem; background: #3b82f6;
     border: none; border-radius: 2rem; color: white;
     font-size: .78rem; font-weight: 600; cursor: pointer; font-family: inherit;
-    box-shadow: 0 4px 12px rgba(22,163,74,.35);
+    box-shadow: 0 4px 12px rgba(59, 130, 246, .35);
     transition: all .15s;
   }
-  .qa-btn:hover { background: #15803d; transform: translateY(-2px); }
+  .qa-btn:hover { background: #1d4ed8; transform: translateY(-2px); }
   .qa-toggle {
     width: 30px; height: 30px; border-radius: 50%;
     background: var(--color-surface); border: 1px solid var(--color-border);
@@ -892,7 +911,7 @@
   @keyframes slide-up { from{opacity:0;transform:translateY(16px) scale(.97)} to{opacity:1;transform:translateY(0) scale(1)} }
   .modal-icon-wrap {
     width: 46px; height: 46px; border-radius: 50%;
-    background: rgba(22,163,74,.1); color: #16a34a;
+    background: rgba(59, 130, 246, .1); color: #3b82f6;
     display: flex; align-items: center; justify-content: center;
   }
   .modal-title { font-size: 1.05rem; font-weight: 700; color: var(--color-text); }

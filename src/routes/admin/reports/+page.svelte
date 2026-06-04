@@ -1487,6 +1487,8 @@
   </footer>
 
 </div>
+
+
 <style>
   /* ════════════════════════════════════════════════════════════
      MOBILE-FIRST REPORTS STYLES
@@ -1519,11 +1521,11 @@
     width: 44px;
     height: 44px;
     border-radius: 0.875rem;
-    background: rgba(22, 163, 74, 0.1);
+    background: rgba(59, 130, 246, 0.1);
     display: flex;
     align-items: center;
     justify-content: center;
-    color: #16a34a;
+    color: #3b82f6;
     flex-shrink: 0;
   }
 
@@ -1582,7 +1584,7 @@
   }
 
   .tab-btn.active {
-    background: #16a34a;
+    background: #3b82f6;
     color: white;
   }
 
@@ -1687,7 +1689,7 @@
   }
 
   .form-group select:focus {
-    border-color: #16a34a;
+    border-color: #3b82f6;
   }
 
   .scope-options {
@@ -1709,12 +1711,12 @@
   }
 
   .scope-btn:hover {
-    border-color: #16a34a;
+    border-color: #3b82f6;
   }
 
   .scope-btn.active {
-    background: #16a34a;
-    border-color: #16a34a;
+    background: #3b82f6;
+    border-color: #3b82f6;
     color: white;
   }
 
@@ -1733,12 +1735,12 @@
   }
 
   .btn-primary {
-    background: #16a34a;
+    background: #3b82f6;
     color: white;
   }
 
   .btn-primary:hover {
-    background: #15803d;
+    background: #1d4ed8;
   }
 
   .btn-primary:disabled {
@@ -1753,8 +1755,8 @@
   }
 
   .btn-secondary:hover {
-    border-color: #16a34a;
-    color: #16a34a;
+    border-color: #3b82f6;
+    color: #3b82f6;
   }
 
   .btn-outline {
@@ -1764,12 +1766,12 @@
   }
 
   .btn-outline:hover {
-    border-color: #16a34a;
-    color: #16a34a;
+    border-color: #3b82f6;
+    color: #3b82f6;
   }
 
   .filter-badge {
-    background: #16a34a;
+    background: #3b82f6;
     color: white;
     font-size: 0.65rem;
     padding: 0.1rem 0.4rem;
@@ -1817,7 +1819,7 @@
   }
 
   .dropdown-trigger:hover {
-    border-color: #16a34a;
+    border-color: #3b82f6;
   }
 
   .dropdown-chevron {
@@ -1862,13 +1864,13 @@
   }
 
   .dropdown-item.active {
-    background: rgba(22, 163, 74, 0.1);
-    color: #16a34a;
+    background: rgba(59, 130, 246, 0.1);
+    color: #3b82f6;
   }
 
   .dropdown-check {
     margin-left: auto;
-    color: #16a34a;
+    color: #3b82f6;
   }
 
   .dropdown-checkbox {
@@ -1988,13 +1990,13 @@
   }
 
   .status-btn:hover {
-    border-color: #16a34a;
-    color: #16a34a;
+    border-color: #3b82f6;
+    color: #3b82f6;
   }
 
   .status-btn.active {
-    background: #16a34a;
-    border-color: #16a34a;
+    background: #3b82f6;
+    border-color: #3b82f6;
     color: white;
   }
 
@@ -2011,7 +2013,7 @@
     -webkit-appearance: none;
     width: 16px;
     height: 16px;
-    background: #16a34a;
+    background: #3b82f6;
     border-radius: 50%;
     cursor: pointer;
     box-shadow: 0 1px 4px rgba(0, 0, 0, 0.15);
@@ -2043,12 +2045,12 @@
     align-items: center;
     gap: 0.25rem;
     padding: 0.25rem 0.5rem;
-    background: rgba(22, 163, 74, 0.1);
-    border: 1px solid rgba(22, 163, 74, 0.2);
+    background: rgba(59, 130, 246, 0.1);
+    border: 1px solid rgba(59, 130, 246, 0.2);
     border-radius: 999px;
     font-size: 0.7rem;
     font-weight: 600;
-    color: #16a34a;
+    color: #3b82f6;
   }
 
   .filter-tag button {
@@ -2059,7 +2061,7 @@
     align-items: center;
     justify-content: center;
     padding: 0;
-    color: #16a34a;
+    color: #3b82f6;
     opacity: 0.7;
   }
 
@@ -2123,7 +2125,7 @@
   .summary-icon.teal { background: rgba(20, 184, 166, 0.1); color: #14b8a6; }
   .summary-icon.amber { background: rgba(245, 158, 11, 0.1); color: #f59e0b; }
   .summary-icon.red { background: rgba(239, 68, 68, 0.1); color: #ef4444; }
-  .summary-icon.purple { background: rgba(139, 92, 246, 0.1); color: #8b5cf6; }
+  .summary-icon.purple { background: rgba(99, 102, 241, 0.1); color: #6366f1; }
 
   .summary-info {
     display: flex;
@@ -2592,8 +2594,8 @@
     font-size: 0.7rem;
     font-weight: 700;
     padding: 0.2rem 0.5rem;
-    background: rgba(22, 163, 74, 0.1);
-    color: #16a34a;
+    background: rgba(59, 130, 246, 0.1);
+    color: #3b82f6;
     border-radius: 999px;
     display: inline-block;
   }
@@ -2697,7 +2699,7 @@
 
   .mini-bar {
     height: 100%;
-    background: linear-gradient(90deg, #16a34a, #22c55e);
+    background: linear-gradient(90deg, #3b82f6, #60a5fa);
     border-radius: 3px;
     transition: width 0.6s ease;
   }
@@ -2740,8 +2742,8 @@
     width: 28px;
     height: 28px;
     border-radius: 50%;
-    background: rgba(22, 163, 74, 0.1);
-    color: #16a34a;
+    background: rgba(59, 130, 246, 0.1);
+    color: #3b82f6;
     display: flex;
     align-items: center;
     justify-content: center;

@@ -4,75 +4,37 @@
 --   psql $DATABASE_URL -f prisma/migrations/manual_extras.sql
 --
 -- Contains only things Prisma cannot express:
---   • Tables with non-standard constraints (face_similarity, face_verification_logs)
+--   • PostgreSQL extensions
+--   • CHECK constraints with conditions
 --   • PostgreSQL functions and triggers
 --
--- face_descriptors is NOT here — it's in schema.prisma and handled by Prisma.
+-- The following are now handled by Prisma and REMOVED from here:
+--   • face_similarity table
+--   • face_verification_logs table
+--   • password_resets table
+--   • All indexes (Prisma handles these via @@index)
 
 -- ─── Extensions ───────────────────────────────────────────────────────────────
 
 CREATE EXTENSION IF NOT EXISTS "pgcrypto"; -- for gen_random_uuid() on older PG
 
--- ─── Face similarity (academic integrity) ─────────────────────────────────────
--- Stores pairwise answer-pattern similarity between students in an exam.
--- Used by the invigilator dashboard to flag potential collusion.
+-- ─── CHECK constraint for face_similarity (enforces a < b) ────────────────────
+-- This cannot be expressed in Prisma, so we apply it manually after migration.
+-- The table itself is created by Prisma.
 
-CREATE TABLE IF NOT EXISTS password_resets (
-  token       TEXT        PRIMARY KEY,
-  user_id     UUID        NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-  expires_at  TIMESTAMPTZ NOT NULL,
-  used_at     TIMESTAMPTZ
-);
-
-CREATE INDEX IF NOT EXISTS idx_password_resets_user    ON password_resets(user_id);
-CREATE INDEX IF NOT EXISTS idx_password_resets_expires ON password_resets(expires_at);
-
-CREATE TABLE IF NOT EXISTS face_similarity (
-  id                   UUID         PRIMARY KEY DEFAULT gen_random_uuid(),
-  exam_id              UUID         NOT NULL REFERENCES exams(id)  ON DELETE CASCADE,
-  student_a_id         UUID         NOT NULL REFERENCES users(id),
-  student_b_id         UUID         NOT NULL REFERENCES users(id),
-  similarity_score     NUMERIC(5,3) NOT NULL,
-  shared_answers       SMALLINT     NOT NULL DEFAULT 0,
-  shared_wrong_answers SMALLINT     NOT NULL DEFAULT 0,
-  total_questions      SMALLINT     NOT NULL DEFAULT 0,
-  risk_level           TEXT         NOT NULL CHECK (risk_level IN ('low','medium','high','critical')),
-  generated_at         TIMESTAMPTZ  NOT NULL DEFAULT now(),
-
-  -- always store pairs in a canonical order (a < b) to avoid duplicates
-  CONSTRAINT student_order CHECK (student_a_id < student_b_id),
-  UNIQUE (exam_id, student_a_id, student_b_id)
-);
-
-CREATE INDEX IF NOT EXISTS idx_face_similarity_exam     ON face_similarity(exam_id);
-CREATE INDEX IF NOT EXISTS idx_face_similarity_risk     ON face_similarity(exam_id, risk_level);
-CREATE INDEX IF NOT EXISTS idx_face_similarity_score    ON face_similarity(exam_id, similarity_score DESC);
-CREATE INDEX IF NOT EXISTS idx_face_similarity_students ON face_similarity(exam_id, student_a_id, student_b_id);
-
--- ─── Face verification logs ───────────────────────────────────────────────────
--- Audit trail of every verification attempt (pass or fail).
--- Useful for support investigations and replay attacks.
-
-CREATE TABLE IF NOT EXISTS face_verification_logs (
-  id               UUID         PRIMARY KEY DEFAULT gen_random_uuid(),
-  student_id       UUID         NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-  exam_id          UUID         REFERENCES exams(id) ON DELETE SET NULL,  -- null = enrollment verify
-  similarity_score NUMERIC(5,2),
-  distance         NUMERIC(6,4), -- raw euclidean distance for debugging
-  success          BOOLEAN      NOT NULL,
-  ip_address       INET,
-  user_agent       TEXT,
-  verified_at      TIMESTAMPTZ  NOT NULL DEFAULT now()
-);
-
-CREATE INDEX IF NOT EXISTS idx_face_verify_logs_student ON face_verification_logs(student_id);
-CREATE INDEX IF NOT EXISTS idx_face_verify_logs_exam    ON face_verification_logs(exam_id);
-CREATE INDEX IF NOT EXISTS idx_face_verify_logs_time    ON face_verification_logs(verified_at DESC);
+DO $$ 
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint WHERE conname = 'student_order_check'
+  ) THEN
+    ALTER TABLE face_similarity ADD CONSTRAINT student_order_check CHECK (student_a_id < student_b_id);
+  END IF;
+END $$;
 
 -- ─── updated_at trigger function ──────────────────────────────────────────────
--- Generic trigger used by any table that needs auto-updated_at.
--- Prisma handles this for its own models via @updatedAt — this is for
--- the manual tables above if they ever get an updated_at column.
+-- Generic trigger used by tables that need auto-updated_at.
+-- Prisma handles this for its own models via @updatedAt, but this function
+-- is kept for any future manual tables.
 
 CREATE OR REPLACE FUNCTION fn_set_updated_at()
 RETURNS TRIGGER AS $$
@@ -99,36 +61,42 @@ DECLARE
   v_percentage  NUMERIC;
   v_grade       CHAR(2);
 BEGIN
+  -- Get session
   SELECT * INTO v_session FROM exam_sessions WHERE id = p_session_id;
   IF NOT FOUND THEN
     RAISE EXCEPTION 'exam session % not found', p_session_id;
   END IF;
 
+  -- Get exam
   SELECT * INTO v_exam FROM exams WHERE id = v_session.exam_id;
   IF NOT FOUND THEN
     RAISE EXCEPTION 'exam % not found', v_session.exam_id;
   END IF;
 
+  -- Calculate statistics
   SELECT COUNT(*)                        INTO v_total    FROM questions      WHERE exam_id   = v_exam.id;
   SELECT COUNT(*)                        INTO v_answered FROM student_answers WHERE session_id = p_session_id;
   SELECT COUNT(*)                        INTO v_correct  FROM student_answers WHERE session_id = p_session_id AND is_correct = true;
   SELECT COALESCE(SUM(marks_earned), 0)  INTO v_score    FROM student_answers WHERE session_id = p_session_id;
 
+  -- Calculate percentage
   v_percentage := CASE
     WHEN v_exam.total_marks > 0
     THEN ROUND((v_score / v_exam.total_marks) * 100, 2)
     ELSE 0
   END;
 
+  -- Determine grade based on Nigerian university system
   v_grade := CASE
     WHEN v_percentage >= 90 THEN 'A'
     WHEN v_percentage >= 80 THEN 'B'
     WHEN v_percentage >= 65 THEN 'C'
-    WHEN v_percentage >= 45 THEN 'D'
-    WHEN v_percentage >= 25 THEN 'E'
+    WHEN v_percentage >= 50 THEN 'D'
+    WHEN v_percentage >= 40 THEN 'E'
     ELSE                          'F'
   END;
 
+  -- Insert or update exam result
   INSERT INTO exam_results (
     session_id,        student_id,          exam_id,
     total_questions,   answered,            correct,
@@ -163,3 +131,87 @@ BEGIN
     submitted_at     = EXCLUDED.submitted_at;
 END;
 $$ LANGUAGE plpgsql;
+
+-- ─── compute_face_similarity() ────────────────────────────────────────────────
+-- Calculates answer pattern similarity between all pairs of students in an exam.
+-- Usage: SELECT compute_face_similarity('<exam-uuid>');
+-- Called from: src/lib/server/exam/similarity.ts
+
+CREATE OR REPLACE FUNCTION compute_face_similarity(p_exam_id UUID)
+RETURNS VOID AS $$
+DECLARE
+  v_students UUID[];
+  v_student_a UUID;
+  v_student_b UUID;
+  v_total_questions INT;
+BEGIN
+  -- Get all students who took this exam
+  SELECT ARRAY_AGG(student_id ORDER BY student_id)
+  INTO v_students
+  FROM exam_sessions
+  WHERE exam_id = p_exam_id AND status = 'submitted';
+
+  IF array_length(v_students, 1) < 2 THEN
+    RETURN; -- Not enough students for comparison
+  END IF;
+
+  -- Get total questions count
+  SELECT COUNT(*) INTO v_total_questions FROM questions WHERE exam_id = p_exam_id;
+
+  -- Clear existing similarity records for this exam
+  DELETE FROM face_similarity WHERE exam_id = p_exam_id;
+
+  -- Calculate similarity for each pair
+  FOR i IN 1..array_length(v_students, 1) LOOP
+    v_student_a := v_students[i];
+    
+    FOR j IN i+1..array_length(v_students, 1) LOOP
+      v_student_b := v_students[j];
+      
+      INSERT INTO face_similarity (
+        exam_id,
+        student_a_id,
+        student_b_id,
+        similarity_score,
+        shared_answers,
+        shared_wrong_answers,
+        total_questions,
+        risk_level
+      )
+      SELECT
+        p_exam_id,
+        v_student_a,
+        v_student_b,
+        shared_correct::NUMERIC / NULLIF(v_total_questions, 0),
+        shared_correct,
+        shared_wrong,
+        v_total_questions,
+        CASE
+          WHEN shared_correct::NUMERIC / v_total_questions > 0.8 THEN 'critical'
+          WHEN shared_correct::NUMERIC / v_total_questions > 0.6 THEN 'high'
+          WHEN shared_correct::NUMERIC / v_total_questions > 0.4 THEN 'medium'
+          ELSE 'low'
+        END
+      FROM (
+        SELECT
+          COUNT(*) FILTER (WHERE a.is_correct = true AND b.is_correct = true) as shared_correct,
+          COUNT(*) FILTER (WHERE a.is_correct = false AND b.is_correct = false) as shared_wrong
+        FROM student_answers a
+        JOIN student_answers b ON a.question_id = b.question_id
+        WHERE a.session_id IN (SELECT id FROM exam_sessions WHERE exam_id = p_exam_id AND student_id = v_student_a)
+          AND b.session_id IN (SELECT id FROM exam_sessions WHERE exam_id = p_exam_id AND student_id = v_student_b)
+          AND a.question_id = b.question_id
+      ) stats;
+      
+    END LOOP;
+  END LOOP;
+END;
+$$ LANGUAGE plpgsql;
+
+-- ─── Optional: Create trigger for face_similarity updated_at (if needed) ──────
+-- Uncomment if face_similarity gets an updated_at column in the future
+-- 
+-- CREATE TRIGGER trigger_face_similarity_updated_at
+--   BEFORE UPDATE ON face_similarity
+--   FOR EACH ROW
+--   EXECUTE FUNCTION fn_set_updated_at();

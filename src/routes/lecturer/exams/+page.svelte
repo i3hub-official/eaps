@@ -208,7 +208,10 @@
 <style>
   /* ── Tokens ──────────────────────────────────────────────────── */
   :root {
-    --green-soft: rgba(34,197,94,0.08);
+    --lc-soft: rgba(99, 102, 241, 0.08);
+    --lc-500: #6366f1;
+    --lc-600: #4f46e5;
+    --lc-700: #4338ca;
   }
 
   .page {
@@ -245,7 +248,7 @@
   .btn-primary {
     display: inline-flex; align-items: center; gap: 0.4rem;
     padding: 0.55rem 1.1rem;
-    background: #16a34a; color: white;
+    background: var(--lc-600); color: white;
     border: none; border-radius: 0.6rem;
     font-size: 0.82rem; font-weight: 700;
     text-decoration: none; cursor: pointer;
@@ -254,9 +257,9 @@
     white-space: nowrap;
   }
   .btn-primary:hover {
-    background: #15803d;
+    background: var(--lc-700);
     transform: translateY(-1px);
-    box-shadow: 0 4px 14px rgba(22,163,74,0.3);
+    box-shadow: 0 4px 14px rgba(79, 70, 229, 0.3);
   }
 
   /* ── Summary cards ───────────────────────────────────────────── */
@@ -279,8 +282,8 @@
     transition: border-color 0.15s, box-shadow 0.15s;
   }
   .summary-card:hover {
-    border-color: rgba(22,163,74,0.3);
-    box-shadow: 0 2px 12px rgba(22,163,74,0.06);
+    border-color: rgba(79, 70, 229, 0.3);
+    box-shadow: 0 2px 12px rgba(79, 70, 229, 0.06);
   }
 
   .summary-icon {
@@ -324,7 +327,7 @@
 
   .link-all {
     display: flex; align-items: center; gap: 0.2rem;
-    font-size: 0.75rem; font-weight: 600; color: #16a34a;
+    font-size: 0.75rem; font-weight: 600; color: var(--lc-600);
     text-decoration: none; transition: gap 0.15s;
   }
   .link-all:hover { gap: 0.35rem; }
@@ -347,20 +350,20 @@
     transition: border-color 0.15s, box-shadow 0.15s, transform 0.15s;
   }
   .exam-card:hover {
-    border-color: rgba(22,163,74,0.25);
+    border-color: rgba(79, 70, 229, 0.25);
     box-shadow: 0 4px 20px rgba(0,0,0,0.06);
     transform: translateY(-1px);
   }
 
   .exam-card.is-active {
-    border-color: rgba(22,163,74,0.35);
-    box-shadow: 0 0 0 3px rgba(22,163,74,0.06);
+    border-color: rgba(79, 70, 229, 0.35);
+    box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.06);
   }
 
   .card-accent {
     position: absolute; top: 0; left: 0; right: 0;
     height: 2px;
-    background: linear-gradient(90deg, #16a34a, #22c55e, #4ade80);
+    background: linear-gradient(90deg, var(--lc-600), var(--lc-500), #818cf8);
   }
 
   /* Card top */
@@ -370,8 +373,8 @@
 
   .course-badge {
     font-size: 0.7rem; font-weight: 800; padding: 0.2rem 0.6rem;
-    background: var(--green-soft);
-    color: #16a34a; border-radius: 999px;
+    background: var(--lc-soft);
+    color: var(--lc-600); border-radius: 999px;
     letter-spacing: 0.04em;
   }
 
@@ -426,7 +429,7 @@
     gap: 0.1rem; padding: 0.55rem 0.5rem;
   }
   .stat-val   { font-size: 0.95rem; font-weight: 800; color: var(--color-text); line-height: 1; }
-  .stat-val.good-score { color: #16a34a; }
+  .stat-val.good-score { color: var(--lc-600); }
   .stat-label { font-size: 0.6rem; font-weight: 600; color: var(--color-muted); text-transform: uppercase; letter-spacing: 0.04em; }
   .stat-divider { width: 1px; height: 28px; background: var(--color-border); flex-shrink: 0; }
 
@@ -446,14 +449,14 @@
   .action-btn {
     display: inline-flex; align-items: center; gap: 0.35rem;
     padding: 0.4rem 0.75rem;
-    background: #16a34a; color: white;
+    background: var(--lc-600); color: white;
     border: none; border-radius: 0.5rem;
     font-size: 0.75rem; font-weight: 700;
     text-decoration: none; cursor: pointer;
     font-family: inherit; transition: background 0.15s;
     white-space: nowrap;
   }
-  .action-btn:hover { background: #15803d; }
+  .action-btn:hover { background: var(--lc-700); }
 
   .action-btn.outline {
     background: transparent;
@@ -462,8 +465,8 @@
     margin-left: auto;
   }
   .action-btn.outline:hover {
-    border-color: #16a34a; color: #16a34a;
-    background: var(--green-soft);
+    border-color: var(--lc-600); color: var(--lc-600);
+    background: var(--lc-soft);
   }
 
   /* ── Empty state ─────────────────────────────────────────────── */
@@ -477,9 +480,9 @@
 
   .empty-icon {
     width: 64px; height: 64px; border-radius: 1rem;
-    background: var(--green-soft); border: 1px solid rgba(22,163,74,0.15);
+    background: var(--lc-soft); border: 1px solid rgba(79, 70, 229, 0.15);
     display: flex; align-items: center; justify-content: center;
-    color: #16a34a; margin-bottom: 0.25rem;
+    color: var(--lc-600); margin-bottom: 0.25rem;
   }
 
   .empty-title { font-size: 1rem; font-weight: 700; color: var(--color-text); margin: 0; }

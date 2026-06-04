@@ -631,7 +631,7 @@
     font-weight: 700;
     letter-spacing: 0.08em;
     text-transform: uppercase;
-    color: #22c55e;
+    color: #3b82f6;
     margin-bottom: 0.5rem;
   }
   
@@ -644,18 +644,18 @@
     width: 8px;
     height: 8px;
     border-radius: 50%;
-    background: #22c55e;
+    background: #3b82f6;
   }
   
   .dash-dot.pulse {
     animation: pulse 2s ease-in-out infinite;
-    box-shadow: 0 0 0 0 rgba(34, 197, 94, 0.5);
+    box-shadow: 0 0 0 0 rgba(59, 130, 246, 0.5);
   }
   
   @keyframes pulse {
-    0%   { box-shadow: 0 0 0 0 rgba(34, 197, 94, 0.5); }
-    70%  { box-shadow: 0 0 0 6px rgba(34, 197, 94, 0); }
-    100% { box-shadow: 0 0 0 0 rgba(34, 197, 94, 0); }
+    0%   { box-shadow: 0 0 0 0 rgba(59, 130, 246, 0.5); }
+    70%  { box-shadow: 0 0 0 6px rgba(59, 130, 246, 0); }
+    100% { box-shadow: 0 0 0 0 rgba(59, 130, 246, 0); }
   }
   
   .dash-title {
@@ -712,7 +712,7 @@
     width: 7px;
     height: 7px;
     border-radius: 50%;
-    background: #22c55e;
+    background: #3b82f6;
     flex-shrink: 0;
   }
   
@@ -751,20 +751,20 @@
   }
   
   .btn-outline:hover {
-    border-color: #22c55e;
-    color: #22c55e;
+    border-color: #3b82f6;
+    color: #3b82f6;
     transform: translateY(-1px);
   }
   
   .btn-primary {
-    background: linear-gradient(135deg, #22c55e, #16a34a);
+    background: linear-gradient(135deg, #3b82f6, #1d4ed8);
     border: none;
     color: white;
   }
   
   .btn-primary:hover {
     transform: translateY(-1px);
-    box-shadow: 0 4px 12px rgba(34, 197, 94, 0.3);
+    box-shadow: 0 4px 12px rgba(59, 130, 246, 0.3);
   }
   
   .btn-primary:disabled {
@@ -819,7 +819,7 @@
   }
   
   .kpi-blue .kpi-icon { color: #3b82f6; }
-  .kpi-green .kpi-icon { color: #22c55e; }
+  .kpi-green .kpi-icon { color: #3b82f6; }
   .kpi-violet .kpi-icon { color: #a78bfa; }
   .kpi-amber .kpi-icon { color: #f59e0b; }
   .kpi-slate .kpi-icon { color: #64748b; }
@@ -856,7 +856,7 @@
     color: var(--color-muted);
   }
   
-  .kpi-trend.up { color: #22c55e; }
+  .kpi-trend.up { color: #3b82f6; }
   .kpi-trend.down { color: #ef4444; }
   
   .kpi-live-badge {
@@ -907,8 +907,8 @@
     display: flex;
     align-items: center;
     justify-content: center;
-    background: rgba(34, 197, 94, 0.1);
-    color: #22c55e;
+    background: rgba(59, 130, 246, 0.1);
+    color: #3b82f6;
   }
   
   .stat-info {
@@ -937,8 +937,8 @@
     font-weight: 700;
     padding: 0.15rem 0.4rem;
     border-radius: 0.25rem;
-    background: rgba(34, 197, 94, 0.1);
-    color: #22c55e;
+    background: rgba(59, 130, 246, 0.1);
+    color: #3b82f6;
   }
   
   .stat-change.change-neutral {
@@ -1251,7 +1251,7 @@
   }
   
   .panel-refresh:hover {
-    color: #22c55e;
+    color: #3b82f6;
     transform: rotate(180deg);
   }
   
@@ -1261,8 +1261,8 @@
     gap: 0.4rem;
     font-size: 0.7rem;
     font-weight: 600;
-    color: #22c55e;
-    background: rgba(34, 197, 94, 0.1);
+    color: #3b82f6;
+    background: rgba(59, 130, 246, 0.1);
     padding: 0.25rem 0.6rem;
     border-radius: 999px;
   }
@@ -1279,7 +1279,7 @@
     gap: 0.25rem;
     font-size: 0.75rem;
     font-weight: 600;
-    color: #22c55e;
+    color: #3b82f6;
     text-decoration: none;
     transition: gap 0.15s;
   }
@@ -1482,7 +1482,7 @@
   }
   
   .exam-legend-dot.completed {
-    background: #22c55e;
+    background: #3b82f6;
   }
   
   .exam-legend-text {
@@ -1591,7 +1591,7 @@
   
   .exam-progress-bar {
     height: 100%;
-    background: #22c55e;
+    background: #3b82f6;
     transition: width 0.3s ease;
   }
   
@@ -1630,8 +1630,8 @@
   }
   
   .security-icon.green {
-    background: rgba(34, 197, 94, 0.1);
-    color: #22c55e;
+    background: rgba(59, 130, 246, 0.1);
+    color: #3b82f6;
   }
   
   .security-icon.amber {
@@ -1710,7 +1710,7 @@
   }
   
   .action-tile:hover {
-    border-color: #22c55e;
+    border-color: #3b82f6;
     background: var(--color-surface);
     transform: translateY(-2px);
   }
@@ -1724,7 +1724,7 @@
   
   .action-tile:hover .action-arrow {
     transform: translateX(2px);
-    color: #22c55e;
+    color: #3b82f6;
   }
   
   .action-icon {
@@ -1738,7 +1738,7 @@
   }
   
   .action-icon.blue   { background: rgba(59, 130, 246, 0.1); color: #3b82f6; }
-  .action-icon.green  { background: rgba(34, 197, 94, 0.1); color: #22c55e; }
+  .action-icon.green  { background: rgba(59, 130, 246, 0.1); color: #3b82f6; }
   .action-icon.violet { background: rgba(167, 139, 250, 0.1); color: #a78bfa; }
   .action-icon.amber  { background: rgba(245, 158, 11, 0.1); color: #f59e0b; }
   .action-icon.teal   { background: rgba(20, 184, 166, 0.1); color: #14b8a6; }

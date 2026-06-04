@@ -122,10 +122,10 @@
   .header-badge {
     display: inline-flex; align-items: center; gap: 0.4rem;
     padding: 0.35rem 0.75rem;
-    background: rgba(220,38,38,0.08);
-    border: 1px solid rgba(220,38,38,0.2);
+    background: rgba(59,130,246,0.08);
+    border: 1px solid rgba(59,130,246,0.2);
     border-radius: 999px;
-    font-size: 0.75rem; font-weight: 700; color: #dc2626;
+    font-size: 0.75rem; font-weight: 700; color: #3b82f6;
     flex-shrink: 0;
   }
 
@@ -211,7 +211,7 @@
 
   .sev-low      { background: rgba(22,163,74,0.1);   color: #16a34a; }
   .sev-medium   { background: rgba(245,158,11,0.1);  color: #d97706; }
-  .sev-high     { background: rgba(249,115,22,0.12); color: #ea580c; }
+  .sev-high     { background: rgba(59,130,246,0.12); color: #3b82f6; }
   .sev-critical { background: rgba(220,38,38,0.12);  color: #dc2626; }
 
   .status-open          { background: rgba(220,38,38,0.1);   color: #dc2626; }
@@ -225,5 +225,5 @@
   }
 
   /* ── Dark mode ───────────────────────────────────────── */
-  :global(.dark) .header-badge { background: rgba(220,38,38,0.12); }
+  :global(.dark) .header-badge { background: rgba(59,130,246,0.12); }
 </style>

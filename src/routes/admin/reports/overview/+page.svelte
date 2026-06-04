@@ -210,8 +210,8 @@
     flex-shrink: 0;
   }
   .metric-icon.users { background: rgba(59, 130, 246, 0.1); color: #3b82f6; }
-  .metric-icon.students { background: rgba(22, 163, 74, 0.1); color: #16a34a; }
-  .metric-icon.exams { background: rgba(139, 92, 246, 0.1); color: #8b5cf6; }
+  .metric-icon.students { background: rgba(59, 130, 246, 0.1); color: #3b82f6; }
+  .metric-icon.exams { background: rgba(59, 130, 246, 0.1); color: #3b82f6; }
   .metric-icon.active { background: rgba(245, 158, 11, 0.1); color: #f59e0b; }
   .metric-icon.score { background: rgba(16, 185, 129, 0.1); color: #10b981; }
   .metric-icon.pass { background: rgba(6, 182, 212, 0.1); color: #06b6d4; }
@@ -258,9 +258,9 @@
   .dist-item { display: flex; align-items: center; gap: 0.75rem; }
   .dist-label { display: flex; align-items: center; gap: 0.375rem; font-size: 0.8rem; color: var(--color-text); width: 110px; flex-shrink: 0; }
   .dist-bar { flex: 1; height: 8px; background: var(--color-bg); border-radius: 4px; overflow: hidden; }
-  .dist-fill { height: 100%; background: #16a34a; border-radius: 4px; }
+  .dist-fill { height: 100%; background: #3b82f6; border-radius: 4px; }
   .dist-fill.lecturers { background: #3b82f6; }
-  .dist-fill.invigilators { background: #8b5cf6; }
+  .dist-fill.invigilators { background: #f97316; }
   .dist-fill.admins { background: #f59e0b; }
   .dist-value { font-size: 0.8rem; font-weight: 600; color: var(--color-text); width: 36px; text-align: right; }
 

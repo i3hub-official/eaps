@@ -95,7 +95,6 @@
     </table>
   </div>
 </div>
-
 <style>
   .page { max-width: 1300px; padding: 1.75rem 2rem 4rem; margin: 0 auto; }
 
@@ -118,8 +117,8 @@
     transition: border-color 0.15s, box-shadow 0.15s;
   }
   .search-box:focus-within {
-    border-color: #16a34a;
-    box-shadow: 0 0 0 3px rgba(22,163,74,0.1);
+    border-color: #3b82f6;
+    box-shadow: 0 0 0 3px rgba(59,130,246,0.1);
   }
   .search-box :global(svg) { color: var(--color-muted); flex-shrink: 0; }
   .search-box input {
@@ -150,13 +149,13 @@
     color: var(--color-text); vertical-align: middle;
   }
   .data-table tr:last-child td { border-bottom: none; }
-  .data-table tbody tr:hover td { background: rgba(22,163,74,0.03); }
+  .data-table tbody tr:hover td { background: rgba(59,130,246,0.03); }
 
   .q-cell { display: flex; align-items: flex-start; gap: 0.6rem; max-width: 380px; }
   .q-icon {
     width: 28px; height: 28px; flex-shrink: 0;
     border-radius: 0.45rem;
-    background: rgba(22,163,74,0.1); color: #16a34a;
+    background: rgba(59,130,246,0.1); color: #3b82f6;
     display: flex; align-items: center; justify-content: center;
     margin-top: 1px;
   }
@@ -166,7 +165,7 @@
     -webkit-box-orient: vertical; overflow: hidden;
   }
 
-  .mono { font-size: 0.78rem; font-weight: 700; color: #16a34a; font-family: monospace; }
+  .mono { font-size: 0.78rem; font-weight: 700; color: #3b82f6; font-family: monospace; }
 
   .badge {
     display: inline-block; padding: 0.2rem 0.55rem;
@@ -186,7 +185,7 @@
   }
   .bar-fill { height: 100%; border-radius: 999px; min-width: 3px; }
   .bar-fill.green  { background: #16a34a; }
-  .bar-fill.purple { background: #8b5cf6; }
+  .bar-fill.blue   { background: #3b82f6; }
   .bar-row span { font-size: 0.78rem; font-weight: 600; min-width: 38px; }
 
   .empty {

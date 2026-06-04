@@ -886,7 +886,7 @@
     width: 48px;
     height: 48px;
     border-radius: 0.75rem;
-    background: rgba(22, 163, 74, 0.1);
+    background: rgba(59, 130, 246, 0.1);
     display: flex;
     align-items: center;
     justify-content: center;
@@ -913,8 +913,8 @@
     align-items: center;
     gap: 0.5rem;
     padding: 0.5rem 1rem;
-    background: #16a34a;
-    border: 1px solid #16a34a;
+    background: #3b82f6;
+    border: 1px solid #3b82f6;
     border-radius: 0.5rem;
     font-size: 0.8rem;
     font-weight: 600;
@@ -923,8 +923,8 @@
     transition: all 0.15s;
   }
   .btn-primary:hover {
-    background: #15803d;
-    border-color: #15803d;
+    background: #1d4ed8;
+    border-color: #1d4ed8;
   }
   .btn-outline {
     display: inline-flex;
@@ -941,8 +941,8 @@
     transition: all 0.15s;
   }
   .btn-outline:hover {
-    border-color: var(--color-primary);
-    color: var(--color-primary);
+    border-color: #3b82f6;
+    color: #3b82f6;
   }
   .btn-ghost {
     display: inline-flex;
@@ -1076,7 +1076,7 @@
   .field input:focus,
   .field select:focus {
     outline: none;
-    border-color: #16a34a;
+    border-color: #3b82f6;
   }
   .form-footer {
     display: flex;
@@ -1107,7 +1107,7 @@
     transition: border-color 0.15s;
   }
   .dropdown-trigger:hover {
-    border-color: var(--color-primary);
+    border-color: #3b82f6;
   }
   .dropdown-menu {
     position: absolute;
@@ -1165,7 +1165,7 @@
   }
   .item-code {
     font-weight: 700;
-    color: #16a34a;
+    color: #3b82f6;
     min-width: 50px;
   }
   .item-name {
@@ -1206,11 +1206,11 @@
   }
   .tab:hover {
     color: var(--color-text);
-    border-color: var(--color-primary);
+    border-color: #3b82f6;
   }
   .tab.active {
-    background: #16a34a;
-    border-color: #16a34a;
+    background: #3b82f6;
+    border-color: #3b82f6;
     color: white;
   }
   .tab-count {
@@ -1243,7 +1243,7 @@
   }
   .search:focus {
     outline: none;
-    border-color: #16a34a;
+    border-color: #3b82f6;
   }
   .search-clear {
     position: absolute;
@@ -1459,16 +1459,16 @@
     transition: all 0.15s;
   }
   .pag-btn:hover:not(:disabled) {
-    border-color: var(--color-primary);
-    color: var(--color-primary);
+    border-color: #3b82f6;
+    color: #3b82f6;
   }
   .pag-btn:disabled {
     opacity: 0.4;
     cursor: not-allowed;
   }
   .pag-btn.current {
-    background: #16a34a;
-    border-color: #16a34a;
+    background: #3b82f6;
+    border-color: #3b82f6;
     color: white;
   }
   .pag-ellipsis {
@@ -1573,7 +1573,7 @@
     width: 40px;
     height: 40px;
     border: 3px solid var(--color-border);
-    border-top-color: #16a34a;
+    border-top-color: #3b82f6;
     border-radius: 50%;
     animation: spin 0.8s linear infinite;
   }
@@ -1707,7 +1707,7 @@
     width: 8px;
     height: 8px;
     border-radius: 50%;
-    background: #16a34a;
+    background: #3b82f6;
   }
   .timeline-item:not(:last-child)::after {
     content: '';

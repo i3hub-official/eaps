@@ -408,7 +408,6 @@
     </div>
   </div>
 {/if}
-
 <style>
   .ak-page { display: flex; flex-direction: column; gap: 1.5rem; }
 
@@ -417,7 +416,7 @@
   .ak-header-left { display: flex; align-items: center; gap: .875rem; }
   .ak-header-icon {
     width: 44px; height: 44px; border-radius: .75rem;
-    background: linear-gradient(135deg, #7c3aed, #5b21b6);
+    background: linear-gradient(135deg, #3b82f6, #1d4ed8);
     display: flex; align-items: center; justify-content: center; color: white; flex-shrink: 0;
   }
   .ak-title { font-size: 1.25rem; font-weight: 800; color: var(--color-text); }
@@ -426,11 +425,11 @@
   /* Buttons */
   .btn-primary {
     display: flex; align-items: center; gap: .5rem;
-    padding: .55rem 1.1rem; background: #16a34a; color: white;
+    padding: .55rem 1.1rem; background: #3b82f6; color: white;
     border: none; border-radius: .5rem; font-size: .82rem; font-weight: 600;
     cursor: pointer; font-family: inherit; transition: background .15s;
   }
-  .btn-primary:hover { background: #15803d; }
+  .btn-primary:hover { background: #1d4ed8; }
   .btn-primary:disabled { opacity: .5; cursor: not-allowed; }
   .btn-ghost {
     display: flex; align-items: center; gap: .5rem;
@@ -452,7 +451,7 @@
     width: 38px; height: 38px; border-radius: .625rem;
     display: flex; align-items: center; justify-content: center; flex-shrink: 0;
   }
-  .stat-total  { background: rgba(99,102,241,.12); color: #6366f1; }
+  .stat-total  { background: rgba(59,130,246,.12); color: #3b82f6; }
   .stat-active { background: rgba(22,163,74,.12);  color: #16a34a; }
   .stat-revoked{ background: rgba(220,38,38,.12);  color: #dc2626; }
   .stat-expired{ background: rgba(234,179,8,.12);  color: #ca8a04; }
@@ -574,7 +573,7 @@
     font-size: .82rem; color: var(--color-text); font-family: inherit; outline: none;
     transition: border-color .15s;
   }
-  input:focus { border-color: #16a34a; }
+  input:focus { border-color: #3b82f6; }
 
   /* Scopes grid */
   .scopes-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: .75rem; }
@@ -586,10 +585,10 @@
     border: 1px solid var(--color-border); background: var(--color-bg);
     cursor: pointer; transition: border-color .15s;
   }
-  .scope-check:has(input:checked) { border-color: #16a34a; background: rgba(22,163,74,.05); }
+  .scope-check:has(input:checked) { border-color: #3b82f6; background: rgba(59,130,246,.05); }
   .scope-check-admin { border-color: rgba(220,38,38,.3); }
   .scope-check-admin:has(input:checked) { border-color: #dc2626; background: rgba(220,38,38,.05); }
-  .scope-check input { margin-top: .15rem; flex-shrink: 0; accent-color: #16a34a; }
+  .scope-check input { margin-top: .15rem; flex-shrink: 0; accent-color: #3b82f6; }
   .scope-check-content { display: flex; flex-direction: column; }
   .scope-check-label { font-size: .78rem; font-weight: 600; color: var(--color-text); }
   .scope-check-desc { font-size: .68rem; color: var(--color-muted); line-height: 1.35; }
@@ -599,13 +598,13 @@
 
   /* Raw key modal */
   .raw-key-modal { display: flex; flex-direction: column; align-items: center; gap: 1rem; padding: 2.5rem 2rem; }
-  .rk-icon { color: #16a34a; }
+  .rk-icon { color: #3b82f6; }
   .rk-title { font-size: 1.1rem; font-weight: 800; }
   .rk-warning { display: flex; align-items: center; gap: .5rem; font-size: .8rem; color: #ca8a04; background: rgba(234,179,8,.1); border: 1px solid rgba(234,179,8,.3); border-radius: .5rem; padding: .625rem .875rem; text-align: center; }
   .rk-key-wrap { width: 100%; background: var(--color-bg); border: 2px solid var(--color-border); border-radius: .625rem; padding: 1rem; display: flex; flex-direction: column; gap: .75rem; }
   .rk-key { font-family: monospace; font-size: .72rem; word-break: break-all; color: var(--color-text); line-height: 1.6; }
   .rk-copy-btn { display: flex; align-items: center; justify-content: center; gap: .375rem; padding: .5rem; background: var(--color-surface); border: 1px solid var(--color-border); border-radius: .375rem; font-size: .78rem; font-weight: 600; cursor: pointer; font-family: inherit; color: var(--color-text); transition: all .15s; align-self: flex-end; }
-  .rk-copy-btn:hover { background: var(--color-surface-hover); border-color: #16a34a; }
+  .rk-copy-btn:hover { background: var(--color-surface-hover); border-color: #3b82f6; }
   .rk-done { width: 100%; justify-content: center; padding: .75rem; }
 
   .spin { display: inline-block; animation: spin .7s linear infinite; }

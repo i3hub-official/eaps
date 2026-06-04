@@ -148,7 +148,6 @@
   </div>
 
 </div>
-
 <style>
   .page {
     max-width: 1100px;
@@ -184,6 +183,7 @@
   .stat-icon.red    { background: rgba(220,38,38,0.1);   color: #dc2626; }
   .stat-icon.orange { background: rgba(249,115,22,0.1);  color: #ea580c; }
   .stat-icon.amber  { background: rgba(245,158,11,0.1);  color: #d97706; }
+  .stat-icon.blue   { background: rgba(59,130,246,0.1);  color: #3b82f6; }
   .stat-icon.green  { background: rgba(22,163,74,0.1);   color: #16a34a; }
 
   .stat-body { display: flex; flex-direction: column; gap: 0.1rem; }
@@ -213,7 +213,7 @@
   .count-badge {
     font-size: 0.68rem; font-weight: 700;
     padding: 0.15rem 0.45rem;
-    background: rgba(249,115,22,0.1); color: #ea580c;
+    background: rgba(59,130,246,0.1); color: #3b82f6;
     border-radius: 999px;
   }
 
@@ -269,7 +269,7 @@
     font-size: 0.72rem; font-weight: 700;
   }
   .flags-medium   { background: rgba(245,158,11,0.1);  color: #d97706; }
-  .flags-high     { background: rgba(249,115,22,0.12); color: #ea580c; }
+  .flags-high     { background: rgba(59,130,246,0.12); color: #3b82f6; }
   .flags-critical { background: rgba(220,38,38,0.12);  color: #dc2626; }
 
   /* Status / generic badge */
@@ -279,7 +279,7 @@
     text-transform: capitalize; white-space: nowrap;
   }
   .status-force     { background: rgba(220,38,38,0.12);  color: #dc2626; }
-  .status-flagged   { background: rgba(249,115,22,0.12); color: #ea580c; }
+  .status-flagged   { background: rgba(59,130,246,0.12); color: #3b82f6; }
   .status-submitted { background: rgba(22,163,74,0.1);   color: #16a34a; }
 
   .muted-cell { color: var(--color-muted); font-size: 0.78rem; }
@@ -297,5 +297,6 @@
   :global(.dark) .stat-icon.red    { background: rgba(220,38,38,0.15); }
   :global(.dark) .stat-icon.orange { background: rgba(249,115,22,0.15); }
   :global(.dark) .stat-icon.amber  { background: rgba(245,158,11,0.15); }
+  :global(.dark) .stat-icon.blue   { background: rgba(59,130,246,0.15); }
   :global(.dark) .stat-icon.green  { background: rgba(22,163,74,0.15); }
 </style>

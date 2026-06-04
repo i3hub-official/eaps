@@ -164,7 +164,6 @@
 
   </div>
 </div>
-
 <style>
   .page {
     max-width: 1100px;
@@ -339,4 +338,4 @@
   :global(.dark) .stat-icon.amber { background: rgba(245,158,11,0.15); }
   :global(.dark) .stat-icon.blue  { background: rgba(59,130,246,0.15); }
   :global(.dark) .stat-icon.red   { background: rgba(239,68,68,0.15); }
-</style> 
+</style>

@@ -291,7 +291,7 @@
 <style>
   .results-page { display: flex; flex-direction: column; gap: 1.25rem; }
   .breadcrumb { font-size: .72rem; color: var(--color-muted); margin-bottom: .25rem; }
-  .breadcrumb a { color: #a855f7; text-decoration: none; }
+  .breadcrumb a { color: var(--indigo-600); text-decoration: none; }
   .breadcrumb a:hover { text-decoration: underline; }
   h1 { font-size: 1.2rem; font-weight: 800; color: var(--color-text); }
   p  { font-size: .8rem; color: var(--color-muted); margin-top: .2rem; }
@@ -362,7 +362,7 @@
   .status-chip { font-size: .68rem; font-weight: 700; padding: .2rem .5rem; border-radius: 2rem; white-space: nowrap; }
   .status-pass  { background: rgba(22,163,74,.1);  color: #16a34a; }
   .status-fail  { background: rgba(220,38,38,.1);  color: #dc2626; }
-  .status-force { background: rgba(245,158,11,.1); color: #ca8a04; }
+  .status-force { background: var(--indigo-soft); color: var(--indigo-600); }
 
   .td-topic { font-size: .75rem; max-width: 120px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .td-weak   { color: #dc2626; }

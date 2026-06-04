@@ -218,12 +218,12 @@
   .stat-icon {
     width: 42px;
     height: 42px;
-    background: rgba(22, 163, 74, 0.1);
+    background: rgba(59, 130, 246, 0.1);
     border-radius: 0.5rem;
     display: flex;
     align-items: center;
     justify-content: center;
-    color: #16a34a;
+    color: #3b82f6;
     flex-shrink: 0;
   }
 
@@ -307,11 +307,11 @@
     width: 32px;
     height: 32px;
     border-radius: 0.5rem;
-    background: rgba(99, 102, 241, 0.1);
+    background: rgba(59, 130, 246, 0.1);
     display: flex;
     align-items: center;
     justify-content: center;
-    color: #6366f1;
+    color: #3b82f6;
     flex-shrink: 0;
   }
 
@@ -372,7 +372,7 @@
 
   .pass-fill {
     height: 100%;
-    background: #16a34a;
+    background: #3b82f6;
     border-radius: 3px;
     transition: width 0.4s ease;
   }

@@ -91,13 +91,13 @@
   .data-table tr:hover td { background: var(--color-surface-hover); }
 
   .course-cell { display: flex; align-items: center; gap: 0.75rem; }
-  .course-icon { width: 32px; height: 32px; border-radius: 0.5rem; background: rgba(22, 163, 74, 0.1); color: #16a34a; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+  .course-icon { width: 32px; height: 32px; border-radius: 0.5rem; background: rgba(59, 130, 246, 0.1); color: #3b82f6; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
   .course-code { font-weight: 700; color: var(--color-text); display: block; }
   .course-title { font-size: 0.75rem; color: var(--color-muted); }
 
   .util-bar { display: flex; align-items: center; gap: 0.5rem; }
   .util-fill { height: 8px; border-radius: 4px; min-width: 20px; transition: width 0.5s ease; }
-  .util-fill.high { background: #16a34a; }
+  .util-fill.high { background: #3b82f6; }
   .util-fill.medium { background: #f59e0b; }
   .util-fill.low { background: #ef4444; }
   .util-bar span { font-size: 0.8rem; font-weight: 600; color: var(--color-text); min-width: 40px; }

@@ -17,7 +17,9 @@
     FileCheck,
     HelpCircle,
     ChevronRight,
-    RotateCcw
+    RotateCcw,
+    ShieldCheck,
+    UserPlus
   } from 'lucide-svelte';
 
   let { data, form }: { data: PageData; form: ActionData } = $props();
@@ -28,15 +30,17 @@
   let progress = $state({ current: 0, total: 0, step: '', detail: '' });
   let logs = $state<string[]>([]);
   let showLogs = $state(false);
+  let eventSource: EventSource | null = $state(null);
 
   const seedSteps = [
+    { key: 'levels', label: 'Levels', icon: GraduationCap, total: 8 },
     { key: 'colleges', label: 'Colleges', icon: Building2, total: 12 },
-    { key: 'departments', label: 'Departments', icon: GraduationCap, total: 56 },
-    { key: 'users', label: 'Users & Staff', icon: Users, total: 10 },
-    { key: 'students', label: 'Students', icon: Users, total: 66 },
-    { key: 'courses', label: 'Courses', icon: BookOpen, total: 32 },
-    { key: 'registrations', label: 'Registrations', icon: FileCheck, total: 1 },
-    { key: 'exam', label: 'Exam Setup', icon: HelpCircle, total: 1 },
+    { key: 'departments', label: 'Departments', icon: Building2, total: 68 },
+    { key: 'users', label: 'Staff', icon: Users, total: 10 },
+    { key: 'students', label: 'Students', icon: Users, total: 32 },
+    { key: 'courses', label: 'Courses', icon: BookOpen, total: 40 },
+    { key: 'registrations', label: 'Registrations', icon: FileCheck, total: 0 },
+    { key: 'exam', label: 'Exam Setup', icon: ShieldCheck, total: 1 },
     { key: 'questions', label: 'Questions', icon: HelpCircle, total: 12 },
   ];
 
@@ -48,6 +52,39 @@
   function resetProgress() {
     progress = { current: 0, total: seedSteps.length, step: '', detail: '' };
     logs = [];
+    showLogs = true;
+  }
+
+  function connectToStream() {
+    if (eventSource) {
+      eventSource.close();
+    }
+    
+    eventSource = new EventSource('/api/seed-stream');
+    
+    eventSource.onmessage = (event) => {
+      const data = JSON.parse(event.data);
+      if (data.step) {
+        progress.current = data.step;
+        progress.step = data.message;
+        if (data.detail) progress.detail = data.detail;
+        addLog(data.message);
+      }
+      if (data.complete) {
+        eventSource?.close();
+        seeding = false;
+      }
+      if (data.error) {
+        addLog(`❌ Error: ${data.error}`);
+        eventSource?.close();
+        seeding = false;
+      }
+    };
+    
+    eventSource.onerror = () => {
+      eventSource?.close();
+      seeding = false;
+    };
   }
 </script>
 
@@ -133,11 +170,12 @@
         
         {#if showLogs}
           <div class="log-panel" transition:fade>
-            {#each logs as log}
-              <div class="log-line">{log}</div>
-            {/each}
             {#if logs.length === 0}
-              <div class="log-line muted">Waiting for server…</div>
+              <div class="log-line muted">Initializing seed process…</div>
+            {:else}
+              {#each logs as log}
+                <div class="log-line">{log}</div>
+              {/each}
             {/if}
           </div>
         {/if}
@@ -170,35 +208,41 @@
       <form method="POST" action="?/seed" use:enhance={() => {
         resetProgress();
         seeding = true;
-        addLog('Starting seed process…');
+        addLog('🌱 Starting seed process…');
         
-        // Simulate progress updates (server doesn't stream, so we estimate)
-        const interval = setInterval(() => {
-          if (!seeding) { clearInterval(interval); return; }
-          const fakeSteps = [
-            { step: 'Creating colleges…', detail: 'CAERSE, CASAP, CAFST…', at: 1 },
-            { step: 'Creating departments…', detail: 'ABM, AEC, AERS…', at: 2 },
-            { step: 'Creating admin & staff…', detail: '1 admin, 6 lecturers, 3 invigilators', at: 3 },
-            { step: 'Creating students…', detail: '~66 students across departments', at: 4 },
-            { step: 'Creating courses…', detail: 'CSC, MTH, PHY, EEE…', at: 5 },
-            { step: 'Registering students…', detail: 'Matching students to courses', at: 6 },
-            { step: 'Setting up exam…', detail: 'CSC301 exam configuration', at: 7 },
-            { step: 'Creating questions…', detail: 'MCQ + Fill-in-the-blank', at: 8 },
-          ];
-          const next = fakeSteps.find(s => s.at > progress.current);
-          if (next) {
-            progress.current = next.at;
-            progress.step = next.step;
-            progress.detail = next.detail;
-            addLog(next.step);
-          }
-        }, 400);
-
+        // Simulate progress updates with realistic timing
+        let currentStep = 0;
+        const totalSteps = seedSteps.length;
+        
+        const simulateStep = () => {
+          if (currentStep >= totalSteps || !seeding) return;
+          
+          const step = seedSteps[currentStep];
+          progress.current = currentStep;
+          progress.step = `Creating ${step.label.toLowerCase()}…`;
+          progress.detail = step.total > 0 ? `${step.total} items` : '';
+          addLog(`📦 ${step.label}: Creating...`);
+          
+          currentStep++;
+          setTimeout(simulateStep, 800);
+        };
+        
+        // Start simulation after a short delay
+        setTimeout(simulateStep, 200);
+        
         return async ({ update }) => { 
-          clearInterval(interval);
-          progress.current = progress.total;
-          progress.step = 'Finalizing…';
-          addLog('Seed complete!');
+          // Complete any remaining steps
+          while (currentStep < totalSteps) {
+            const step = seedSteps[currentStep];
+            progress.current = currentStep;
+            progress.step = `Creating ${step.label.toLowerCase()}…`;
+            progress.detail = step.total > 0 ? `${step.total} items` : '';
+            addLog(`📦 ${step.label}: Creating...`);
+            currentStep++;
+          }
+          progress.current = totalSteps;
+          progress.step = 'Finalizing seed…';
+          addLog('✨ Seed complete!');
           await update(); 
           seeding = false; 
         };
@@ -216,13 +260,13 @@
 
       {#if !data.isFirstRun}
         <form method="POST" action="?/reset" use:enhance={() => {
-          if (!confirm('Delete ALL data? This cannot be undone.')) return () => {};
+          if (!confirm('⚠️ WARNING: This will delete ALL data from the database! This action cannot be undone.\n\nAre you absolutely sure you want to reset?')) return () => {};
           resetting = true;
-          addLog('Resetting all data…');
+          addLog('🗑️ Resetting all data…');
           return async ({ update }) => { 
             await update(); 
             resetting = false;
-            addLog('Reset complete.');
+            addLog('✅ Reset complete.');
           };
         }}>
           <button class="btn-danger" disabled={seeding || resetting}>
@@ -246,7 +290,11 @@
       </button>
     {/if}
 
-    <p class="warn">⚠️ Remove or protect this route before going to production.</p>
+    <!-- Warning message -->
+    <div class="warning-box">
+      <AlertCircle size={16} />
+      <span>⚠️ Important: Remove or protect this route before going to production.</span>
+    </div>
   </div>
 </div>
 
@@ -272,12 +320,12 @@
     border: 1px solid var(--color-border); 
     border-radius: 1.25rem; 
     padding: 2rem; 
-    max-width: 520px; 
+    max-width: 580px; 
     width: 100%; 
     display: flex; 
     flex-direction: column; 
     gap: 1.25rem; 
-    box-shadow: 0 1px 3px rgb(0 0 0 / 0.05);
+    box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1);
   }
 
   .header {
@@ -287,20 +335,21 @@
   }
 
   .icon-wrap {
-    width: 48px;
-    height: 48px;
-    border-radius: 12px;
-    background: var(--color-primary-subtle);
-    color: var(--color-primary);
+    width: 52px;
+    height: 52px;
+    border-radius: 14px;
+    background: rgba(59, 130, 246, 0.1);
+    color: #3b82f6;
     display: flex;
     align-items: center;
     justify-content: center;
   }
 
   h1 { 
-    font-size: 1.4rem; 
+    font-size: 1.5rem; 
     font-weight: 700; 
     margin: 0; 
+    color: var(--color-text);
   }
 
   .sub { 
@@ -330,17 +379,18 @@
   }
 
   .count-pill.has-data {
-    border-color: var(--color-focus);
-    background: #f0fdf4;
+    border-color: #3b82f6;
+    background: rgba(59, 130, 246, 0.05);
   }
 
   .count-pill.has-data .count-val {
-    color: var(--color-focus);
+    color: #3b82f6;
   }
 
   .count-val { 
     font-size: 1.25rem; 
     font-weight: 700; 
+    color: var(--color-text);
   }
 
   .count-key { 
@@ -386,7 +436,7 @@
 
   .progress-fill {
     height: 100%;
-    background: var(--color-focus);
+    background: #3b82f6;
     border-radius: 999px;
     transition: width 0.4s ease;
   }
@@ -397,7 +447,7 @@
     gap: 0.5rem;
     font-size: 0.8rem;
     font-weight: 600;
-    color: var(--color-focus);
+    color: #3b82f6;
   }
 
   .step-detail {
@@ -425,18 +475,18 @@
   }
 
   .step-item.done {
-    color: var(--color-focus);
+    color: #3b82f6;
   }
 
   .step-item.active {
-    background: #f0fdf4;
-    color: var(--color-focus);
+    background: rgba(59, 130, 246, 0.1);
+    color: #3b82f6;
     font-weight: 600;
   }
 
   .step-dot {
-    width: 22px;
-    height: 22px;
+    width: 24px;
+    height: 24px;
     border-radius: 50%;
     display: flex;
     align-items: center;
@@ -447,18 +497,18 @@
   }
 
   .step-item.done .step-dot {
-    background: var(--color-focus);
+    background: #3b82f6;
     color: white;
   }
 
   .step-item.active .step-dot {
-    background: var(--color-focus);
+    background: #3b82f6;
     color: white;
   }
 
   .step-name {
     text-align: center;
-    line-height: 1.2;
+    line-height: 1.3;
   }
 
   .step-count {
@@ -476,8 +526,13 @@
     background: none;
     border: none;
     cursor: pointer;
-    padding: 0;
+    padding: 0.25rem 0;
     font-weight: 500;
+    transition: color 0.15s;
+  }
+
+  .log-toggle:hover {
+    color: var(--color-text);
   }
 
   .log-toggle :global(.rotated) {
@@ -485,7 +540,7 @@
   }
 
   .log-panel {
-    max-height: 160px;
+    max-height: 200px;
     overflow-y: auto;
     background: #0f172a;
     border-radius: 0.5rem;
@@ -495,8 +550,23 @@
     line-height: 1.6;
   }
 
+  .log-panel::-webkit-scrollbar {
+    width: 4px;
+  }
+
+  .log-panel::-webkit-scrollbar-track {
+    background: #1e293b;
+    border-radius: 2px;
+  }
+
+  .log-panel::-webkit-scrollbar-thumb {
+    background: #475569;
+    border-radius: 2px;
+  }
+
   .log-line {
     color: #22c55e;
+    font-family: monospace;
   }
 
   .log-line.muted {
@@ -514,6 +584,7 @@
   .result p { 
     margin: 0.25rem 0; 
     padding-left: 1.5rem;
+    font-size: 0.8rem;
   }
 
   .result-header {
@@ -555,24 +626,25 @@
   .btn-danger {
     display: inline-flex;
     align-items: center;
-    gap: 0.4rem;
+    gap: 0.5rem;
     padding: 0.7rem 1.5rem; 
     border: none; 
     border-radius: 0.5rem; 
     font-weight: 600; 
     cursor: pointer; 
     font-size: 0.9rem;
-    transition: all 0.15s ease;
+    transition: all 0.2s ease;
   }
 
   .btn-primary { 
-    background: var(--color-primary); 
+    background: #3b82f6; 
     color: #fff; 
   }
 
   .btn-primary:hover:not(:disabled) {
-    background: var(--color-primary-hover);
+    background: #2563eb;
     transform: translateY(-1px);
+    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
   }
 
   .btn-danger { 
@@ -583,6 +655,7 @@
   .btn-danger:hover:not(:disabled) {
     background: #b91c1c;
     transform: translateY(-1px);
+    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
   }
 
   .btn-primary:disabled, 
@@ -590,6 +663,7 @@
     opacity: 0.6; 
     cursor: not-allowed; 
     transform: none;
+    box-shadow: none;
   }
 
   /* Refresh hint */
@@ -598,35 +672,52 @@
     align-items: center;
     gap: 0.4rem;
     font-size: 0.8rem;
-    color: var(--color-primary);
-    background: var(--color-primary-subtle);
+    color: #3b82f6;
+    background: rgba(59, 130, 246, 0.1);
     border: none;
     border-radius: 0.5rem;
-    padding: 0.4rem 0.875rem;
+    padding: 0.5rem 1rem;
     cursor: pointer;
     font-weight: 500;
     align-self: center;
-    transition: all 0.15s ease;
+    transition: all 0.2s ease;
   }
 
   .refresh-hint:hover {
-    background: #dbeafe;
+    background: rgba(59, 130, 246, 0.15);
+    transform: translateY(-1px);
   }
 
-  .warn { 
-    font-size: 0.78rem; 
-    color: #d97706; 
-    margin: 0; 
-    text-align: center;
+  /* Warning box */
+  .warning-box {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.75rem 1rem;
+    background: rgba(245, 158, 11, 0.1);
+    border: 1px solid rgba(245, 158, 11, 0.25);
+    border-radius: 0.5rem;
+    font-size: 0.75rem;
+    color: #f59e0b;
   }
 
   /* Responsive */
-  @media (max-width: 480px) {
+  @media (max-width: 640px) {
+    .page {
+      padding: 1rem;
+    }
+    .card {
+      padding: 1.25rem;
+    }
     .step-grid {
       grid-template-columns: repeat(2, 1fr);
     }
-    .card {
-      padding: 1.5rem;
+    .actions {
+      flex-direction: column;
+    }
+    .btn-primary, .btn-danger {
+      justify-content: center;
+      width: 100%;
     }
   }
 </style>

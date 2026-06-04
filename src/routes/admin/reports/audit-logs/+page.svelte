@@ -126,7 +126,7 @@
   .search-btn {
     padding: 0.5rem 1rem;
     border-radius: 0.5rem;
-    background: #16a34a;
+    background: #3b82f6;
     color: #fff;
     font-size: 0.875rem;
     font-weight: 500;
@@ -190,8 +190,8 @@
     display: inline-block;
     padding: 0.2rem 0.6rem;
     border-radius: 0.375rem;
-    background: rgba(22, 163, 74, 0.12);
-    color: #16a34a;
+    background: rgba(59, 130, 246, 0.12);
+    color: #3b82f6;
     font-family: monospace;
     font-size: 0.78rem;
     font-weight: 500;

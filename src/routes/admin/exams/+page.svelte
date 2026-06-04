@@ -174,7 +174,7 @@
   .page-header-left { display: flex; align-items: center; gap: .875rem; }
   .page-icon {
     width: 44px; height: 44px; border-radius: .75rem;
-    background: linear-gradient(135deg,#0ea5e9,#0284c7);
+    background: linear-gradient(135deg, #3b82f6, #1d4ed8);
     display: flex; align-items: center; justify-content: center; color: white;
   }
   .page-title { font-size: 1.25rem; font-weight: 800; color: var(--color-text); }
@@ -182,11 +182,11 @@
 
   .btn-primary {
     display: flex; align-items: center; gap: .5rem;
-    padding: .55rem 1.1rem; background: #16a34a; color: white;
+    padding: .55rem 1.1rem; background: #3b82f6; color: white;
     border: none; border-radius: .5rem; font-size: .82rem; font-weight: 600;
     cursor: pointer; font-family: inherit; text-decoration: none; transition: background .15s;
   }
-  .btn-primary:hover { background: #15803d; }
+  .btn-primary:hover { background: #1d4ed8; }
   .btn-ghost {
     display: flex; align-items: center; gap: .5rem;
     padding: .5rem .875rem; background: transparent;
@@ -208,7 +208,7 @@
   .sb-chip:hover { color: var(--color-text); }
   .sb-active.sb-selected, .sb-active:hover    { border-color: #22c55e; color: #16a34a; background: rgba(22,163,74,.08); }
   .sb-completed.sb-selected, .sb-completed:hover { border-color: #3b82f6; color: #3b82f6; background: rgba(59,130,246,.08); }
-  .sb-scheduled.sb-selected, .sb-scheduled:hover { border-color: #a855f7; color: #a855f7; background: rgba(168,85,247,.08); }
+  .sb-scheduled.sb-selected, .sb-scheduled:hover { border-color: #8b5cf6; color: #8b5cf6; background: rgba(139,92,246,.08); }
   .sb-cancelled.sb-selected, .sb-cancelled:hover { border-color: #ef4444; color: #ef4444; background: rgba(239,68,68,.08); }
   .sb-draft.sb-selected, .sb-draft:hover { border-color: var(--color-border); color: var(--color-text); }
   .sb-selected .sb-count { background: currentColor; color: white; opacity: .9; }
@@ -246,7 +246,7 @@
   }
   .es-active    { background: rgba(22,163,74,.12); color: #16a34a; }
   .es-completed { background: rgba(59,130,246,.12); color: #3b82f6; }
-  .es-scheduled { background: rgba(168,85,247,.12); color: #a855f7; }
+  .es-scheduled { background: rgba(139,92,246,.12); color: #8b5cf6; }
   .es-cancelled { background: rgba(239,68,68,.12);  color: #ef4444; }
   .es-draft     { background: var(--color-bg); color: var(--color-muted); border: 1px solid var(--color-border); }
 

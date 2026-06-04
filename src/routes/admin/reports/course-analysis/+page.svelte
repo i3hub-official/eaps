@@ -100,7 +100,7 @@
   .data-table tr:hover td { background: var(--color-surface-hover); }
 
   .course-cell { display: flex; align-items: center; gap: 0.75rem; }
-  .course-icon { width: 32px; height: 32px; border-radius: 0.5rem; background: rgba(22, 163, 74, 0.1); color: #16a34a; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+  .course-icon { width: 32px; height: 32px; border-radius: 0.5rem; background: rgba(59, 130, 246, 0.1); color: #3b82f6; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
   .course-code { font-weight: 700; color: var(--color-text); display: block; }
   .course-title { font-size: 0.75rem; color: var(--color-muted); }
 
@@ -110,7 +110,7 @@
   .score-badge.low { background: rgba(239, 68, 68, 0.1); color: #ef4444; }
 
   .pass-bar { display: flex; align-items: center; gap: 0.5rem; }
-  .pass-fill { height: 6px; background: #16a34a; border-radius: 3px; min-width: 20px; }
+  .pass-fill { height: 6px; background: #3b82f6; border-radius: 3px; min-width: 20px; }
   .pass-bar span { font-size: 0.8rem; font-weight: 600; color: var(--color-text); min-width: 36px; }
 
   .diff-badge { padding: 0.25rem 0.5rem; border-radius: 0.375rem; font-size: 0.75rem; font-weight: 600; text-transform: capitalize; }

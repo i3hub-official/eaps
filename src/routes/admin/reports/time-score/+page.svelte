@@ -107,7 +107,6 @@
 
   </div>
 </div>
-
 <style>
   .page { max-width: 1200px; padding: 1.75rem 2rem 4rem; margin: 0 auto; }
 
@@ -132,7 +131,7 @@
   }
   .sum-icon {
     width: 36px; height: 36px; border-radius: 0.6rem; flex-shrink: 0;
-    background: rgba(22,163,74,0.1); color: #16a34a;
+    background: rgba(59,130,246,0.1); color: #3b82f6;
     display: flex; align-items: center; justify-content: center;
   }
   .summary-card div { display: flex; flex-direction: column; gap: 0.15rem; }
@@ -169,7 +168,7 @@
   }
   .corr-exam { font-size: 0.855rem; font-weight: 700; color: var(--color-text); }
   .corr-val  { font-size: 0.95rem; font-weight: 800; }
-  .corr-val.pos { color: #16a34a; }
+  .corr-val.pos { color: #3b82f6; }
   .corr-val.neg { color: #ef4444; }
 
   .corr-meta {
@@ -193,7 +192,7 @@
     position: absolute; top: 0; height: 100%;
     border-radius: 999px; min-width: 3px;
   }
-  .corr-bar-fill.pos { background: #16a34a; }
+  .corr-bar-fill.pos { background: #3b82f6; }
   .corr-bar-fill.neg { background: #ef4444; }
   .corr-center-line {
     position: absolute; left: 50%; top: 0;
@@ -218,12 +217,12 @@
     border-radius: 999px; overflow: hidden; margin-bottom: 0.5rem;
   }
   .range-fill {
-    height: 100%; background: #16a34a;
+    height: 100%; background: #3b82f6;
     border-radius: 999px; transition: width 0.5s ease; min-width: 3px;
   }
   .range-foot {
     display: flex; align-items: center; justify-content: space-between;
   }
   .range-count { font-size: 0.72rem; color: var(--color-muted); }
-  .range-score { font-size: 0.82rem; font-weight: 800; color: #16a34a; }
+  .range-score { font-size: 0.82rem; font-weight: 800; color: #3b82f6; }
 </style>

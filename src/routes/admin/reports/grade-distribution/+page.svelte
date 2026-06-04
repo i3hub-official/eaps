@@ -111,7 +111,7 @@
   }
   .sum-icon {
     width: 36px; height: 36px; border-radius: 0.6rem;
-    background: rgba(22,163,74,0.1); color: #16a34a;
+    background: rgba(59,130,246,0.1); color: #3b82f6;
     display: flex; align-items: center; justify-content: center; flex-shrink: 0;
   }
   .summary-card div { display: flex; flex-direction: column; gap: 0.15rem; }

@@ -95,13 +95,13 @@
 .total-badge {
   display: inline-flex; align-items: center; gap: 0.4rem;
   font-size: 0.78rem; font-weight: 600;
-  color: #16a34a;
-  background: rgba(22,163,74,0.08);
-  border: 1px solid rgba(22,163,74,0.2);
+  color: #3b82f6;
+  background: rgba(59, 130, 246, 0.08);
+  border: 1px solid rgba(59, 130, 246, 0.2);
   padding: 0.4rem 0.875rem; border-radius: 999px;
   white-space: nowrap;
 }
-[data-theme="dark"] .total-badge { color: #22c55e; }
+[data-theme="dark"] .total-badge { color: #60a5fa; }
   .page-header h1 { font-size: 1.5rem; font-weight: 700; color: var(--color-text); margin: 0; }
   .subtitle { color: var(--color-muted); font-size: 0.9rem; margin-top: 0.25rem; }
 
@@ -115,7 +115,7 @@
   }
   .college-card:hover {
     box-shadow: 0 4px 16px rgba(0,0,0,0.07);
-    border-color: rgba(34,197,94,0.2);
+    border-color: rgba(59, 130, 246, 0.2);
   }
 
   .college-header { display: flex; align-items: flex-start; gap: 0.75rem; margin-bottom: 1.25rem; }
@@ -146,7 +146,7 @@
   }
   .pass-fill {
     height: 100%;
-    background: linear-gradient(90deg, #15803d, #22c55e);
+    background: linear-gradient(90deg, #3b82f6, #60a5fa);
     border-radius: 4px; transition: width 0.5s ease;
   }
 

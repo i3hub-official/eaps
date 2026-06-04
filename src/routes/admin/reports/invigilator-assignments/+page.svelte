@@ -135,7 +135,7 @@
   .invigilator-cell { display: flex; align-items: center; gap: 0.65rem; }
   .invigilator-avatar {
     width: 30px; height: 30px; border-radius: 50%; flex-shrink: 0;
-    background: linear-gradient(135deg, #f59e0b, #f97316);
+    background: linear-gradient(135deg, #f97316, #ea580c);
     display: flex; align-items: center; justify-content: center;
     font-weight: 700; font-size: 0.75rem; color: #fff;
   }
@@ -143,7 +143,7 @@
 
   .active-count {
     display: inline-flex; align-items: center; gap: 0.3rem;
-    font-size: 0.78rem; font-weight: 600; color: #16a34a;
+    font-size: 0.78rem; font-weight: 600; color: #3b82f6;
   }
   .active-count.alert { color: #ef4444; }
 
@@ -157,7 +157,7 @@
     padding: 0.2rem 0.6rem; border-radius: 999px;
     font-size: 0.72rem; font-weight: 700; text-transform: capitalize;
   }
-  .status-active  { background: rgba(22,163,74,0.1);   color: #16a34a; }
+  .status-active  { background: rgba(59,130,246,0.1);   color: #3b82f6; }
   .status-offline { background: rgba(148,163,184,0.1); color: #94a3b8; }
 
   .empty {
