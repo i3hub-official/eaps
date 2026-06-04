@@ -1,17 +1,24 @@
-// src/routes/(invigilator)/monitor/[examId]/+page.server.ts
-import { error } from '@sveltejs/kit';
+// src/routes/invigilator/monitor/+page.server.ts
 import type { PageServerLoad } from './$types';
 import { requireInvigilatorOrAdmin } from '$lib/server/auth/guards.js';
-import { getExamWithCourse } from '$lib/server/db/exams.js';
-import { getLiveSessionsForExam } from '$lib/server/db/sessions.js';
+import { prisma } from '$lib/server/db/index.js';
 
-export const load: PageServerLoad = async ({ params, locals }) => {
+export const load: PageServerLoad = async ({ locals }) => {
   requireInvigilatorOrAdmin(locals.user);
 
-  const exam = await getExamWithCourse(params.examId);
-  if (!exam) error(404, 'Exam not found');
+  const exams = await prisma.exam.findMany({
+    where: {
+      status: { in: ['active', 'scheduled'] },
+      invigilators: {
+        some: { invigilatorId: locals.user!.id },
+      },
+    },
+    include: {
+      course: { select: { code: true, title: true } },
+      _count: { select: { examSessions: true } },
+    },
+    orderBy: { scheduledStart: 'asc' },
+  });
 
-  const sessions = await getLiveSessionsForExam(params.examId);
-
-  return { exam, sessions };
+  return { exams };
 };

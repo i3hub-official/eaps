@@ -5,8 +5,8 @@ import { requireLecturer } from '$lib/server/auth/guards.js';
 import { prisma } from '$lib/server/db/index.js';
 
 export const load: PageServerLoad = async ({ locals, params }) => {
-await requireLecturer(locals);
-    // Ensure this exam belongs to this lecturer
+await requireLecturer(locals.user);
+
   const exam = await prisma.exam.findUnique({
     where: { id: params.examId },
     select: {
