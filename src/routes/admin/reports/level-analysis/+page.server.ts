@@ -6,35 +6,51 @@ import { requireAdmin } from '$lib/server/auth/guards.js';
 export const load: PageServerLoad = async ({ locals }) => {
   requireAdmin(locals.user);
 
-  // Get all levels that have students
-  const levelsWithStudents = await prisma.user.findMany({
-    where: { role: 'student', level: { not: null }, isActive: true },
-    select: { level: true },
-    distinct: ['level'],
+  // Get all levels that have active students
+  const levelsWithStudents = await prisma.level.findMany({
+    where: {
+      users: {
+        some: {
+          role: 'student',
+          isActive: true,
+        },
+      },
+    },
     orderBy: { level: 'asc' },
   });
 
-  const levels = levelsWithStudents.map((s) => s.level).filter(Boolean) as number[];
-
   const formatted = await Promise.all(
-    levels.map(async (level) => {
+    levelsWithStudents.map(async (lvl) => {
+      const levelId = lvl.id;
+      const levelNum = lvl.level;
+
       // 1. Count active students at this level
       const students = await prisma.user.count({
-        where: { role: 'student', level, isActive: true },
+        where: {
+          role: 'student',
+          levelId,
+          isActive: true,
+        },
       });
 
-      // 2. Count exams available to this level (using the levels array on Exam)
+      // 2. Count exams available to this level
       const availableExams = await prisma.exam.count({
         where: {
           status: { in: ['scheduled', 'active', 'completed'] },
-          levels: { has: level },
+          examLevels: {
+            some: { levelId },
+          },
         },
       });
 
       // 3. Get all exam sessions & results for students at this level
       const sessions = await prisma.examSession.findMany({
         where: {
-          student: { level, role: 'student', isActive: true },
+          student: {
+            levelId,
+            role: 'student',
+            isActive: true,
+          },
           status: { in: ['submitted', 'force_submitted'] },
         },
         include: {
@@ -58,7 +74,11 @@ export const load: PageServerLoad = async ({ locals }) => {
       // 4. Top department by student count at this level
       const deptCounts = await prisma.user.groupBy({
         by: ['departmentId'],
-        where: { role: 'student', level, isActive: true },
+        where: {
+          role: 'student',
+          levelId,
+          isActive: true,
+        },
         _count: { id: true },
         orderBy: { _count: { id: 'desc' } },
         take: 1,
@@ -74,13 +94,12 @@ export const load: PageServerLoad = async ({ locals }) => {
       }
 
       // 5. Trend: compare current semester vs previous (simplified)
-      // For now, use passRate as proxy for trend direction
       let trend: 'up' | 'down' | 'stable' = 'stable';
       if (passRate >= 70) trend = 'up';
       else if (passRate > 0 && passRate <= 40) trend = 'down';
 
       return {
-        level,
+        level: levelNum,
         students,
         exams: availableExams,
         examsTaken: sessions.length,

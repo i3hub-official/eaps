@@ -1,3 +1,4 @@
+// src/routes/admin/reports/student-demographics/+page.server.ts
 import type { PageServerLoad } from './$types';
 import { sql } from '$lib/server/db/index.js';
 import { requireAdmin } from '$lib/server/auth/guards.js';
@@ -6,12 +7,14 @@ export const load: PageServerLoad = async ({ locals }) => {
   requireAdmin(locals.user);
 
   const [levels, colleges, departments] = await Promise.all([
+    // FIXED: Join levels table instead of selecting non-existent u.level
     sql(
-      `SELECT level, COUNT(*)::int AS count
-       FROM users
-       WHERE role = 'student' AND level IS NOT NULL
-       GROUP BY level
-       ORDER BY level`
+      `SELECT l.level, l.name, COUNT(u.id)::int AS count
+       FROM levels l
+       LEFT JOIN users u ON u.level_id = l.id AND u.role = 'student'
+       WHERE l.level IS NOT NULL
+       GROUP BY l.level, l.name
+       ORDER BY l.level`
     ),
     sql(
       `SELECT c.id, c.name, c.abbreviation, COUNT(u.id)::int AS students
@@ -39,7 +42,7 @@ export const load: PageServerLoad = async ({ locals }) => {
 
   return {
     byLevel: levels.map((l: any) => ({
-      level:      l.level,
+      level:      l.name || `${l.level} Level`,  // use level name if available
       count:      l.count || 0,
       percentage: pct(l.count),
     })),
