@@ -8,7 +8,7 @@ export const load: PageServerLoad = async ({ locals }) => {
   requireAdmin(locals.user);
   
   const levels = await prisma.level.findMany({
-    orderBy: [{ order: 'asc' }, { level: 'asc' }],
+    orderBy: [{ level: 'asc' }], // Always sort by level number, not order
     include: {
       _count: {
         select: { 
@@ -20,143 +20,109 @@ export const load: PageServerLoad = async ({ locals }) => {
     }
   });
   
-  // Get usage statistics for each level
-  const levelStats = await Promise.all(
-    levels.map(async (level) => {
-      const [userCount, examCount, registrationCount] = await Promise.all([
-        prisma.user.count({ where: { levelId: level.id } }),
-        prisma.examLevel.count({ where: { levelId: level.id } }),
-        prisma.courseRegistration.count({ where: { levelId: level.id } })
-      ]);
-      
-      return {
-        levelId: level.id,
-        level: level.level,
-        userCount,
-        examCount,
-        registrationCount
-      };
-    })
-  );
-  
   return { 
     levels,
-    levelStats,
     defaultLevels: [100, 200, 300, 400, 500, 600]
   };
 };
 
 export const actions: Actions = {
-  // Create a new level
   create: async ({ request, locals }) => {
     requireAdmin(locals.user);
     const data = await request.formData();
     const level = parseInt(data.get('level') as string);
-    const name = data.get('name') as string;
-    const order = parseInt(data.get('order') as string) || 0;
     
-    // Validation
     if (isNaN(level) || level < 100 || level > 800) {
       return fail(400, { error: 'Invalid level. Must be between 100 and 800' });
     }
     
     if (level % 100 !== 0) {
-      return fail(400, { error: 'Level must be a multiple of 100 (e.g., 100, 200, 300, ...)' });
+      return fail(400, { error: 'Level must be a multiple of 100' });
     }
     
     try {
-      // Check if level already exists
-      const existing = await prisma.level.findUnique({
-        where: { level }
-      });
-      
+      const existing = await prisma.level.findUnique({ where: { level } });
       if (existing) {
         return fail(400, { error: `Level ${level} already exists` });
       }
       
-      // Create the new level
+      // Order = level number for natural sorting (100=0, 200=1, 300=2...)
+      // This ensures 700 always sorts before 800 regardless of creation time
+      const order = level / 100;
+      
       await prisma.level.create({
         data: {
           level,
-          name: name?.trim() || `${level} Level`,
+          name: `${level} Level`,
           order,
           isDefault: [100, 200, 300, 400, 500, 600].includes(level)
         }
       });
+      
+      return { success: true, message: `Level ${level} created successfully` };
+      
     } catch (err) {
       console.error('Error creating level:', err);
       return fail(500, { error: 'Failed to create level' });
     }
-    
-    return { success: true, message: `Level ${level} created successfully` };
   },
   
-  // Edit an existing level
   edit: async ({ request, locals }) => {
     requireAdmin(locals.user);
     const data = await request.formData();
     const id = parseInt(data.get('id') as string);
-    const level = parseInt(data.get('level') as string);
-    const name = data.get('name') as string;
-    const order = parseInt(data.get('order') as string) || 0;
+    const newLevel = parseInt(data.get('level') as string);
     
-    // Validation
     if (isNaN(id)) {
       return fail(400, { error: 'Invalid level ID' });
     }
     
-    if (isNaN(level) || level < 100 || level > 800) {
+    if (isNaN(newLevel) || newLevel < 100 || newLevel > 800) {
       return fail(400, { error: 'Invalid level. Must be between 100 and 800' });
     }
     
-    if (level % 100 !== 0) {
-      return fail(400, { error: 'Level must be a multiple of 100 (e.g., 100, 200, 300, ...)' });
+    if (newLevel % 100 !== 0) {
+      return fail(400, { error: 'Level must be a multiple of 100' });
     }
     
     try {
-      // Get the existing level
-      const existingLevel = await prisma.level.findUnique({
-        where: { id }
-      });
+      const existingLevel = await prisma.level.findUnique({ where: { id } });
       
       if (!existingLevel) {
         return fail(404, { error: 'Level not found' });
       }
       
-      // Don't allow changing the level number of default levels
-      if (existingLevel.isDefault && existingLevel.level !== level) {
-        return fail(400, { error: 'Cannot change the level number of default levels (100-600)' });
+      if (existingLevel.isDefault) {
+        return fail(400, { error: 'Default levels (100-600) cannot be edited' });
       }
       
-      // Check if another level already has this level number
-      if (existingLevel.level !== level) {
-        const duplicate = await prisma.level.findUnique({
-          where: { level }
-        });
-        
+      if (existingLevel.level !== newLevel) {
+        const duplicate = await prisma.level.findUnique({ where: { level: newLevel } });
         if (duplicate) {
-          return fail(400, { error: `Level ${level} already exists` });
+          return fail(400, { error: `Level ${newLevel} already exists` });
         }
       }
       
-      // Update the level
+      // Recalculate order based on new level number
+      const order = newLevel / 100;
+      
       await prisma.level.update({
         where: { id },
         data: {
-          level,
-          name: name?.trim() || `${level} Level`,
+          level: newLevel,
+          name: `${newLevel} Level`,
           order
         }
       });
+      
+      return { success: true, message: `Level updated to ${newLevel}` };
+      
     } catch (err) {
       console.error('Error updating level:', err);
       return fail(500, { error: 'Failed to update level' });
     }
-    
-    return { success: true, message: `Level updated successfully` };
   },
   
-  // Delete a level
   delete: async ({ request, locals }) => {
     requireAdmin(locals.user);
     const data = await request.formData();
@@ -167,7 +133,6 @@ export const actions: Actions = {
     }
     
     try {
-      // Get the level with usage counts
       const level = await prisma.level.findUnique({
         where: { id },
         include: {
@@ -185,72 +150,30 @@ export const actions: Actions = {
         return fail(404, { error: 'Level not found' });
       }
       
-      // Prevent deletion of default levels
       if (level.isDefault) {
-        return fail(400, { error: 'Cannot delete default levels (100-600)' });
+        return fail(400, { error: 'Default levels (100-600) cannot be deleted' });
       }
       
-      // Check if level is in use
       if (level._count.users > 0 || level._count.exams > 0 || level._count.registrations > 0) {
-        const errorMsg = `Cannot delete level ${level.level} because it's used by ${level._count.users} student(s), ${level._count.exams} exam(s), and ${level._count.registrations} registration(s). Update those records first.`;
-        return fail(400, { error: errorMsg });
+        return fail(400, { 
+          error: `Cannot delete level ${level.level} because it's used by ${level._count.users} student(s), ${level._count.exams} exam(s), and ${level._count.registrations} registration(s).`
+        });
       }
       
-      // Delete the level
-      await prisma.level.delete({
-        where: { id }
-      });
+      await prisma.level.delete({ where: { id } });
+      
+      return { success: true, message: `Level deleted successfully` };
+      
     } catch (err) {
       console.error('Error deleting level:', err);
       return fail(500, { error: 'Failed to delete level' });
     }
-    
-    return { success: true, message: `Level deleted successfully` };
   },
   
-  // Reorder levels
-  reorder: async ({ request, locals }) => {
-    requireAdmin(locals.user);
-    const data = await request.formData();
-    const levelIdsJson = data.get('levelIds') as string;
-    
-    if (!levelIdsJson) {
-      return fail(400, { error: 'No level order data provided' });
-    }
-    
-    let levelIds: number[];
-    try {
-      levelIds = JSON.parse(levelIdsJson);
-    } catch {
-      return fail(400, { error: 'Invalid level order data format' });
-    }
-    
-    if (!Array.isArray(levelIds)) {
-      return fail(400, { error: 'Level order data must be an array' });
-    }
-    
-    try {
-      // Update order for each level
-      for (let i = 0; i < levelIds.length; i++) {
-        await prisma.level.update({
-          where: { id: levelIds[i] },
-          data: { order: i }
-        });
-      }
-    } catch (err) {
-      console.error('Error reordering levels:', err);
-      return fail(500, { error: 'Failed to reorder levels' });
-    }
-    
-    return { success: true, message: 'Levels reordered successfully' };
-  },
-  
-  // Reset to default levels (100-600)
   reset: async ({ locals }) => {
     requireAdmin(locals.user);
     
     try {
-      // Check if any custom levels are in use before resetting
       const customLevels = await prisma.level.findMany({
         where: { isDefault: false },
         include: {
@@ -273,114 +196,35 @@ export const actions: Actions = {
       if (levelsInUse.length > 0) {
         const levelNumbers = levelsInUse.map(l => l.level).join(', ');
         return fail(400, { 
-          error: `Cannot reset levels. The following custom levels are in use: ${levelNumbers}. Update those records first.` 
+          error: `Cannot reset levels. Custom levels in use: ${levelNumbers}. Update those records first.` 
         });
       }
       
-      // Delete all non-default levels
-      await prisma.level.deleteMany({
-        where: { isDefault: false }
-      });
+      await prisma.level.deleteMany({ where: { isDefault: false } });
       
-      // Ensure default levels exist with correct order
       const defaultLevels = [100, 200, 300, 400, 500, 600];
       for (let i = 0; i < defaultLevels.length; i++) {
         await prisma.level.upsert({
           where: { level: defaultLevels[i] },
           update: {
             name: `${defaultLevels[i]} Level`,
-            order: i,
+            order: i + 1, // 100=1, 200=2, etc.
             isDefault: true
           },
           create: {
             level: defaultLevels[i],
             name: `${defaultLevels[i]} Level`,
-            order: i,
+            order: i + 1,
             isDefault: true
           }
         });
       }
+      
+      return { success: true, message: 'Levels reset to default successfully' };
+      
     } catch (err) {
       console.error('Error resetting levels:', err);
       return fail(500, { error: 'Failed to reset levels' });
     }
-    
-    return { success: true, message: 'Levels reset to default successfully' };
-  },
-  
-  // Bulk import levels
-  bulkImport: async ({ request, locals }) => {
-    requireAdmin(locals.user);
-    const data = await request.formData();
-    const levelsJson = data.get('levels') as string;
-    
-    if (!levelsJson) {
-      return fail(400, { error: 'No levels data provided' });
-    }
-    
-    let levelsToImport: Array<{ level: number; name?: string; order?: number }>;
-    try {
-      levelsToImport = JSON.parse(levelsJson);
-    } catch {
-      return fail(400, { error: 'Invalid JSON format for levels data' });
-    }
-    
-    if (!Array.isArray(levelsToImport)) {
-      return fail(400, { error: 'Levels data must be an array' });
-    }
-    
-    const results = {
-      created: 0,
-      skipped: 0,
-      errors: [] as string[]
-    };
-    
-    try {
-      for (const item of levelsToImport) {
-        const level = item.level;
-        const name = item.name || `${level} Level`;
-        const order = item.order || 0;
-        
-        // Validation
-        if (isNaN(level) || level < 100 || level > 800 || level % 100 !== 0) {
-          results.errors.push(`Invalid level: ${level}`);
-          continue;
-        }
-        
-        try {
-          await prisma.level.upsert({
-            where: { level },
-            update: {
-              name,
-              order,
-              isDefault: [100, 200, 300, 400, 500, 600].includes(level)
-            },
-            create: {
-              level,
-              name,
-              order,
-              isDefault: [100, 200, 300, 400, 500, 600].includes(level)
-            }
-          });
-          results.created++;
-        } catch (err) {
-          results.errors.push(`Failed to import level: ${level}`);
-        }
-      }
-    } catch (err) {
-      console.error('Error bulk importing levels:', err);
-      return fail(500, { error: 'Failed to import levels' });
-    }
-    
-    const message = `${results.created} levels imported. ${results.errors.length} errors.`;
-    if (results.errors.length > 0) {
-      // Return errors as a string array that can be displayed properly
-      return fail(400, { 
-        error: message,
-        errors: results.errors
-      });
-    }
-    
-    return { success: true, message };
   }
 };

@@ -2,27 +2,43 @@
 <script lang="ts">
   import type { PageData, ActionData } from './$types';
   import { enhance } from '$app/forms';
+  import { goto } from '$app/navigation';
   import {
-    ClipboardList, BookOpen, Clock, Settings2,
-    AlertCircle, Plus, Loader2, X, ChevronLeft, GraduationCap
+    ClipboardList, BookOpen, Clock, Settings2, Users, GraduationCap,
+    Building2, AlertCircle, Plus, Loader2, X, ChevronLeft, ChevronDown,
+    Search, Calendar, Check, ShieldAlert, FileText, Timer, BarChart3,
+    Info, Sparkles, Eye
   } from 'lucide-svelte';
 
   let { data, form }: { data: PageData; form: ActionData } = $props();
 
   let loadingAction = $state<string | null>(null);
-  let selectedLevels = $state<number[]>([]);
 
-  const LEVELS = [100, 200, 300, 400, 500, 600];
-  const SESSIONS = Array.from({ length: 6 }, (_, i) => {
-    const y = new Date().getFullYear() - 2 + i;
-    return `${y}/${y + 1}`;
-  });
+  // ── Emulation state ──────────────────────────────────────────────────────
+  let selectedLecturer = $state(data.emulateLecturer?.id ?? '');
+  let lecturerOpen = $state(false);
+  let lecturerSearch = $state('');
 
-  function toggleLevel(lvl: number) {
-    selectedLevels = selectedLevels.includes(lvl)
-      ? selectedLevels.filter(l => l !== lvl)
-      : [...selectedLevels, lvl];
+  const filteredLecturers = $derived(
+    data.lecturers.filter(l =>
+      l.fullName.toLowerCase().includes(lecturerSearch.toLowerCase()) ||
+      (l.staffId?.toLowerCase() ?? '').includes(lecturerSearch.toLowerCase())
+    )
+  );
+
+  const selectedLecturerObj = $derived(
+    data.lecturers.find(l => l.id === selectedLecturer)
+  );
+
+  function emulateLecturer(id: string) {
+    if (id) goto(`/admin/exams/create?emulate=${id}`, { replaceState: true });
+    else goto('/admin/exams/create', { replaceState: true });
   }
+
+  // ── Course state ───────────────────────────────────────────────────────────
+  let selectedCourse = $state('');
+  let courseOpen = $state(false);
+  let courseSearch = $state('');
 
   const coursesByDept = $derived(
     data.courses?.reduce((acc, c) => {
@@ -32,6 +48,150 @@
       return acc;
     }, {} as Record<string, typeof data.courses>) ?? {}
   );
+
+  const filteredCourses = $derived(
+    data.courses.filter(c =>
+      c.code.toLowerCase().includes(courseSearch.toLowerCase()) ||
+      c.title.toLowerCase().includes(courseSearch.toLowerCase())
+    )
+  );
+
+  const selectedCourseObj = $derived(data.courses.find(c => c.id === selectedCourse));
+
+  // ── Levels ─────────────────────────────────────────────────────────────────
+  const LEVELS = [100, 200, 300, 400, 500, 600];
+  let selectedLevels = $state<Set<number>>(new Set());
+  let allLevels = $derived(selectedLevels.size === LEVELS.length);
+
+  function toggleLevel(lvl: number) {
+    const next = new Set(selectedLevels);
+    next.has(lvl) ? next.delete(lvl) : next.add(lvl);
+    selectedLevels = next;
+  }
+  function toggleAllLevels() {
+    selectedLevels = allLevels ? new Set() : new Set(LEVELS);
+  }
+
+  // ── Departments ─────────────────────────────────────────────────────────────
+  let selectedDepartments = $state<Set<string>>(new Set());
+  let deptOpen = $state(false);
+  let deptSearch = $state('');
+
+  const filteredDepts = $derived(
+    data.departments.filter(d =>
+      d.name.toLowerCase().includes(deptSearch.toLowerCase()) ||
+      d.code.toLowerCase().includes(deptSearch.toLowerCase())
+    )
+  );
+
+  function toggleDept(id: string) {
+    const next = new Set(selectedDepartments);
+    next.has(id) ? next.delete(id) : next.add(id);
+    selectedDepartments = next;
+  }
+  function removeDept(id: string) {
+    const next = new Set(selectedDepartments);
+    next.delete(id);
+    selectedDepartments = next;
+  }
+
+  // ── DateTime ─────────────────────────────────────────────────────────────
+  let startDate = $state('');
+  let startTime = $state('09:00');
+  let endDate = $state('');
+  let endTime = $state('11:00');
+  let startOpen = $state(false);
+  let endOpen = $state(false);
+
+  let startCalYear = $state(new Date().getFullYear());
+  let startCalMonth = $state(new Date().getMonth());
+  let endCalYear = $state(new Date().getFullYear());
+  let endCalMonth = $state(new Date().getMonth());
+
+  const MONTH_NAMES = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+  const MONTH_SHORT = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  const DAY_NAMES = ['Su','Mo','Tu','We','Th','Fr','Sa'];
+
+  function calDays(year: number, month: number) {
+    const first = new Date(year, month, 1).getDay();
+    const total = new Date(year, month + 1, 0).getDate();
+    const days: (number | null)[] = Array(first).fill(null);
+    for (let i = 1; i <= total; i++) days.push(i);
+    return days;
+  }
+  function fmtDate(y: number, m: number, d: number) {
+    return `${y}-${String(m + 1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+  }
+  const todayStr = $derived(fmtDate(new Date().getFullYear(), new Date().getMonth(), new Date().getDate()));
+
+  function selectStartDay(day: number) { startDate = fmtDate(startCalYear, startCalMonth, day); }
+  function selectEndDay(day: number) { endDate = fmtDate(endCalYear, endCalMonth, day); }
+
+  const startValue = $derived(startDate ? `${startDate}T${startTime}` : '');
+  const endValue = $derived(endDate ? `${endDate}T${endTime}` : '');
+
+  function fmtDisplay(date: string, time: string) {
+    if (!date) return '';
+    const [y, m, d] = date.split('-').map(Number);
+    return `${MONTH_SHORT[m-1]} ${d}, ${y} · ${time}`;
+  }
+
+  const TIME_OPTIONS: string[] = [];
+  for (let h = 0; h < 24; h++) {
+    for (const m of [0, 15, 30, 45]) {
+      TIME_OPTIONS.push(`${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}`);
+    }
+  }
+
+  // ── Sessions ───────────────────────────────────────────────────────────────
+  const SESSIONS = Array.from({ length: 6 }, (_, i) => {
+    const y = new Date().getFullYear() - 2 + i;
+    return `${y}/${y + 1}`;
+  });
+
+  // ── Click outside ──────────────────────────────────────────────────────────
+  function clickOutside(node: HTMLElement, handler: () => void) {
+    function handle(e: MouseEvent) {
+      if (!node.contains(e.target as Node)) handler();
+    }
+    document.addEventListener('mousedown', handle, true);
+    return { destroy() { document.removeEventListener('mousedown', handle, true); } };
+  }
+
+  function closeAll() {
+    lecturerOpen = false; courseOpen = false; deptOpen = false; startOpen = false; endOpen = false;
+  }
+
+  // ── Toggle helpers ───────────────────────────────────────────────────────────
+  function toggleLecturerDropdown() {
+    if (lecturerOpen) lecturerOpen = false;
+    else { closeAll(); lecturerOpen = true; }
+  }
+  function toggleCourseDropdown() {
+    if (courseOpen) courseOpen = false;
+    else { closeAll(); courseOpen = true; }
+  }
+  function toggleDeptDropdown() {
+    if (deptOpen) deptOpen = false;
+    else { closeAll(); deptOpen = true; }
+  }
+  function toggleStartDropdown() {
+    if (startOpen) startOpen = false;
+    else { closeAll(); startOpen = true; }
+  }
+  function toggleEndDropdown() {
+    if (endOpen) endOpen = false;
+    else { closeAll(); endOpen = true; }
+  }
+
+  // ── Pre-fill when emulating ───────────────────────────────────────────────
+  $effect(() => {
+    if (data.emulateLecturer && selectedCourseObj) {
+      if (selectedCourseObj.level && !selectedLevels.size) {
+        selectedLevels = new Set([selectedCourseObj.level]);
+      }
+    }
+  });
 
   function handleEnhance() {
     return () => {
@@ -44,310 +204,1230 @@
   }
 </script>
 
-<svelte:head><title>Create Exam — MOUAU eTest Admin</title></svelte:head>
+<svelte:head><title>Create Exam — Admin | MOUAU eTest</title></svelte:head>
 
-<div class="create-page">
+<div class="page">
+  <!-- Page Header -->
   <div class="page-header">
     <a href="/admin/exams" class="back-link">
-      <ChevronLeft size={16} /> Back to Exams
+      <ChevronLeft size={14} strokeWidth={2.5} /> Back to Exams
     </a>
-    <div class="page-title">
-      <ClipboardList size={22} class="title-icon" />
+    <div class="page-header-main">
       <div>
-        <h1>Create Exam</h1>
-        <p class="subtitle">Configure and schedule a new examination</p>
+        <h1>Create Exam <span class="admin-badge">Admin</span></h1>
+        <p>Configure and schedule an examination on behalf of a lecturer</p>
+      </div>
+      <div class="header-actions">
+        <a href="/admin/exams" class="btn ghost">Cancel</a>
+        <button type="submit" form="exam-form" class="btn primary">
+          Create Exam & Add Questions →
+        </button>
       </div>
     </div>
   </div>
 
   {#if form?.error}
-    <div class="toast error" role="alert">
-      <AlertCircle size={16} />
-      <span>{form.error}</span>
-      <button class="toast-close" onclick={() => form = null}><X size={14} /></button>
+    <div class="alert-error">
+      <AlertCircle size={15} /> {form.error}
     </div>
   {/if}
 
-  <form method="POST" use:enhance={handleEnhance()}>
-
-    <!-- Basic info -->
-    <div class="card">
-      <div class="card-head"><BookOpen size={16} /> Basic Information</div>
-      <div class="card-body">
-        <div class="field-full">
-          <label for="title">Exam Title <span class="req">*</span></label>
-          <input id="title" name="title" placeholder="e.g. CSC 201 — Mid-Semester Examination" required />
-        </div>
-
-        <div class="field-half">
-          <label for="courseId">Course <span class="req">*</span></label>
-          <select id="courseId" name="courseId" required>
-            <option value="">— Select course —</option>
-            {#each Object.entries(coursesByDept) as [dept, courses]}
-              <optgroup label={dept}>
-                {#each courses as c}
-                  <option value={c.id}>{c.code} — {c.title}</option>
-                {/each}
-              </optgroup>
-            {/each}
-          </select>
-        </div>
-
-        <div class="field-half">
-          <label for="createdBy">Assigned Lecturer <span class="req">*</span></label>
-          <select id="createdBy" name="createdBy" required>
-            <option value="">— Select lecturer —</option>
-            {#each data.lecturers ?? [] as l}
-              <option value={l.id}>{l.fullName}{l.staffId ? ` (${l.staffId})` : ''}</option>
-            {/each}
-          </select>
-        </div>
-
-        <div class="field-third">
-          <label for="session">Session <span class="req">*</span></label>
-          <select id="session" name="session" required>
-            {#each SESSIONS as s}<option value={s}>{s}</option>{/each}
-          </select>
-        </div>
-
-        <div class="field-third">
-          <label for="semester">Semester <span class="req">*</span></label>
-          <select id="semester" name="semester" required>
-            <option value="1">First Semester</option>
-            <option value="2">Second Semester</option>
-          </select>
-        </div>
-
-        <div class="field-third">
-          <label>Target Levels</label>
-          <div class="level-chips">
-            {#each LEVELS as lvl}
-              <button
-                type="button"
-                class="level-chip"
-                class:selected={selectedLevels.includes(lvl)}
-                onclick={() => toggleLevel(lvl)}
-              >{lvl}</button>
-            {/each}
-          </div>
-          {#each selectedLevels as lvl}
-            <input type="hidden" name="levels" value={lvl} />
-          {/each}
-        </div>
+  <!-- Emulation Banner -->
+  {#if data.emulateLecturer}
+    <div class="emulate-banner">
+      <Sparkles size={16} />
+      <div>
+        <strong>Emulating: {data.emulateLecturer.fullName}</strong>
+        <span>{data.emulateLecturer.department?.name ?? 'No department'} · {data.emulateLecturer.staffId ?? 'No staff ID'}</span>
       </div>
-    </div>
-
-    <!-- Timing & marks -->
-    <div class="card">
-      <div class="card-head"><Clock size={16} /> Timing & Marks</div>
-      <div class="card-body">
-        <div class="field-quarter">
-          <label for="durationMinutes">Duration (min) <span class="req">*</span></label>
-          <input id="durationMinutes" name="durationMinutes" type="number" min="5" max="480" value="60" required />
-        </div>
-        <div class="field-quarter">
-          <label for="totalMarks">Total Marks</label>
-          <input id="totalMarks" name="totalMarks" type="number" min="1" value="100" />
-        </div>
-        <div class="field-quarter">
-          <label for="passMark">Pass Mark</label>
-          <input id="passMark" name="passMark" type="number" min="1" value="40" />
-        </div>
-        <div class="field-quarter">
-          <label for="maxViolations">Max Violations</label>
-          <input id="maxViolations" name="maxViolations" type="number" min="0" max="20" value="5" />
-        </div>
-
-        <div class="field-half">
-          <label for="scheduledStart">Scheduled Start</label>
-          <input id="scheduledStart" name="scheduledStart" type="datetime-local" />
-        </div>
-        <div class="field-half">
-          <label for="scheduledEnd">Scheduled End</label>
-          <input id="scheduledEnd" name="scheduledEnd" type="datetime-local" />
-        </div>
-      </div>
-    </div>
-
-    <!-- Settings / toggles -->
-    <div class="card">
-      <div class="card-head"><Settings2 size={16} /> Exam Settings</div>
-      <div class="card-body">
-        {#each [
-          { name: 'randomizeQuestions', label: 'Randomize question order',    desc: 'Shuffle questions for each student' },
-          { name: 'randomizeOptions',   label: 'Randomize answer options',    desc: 'Shuffle MCQ options per question' },
-          { name: 'showResultAfter',    label: 'Show results immediately',    desc: 'Students see score on submission' },
-          { name: 'allowLateEntry',     label: 'Allow late entry',            desc: 'Permit joining after scheduled start' },
-        ] as toggle}
-          <div class="field-half">
-            <label class="toggle-label" for={toggle.name}>
-              <input type="checkbox" id={toggle.name} name={toggle.name} checked />
-              <div class="toggle-content">
-                <div class="toggle-title">{toggle.label}</div>
-                <div class="toggle-desc">{toggle.desc}</div>
-              </div>
-            </label>
-          </div>
-        {/each}
-      </div>
-    </div>
-
-    <!-- Submit -->
-    <div class="form-foot">
-      <a href="/admin/exams" class="btn-ghost">Cancel</a>
-      <button type="submit" class="btn-primary" disabled={loadingAction === 'create'}>
-        {#if loadingAction === 'create'}
-          <Loader2 size={15} class="spin" /> Creating...
-        {:else}
-          <Plus size={15} /> Create Exam
-        {/if}
+      <button type="button" class="emulate-clear" onclick={() => emulateLecturer('')}>
+        <X size={14} /> Clear
       </button>
     </div>
+  {/if}
+
+  <form method="POST" id="exam-form" use:enhance={handleEnhance()} class="exam-grid">
+
+    <!-- ══ COLUMN 1: Lecturer + Basic + Scope ═══════════════════════════════════ -->
+    <div class="col">
+
+      <!-- Lecturer Emulation Card -->
+      <div class="card">
+        <div class="card-header">
+          <span class="card-icon"><Users size={16} strokeWidth={2} /></span>
+          <div>
+            <h2>Lecturer In Charge</h2>
+            <p>Select who will own and manage this exam</p>
+          </div>
+        </div>
+        <div class="card-body">
+          <div class="field">
+            <label>Assigned Lecturer <span class="req">*</span></label>
+            <input type="hidden" name="createdBy" value={selectedLecturer} />
+            <div class="dd-wrap" use:clickOutside={() => { lecturerOpen = false; lecturerSearch = ''; }}>
+              <button
+                type="button"
+                class="dd-trigger"
+                class:open={lecturerOpen}
+                onclick={toggleLecturerDropdown}
+              >
+                {#if selectedLecturerObj}
+                  <span class="dd-badge">Lecturer</span>
+                  <span class="dd-val">{selectedLecturerObj.fullName}{selectedLecturerObj.staffId ? ` (${selectedLecturerObj.staffId})` : ''}</span>
+                {:else}
+                  <span class="dd-placeholder">Select a lecturer…</span>
+                {/if}
+                <ChevronDown size={15} class="dd-chevron" />
+              </button>
+
+              {#if lecturerOpen}
+                <div class="dd-panel">
+                  <div class="dd-search">
+                    <Search size={13} />
+                    <input type="text" placeholder="Search by name or staff ID…" bind:value={lecturerSearch} autofocus />
+                  </div>
+                  <div class="dd-list">
+                    {#if filteredLecturers.length === 0}
+                      <div class="dd-empty">No lecturers found</div>
+                    {:else}
+                      {#each filteredLecturers as l}
+                        <button
+                          type="button"
+                          class="dd-item"
+                          class:active={selectedLecturer === l.id}
+                          onclick={() => { selectedLecturer = l.id; lecturerOpen = false; lecturerSearch = ''; emulateLecturer(l.id); }}
+                        >
+                          <span class="item-code">{l.staffId ?? '—'}</span>
+                          <span class="item-label">{l.fullName}</span>
+                          {#if selectedLecturer === l.id}<Check size={13} class="item-check" />{/if}
+                        </button>
+                      {/each}
+                    {/if}
+                  </div>
+                </div>
+              {/if}
+            </div>
+          </div>
+
+          {#if selectedLecturerObj}
+            <div class="lecturer-meta">
+              <span><Building2 size={12} /> {data.departments.find(d => d.id === selectedLecturerObj.departmentId)?.name ?? 'No dept'}</span>
+              <span><GraduationCap size={12} /> Level {selectedLecturerObj.levelId ?? '—'}</span>
+            </div>
+          {/if}
+        </div>
+      </div>
+
+      <!-- Basic Info Card -->
+      <div class="card">
+        <div class="card-header">
+          <span class="card-icon"><BookOpen size={16} strokeWidth={2} /></span>
+          <div>
+            <h2>Basic Information</h2>
+            <p>Name the exam and link it to a course</p>
+          </div>
+        </div>
+        <div class="card-body">
+
+          <div class="field">
+            <label for="title">Exam Title <span class="req">*</span></label>
+            <input id="title" name="title" type="text" required
+              placeholder="e.g. CSC301 First Semester Examination 2025/2026"
+            />
+          </div>
+
+          <!-- Course dropdown -->
+          <div class="field">
+            <label>Course <span class="req">*</span></label>
+            <input type="hidden" name="courseId" value={selectedCourse} />
+            <div class="dd-wrap" use:clickOutside={() => { courseOpen = false; courseSearch = ''; }}>
+              <button
+                type="button"
+                class="dd-trigger"
+                class:open={courseOpen}
+                onclick={toggleCourseDropdown}
+              >
+                {#if selectedCourseObj}
+                  <span class="dd-badge">{selectedCourseObj.code}</span>
+                  <span class="dd-val">{selectedCourseObj.title}</span>
+                {:else}
+                  <span class="dd-placeholder">Select a course…</span>
+                {/if}
+                <ChevronDown size={15} class="dd-chevron" />
+              </button>
+
+              {#if courseOpen}
+                <div class="dd-panel">
+                  <div class="dd-search">
+                    <Search size={13} />
+                    <input type="text" placeholder="Search by code or name…" bind:value={courseSearch} autofocus />
+                  </div>
+                  <div class="dd-list">
+                    {#if filteredCourses.length === 0}
+                      <div class="dd-empty">No courses found</div>
+                    {:else}
+                      {#each Object.entries(coursesByDept) as [dept, courses]}
+                        <div class="dd-group-label">{dept}</div>
+                        {#each courses as c}
+                          <button
+                            type="button"
+                            class="dd-item"
+                            class:active={selectedCourse === c.id}
+                            onclick={() => { selectedCourse = c.id; courseOpen = false; courseSearch = ''; }}
+                          >
+                            <span class="item-code">{c.code}</span>
+                            <span class="item-label">{c.title}</span>
+                            {#if selectedCourse === c.id}<Check size={13} class="item-check" />{/if}
+                          </button>
+                        {/each}
+                      {/each}
+                    {/if}
+                  </div>
+                </div>
+              {/if}
+            </div>
+          </div>
+
+          <div class="field">
+            <label for="instructions">Instructions <span class="opt">Optional</span></label>
+            <textarea
+              id="instructions" name="instructions" rows="3"
+              placeholder="Answer all questions. No external resources allowed. Time shown is exam time."
+            ></textarea>
+          </div>
+
+        </div>
+      </div>
+
+      <!-- Exam Scope Card -->
+      <div class="card">
+        <div class="card-header">
+          <span class="card-icon"><Users size={16} strokeWidth={2} /></span>
+          <div>
+            <h2>Exam Scope</h2>
+            <p>Define which students may sit this exam</p>
+          </div>
+        </div>
+        <div class="card-body">
+
+          <!-- Levels -->
+          <div class="scope-section">
+            <div class="scope-row">
+              <div class="scope-label-group">
+                <GraduationCap size={14} />
+                <span>Student Levels</span>
+              </div>
+              <button type="button" class="pill-btn" class:active={allLevels} onclick={toggleAllLevels}>
+                {allLevels ? '✓ All Selected' : 'Select All'}
+              </button>
+            </div>
+
+            <div class="level-grid">
+              {#each LEVELS as level}
+                <button
+                  type="button"
+                  class="level-chip"
+                  class:selected={selectedLevels.has(level)}
+                  onclick={() => toggleLevel(level)}
+                  aria-pressed={selectedLevels.has(level)}
+                >
+                  <span class="level-num">{level}</span>
+                  <span class="level-lbl">Level</span>
+                  {#if selectedLevels.has(level)}
+                    <span class="level-check"><Check size={10} strokeWidth={3} /></span>
+                  {/if}
+                </button>
+              {/each}
+            </div>
+            <div class="scope-note" class:active={selectedLevels.size > 0 || allLevels}>
+              {allLevels
+                ? '✓ All levels (100–600) can sit this exam.'
+                : selectedLevels.size > 0
+                  ? `✓ ${[...selectedLevels].sort((a,b)=>a-b).map(l=>l+'L').join(', ')} students eligible.`
+                  : 'No level selected — all levels will be allowed by default.'}
+            </div>
+            {#each [...selectedLevels] as lvl}
+              <input type="hidden" name="levels" value={lvl} />
+            {/each}
+          </div>
+
+          <div class="divider"></div>
+
+          <!-- Departments -->
+          <div class="scope-section">
+            <div class="scope-row">
+              <div class="scope-label-group">
+                <Building2 size={14} />
+                <span>Departments</span>
+              </div>
+              <span class="opt-badge">Optional</span>
+            </div>
+            <input type="hidden" name="department" value={[...selectedDepartments].join(',')} />
+
+            <div class="dd-wrap" use:clickOutside={() => { deptOpen = false; deptSearch = ''; }}>
+              <button
+                type="button"
+                class="dd-trigger multi"
+                class:open={deptOpen}
+                onclick={toggleDeptDropdown}
+              >
+                {#if selectedDepartments.size === 0}
+                  <span class="dd-placeholder">All departments (no restriction)…</span>
+                {:else}
+                  <div class="tag-row">
+                    {#each [...selectedDepartments] as id}
+                      {@const d = data.departments.find(x => x.id === id)}
+                      {#if d}
+                        <span class="tag">
+                          {d.code}
+                          <button type="button" class="tag-x" onclick={(e) => { e.stopPropagation(); removeDept(id); }}><X size={9} strokeWidth={3} /></button>
+                        </span>
+                      {/if}
+                    {/each}
+                  </div>
+                {/if}
+                <ChevronDown size={15} class="dd-chevron" />
+              </button>
+
+              {#if deptOpen}
+                <div class="dd-panel">
+                  <div class="dd-search">
+                    <Search size={13} />
+                    <input type="text" placeholder="Search departments…" bind:value={deptSearch} autofocus />
+                  </div>
+                  <div class="dd-list">
+                    {#if filteredDepts.length === 0}
+                      <div class="dd-empty">No departments found</div>
+                    {:else}
+                      {#each filteredDepts as d}
+                        <button
+                          type="button"
+                          class="dd-item"
+                          class:active={selectedDepartments.has(d.id)}
+                          onclick={() => toggleDept(d.id)}
+                        >
+                          <span class="item-code">{d.code}</span>
+                          <span class="item-label">{d.name}</span>
+                          {#if selectedDepartments.has(d.id)}<Check size={13} class="item-check" />{/if}
+                        </button>
+                      {/each}
+                    {/if}
+                  </div>
+                </div>
+              {/if}
+            </div>
+            <p class="field-hint">Leave empty to allow all departments.</p>
+          </div>
+
+        </div>
+      </div>
+
+    </div>
+
+    <!-- ══ COLUMN 2: Timing + Scoring ═══════════════════════════════════════════ -->
+    <div class="col">
+
+      <!-- Timing Card -->
+      <div class="card">
+        <div class="card-header">
+          <span class="card-icon"><Clock size={16} strokeWidth={2} /></span>
+          <div>
+            <h2>Schedule & Timing</h2>
+            <p>Set when the exam runs and how long students have</p>
+          </div>
+        </div>
+        <div class="card-body">
+
+          <input type="hidden" name="scheduledStart" value={startValue} />
+          <input type="hidden" name="scheduledEnd" value={endValue} />
+
+          <!-- Scheduled Start -->
+          <div class="field">
+            <label>Scheduled Start</label>
+            <div class="dd-wrap" use:clickOutside={() => startOpen = false}>
+              <button
+                type="button"
+                class="dd-trigger"
+                class:open={startOpen}
+                class:has-val={!!startDate}
+                onclick={toggleStartDropdown}
+              >
+                <Calendar size={14} class="dt-cal-icon" />
+                {#if startDate}
+                  <span class="dd-val">{fmtDisplay(startDate, startTime)}</span>
+                {:else}
+                  <span class="dd-placeholder">Pick date & time…</span>
+                {/if}
+                <ChevronDown size={15} class="dd-chevron" />
+              </button>
+              {#if startOpen}
+                <div class="dd-panel dt-panel">
+                  <div class="cal-nav">
+                    <button type="button" class="cal-arr"
+                      onclick={() => { if (startCalMonth === 0) { startCalMonth = 11; startCalYear--; } else startCalMonth--; }}>‹</button>
+                    <span class="cal-month-lbl">{MONTH_NAMES[startCalMonth]} {startCalYear}</span>
+                    <button type="button" class="cal-arr"
+                      onclick={() => { if (startCalMonth === 11) { startCalMonth = 0; startCalYear++; } else startCalMonth++; }}>›</button>
+                  </div>
+                  <div class="cal-grid">
+                    {#each DAY_NAMES as dn}<span class="cal-dn">{dn}</span>{/each}
+                    {#each calDays(startCalYear, startCalMonth) as day}
+                      {#if day === null}
+                        <span></span>
+                      {:else}
+                        <button
+                          type="button"
+                          class="cal-day"
+                          class:today={fmtDate(startCalYear, startCalMonth, day) === todayStr}
+                          class:selected={startDate === fmtDate(startCalYear, startCalMonth, day)}
+                          onclick={() => selectStartDay(day)}
+                        >{day}</button>
+                      {/if}
+                    {/each}
+                  </div>
+                  <div class="time-row">
+                    <Clock size={13} />
+                    <select class="time-sel" bind:value={startTime}>
+                      {#each TIME_OPTIONS as t}<option value={t}>{t}</option>{/each}
+                    </select>
+                    {#if startDate}
+                      <button type="button" class="dt-done-btn" onclick={() => startOpen = false}>Done</button>
+                    {/if}
+                  </div>
+                </div>
+              {/if}
+            </div>
+          </div>
+
+          <!-- Scheduled End -->
+          <div class="field">
+            <label>Scheduled End</label>
+            <div class="dd-wrap" use:clickOutside={() => endOpen = false}>
+              <button
+                type="button"
+                class="dd-trigger"
+                class:open={endOpen}
+                class:has-val={!!endDate}
+                onclick={toggleEndDropdown}
+              >
+                <Calendar size={14} class="dt-cal-icon" />
+                {#if endDate}
+                  <span class="dd-val">{fmtDisplay(endDate, endTime)}</span>
+                {:else}
+                  <span class="dd-placeholder">Pick date & time…</span>
+                {/if}
+                <ChevronDown size={15} class="dd-chevron" />
+              </button>
+              {#if endOpen}
+                <div class="dd-panel dt-panel">
+                  <div class="cal-nav">
+                    <button type="button" class="cal-arr"
+                      onclick={() => { if (endCalMonth === 0) { endCalMonth = 11; endCalYear--; } else endCalMonth--; }}>‹</button>
+                    <span class="cal-month-lbl">{MONTH_NAMES[endCalMonth]} {endCalYear}</span>
+                    <button type="button" class="cal-arr"
+                      onclick={() => { if (endCalMonth === 11) { endCalMonth = 0; endCalYear++; } else endCalMonth++; }}>›</button>
+                  </div>
+                  <div class="cal-grid">
+                    {#each DAY_NAMES as dn}<span class="cal-dn">{dn}</span>{/each}
+                    {#each calDays(endCalYear, endCalMonth) as day}
+                      {#if day === null}
+                        <span></span>
+                      {:else}
+                        <button
+                          type="button"
+                          class="cal-day"
+                          class:today={fmtDate(endCalYear, endCalMonth, day) === todayStr}
+                          class:selected={endDate === fmtDate(endCalYear, endCalMonth, day)}
+                          onclick={() => selectEndDay(day)}
+                        >{day}</button>
+                      {/if}
+                    {/each}
+                  </div>
+                  <div class="time-row">
+                    <Clock size={13} />
+                    <select class="time-sel" bind:value={endTime}>
+                      {#each TIME_OPTIONS as t}<option value={t}>{t}</option>{/each}
+                    </select>
+                    {#if endDate}
+                      <button type="button" class="dt-done-btn" onclick={() => endOpen = false}>Done</button>
+                    {/if}
+                  </div>
+                </div>
+              {/if}
+            </div>
+          </div>
+
+          <!-- Session + Semester -->
+          <div class="two-col">
+            <div class="field">
+              <label for="session">Academic Session <span class="req">*</span></label>
+              <select id="session" name="session" required>
+                <option value="">— Select —</option>
+                {#each SESSIONS as s}<option value={s}>{s}</option>{/each}
+              </select>
+            </div>
+            <div class="field">
+              <label for="semester">Semester <span class="req">*</span></label>
+              <select id="semester" name="semester" required>
+                <option value="1">First Semester</option>
+                <option value="2">Second Semester</option>
+              </select>
+            </div>
+          </div>
+
+        </div>
+      </div>
+
+      <!-- Scoring Card -->
+      <div class="card">
+        <div class="card-header">
+          <span class="card-icon"><BarChart3 size={16} strokeWidth={2} /></span>
+          <div>
+            <h2>Scoring</h2>
+            <p>Marks, pass threshold and duration</p>
+          </div>
+        </div>
+        <div class="card-body">
+          <div class="score-grid">
+            <div class="score-field">
+              <label for="durationMinutes">
+                <Timer size={13} strokeWidth={2} /> Duration
+              </label>
+              <div class="score-input-wrap">
+                <input id="durationMinutes" name="durationMinutes" type="number" value="60" min="5" max="300" required />
+                <span class="score-unit">min</span>
+              </div>
+            </div>
+            <div class="score-field">
+              <label for="totalMarks">
+                <FileText size={13} strokeWidth={2} /> Total Marks
+              </label>
+              <div class="score-input-wrap">
+                <input id="totalMarks" name="totalMarks" type="number" value="100" min="1" required />
+                <span class="score-unit">pts</span>
+              </div>
+            </div>
+            <div class="score-field">
+              <label for="passMark">
+                <Check size={13} strokeWidth={2.5} /> Pass Mark
+              </label>
+              <div class="score-input-wrap">
+                <input id="passMark" name="passMark" type="number" value="40" min="1" required />
+                <span class="score-unit">pts</span>
+              </div>
+            </div>
+            <div class="score-field">
+              <label for="maxViolations">
+                <ShieldAlert size={13} strokeWidth={2} /> Max Violations
+              </label>
+              <div class="score-input-wrap">
+                <input id="maxViolations" name="maxViolations" type="number" value="5" min="1" max="20" />
+                <span class="score-unit">×</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+    </div>
+
+    <!-- ══ COLUMN 3: Options + Preview + Submit ═══════════════════════════════ -->
+    <div class="col">
+
+      <!-- Options Card -->
+      <div class="card">
+        <div class="card-header">
+          <span class="card-icon"><Settings2 size={16} strokeWidth={2} /></span>
+          <div>
+            <h2>Exam Options</h2>
+            <p>Behaviour and results settings</p>
+          </div>
+        </div>
+        <div class="toggles">
+          <label class="toggle-row">
+            <div>
+              <span class="toggle-label">Randomize Questions</span>
+              <span class="toggle-desc">Shuffle question order per student</span>
+            </div>
+            <div class="toggle-track">
+              <input type="checkbox" name="randomizeQuestions" checked class="toggle-cb" />
+              <span class="toggle-knob"></span>
+            </div>
+          </label>
+          <label class="toggle-row">
+            <div>
+              <span class="toggle-label">Randomize Options</span>
+              <span class="toggle-desc">Shuffle MCQ choices per student</span>
+            </div>
+            <div class="toggle-track">
+              <input type="checkbox" name="randomizeOptions" checked class="toggle-cb" />
+              <span class="toggle-knob"></span>
+            </div>
+          </label>
+          <label class="toggle-row">
+            <div>
+              <span class="toggle-label">Show Result Immediately</span>
+              <span class="toggle-desc">Display score after submission</span>
+            </div>
+            <div class="toggle-track">
+              <input type="checkbox" name="showResultAfter" class="toggle-cb" />
+              <span class="toggle-knob"></span>
+            </div>
+          </label>
+          <label class="toggle-row">
+            <div>
+              <span class="toggle-label">Allow Late Entry</span>
+              <span class="toggle-desc">Permit joining after scheduled start</span>
+            </div>
+            <div class="toggle-track">
+              <input type="checkbox" name="allowLateEntry" class="toggle-cb" />
+              <span class="toggle-knob"></span>
+            </div>
+          </label>
+        </div>
+      </div>
+
+      <!-- Info card -->
+      <div class="info-box">
+        <div class="info-dot"><Info size={15} /></div>
+        <div>
+          <strong>Admin Emulation Mode</strong>
+          <p>You are creating this exam on behalf of the selected lecturer. They will have full ownership and can edit it later.</p>
+        </div>
+      </div>
+
+      <!-- Configuration Preview -->
+      <div class="summary-card">
+        <div class="summary-title">
+          <Eye size={12} /> Configuration Preview
+        </div>
+        <div class="summary-rows">
+          <div class="sum-row">
+            <span>Lecturer</span>
+            <span class="sum-val">{selectedLecturerObj?.fullName ?? '—'}</span>
+          </div>
+          <div class="sum-row">
+            <span>Course</span>
+            <span class="sum-val">{selectedCourseObj?.code ?? '—'}</span>
+          </div>
+          <div class="sum-row">
+            <span>Eligible Levels</span>
+            <span class="sum-val">
+              {allLevels ? 'All' : selectedLevels.size > 0 ? [...selectedLevels].sort((a,b)=>a-b).join(', ') : 'All'}
+            </span>
+          </div>
+          <div class="sum-row">
+            <span>Departments</span>
+            <span class="sum-val">
+              {selectedDepartments.size === 0 ? 'All' : selectedDepartments.size + ' selected'}
+            </span>
+          </div>
+          <div class="sum-row">
+            <span>Start</span>
+            <span class="sum-val">{startDate ? fmtDisplay(startDate, startTime) : '—'}</span>
+          </div>
+          <div class="sum-row">
+            <span>End</span>
+            <span class="sum-val">{endDate ? fmtDisplay(endDate, endTime) : '—'}</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Mobile submit -->
+      <div class="form-footer">
+        <a href="/admin/exams" class="btn ghost">Cancel</a>
+        <button type="submit" class="btn primary" disabled={loadingAction === 'create'}>
+          {#if loadingAction === 'create'}
+            <Loader2 size={15} class="spin" /> Creating...
+          {:else}
+            Create Exam & Add Questions →
+          {/if}
+        </button>
+      </div>
+
+    </div>
+
   </form>
 </div>
 
 <style>
-  .create-page { display: flex; flex-direction: column; gap: 1.25rem; max-width: 900px; }
+  /* ── Root ─────────────────────────────────────────────────────────────── */
+  .page {
+    padding: 1.75rem 2rem 4rem;
+    max-width: 1400px;
+    margin: 0 auto;
+  }
 
-  /* ── Page Header ─────────────────────────────────────────────── */
-  .page-header { display: flex; flex-direction: column; gap: 0.75rem; }
+  /* ── Page header ──────────────────────────────────────────────────────── */
+  .page-header {
+    margin-bottom: 1.75rem;
+    padding-bottom: 1.25rem;
+    border-bottom: 1px solid var(--color-border);
+  }
   .back-link {
-    display: inline-flex; align-items: center; gap: 0.25rem;
-    font-size: 0.78rem; color: var(--color-muted); text-decoration: none;
-    font-weight: 500; transition: color 0.15s; width: fit-content;
+    display: inline-flex; align-items: center; gap: 0.2rem;
+    font-size: 0.75rem; font-weight: 600; color: var(--lc-600);
+    text-decoration: none; margin-bottom: 0.875rem;
+    transition: gap 0.12s;
   }
-  .back-link:hover { color: #3b82f6; }
-  .page-title { display: flex; align-items: center; gap: 0.875rem; }
-  .page-title :global(.title-icon) { color: #3b82f6; flex-shrink: 0; }
-  .page-title h1 { font-size: 1.35rem; font-weight: 700; color: var(--color-text); line-height: 1.2; margin: 0; }
-  .subtitle { font-size: 0.8rem; color: var(--color-muted); margin-top: 0.15rem; }
+  .back-link:hover { gap: 0.4rem; }
+  .page-header-main {
+    display: flex; align-items: flex-start; justify-content: space-between; gap: 1rem;
+    flex-wrap: wrap;
+  }
+  .page-header-main h1 {
+    font-size: 1.85rem; font-weight: 900; letter-spacing: -0.04em;
+    color: var(--color-text); margin: 0 0 0.2rem; line-height: 1;
+  }
+  .admin-badge {
+    display: inline-flex; align-items: center;
+    font-size: 0.65rem; font-weight: 800; text-transform: uppercase;
+    letter-spacing: 0.06em; padding: 0.15rem 0.5rem;
+    background: var(--lc-soft); color: var(--lc-600);
+    border-radius: 0.3rem; vertical-align: middle; margin-left: 0.5rem;
+  }
+  .page-header-main > div > p {
+    font-size: 0.82rem; color: var(--color-muted); margin: 0;
+  }
+  .header-actions {
+    display: flex; gap: 0.625rem; align-items: center; flex-shrink: 0;
+  }
 
-  /* ── Toast ───────────────────────────────────────────────────── */
-  .toast {
-    display: flex; align-items: center; gap: 0.625rem;
-    padding: 0.875rem 1rem;
-    border-radius: 0.625rem;
-    font-size: 0.875rem; font-weight: 500;
-    animation: slideIn 0.2s ease;
+  /* ── Emulation Banner ─────────────────────────────────────────────────── */
+  .emulate-banner {
+    display: flex; align-items: center; gap: 0.875rem;
+    padding: 0.875rem 1.125rem; margin-bottom: 1.25rem;
+    background: rgba(79, 70, 229, 0.08);
+    border: 1px solid rgba(79, 70, 229, 0.2);
+    border-radius: 0.75rem;
+    color: var(--lc-600);
+    animation: fadeUp 0.3s ease;
   }
-  .toast.error {
-    background: rgba(220,38,38,0.08);
-    color: #dc2626;
-    border: 1px solid rgba(220,38,38,0.15);
+  .emulate-banner :global(svg) { flex-shrink: 0; color: var(--lc-600); }
+  .emulate-banner div { display: flex; flex-direction: column; gap: 0.1rem; flex: 1; }
+  .emulate-banner strong { font-size: 0.82rem; font-weight: 700; color: var(--color-text); }
+  .emulate-banner span { font-size: 0.72rem; color: var(--color-muted); }
+  .emulate-clear {
+    display: inline-flex; align-items: center; gap: 0.25rem;
+    padding: 0.35rem 0.625rem;
+    background: rgba(79, 70, 229, 0.1); border: 1px solid rgba(79, 70, 229, 0.2);
+    border-radius: 0.4rem; color: var(--lc-600);
+    font-size: 0.72rem; font-weight: 600; cursor: pointer;
+    transition: all 0.15s;
   }
-  .toast-close {
-    margin-left: auto;
-    background: none; border: none; cursor: pointer;
-    color: currentColor; opacity: 0.5; padding: 0.15rem;
-    border-radius: 0.25rem; display: flex; align-items: center;
-    transition: opacity 0.15s;
+  .emulate-clear:hover { background: var(--lc-600); color: white; }
+
+  /* ── Alert ────────────────────────────────────────────────────────────── */
+  .alert-error {
+    display: flex; align-items: center; gap: 0.6rem;
+    padding: 0.875rem 1rem; margin-bottom: 1.25rem;
+    background: rgba(239,68,68,0.08); border: 1px solid rgba(239,68,68,0.25);
+    border-radius: 0.75rem; font-size: 0.875rem; color: #dc2626;
   }
-  .toast-close:hover { opacity: 1; }
-  @keyframes slideIn {
-    from { opacity: 0; transform: translateY(-8px); }
+
+  /* ── Grid layout ──────────────────────────────────────────────────────── */
+  .exam-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 1.25rem;
+    align-items: start;
+  }
+  @media (max-width: 1100px) {
+    .exam-grid { grid-template-columns: 1fr 1fr; }
+    .col:nth-child(3) { grid-column: 1 / -1; display: grid; grid-template-columns: 1fr 1fr; gap: 1.25rem; }
+  }
+  @media (max-width: 720px) {
+    .exam-grid { grid-template-columns: 1fr; }
+    .col:nth-child(3) { grid-column: auto; display: flex; flex-direction: column; }
+  }
+
+  .col {
+    display: flex; flex-direction: column; gap: 1.25rem;
+    animation: fadeUp 0.35s ease both;
+    position: relative; z-index: 0;
+  }
+  .col:has(.dd-panel) { z-index: 100; }
+  .col:nth-child(2) { animation-delay: 0.06s; }
+  .col:nth-child(3) { animation-delay: 0.12s; }
+  @keyframes fadeUp {
+    from { opacity: 0; transform: translateY(8px); }
     to   { opacity: 1; transform: translateY(0); }
   }
 
-  /* ── Card ────────────────────────────────────────────────────── */
-  .card { background: var(--color-surface); border: 1px solid var(--color-border); border-radius: 0.875rem; overflow: hidden; }
-  .card-head {
-    display: flex; align-items: center; gap: 0.5rem;
-    padding: 0.875rem 1.25rem;
+  /* ── Cards ────────────────────────────────────────────────────────────── */
+  .card {
+    background: var(--color-surface);
+    border: 1px solid var(--color-border);
+    border-radius: 1rem;
+    overflow: visible;
+  }
+  .card-header {
+    display: flex; align-items: flex-start; gap: 0.75rem;
+    padding: 1rem 1.25rem 0.875rem;
     border-bottom: 1px solid var(--color-border);
-    font-size: 0.85rem; font-weight: 700; color: var(--color-text);
     background: var(--color-bg);
+    border-radius: 1rem 1rem 0 0;
+  }
+  .card-icon {
+    width: 32px; height: 32px; flex-shrink: 0;
+    display: flex; align-items: center; justify-content: center;
+    background: var(--lc-soft); border-radius: 0.5rem;
+    color: var(--lc-600);
+  }
+  .card-header h2 {
+    font-size: 0.85rem; font-weight: 700; color: var(--color-text);
+    margin: 0 0 0.15rem; line-height: 1.2;
+  }
+  .card-header p {
+    font-size: 0.73rem; color: var(--color-muted); margin: 0;
   }
   .card-body {
-    display: grid; grid-template-columns: repeat(12, 1fr); gap: 1rem;
-    padding: 1.25rem;
+    padding: 1.125rem 1.25rem;
+    display: flex; flex-direction: column; gap: 0.875rem;
   }
 
-  /* ── Fields ──────────────────────────────────────────────────── */
-  .field-full    { grid-column: span 12; }
-  .field-half    { grid-column: span 6; }
-  .field-third   { grid-column: span 4; }
-  .field-quarter { grid-column: span 3; }
+  /* ── Lecturer Meta ──────────────────────────────────────────────────────── */
+  .lecturer-meta {
+    display: flex; gap: 1rem; padding: 0.5rem 0.75rem;
+    background: var(--color-bg); border-radius: 0.5rem;
+    font-size: 0.72rem; color: var(--color-muted);
+  }
+  .lecturer-meta span {
+    display: inline-flex; align-items: center; gap: 0.3rem;
+  }
 
-  label { display: block; font-size: 0.72rem; font-weight: 700; color: var(--color-muted); text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 0.4rem; }
-  .req { color: #dc2626; }
+  /* ── Fields ───────────────────────────────────────────────────────────── */
+  .field { display: flex; flex-direction: column; gap: 0.35rem; }
+  .field label {
+    font-size: 0.8rem; font-weight: 600; color: var(--color-text);
+    display: flex; align-items: center; gap: 0.3rem;
+  }
+  .req { color: #ef4444; }
+  .opt { font-size: 0.7rem; font-weight: 500; color: var(--color-muted); margin-left: 0.25rem; }
+  .field-hint { font-size: 0.72rem; color: var(--color-muted); line-height: 1.4; margin: 0; }
 
-  input[type="text"], input[type="number"], input[type="datetime-local"], select {
-    width: 100%; padding: 0.65rem 0.875rem;
-    background: var(--color-bg); border: 1px solid var(--color-border);
-    border-radius: 0.5rem; font-size: 0.82rem; color: var(--color-text);
-    font-family: inherit; outline: none;
+  .field input[type=text],
+  .field input[type=number],
+  .field textarea,
+  .field select {
+    padding: 0.575rem 0.875rem;
+    border: 1px solid var(--color-border);
+    border-radius: 0.6rem;
+    background: var(--color-bg);
+    color: var(--color-text);
+    font-size: 0.875rem;
+    font-family: inherit;
+    outline: none;
+    width: 100%;
+    box-sizing: border-box;
+    resize: vertical;
     transition: border-color 0.15s, box-shadow 0.15s;
     -webkit-appearance: none; appearance: none;
   }
-  input:focus, select:focus { border-color: #3b82f6; box-shadow: 0 0 0 3px rgba(59,130,246,0.1); }
-  input::placeholder { color: var(--color-muted); opacity: 0.5; }
+  .field select {
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%239ca3af' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 0.75rem center;
+    padding-right: 2rem;
+  }
+  .field input[type=text]:focus,
+  .field input[type=number]:focus,
+  .field textarea:focus,
+  .field select:focus {
+    border-color: var(--lc-600);
+    box-shadow: 0 0 0 3px var(--lc-soft);
+  }
+  .two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 0.75rem; }
 
-  /* ── Level Chips ─────────────────────────────────────────────── */
-  .level-chips { display: flex; gap: 0.375rem; flex-wrap: wrap; }
+  /* ── Dropdown system ──────────────────────────────────────────────────── */
+  .dd-wrap { position: relative; width: 100%; z-index: 10; }
+  .dd-wrap:has(.dd-panel) { z-index: 1000; }
+
+  .dd-trigger {
+    width: 100%; display: flex; align-items: center; gap: 0.5rem;
+    padding: 0.575rem 0.875rem;
+    border: 1px solid var(--color-border);
+    border-radius: 0.6rem;
+    background: var(--color-bg);
+    color: var(--color-text);
+    font-size: 0.875rem;
+    font-family: inherit;
+    cursor: pointer;
+    text-align: left;
+    outline: none;
+    min-height: 38px;
+    transition: border-color 0.15s, box-shadow 0.15s;
+  }
+  .dd-trigger:hover { border-color: rgba(79, 70, 229, 0.5); }
+  .dd-trigger.open,
+  .dd-trigger.has-val {
+    border-color: var(--lc-600);
+  }
+  .dd-trigger.open {
+    box-shadow: 0 0 0 3px var(--lc-soft);
+    border-radius: 0.6rem 0.6rem 0 0;
+  }
+
+  .dd-placeholder { color: var(--color-muted); flex: 1; font-size: 0.85rem; }
+  .dd-val { flex: 1; font-size: 0.85rem; color: var(--color-text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .dd-badge {
+    flex-shrink: 0;
+    font-size: 0.7rem; font-weight: 800;
+    background: var(--lc-soft);
+    color: var(--lc-600);
+    padding: 0.1rem 0.45rem;
+    border-radius: 0.3rem;
+  }
+
+  :global(.dd-chevron) {
+    margin-left: auto; flex-shrink: 0;
+    color: var(--color-muted);
+    transition: transform 0.18s;
+  }
+  .dd-trigger.open :global(.dd-chevron) { transform: rotate(180deg); }
+
+  .dd-panel {
+    position: absolute;
+    top: 100%;
+    left: 0; right: 0;
+    background: var(--color-surface);
+    border: 1px solid var(--lc-600);
+    border-top: none;
+    border-radius: 0 0 0.75rem 0.75rem;
+    box-shadow: 0 8px 24px rgba(0,0,0,0.12);
+    z-index: 1000;
+    overflow: hidden;
+    animation: panelIn 0.12s ease;
+  }
+  @keyframes panelIn {
+    from { opacity: 0; transform: translateY(-4px); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
+
+  .dd-search {
+    display: flex; align-items: center; gap: 0.5rem;
+    padding: 0.55rem 0.875rem;
+    border-bottom: 1px solid var(--color-border);
+    color: var(--color-muted);
+  }
+  .dd-search input {
+    flex: 1; background: none; border: none; outline: none;
+    font-size: 0.82rem; color: var(--color-text); font-family: inherit;
+  }
+  .dd-search input::placeholder { color: var(--color-muted); }
+
+  .dd-list { max-height: 210px; overflow-y: auto; padding: 0.3rem; }
+  .dd-list::-webkit-scrollbar { width: 3px; }
+  .dd-list::-webkit-scrollbar-thumb { background: var(--color-border); border-radius: 2px; }
+
+  .dd-item {
+    width: 100%; display: flex; align-items: center; gap: 0.5rem;
+    padding: 0.5rem 0.75rem; border-radius: 0.45rem;
+    background: none; border: none; cursor: pointer; text-align: left;
+    font-family: inherit; transition: background 0.1s;
+  }
+  .dd-item:hover   { background: var(--lc-soft); }
+  .dd-item.active  { background: rgba(79, 70, 229, 0.1); }
+
+  .dd-group-label {
+    padding: 0.4rem 0.75rem;
+    font-size: 0.65rem; font-weight: 700;
+    text-transform: uppercase; letter-spacing: 0.06em;
+    color: var(--color-muted);
+    border-bottom: 1px solid var(--color-border);
+    margin-bottom: 0.2rem;
+  }
+
+  .item-code {
+    font-size: 0.7rem; font-weight: 800; color: var(--lc-600);
+    background: var(--lc-soft);
+    padding: 0.1rem 0.4rem; border-radius: 0.3rem;
+    white-space: nowrap; flex-shrink: 0;
+  }
+  .item-label { font-size: 0.83rem; color: var(--color-text); flex: 1; }
+  :global(.item-check) { color: var(--lc-600); flex-shrink: 0; margin-left: auto; }
+  .dd-empty { text-align: center; padding: 1.25rem; font-size: 0.82rem; color: var(--color-muted); }
+
+  /* Multi-select tags */
+  .dd-trigger.multi { flex-wrap: wrap; height: auto; align-items: center; }
+  .tag-row { display: flex; flex-wrap: wrap; gap: 0.25rem; flex: 1; }
+  .tag {
+    display: inline-flex; align-items: center; gap: 0.2rem;
+    font-size: 0.7rem; font-weight: 700;
+    padding: 0.2rem 0.3rem 0.2rem 0.45rem;
+    background: var(--lc-soft); color: var(--lc-600);
+    border-radius: 0.3rem; white-space: nowrap;
+  }
+  .tag-x {
+    background: none; border: none; cursor: pointer; color: var(--lc-600);
+    display: flex; align-items: center; padding: 0; opacity: 0.6;
+    transition: opacity 0.1s;
+  }
+  .tag-x:hover { opacity: 1; }
+
+  /* ── DateTime picker ──────────────────────────────────────────────────── */
+  :global(.dt-cal-icon) { flex-shrink: 0; color: var(--lc-600); }
+
+  .dt-panel { width: 290px; min-width: unset; }
+
+  .cal-nav {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 0.7rem 0.875rem;
+    border-bottom: 1px solid var(--color-border);
+  }
+  .cal-arr {
+    background: none; border: none; cursor: pointer;
+    font-size: 1.1rem; padding: 0.2rem 0.45rem;
+    border-radius: 0.35rem; color: var(--color-text);
+    transition: background 0.1s;
+  }
+  .cal-arr:hover { background: var(--lc-soft); color: var(--lc-600); }
+  .cal-month-lbl { font-size: 0.83rem; font-weight: 700; color: var(--color-text); }
+
+  .cal-grid {
+    display: grid; grid-template-columns: repeat(7, 1fr);
+    gap: 1px; padding: 0.625rem;
+  }
+  .cal-dn {
+    text-align: center; font-size: 0.64rem; font-weight: 700;
+    color: var(--color-muted); padding: 0.15rem 0;
+    text-transform: uppercase;
+  }
+  .cal-day {
+    aspect-ratio: 1; display: flex; align-items: center; justify-content: center;
+    border-radius: 0.375rem; background: none; border: none;
+    font-size: 0.78rem; cursor: pointer; color: var(--color-text);
+    transition: all 0.1s; font-family: inherit;
+  }
+  .cal-day:hover { background: var(--lc-soft); color: var(--lc-600); }
+  .cal-day.today { color: var(--lc-600); font-weight: 800; }
+  .cal-day.selected { background: var(--lc-600); color: white; font-weight: 700; }
+  .cal-day.selected.today { background: var(--lc-700); }
+
+  .time-row {
+    display: flex; align-items: center; gap: 0.5rem;
+    padding: 0.55rem 0.875rem;
+    border-top: 1px solid var(--color-border);
+    color: var(--color-muted);
+  }
+  .time-sel {
+    flex: 1; padding: 0.3rem 0.5rem;
+    border: 1px solid var(--color-border);
+    border-radius: 0.4rem;
+    background: var(--color-bg); color: var(--color-text);
+    font-size: 0.8rem; font-family: inherit; outline: none; cursor: pointer;
+  }
+  .time-sel:focus { border-color: var(--lc-600); }
+  .dt-done-btn {
+    padding: 0.3rem 0.75rem; background: var(--lc-600); color: white;
+    border: none; border-radius: 0.4rem;
+    font-size: 0.75rem; font-weight: 700; cursor: pointer;
+  }
+  .dt-done-btn:hover { background: var(--lc-700); }
+
+  /* ── Scope section ──────────────────────────────────────────────────────── */
+  .scope-section { display: flex; flex-direction: column; gap: 0.7rem; }
+  .scope-row {
+    display: flex; align-items: center; justify-content: space-between; gap: 0.5rem;
+  }
+  .scope-label-group {
+    display: flex; align-items: center; gap: 0.35rem;
+    font-size: 0.8rem; font-weight: 600; color: var(--color-text);
+  }
+  .opt-badge {
+    font-size: 0.68rem; font-weight: 700; text-transform: uppercase;
+    letter-spacing: 0.04em; color: var(--color-muted);
+    background: var(--color-border); padding: 0.12rem 0.45rem;
+    border-radius: 999px;
+  }
+  .pill-btn {
+    font-size: 0.7rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em;
+    padding: 0.22rem 0.6rem; border-radius: 999px;
+    border: 1.5px solid var(--color-border);
+    background: none; color: var(--color-muted); cursor: pointer;
+    transition: all 0.15s;
+  }
+  .pill-btn:hover { border-color: var(--lc-600); color: var(--lc-600); }
+  .pill-btn.active { background: var(--lc-600); border-color: var(--lc-600); color: white; }
+
+  .level-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 0.45rem; }
   .level-chip {
-    padding: 0.4rem 0.875rem; border-radius: 2rem;
-    border: 1.5px solid var(--color-border); background: var(--color-bg);
-    font-size: 0.78rem; font-weight: 600; color: var(--color-muted);
-    cursor: pointer; font-family: inherit;
-    transition: all 0.15s;
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    gap: 0.05rem; padding: 0.65rem 0.5rem;
+    border-radius: 0.6rem;
+    border: 1.5px solid var(--color-border);
+    background: var(--color-bg);
+    cursor: pointer; transition: all 0.15s;
+    font-family: inherit; position: relative;
   }
-  .level-chip:hover { border-color: rgba(59,130,246,0.4); color: #3b82f6; }
-  .level-chip.selected {
-    border-color: #3b82f6; color: #3b82f6;
-    background: rgba(59, 130, 246, 0.08);
+  .level-chip:hover { border-color: rgba(79, 70, 229, 0.5); background: var(--lc-soft); }
+  .level-chip.selected { border-color: var(--lc-600); background: rgba(79, 70, 229, 0.08); }
+  .level-num {
+    font-size: 1.15rem; font-weight: 900; color: var(--color-text);
+    line-height: 1; font-variant-numeric: tabular-nums;
+  }
+  .level-chip.selected .level-num { color: var(--lc-600); }
+  .level-lbl {
+    font-size: 0.6rem; font-weight: 600; color: var(--color-muted);
+    text-transform: uppercase; letter-spacing: 0.05em;
+  }
+  .level-check {
+    position: absolute; top: 5px; right: 6px;
+    color: var(--lc-600); display: flex;
   }
 
-  /* ── Toggle ──────────────────────────────────────────────────── */
-  .toggle-label {
-    display: flex; align-items: flex-start; gap: 0.625rem;
-    cursor: pointer; padding: 0.5rem;
+  .scope-note {
+    font-size: 0.75rem; color: var(--color-muted);
+    padding: 0.5rem 0.75rem;
+    background: var(--color-bg);
     border-radius: 0.5rem;
-    transition: background 0.15s;
+    border: 1px solid var(--color-border);
+    line-height: 1.5;
+    transition: all 0.2s;
   }
-  .toggle-label:hover { background: var(--color-bg); }
-  .toggle-label input[type="checkbox"] {
-    margin-top: 0.15rem; flex-shrink: 0;
+  .scope-note.active { color: var(--lc-600); background: rgba(79, 70, 229, 0.05); border-color: rgba(79, 70, 229, 0.25); }
+
+  .divider { height: 1px; background: var(--color-border); margin: 0.25rem 0; }
+
+  /* ── Score grid ───────────────────────────────────────────────────────── */
+  .score-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0.75rem; }
+  .score-field { display: flex; flex-direction: column; gap: 0.35rem; }
+  .score-field label {
+    font-size: 0.78rem; font-weight: 600; color: var(--color-muted);
+    display: flex; align-items: center; gap: 0.3rem;
+  }
+  .score-input-wrap { position: relative; }
+  .score-input-wrap input {
+    width: 100%; padding: 0.575rem 2rem 0.575rem 0.875rem;
+    border: 1px solid var(--color-border); border-radius: 0.6rem;
+    background: var(--color-bg); color: var(--color-text);
+    font-size: 1rem; font-weight: 700;
+    font-family: inherit; outline: none; box-sizing: border-box;
+    transition: border-color 0.15s, box-shadow 0.15s;
+  }
+  .score-input-wrap input:focus {
+    border-color: var(--lc-600);
+    box-shadow: 0 0 0 3px var(--lc-soft);
+  }
+  .score-unit {
+    position: absolute; right: 0.75rem; top: 50%; transform: translateY(-50%);
+    font-size: 0.72rem; font-weight: 700; color: var(--color-muted);
+    pointer-events: none;
+  }
+
+  /* ── Toggles ──────────────────────────────────────────────────────────── */
+  .toggles { display: flex; flex-direction: column; }
+  .toggle-row {
+    display: flex; align-items: center; justify-content: space-between; gap: 1rem;
+    padding: 0.875rem 1.25rem; cursor: pointer;
+    border-bottom: 1px solid var(--color-border);
+    transition: background 0.12s;
+  }
+  .toggle-row:last-child { border-bottom: none; }
+  .toggle-row:hover { background: var(--lc-soft); }
+  .toggle-label { display: block; font-size: 0.83rem; font-weight: 600; color: var(--color-text); margin-bottom: 0.1rem; }
+  .toggle-desc  { display: block; font-size: 0.73rem; color: var(--color-muted); }
+
+  /* Custom toggle switch */
+  .toggle-track { position: relative; width: 40px; height: 22px; flex-shrink: 0; }
+  .toggle-cb {
+    position: absolute; opacity: 0; width: 0; height: 0;
+  }
+  .toggle-knob {
+    position: absolute; inset: 0;
+    background: var(--color-border);
+    border-radius: 999px;
+    transition: background 0.2s;
+    cursor: pointer;
+  }
+  .toggle-knob::after {
+    content: '';
+    position: absolute;
     width: 16px; height: 16px;
-    accent-color: #3b82f6; cursor: pointer;
+    top: 3px; left: 3px;
+    background: white;
+    border-radius: 50%;
+    transition: transform 0.2s;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.2);
   }
-  .toggle-content { display: flex; flex-direction: column; gap: 0.15rem; }
-  .toggle-title { font-size: 0.82rem; font-weight: 600; color: var(--color-text); }
-  .toggle-desc { font-size: 0.72rem; color: var(--color-muted); }
+  .toggle-cb:checked + .toggle-knob { background: var(--lc-600); }
+  .toggle-cb:checked + .toggle-knob::after { transform: translateX(18px); }
 
-  /* ── Footer ──────────────────────────────────────────────────── */
-  .form-foot {
-    display: flex; align-items: center; justify-content: flex-end; gap: 0.75rem;
-    padding-top: 0.5rem;
+  /* ── Info box ─────────────────────────────────────────────────────────── */
+  .info-box {
+    display: flex; gap: 0.75rem; padding: 1rem 1.125rem;
+    background: var(--lc-soft);
+    border: 1px solid rgba(79, 70, 229, 0.2);
+    border-radius: 0.875rem;
   }
-  .btn-primary {
-    display: inline-flex; align-items: center; gap: 0.5rem;
-    padding: 0.6rem 1.25rem; background: #3b82f6; color: white;
-    border: none; border-radius: 0.5rem; font-size: 0.85rem; font-weight: 600;
-    cursor: pointer; font-family: inherit;
-    transition: background 0.15s, transform 0.1s;
-  }
-  .btn-primary:hover:not(:disabled) { background: #2563eb; }
-  .btn-primary:active:not(:disabled) { transform: translateY(1px); }
-  .btn-primary:disabled { opacity: 0.6; cursor: not-allowed; }
+  .info-dot { color: var(--lc-600); flex-shrink: 0; margin-top: 0.05rem; }
+  .info-box strong { display: block; font-size: 0.82rem; font-weight: 700; color: var(--color-text); margin-bottom: 0.3rem; }
+  .info-box p { font-size: 0.76rem; color: var(--color-muted); margin: 0; line-height: 1.55; }
 
-  .btn-ghost {
-    display: inline-flex; align-items: center; gap: 0.5rem;
-    padding: 0.6rem 1.25rem; background: transparent;
-    border: 1px solid var(--color-border); color: var(--color-text);
-    border-radius: 0.5rem; font-size: 0.85rem; font-weight: 600;
-    cursor: pointer; font-family: inherit; text-decoration: none;
-    transition: all 0.15s;
+  /* ── Summary card ─────────────────────────────────────────────────────── */
+  .summary-card {
+    background: var(--color-surface);
+    border: 1px solid var(--color-border);
+    border-radius: 0.875rem;
+    overflow: hidden;
   }
-  .btn-ghost:hover { background: var(--color-bg); border-color: var(--color-text); }
+  .summary-title {
+    display: flex; align-items: center; gap: 0.4rem;
+    padding: 0.625rem 1rem;
+    font-size: 0.72rem; font-weight: 800; text-transform: uppercase; letter-spacing: 0.06em;
+    color: var(--color-muted);
+    background: var(--color-bg);
+    border-bottom: 1px solid var(--color-border);
+  }
+  .summary-rows { padding: 0.5rem; }
+  .sum-row {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 0.4rem 0.5rem; border-radius: 0.4rem; gap: 0.5rem;
+  }
+  .sum-row:hover { background: var(--lc-soft); }
+  .sum-row span:first-child { font-size: 0.77rem; color: var(--color-muted); }
+  .sum-val { font-size: 0.77rem; font-weight: 600; color: var(--color-text); text-align: right; }
 
-  /* ── Spin ────────────────────────────────────────────────────── */
+  /* ── Buttons ──────────────────────────────────────────────────────────── */
+  .btn {
+    display: inline-flex; align-items: center; justify-content: center;
+    gap: 0.4rem; padding: 0.625rem 1.125rem;
+    border-radius: 0.65rem;
+    font-size: 0.83rem; font-weight: 700;
+    cursor: pointer; transition: all 0.15s;
+    text-decoration: none; font-family: inherit;
+    white-space: nowrap;
+  }
+  .btn.primary {
+    background: var(--lc-600); border: 1px solid var(--lc-600); color: white;
+  }
+  .btn.primary:hover { background: var(--lc-700); border-color: var(--lc-700); }
+  .btn.primary:disabled { opacity: 0.6; cursor: not-allowed; }
+  .btn.ghost {
+    background: transparent; border: 1px solid var(--color-border); color: var(--color-text);
+  }
+  .btn.ghost:hover { border-color: var(--lc-600); color: var(--lc-600); }
+
+  /* ── Footer ───────────────────────────────────────────────────────────── */
+  .form-footer {
+    display: flex; flex-direction: column; gap: 0.5rem;
+  }
+  .form-footer .btn { width: 100%; }
+
+  @media (min-width: 721px) {
+    .form-footer { display: none; }
+  }
+  @media (max-width: 720px) {
+    .header-actions { display: none; }
+  }
+
+  /* ── Spin ─────────────────────────────────────────────────────────────── */
   :global(.spin) { animation: spin 0.7s linear infinite; display: inline-block; }
   @keyframes spin { to { transform: rotate(360deg); } }
 
-  /* ── Responsive ──────────────────────────────────────────────── */
-  @media (max-width: 640px) {
-    .field-half, .field-third, .field-quarter { grid-column: span 12; }
-    .form-foot { flex-direction: column-reverse; }
-    .form-foot :global(.btn-primary), .form-foot :global(.btn-ghost) { width: 100%; justify-content: center; }
-  }
+  /* ── Dark mode extras ─────────────────────────────────────────────────── */
+  :global(.dark) .dd-panel { box-shadow: 0 8px 24px rgba(0,0,0,0.4); }
+  :global(.dark) .level-chip.selected { background: rgba(79, 70, 229, 0.14); }
+  :global(.dark) .scope-note.active { background: rgba(79, 70, 229, 0.1); }
+  :global(.dark) .toggle-knob::after { background: #e5e5e5; }
 </style>

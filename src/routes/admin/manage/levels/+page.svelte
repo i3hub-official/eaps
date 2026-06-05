@@ -1,29 +1,28 @@
 <!-- src/routes/admin/manage/levels/+page.svelte -->
 <script lang="ts">
-  import type { PageData } from './$types';
+  import type { PageData, ActionData } from './$types';
+  import { enhance } from '$app/forms';
+  import { invalidate } from '$app/navigation';
   import { GraduationCap, Plus, Pencil, Trash2, X, Check, AlertCircle, Search, Loader2, RotateCcw } from 'lucide-svelte';
 
-  let { data, form }: { data: PageData; form: any } = $props();
+  let { data, form }: { data: PageData; form: ActionData } = $props();
 
   let editingId = $state<number | null>(null);
   let editedLevel = $state('');
-  let editedName = $state('');
-  let editedOrder = $state('');
   let searchQuery = $state('');
-  let loadingAction = $state<string | null>(null);
+  let deletingId = $state<number | null>(null);
+  let adding = $state(false);
+  let resetting = $state(false);
   let showResetModal = $state(false);
   let showAddModal = $state(false);
   let newLevelValue = $state('');
-  let newLevelName = $state('');
-  let newLevelOrder = $state('');
 
-  // data.levels is an array of { id, level, name, order, isDefault, _count: {...} }
   let levels = $state(data.levels ?? []);
 
   const filteredLevels = $derived(
     levels.filter((l: any) =>
       l.level.toString().includes(searchQuery) ||
-      (l.name?.toLowerCase() ?? '').includes(searchQuery.toLowerCase())
+      l.name?.toLowerCase().includes(searchQuery.toLowerCase())
     )
   );
 
@@ -32,170 +31,16 @@
   function startEdit(l: any) {
     editingId = l.id;
     editedLevel = l.level.toString();
-    editedName = l.name ?? '';
-    editedOrder = l.order?.toString() ?? '';
   }
 
   function cancelEdit() {
     editingId = null;
     editedLevel = '';
-    editedName = '';
-    editedOrder = '';
-  }
-
-  async function saveEdit(id: number) {
-    const levelNum = parseInt(editedLevel);
-    if (isNaN(levelNum) || levelNum < 100 || levelNum > 800) {
-      form = { error: 'Please enter a valid level between 100 and 800' };
-      return;
-    }
-    if (levelNum % 100 !== 0) {
-      form = { error: 'Level must be a multiple of 100' };
-      return;
-    }
-    const existing = levels.find((l: any) => l.level === levelNum && l.id !== id);
-    if (existing) {
-      form = { error: 'Level already exists' };
-      return;
-    }
-
-    loadingAction = 'edit';
-    try {
-      const body = new FormData();
-      body.append('id', id.toString());
-      body.append('level', editedLevel);
-      body.append('name', editedName || `${levelNum} Level`);
-      body.append('order', editedOrder || '0');
-
-      const response = await fetch('?/edit', { method: 'POST', body });
-      const result = await response.json();
-
-      if (result.type === 'success' || result.success) {
-        const idx = levels.findIndex((l: any) => l.id === id);
-        if (idx !== -1) {
-          levels[idx] = { ...levels[idx], level: levelNum, name: editedName || `${levelNum} Level`, order: parseInt(editedOrder) || 0 };
-          levels = [...levels].sort((a: any, b: any) => (a.order - b.order) || (a.level - b.level));
-        }
-        editingId = null;
-        form = { success: true, message: `Level updated to ${levelNum}` };
-      } else {
-        form = { error: result.error || 'Failed to update level' };
-      }
-    } catch {
-      form = { error: 'Error updating level' };
-    } finally {
-      loadingAction = null;
-    }
-  }
-
-  async function deleteLevel(id: number) {
-    const levelObj = levels.find((l: any) => l.id === id);
-    if (!levelObj) return;
-
-    if (levelObj.isDefault) {
-      form = { error: 'Default levels cannot be deleted' };
-      return;
-    }
-
-    loadingAction = `delete-${id}`;
-    try {
-      const body = new FormData();
-      body.append('id', id.toString());
-
-      const response = await fetch('?/delete', { method: 'POST', body });
-      const result = await response.json();
-
-      if (result.type === 'success' || result.success) {
-        levels = levels.filter((l: any) => l.id !== id);
-        form = { success: true, message: `Level ${levelObj.level} deleted` };
-      } else {
-        form = { error: result.error || 'Failed to delete level' };
-      }
-    } catch {
-      form = { error: 'Error deleting level' };
-    } finally {
-      loadingAction = null;
-    }
-  }
-
-  async function addLevel() {
-    const levelNum = parseInt(newLevelValue);
-    if (isNaN(levelNum) || levelNum < 100 || levelNum > 800) {
-      form = { error: 'Please enter a valid level between 100 and 800' };
-      return;
-    }
-    if (levelNum % 100 !== 0) {
-      form = { error: 'Level must be a multiple of 100' };
-      return;
-    }
-    if (levels.some((l: any) => l.level === levelNum)) {
-      form = { error: 'Level already exists' };
-      return;
-    }
-
-    loadingAction = 'add';
-    try {
-      const body = new FormData();
-      body.append('level', newLevelValue);
-      body.append('name', newLevelName || `${levelNum} Level`);
-      body.append('order', newLevelOrder || '0');
-
-      const response = await fetch('?/create', { method: 'POST', body });
-      const result = await response.json();
-
-      if (result.type === 'success' || result.success) {
-        // Re-fetch to get the new ID from Prisma
-        const refresh = await fetch('/admin/manage/levels');
-        const newData = await refresh.json();
-        levels = newData.levels ?? [...levels, { id: Date.now(), level: levelNum, name: newLevelName || `${levelNum} Level`, order: parseInt(newLevelOrder) || 0, isDefault: false }];
-        levels = [...levels].sort((a: any, b: any) => (a.order - b.order) || (a.level - b.level));
-        showAddModal = false;
-        newLevelValue = '';
-        newLevelName = '';
-        newLevelOrder = '';
-        form = { success: true, message: `Level ${levelNum} added` };
-      } else {
-        form = { error: result.error || 'Failed to add level' };
-      }
-    } catch {
-      form = { error: 'Error adding level' };
-    } finally {
-      loadingAction = null;
-    }
-  }
-
-  async function resetToDefault() {
-    loadingAction = 'reset';
-    try {
-      const response = await fetch('?/reset', { method: 'POST', body: new FormData() });
-      const result = await response.json();
-
-      if (result.type === 'success' || result.success) {
-        levels = DEFAULT_LEVELS.map((l, i) => ({
-          id: i + 1,
-          level: l,
-          name: `${l} Level`,
-          order: i,
-          isDefault: true,
-          _count: { users: 0, exams: 0, registrations: 0 }
-        }));
-        showResetModal = false;
-        form = { success: true, message: 'Levels reset to defaults' };
-      } else {
-        form = { error: result.error || 'Failed to reset levels' };
-      }
-    } catch {
-      form = { error: 'Error resetting levels' };
-    } finally {
-      loadingAction = null;
-    }
   }
 
   function closeAddModal() {
     showAddModal = false;
     newLevelValue = '';
-    newLevelName = '';
-    newLevelOrder = '';
   }
 
   function closeResetModal() {
@@ -206,6 +51,65 @@
     const total = (l._count?.users ?? 0) + (l._count?.exams ?? 0) + (l._count?.registrations ?? 0);
     if (total === 0) return 'No usage';
     return `${l._count?.users ?? 0} students, ${l._count?.exams ?? 0} exams, ${l._count?.registrations ?? 0} registrations`;
+  }
+
+  // ── Enhance wrappers ───────────────────────────────────────────────────────
+
+  function handleEditEnhance() {
+    return async ({ result, update }: { result: any; update: () => Promise<void> }) => {
+      await update();
+      if (result.type === 'success') {
+        const levelNum = parseInt(editedLevel);
+        const idx = levels.findIndex((l: any) => l.id === editingId);
+        if (idx !== -1) {
+          levels[idx] = { 
+            ...levels[idx], 
+            level: levelNum, 
+            name: `${levelNum} Level`,
+            order: levelNum / 100
+          };
+          levels = [...levels].sort((a: any, b: any) => a.level - b.level);
+        }
+        editingId = null;
+      }
+    };
+  }
+
+  function handleDeleteEnhance(id: number) {
+    deletingId = id;
+    return async ({ result, update }: { result: any; update: () => Promise<void> }) => {
+      await update();
+      if (result.type === 'success') {
+        levels = levels.filter((l: any) => l.id !== id);
+      }
+      deletingId = null;
+    };
+  }
+
+  function handleAddEnhance() {
+    adding = true;
+    return async ({ result, update }: { result: any; update: () => Promise<void> }) => {
+      await update();
+      if (result.type === 'success') {
+        // Close modal and refresh data from server
+        showAddModal = false;
+        newLevelValue = '';
+        await invalidate('admin:levels');
+      }
+      adding = false;
+    };
+  }
+
+  function handleResetEnhance() {
+    resetting = true;
+    return async ({ result, update }: { result: any; update: () => Promise<void> }) => {
+      await update();
+      if (result.type === 'success') {
+        showResetModal = false;
+        await invalidate('admin:levels');
+      }
+      resetting = false;
+    };
   }
 </script>
 
@@ -271,64 +175,63 @@
       {#each filteredLevels as level (level.id)}
         <div class="level-card" class:editing={editingId === level.id} class:default={level.isDefault}>
           {#if editingId === level.id}
-            <div class="level-edit">
+            <form method="POST" action="?/edit" use:enhance={handleEditEnhance} class="level-edit">
               <div class="edit-fields">
+                <input type="hidden" name="id" value={level.id} />
                 <input
                   type="number"
+                  name="level"
                   bind:value={editedLevel}
                   min="100"
                   max="800"
                   step="100"
                   placeholder="Level"
                   autofocus
-                  onkeypress={(e) => e.key === 'Enter' && saveEdit(level.id)}
                 />
-                <input
-                  type="text"
-                  bind:value={editedName}
-                  placeholder="Name"
-                />
-                <input
-                  type="number"
-                  bind:value={editedOrder}
-                  placeholder="Order"
-                />
+                <span class="auto-name">{editedLevel ? `${editedLevel} Level` : '—'}</span>
               </div>
               <div class="edit-actions">
-                <button class="save-btn" onclick={() => saveEdit(level.id)} disabled={loadingAction === 'edit'} title="Save">
-                  {#if loadingAction === 'edit'}
-                    <Loader2 size={14} class="spin" />
-                  {:else}
-                    <Check size={14} />
-                  {/if}
+                <button type="submit" class="save-btn" title="Save">
+                  <Check size={14} />
                 </button>
-                <button class="cancel-btn" onclick={cancelEdit} title="Cancel">
+                <button type="button" class="cancel-btn" onclick={cancelEdit} title="Cancel">
                   <X size={14} />
                 </button>
               </div>
-            </div>
+            </form>
           {:else}
             <div class="level-content">
               <span class="level-number">{level.level}</span>
               <span class="level-name">{level.name}</span>
               <span class="level-usage">{formatCount(level)}</span>
+              {#if level.isDefault}
+                <span class="default-badge">Default</span>
+              {/if}
             </div>
             <div class="level-actions">
-              <button class="action-btn edit" onclick={() => startEdit(level)} title="Edit level">
+              <button 
+                class="action-btn edit" 
+                onclick={() => startEdit(level)} 
+                title={level.isDefault ? 'Default levels cannot be edited' : 'Edit level number'}
+                disabled={level.isDefault}
+              >
                 <Pencil size={14} />
               </button>
-              <button
-                class="action-btn delete"
-                onclick={() => deleteLevel(level.id)}
-                title={level.isDefault ? 'Default levels cannot be deleted' : 'Delete level'}
-                disabled={level.isDefault || loadingAction === `delete-${level.id}`}
-              >
-                {#if loadingAction === `delete-${level.id}`}
-                  <Loader2 size={14} class="spin" />
-                {:else}
-                  <Trash2 size={14} />
-                {/if}
-              </button>
+              <form method="POST" action="?/delete" use:enhance={() => handleDeleteEnhance(level.id)} class="inline-form">
+                <input type="hidden" name="id" value={level.id} />
+                <button
+                  type="submit"
+                  class="action-btn delete"
+                  title={level.isDefault ? 'Default levels cannot be deleted' : 'Delete level'}
+                  disabled={level.isDefault || deletingId === level.id}
+                >
+                  {#if deletingId === level.id}
+                    <Loader2 size={14} class="spin" />
+                  {:else}
+                    <Trash2 size={14} />
+                  {/if}
+                </button>
+              </form>
             </div>
           {/if}
         </div>
@@ -340,7 +243,7 @@
     <div class="info-icon"><AlertCircle size={18} /></div>
     <div class="info-content">
       <strong>About Levels</strong>
-      <p>Levels define the academic progression of students. Default levels are 100, 200, 300, 400, 500, and 600. You can add custom levels like 700, 800, or rename existing ones. Note that default levels cannot be deleted if they have associated students, exams, or registrations.</p>
+      <p>Levels define the academic progression of students. Default levels (100–600) are automatically created and cannot be edited or deleted. Custom levels (700, 800, etc.) can be added and their numbers changed, but names are always auto-generated as "X Level". Levels are always sorted numerically (100, 200, 300...).</p>
     </div>
   </div>
 
@@ -348,58 +251,46 @@
   {#if showAddModal}
     <div class="modal-overlay" onclick={closeAddModal} role="dialog" aria-modal="true" aria-labelledby="add-title">
       <div class="modal" onclick={(e) => e.stopPropagation()}>
-        <div class="modal-header">
-          <div class="modal-title-wrap">
-            <div class="modal-icon blue"><Plus size={18} /></div>
-            <h2 id="add-title">Add New Level</h2>
+        <form method="POST" action="?/create" use:enhance={handleAddEnhance}>
+          <div class="modal-header">
+            <div class="modal-title-wrap">
+              <div class="modal-icon blue"><Plus size={18} /></div>
+              <h2 id="add-title">Add New Level</h2>
+            </div>
+            <button type="button" class="modal-close" onclick={closeAddModal} aria-label="Close modal"><X size={18} /></button>
           </div>
-          <button class="modal-close" onclick={closeAddModal} aria-label="Close modal"><X size={18} /></button>
-        </div>
-        <div class="modal-body">
-          <div class="form-group">
-            <label for="add-level">Level Number <span class="req">*</span></label>
-            <input
-              id="add-level"
-              type="number"
-              bind:value={newLevelValue}
-              placeholder="e.g., 700"
-              min="100"
-              max="800"
-              step="100"
-              autofocus
-              onkeypress={(e) => e.key === 'Enter' && addLevel()}
-            />
-            <p class="hint">Enter a level between 100 and 800 (must be a multiple of 100)</p>
+          <div class="modal-body">
+            <div class="form-group">
+              <label for="add-level">Level Number <span class="req">*</span></label>
+              <input
+                id="add-level"
+                type="number"
+                name="level"
+                bind:value={newLevelValue}
+                placeholder="e.g., 700"
+                min="100"
+                max="800"
+                step="100"
+                autofocus
+              />
+              <p class="hint">Enter a level between 100 and 800 (must be a multiple of 100). Name will be auto-generated.</p>
+            </div>
+            <div class="preview-box">
+              <span class="preview-label">Auto-generated name:</span>
+              <span class="preview-value">{newLevelValue ? `${newLevelValue} Level` : '—'}</span>
+            </div>
           </div>
-          <div class="form-group">
-            <label for="add-name">Display Name</label>
-            <input
-              id="add-name"
-              type="text"
-              bind:value={newLevelName}
-              placeholder="e.g., 700 Level"
-            />
+          <div class="modal-footer">
+            <button type="button" class="btn-secondary" onclick={closeAddModal}>Cancel</button>
+            <button type="submit" class="btn-primary" disabled={adding}>
+              {#if adding}
+                <Loader2 size={14} class="spin" /> Adding...
+              {:else}
+                <Plus size={14} /> Add Level
+              {/if}
+            </button>
           </div>
-          <div class="form-group">
-            <label for="add-order">Sort Order</label>
-            <input
-              id="add-order"
-              type="number"
-              bind:value={newLevelOrder}
-              placeholder="0"
-            />
-          </div>
-        </div>
-        <div class="modal-footer">
-          <button type="button" class="btn-secondary" onclick={closeAddModal}>Cancel</button>
-          <button type="button" class="btn-primary" onclick={addLevel} disabled={loadingAction === 'add'}>
-            {#if loadingAction === 'add'}
-              <Loader2 size={14} class="spin" /> Adding...
-            {:else}
-              <Plus size={14} /> Add Level
-            {/if}
-          </button>
-        </div>
+        </form>
       </div>
     </div>
   {/if}
@@ -408,34 +299,40 @@
   {#if showResetModal}
     <div class="modal-overlay" onclick={closeResetModal} role="dialog" aria-modal="true" aria-labelledby="reset-title">
       <div class="modal delete-modal" onclick={(e) => e.stopPropagation()}>
-        <div class="modal-icon-wrap danger"><AlertCircle size={28} /></div>
-        <h2 id="reset-title">Reset to Default Levels?</h2>
-        <p class="reset-desc">This will remove all custom levels and reset to:</p>
-        <div class="default-levels">
-          {#each DEFAULT_LEVELS as lvl}
-            <span class="level-chip">{lvl}</span>
-          {/each}
-        </div>
-        <div class="warning-box">
-          <AlertCircle size={16} />
-          <span>Any custom levels you've added will be permanently removed. This action cannot be undone.</span>
-        </div>
-        <div class="modal-footer center">
-          <button type="button" class="btn-secondary" onclick={closeResetModal}>Cancel</button>
-          <button type="button" class="btn-danger" onclick={resetToDefault} disabled={loadingAction === 'reset'}>
-            {#if loadingAction === 'reset'}
-              <Loader2 size={14} class="spin" /> Resetting...
-            {:else}
-              <RotateCcw size={14} /> Yes, Reset Levels
-            {/if}
-          </button>
-        </div>
+        <form method="POST" action="?/reset" use:enhance={handleResetEnhance}>
+          <div class="modal-icon-wrap danger"><AlertCircle size={28} /></div>
+          <h2 id="reset-title">Reset to Default Levels?</h2>
+          <p class="reset-desc">This will remove all custom levels and reset to:</p>
+          <div class="default-levels">
+            {#each DEFAULT_LEVELS as lvl}
+              <span class="level-chip">{lvl} Level</span>
+            {/each}
+          </div>
+          <div class="warning-box">
+            <AlertCircle size={16} />
+            <span>Any custom levels you've added will be permanently removed. This action cannot be undone.</span>
+          </div>
+          <div class="modal-footer center">
+            <button type="button" class="btn-secondary" onclick={closeResetModal}>Cancel</button>
+            <button type="submit" class="btn-danger" disabled={resetting}>
+              {#if resetting}
+                <Loader2 size={14} class="spin" /> Resetting...
+              {:else}
+                <RotateCcw size={14} /> Yes, Reset Levels
+              {/if}
+            </button>
+          </div>
+        </form>
       </div>
     </div>
   {/if}
 </div>
 
 <style>
+  .inline-form { display: inline; }
+  .spin { animation: spin 0.7s linear infinite; display: inline-block; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
   .manage-page { display: flex; flex-direction: column; gap: 1.25rem; }
 
   /* ── Page Header ─────────────────────────────────────────────── */

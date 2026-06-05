@@ -8,7 +8,8 @@
     LayoutDashboard, Camera, LogOut, Sun, Moon,
     Mail, Hash, Layers, GraduationCap, ShieldCheck,
     ChevronRight, X, BarChart2, Bell, CheckCheck,
-    Loader2, BookOpen, Clock, Award
+    Loader2, BookOpen, Clock, Award, ClipboardList,
+    Calendar, FileText, UserCircle, AlertTriangle
   } from 'lucide-svelte';
 
   let { data, children }: { data: LayoutData; children: import('svelte').Snippet } = $props();
@@ -25,15 +26,20 @@
 
   const unreadCount = $derived(notifications.filter(n => !n.isRead).length);
 
+  // ── Navigation links with course registration ──────────────────────────────
   const links = [
-    { href: '/student',         label: 'Dashboard',      icon: LayoutDashboard },
-    { href: '/student/results', label: 'My Results',     icon: BarChart2       },
-    { href: '/enroll',          label: 'Face Enrolment', icon: Camera          },
+    { href: '/student',                label: 'Dashboard',           icon: LayoutDashboard },
+    { href: '/student/exams',          label: 'My Exams',            icon: ClipboardList   },
+    { href: '/student/results',        label: 'My Results',          icon: BarChart2       },
+    { href: '/student/registrations',  label: 'Course Registration', icon: BookOpen          },
+    { href: '/enroll',                 label: 'Face Enrolment',      icon: Camera          },
   ];
 
   const currentPath = $derived($page.url.pathname);
 
-  function isActive(href: string) { return currentPath === href; }
+  function isActive(href: string) {
+    return currentPath === href || currentPath.startsWith(href + '/');
+  }
 
   // ── Breadcrumb ──────────────────────────────────────────────────
   const breadcrumbs = $derived((() => {
@@ -45,9 +51,13 @@
     ];
 
     const map: Record<string, string> = {
-      results:  'My Results',
-      exam:     'Exam',
-      complete: 'Complete',
+      results:       'My Results',
+      exams:         'My Exams',
+      registrations: 'Course Registration',
+      exam:          'Exam',
+      complete:      'Complete',
+      upcoming:      'Upcoming',
+      history:       'History',
     };
 
     let built = '/student';
@@ -107,8 +117,10 @@
   }
 
   // Stats from server
-  const activeExams   = $derived(data.stats?.activeExams   ?? 0);
-  const totalResults  = $derived(data.stats?.totalResults  ?? 0);
+  const activeExams      = $derived(data.stats?.activeExams ?? 0);
+  const totalResults     = $derived(data.stats?.totalResults ?? 0);
+  const pendingRegistrations = $derived(data.stats?.pendingRegistrations ?? 0);
+  const upcomingExams    = $derived(data.stats?.upcomingExams ?? 0);
 </script>
 
 <div class="layout" class:collapsed>
@@ -149,6 +161,12 @@
         </div>
         <div class="stat-divider"></div>
         <div class="stat-pill">
+          <Calendar size={10} />
+          <span class="stat-num">{upcomingExams}</span>
+          <span class="stat-lbl">Upcoming</span>
+        </div>
+        <div class="stat-divider"></div>
+        <div class="stat-pill">
           <Award size={10} />
           <span class="stat-num">{totalResults}</span>
           <span class="stat-lbl">Results</span>
@@ -179,6 +197,10 @@
           {/if}
           {#if isActive(href)}
             <span class="active-pip" aria-hidden="true"></span>
+          {/if}
+          <!-- Notification badge for registrations -->
+          {#if href === '/student/registrations' && pendingRegistrations > 0 && !collapsed}
+            <span class="nav-badge">{pendingRegistrations}</span>
           {/if}
         </a>
       {/each}
@@ -332,6 +354,20 @@
       </div>
     </header>
 
+    <!-- Exam alert banner (if active exam session) -->
+    {#if data.activeExamSession}
+      <div class="exam-alert-banner">
+        <AlertTriangle size={16} />
+        <div class="exam-alert-content">
+          <span class="exam-alert-title">Active Exam Session</span>
+          <span class="exam-alert-course">{data.activeExamSession.examTitle}</span>
+        </div>
+        <a href={`/student/exam/${data.activeExamSession.id}`} class="exam-alert-btn">
+          <Clock size={14} /> Resume Exam
+        </a>
+      </div>
+    {/if}
+
     <main class="page-content">
       {@render children()}
     </main>
@@ -392,6 +428,11 @@
               <ShieldCheck size={10} />
               {data.user.isActive ? 'Active' : 'Inactive'}
             </span>
+            {#if data.user.level}
+              <span class="chip chip-blue">
+                <Layers size={10} /> {data.user.level} Level
+              </span>
+            {/if}
           </div>
         </div>
         <button class="bio-close" onclick={() => bioOpen = false} type="button" aria-label="Close">
@@ -416,6 +457,15 @@
             </div>
           </div>
         {/if}
+        {#if data.user.jambRegNo}
+          <div class="bio-field">
+            <div class="bio-field-icon"><FileText size={14} /></div>
+            <div>
+              <p class="bio-field-label">JAMB Reg No</p>
+              <p class="bio-field-value mono">{data.user.jambRegNo}</p>
+            </div>
+          </div>
+        {/if}
         {#if data.user.level}
           <div class="bio-field">
             <div class="bio-field-icon"><Layers size={14} /></div>
@@ -431,6 +481,24 @@
             <div>
               <p class="bio-field-label">Department</p>
               <p class="bio-field-value">{data.user.department.name}</p>
+            </div>
+          </div>
+        {/if}
+        {#if data.user.college}
+          <div class="bio-field">
+            <div class="bio-field-icon"><UserCircle size={14} /></div>
+            <div>
+              <p class="bio-field-label">College</p>
+              <p class="bio-field-value">{data.user.college.name}</p>
+            </div>
+          </div>
+        {/if}
+        {#if data.user.session}
+          <div class="bio-field">
+            <div class="bio-field-icon"><Calendar size={14} /></div>
+            <div>
+              <p class="bio-field-label">Academic Session</p>
+              <p class="bio-field-value">{data.user.session}</p>
             </div>
           </div>
         {/if}
@@ -460,6 +528,8 @@
     --green-600: #16a34a;
     --green-700: #15803d;
     --green-soft: rgba(34,197,94,0.08);
+    --blue-500: #3b82f6;
+    --blue-soft: rgba(59,130,246,0.08);
     --sidebar-w: 230px;
     --sidebar-collapsed: 60px;
     --topbar-h: 52px;
@@ -602,6 +672,14 @@
     background: var(--green-600);
   }
   [data-theme="dark"] .active-pip { background: var(--green-400); }
+
+  .nav-badge {
+    background: #dc2626; color: white;
+    font-size: 0.6rem; font-weight: 800;
+    min-width: 16px; height: 16px; border-radius: 999px;
+    display: flex; align-items: center; justify-content: center;
+    padding: 0 4px; flex-shrink: 0;
+  }
 
   .nav-link.loading { pointer-events: none; opacity: 0.6; }
   .nav-spinner {
@@ -765,7 +843,7 @@
   }
   .notif-item:last-child { border-bottom: none; }
   .notif-item:hover { background: var(--color-bg); }
-  .notif-item.unread { background: rgba(22,163,74,0.03); }
+  .notif-item.unread { background: rgba(22,163,94,0.03); }
 
   .notif-dot-col { width: 14px; flex-shrink: 0; display: flex; align-items: flex-start; padding-top: 4px; }
   .notif-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--green-600); }
@@ -778,6 +856,42 @@
   .notif-foot { padding: 0.5rem 1rem; border-top: 1px solid var(--color-border); text-align: center; }
   .notif-all-link { font-size: 0.72rem; font-weight: 600; color: var(--green-600); text-decoration: none; }
   .notif-all-link:hover { text-decoration: underline; }
+
+  /* Exam alert banner */
+  .exam-alert-banner {
+    display: flex; align-items: center; gap: 0.75rem;
+    padding: 0.625rem 1.25rem;
+    background: rgba(220, 38, 38, 0.06);
+    border-bottom: 1px solid rgba(220, 38, 38, 0.15);
+    color: #dc2626;
+    animation: slideDown 0.3s ease;
+  }
+  .exam-alert-banner :global(svg) { flex-shrink: 0; color: #dc2626; }
+
+  .exam-alert-content {
+    display: flex; flex-direction: column; gap: 0.1rem; flex: 1;
+  }
+  .exam-alert-title {
+    font-size: 0.72rem; font-weight: 700; color: #dc2626;
+  }
+  .exam-alert-course {
+    font-size: 0.7rem; color: #991b1b;
+  }
+  .exam-alert-btn {
+    display: inline-flex; align-items: center; gap: 0.35rem;
+    padding: 0.4rem 0.75rem;
+    background: #dc2626; color: white;
+    border: none; border-radius: 0.4rem;
+    font-size: 0.72rem; font-weight: 700;
+    text-decoration: none; cursor: pointer;
+    transition: background 0.15s; flex-shrink: 0;
+  }
+  .exam-alert-btn:hover { background: #b91c1c; }
+
+  @keyframes slideDown {
+    from { opacity: 0; transform: translateY(-100%); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
 
   /* Page content */
   .page-content { flex: 1; }
@@ -892,7 +1006,9 @@
     text-transform: uppercase; letter-spacing: 0.04em;
   }
   .chip-green { background: var(--green-soft); border-color: rgba(34,197,94,0.25); color: var(--green-700); }
+  .chip-blue { background: var(--blue-soft); border-color: rgba(59,130,246,0.25); color: var(--blue-500); }
   [data-theme="dark"] .chip-green { color: var(--green-400); }
+  [data-theme="dark"] .chip-blue { color: var(--blue-500); }
   .chip-active   { background: rgba(34,197,94,0.08); border-color: rgba(34,197,94,0.2); color: var(--green-700); }
   .chip-inactive { background: rgba(220,38,38,0.08); border-color: rgba(220,38,38,0.2); color: #dc2626; }
 
@@ -956,5 +1072,7 @@
     .avatar-chevron, .stats-strip, .collapse-btn { display: none; }
     .topbar { padding: 0 1rem; }
     .notif-dropdown { width: 290px; }
+    .exam-alert-banner { padding: 0.5rem 1rem; }
+    .exam-alert-course { display: none; }
   }
 </style>

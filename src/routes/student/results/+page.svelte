@@ -1,3 +1,5 @@
+<!-- src/routes/student/results/+page.svelte -->
+
 <script lang="ts">
   import { BarChart2, CheckCircle, XCircle, Clock, BookOpen } from 'lucide-svelte';
   import type { PageData } from './$types';

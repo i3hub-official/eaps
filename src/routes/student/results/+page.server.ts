@@ -1,3 +1,5 @@
+// src/routes/student/results/+page.server.ts
+
 import type { PageServerLoad } from './$types';
 import { requireStudent } from '$lib/server/auth/guards.js';
 import { getStudentResults } from '$lib/server/db/results.js';
