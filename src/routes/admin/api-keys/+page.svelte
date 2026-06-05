@@ -10,10 +10,13 @@
     BarChart3, Zap, Lock, Unlock, MoreHorizontal, Calendar,
     TrendingUp, TrendingDown, Minus, Download, RefreshCcw,
     ArrowUpRight, ArrowDownRight, Layers, ShieldCheck,
-    Info, XCircle, Loader2, ChevronRight, Sparkles
+    Info, XCircle, Loader2, ChevronRight, Sparkles, Sun, Moon
   } from 'lucide-svelte';
+  import { getTheme } from '$lib/index.js';
 
   let { data, form }: { data: PageData; form: ActionData } = $props();
+
+  const theme = $derived(getTheme());
 
   const ALL_SCOPES = [
     { value: 'read_users',      label: 'Read Users',       group: 'Users',      desc: 'List and view user records', icon: Eye },
@@ -29,12 +32,10 @@
 
   const SCOPE_GROUPS = [...new Set(ALL_SCOPES.map(s => s.group))];
 
-  // ── State ────────────────────────────────────────────────────────────────────
+  // ── State ──────────────────────────────────────────────────────
   let showCreateModal = $state(false);
   let showRawKey = $state<string | null>(null);
   let rawKeyCopied = $state(false);
-  let deleteConfirmId = $state<string | null>(null);
-  let revokeConfirmId = $state<string | null>(null);
   let searchQuery = $state('');
   let filterStatus = $state<'all' | 'active' | 'revoked' | 'expired'>('all');
   let selectedScopes = $state<string[]>([]);
@@ -44,18 +45,7 @@
   let sortBy = $state<'createdAt' | 'lastUsedAt' | 'requestCount'>('createdAt');
   let sortDir = $state<'asc' | 'desc'>('desc');
   let toast = $state<{ message: string; type: 'success' | 'error' | 'info'; id: number } | null>(null);
-  let animateStats = $state(false);
-
-  // Form state
-  let newKeyName = $state('');
-  let newKeyExpiry = $state('');
-  let newKeyIpWhitelist = $state('');
   let createLoading = $state(false);
-
-  // Trigger stat animations on mount
-  $effect(() => {
-    setTimeout(() => animateStats = true, 100);
-  });
 
   $effect(() => {
     if (form?.success && form?.rawKey) {
@@ -67,9 +57,7 @@
       selectedScopes = [];
       showToast('API key created successfully', 'success');
     }
-    if (form?.error) {
-      showToast(form.error, 'error');
-    }
+    if (form?.error) showToast(form.error, 'error');
   });
 
   function showToast(message: string, type: 'success' | 'error' | 'info' = 'info') {
@@ -173,24 +161,10 @@
     return 'scope-read';
   }
 
-  function getTrendDirection(current: number, previous: number): 'up' | 'down' | 'stable' {
-    if (current > previous * 1.1) return 'up';
-    if (current < previous * 0.9) return 'down';
-    return 'stable';
-  }
-
-  const requestTrend = $derived(() => {
-    const logs = data.stats.recentLogs;
-    if (logs.length < 10) return 'stable';
-    const mid = Math.floor(logs.length / 2);
-    const first = logs.slice(0, mid).length;
-    const second = logs.slice(mid).length;
-    return getTrendDirection(second, first);
-  });
-
-  const activePercentage = $derived(
-    data.stats.total > 0 ? Math.round((data.stats.active / data.stats.total) * 100) : 0
-  );
+  // Form state
+  let newKeyName = $state('');
+  let newKeyExpiry = $state('');
+  let newKeyIpWhitelist = $state('');
 </script>
 
 <svelte:head>
@@ -199,7 +173,7 @@
 
 <div class="ak-page">
 
-  <!-- Toast Notification -->
+  <!-- Toast -->
   {#if toast}
     <div class="toast-container" transition:slide={{ duration: 200 }}>
       <div class="toast toast-{toast.type}">
@@ -214,9 +188,7 @@
   <!-- Header -->
   <div class="ak-header">
     <div class="ak-header-left">
-      <div class="ak-header-icon">
-        <Key size={22} />
-      </div>
+      <div class="ak-header-icon"><Key size={22} /></div>
       <div>
         <h1 class="ak-title">API Access Management</h1>
         <p class="ak-subtitle">Manage API keys, monitor usage, and control external integrations</p>
@@ -227,27 +199,26 @@
     </button>
   </div>
 
-  <!-- Stats Dashboard -->
+  <!-- Stats -->
   <div class="stats-dashboard">
-    <div class="stat-card stat-highlight" class:animate={animateStats}>
+    <div class="stat-card stat-highlight">
       <div class="stat-progress-ring">
         <svg viewBox="0 0 36 36">
           <path class="ring-bg" d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" />
-          <path class="ring-fill" stroke-dasharray="{activePercentage}, 100" d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" />
+          <path class="ring-fill" stroke-dasharray="{data.stats.total > 0 ? Math.round((data.stats.active / data.stats.total) * 100) : 0}, 100" d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" />
         </svg>
-        <div class="ring-value">{activePercentage}%</div>
+        <div class="ring-value">{data.stats.total > 0 ? Math.round((data.stats.active / data.stats.total) * 100) : 0}%</div>
       </div>
       <div class="stat-content">
         <div class="stat-val">{data.stats.active}</div>
         <div class="stat-lbl">Active Keys</div>
-        <div class="stat-trend trend-{requestTrend()}">
-          {#if requestTrend() === 'up'}<TrendingUp size={12} />{:else if requestTrend() === 'down'}<TrendingDown size={12} />{:else}<Minus size={12} />{/if}
-          <span>Healthy</span>
+        <div class="stat-trend trend-up">
+          <TrendingUp size={12} /><span>Healthy</span>
         </div>
       </div>
     </div>
 
-    <div class="stat-card" class:animate={animateStats}>
+    <div class="stat-card">
       <div class="stat-icon stat-total"><Hash size={18} /></div>
       <div class="stat-content">
         <div class="stat-val">{data.stats.total}</div>
@@ -256,7 +227,7 @@
       </div>
     </div>
 
-    <div class="stat-card" class:animate={animateStats}>
+    <div class="stat-card">
       <div class="stat-icon stat-revoked"><ShieldOff size={18} /></div>
       <div class="stat-content">
         <div class="stat-val">{data.stats.revoked}</div>
@@ -265,7 +236,7 @@
       </div>
     </div>
 
-    <div class="stat-card" class:animate={animateStats}>
+    <div class="stat-card">
       <div class="stat-icon stat-expired"><Clock size={18} /></div>
       <div class="stat-content">
         <div class="stat-val">{data.stats.expired}</div>
@@ -274,7 +245,7 @@
       </div>
     </div>
 
-    <div class="stat-card stat-wide" class:animate={animateStats}>
+    <div class="stat-card stat-wide">
       <div class="stat-icon stat-logs"><Activity size={18} /></div>
       <div class="stat-content">
         <div class="stat-val">{data.stats.recentLogs.length.toLocaleString()}</div>
@@ -291,21 +262,16 @@
     </div>
   </div>
 
-  <!-- Filters Toolbar -->
+  <!-- Toolbar -->
   <div class="toolbar">
     <div class="toolbar-left">
       <div class="search-wrap">
         <Search size={14} />
-        <input 
-          class="search-input" 
-          placeholder="Search by name, prefix, or scope…" 
-          bind:value={searchQuery} 
-        />
+        <input class="search-input" placeholder="Search by name or prefix…" bind:value={searchQuery} />
         {#if searchQuery}
           <button class="search-clear" onclick={() => searchQuery = ''}><X size={12} /></button>
         {/if}
       </div>
-
       <div class="filter-tabs">
         {#each ['all','active','revoked','expired'] as s}
           <button
@@ -313,15 +279,10 @@
             class:active={filterStatus === s}
             onclick={() => filterStatus = s as typeof filterStatus}
           >
-            {#if s === 'all'}
-              <Layers size={12} />
-            {:else if s === 'active'}
-              <ShieldCheck size={12} />
-            {:else if s === 'revoked'}
-              <ShieldOff size={12} />
-            {:else}
-              <Clock size={12} />
-            {/if}
+            {#if s === 'all'}<Layers size={12} />
+            {:else if s === 'active'}<ShieldCheck size={12} />
+            {:else if s === 'revoked'}<ShieldOff size={12} />
+            {:else}<Clock size={12} />{/if}
             <span>{s.charAt(0).toUpperCase() + s.slice(1)}</span>
             <span class="tab-count">
               {s === 'all' ? data.stats.total : s === 'active' ? data.stats.active : s === 'revoked' ? data.stats.revoked : data.stats.expired}
@@ -330,7 +291,6 @@
         {/each}
       </div>
     </div>
-
     <div class="toolbar-right">
       <div class="sort-dropdown">
         <select bind:value={sortBy} class="sort-select">
@@ -345,7 +305,7 @@
     </div>
   </div>
 
-  <!-- Bulk Actions Bar -->
+  <!-- Bulk Actions -->
   {#if showBulkActions}
     <div class="bulk-bar" transition:slide={{ duration: 200 }}>
       <div class="bulk-info">
@@ -353,24 +313,14 @@
         <span><strong>{selectedKeys.size}</strong> key{selectedKeys.size > 1 ? 's' : ''} selected</span>
       </div>
       <div class="bulk-actions">
-        <button class="btn-ghost btn-sm" onclick={clearSelection}>
-          <X size={13} /> Clear
-        </button>
+        <button class="btn-ghost btn-sm" onclick={clearSelection}><X size={13} /> Clear</button>
         <form method="POST" action="?/revokeBulk" use:enhance>
-          {#each [...selectedKeys] as id}
-            <input type="hidden" name="ids" value={id} />
-          {/each}
-          <button type="submit" class="btn-warning btn-sm">
-            <Lock size={13} /> Revoke
-          </button>
+          {#each [...selectedKeys] as id}<input type="hidden" name="ids" value={id} />{/each}
+          <button type="submit" class="btn-warning btn-sm"><Lock size={13} /> Revoke</button>
         </form>
         <form method="POST" action="?/deleteBulk" use:enhance>
-          {#each [...selectedKeys] as id}
-            <input type="hidden" name="ids" value={id} />
-          {/each}
-          <button type="submit" class="btn-danger btn-sm">
-            <Trash2 size={13} /> Delete
-          </button>
+          {#each [...selectedKeys] as id}<input type="hidden" name="ids" value={id} />{/each}
+          <button type="submit" class="btn-danger btn-sm"><Trash2 size={13} /> Delete</button>
         </form>
       </div>
     </div>
@@ -382,20 +332,14 @@
       <div class="empty-state" transition:fade>
         <div class="empty-illustration">
           <Key size={48} strokeWidth={1} />
-          <div class="empty-orbit">
-            <Shield size={20} />
-          </div>
+          <div class="empty-orbit"><Shield size={20} /></div>
         </div>
         <h3>No API keys found</h3>
-        <p>{searchQuery ? 'Try adjusting your search or filters' : 'Create your first API key to get started with external integrations'}</p>
+        <p>{searchQuery ? 'Try adjusting your search or filters' : 'Create your first API key to get started'}</p>
         {#if !searchQuery}
-          <button class="btn-primary" onclick={() => showCreateModal = true}>
-            <Plus size={14} /> Create API Key
-          </button>
+          <button class="btn-primary" onclick={() => showCreateModal = true}><Plus size={14} /> Create API Key</button>
         {:else}
-          <button class="btn-ghost" onclick={() => { searchQuery = ''; filterStatus = 'all'; }}>
-            <RefreshCcw size={14} /> Clear filters
-          </button>
+          <button class="btn-ghost" onclick={() => { searchQuery = ''; filterStatus = 'all'; }}><RefreshCcw size={14} /> Clear filters</button>
         {/if}
       </div>
     {:else}
@@ -404,12 +348,7 @@
           <tr>
             <th class="th-checkbox">
               <label class="checkbox-wrap">
-                <input 
-                  type="checkbox" 
-                  checked={selectedKeys.size === filteredKeys.length && filteredKeys.length > 0}
-                  indeterminate={selectedKeys.size > 0 && selectedKeys.size < filteredKeys.length}
-                  onchange={toggleAllKeys}
-                />
+                <input type="checkbox" checked={selectedKeys.size === filteredKeys.length && filteredKeys.length > 0} onchange={toggleAllKeys} />
                 <span class="check-custom"></span>
               </label>
             </th>
@@ -423,32 +362,17 @@
         </thead>
         <tbody>
           {#each filteredKeys as key, index (key.id)}
-            <tr 
-              class="key-row" 
-              class:expanded={expandedKey === key.id}
-              class:selected={selectedKeys.has(key.id)}
-              style="animation-delay: {index * 30}ms"
-            >
+            <tr class="key-row" class:expanded={expandedKey === key.id} class:selected={selectedKeys.has(key.id)} style="animation-delay: {index * 30}ms">
               <td class="td-checkbox">
                 <label class="checkbox-wrap">
-                  <input 
-                    type="checkbox" 
-                    checked={selectedKeys.has(key.id)}
-                    onchange={() => toggleKeySelection(key.id)}
-                  />
+                  <input type="checkbox" checked={selectedKeys.has(key.id)} onchange={() => toggleKeySelection(key.id)} />
                   <span class="check-custom"></span>
                 </label>
               </td>
               <td>
                 <button class="key-name-btn" onclick={() => expandedKey = expandedKey === key.id ? null : key.id}>
-                  <ChevronDown 
-                    size={14} 
-                    class="row-chevron" 
-                    style="transform: rotate({expandedKey === key.id ? '180deg' : '0deg'}); transition: transform .2s"
-                  />
-                  <div class="key-avatar">
-                    <Key size={14} />
-                  </div>
+                  <ChevronDown size={14} class="row-chevron" style="transform: rotate({expandedKey === key.id ? '180deg' : '0deg'}); transition: transform .2s" />
+                  <div class="key-avatar"><Key size={14} /></div>
                   <div class="key-info">
                     <span class="key-name">{key.name}</span>
                     <div class="key-meta">
@@ -470,9 +394,7 @@
                     </span>
                   {/each}
                   {#if key.scopes.length > 2}
-                    <button class="scope-badge scope-more" onclick={() => expandedKey = expandedKey === key.id ? null : key.id}>
-                      +{key.scopes.length - 2}
-                    </button>
+                    <button class="scope-badge scope-more" onclick={() => expandedKey = expandedKey === key.id ? null : key.id}>+{key.scopes.length - 2}</button>
                   {/if}
                 </div>
               </td>
@@ -485,17 +407,14 @@
               <td>
                 <div class="usage-cell">
                   <div class="usage-count">{key.requestCount.toLocaleString()}</div>
-                  <div class="usage-bar">
-                    <div class="usage-fill" style="width: {Math.min(100, (key.requestCount / Math.max(...data.keys.map(k => k.requestCount))) * 100)}%"></div>
-                  </div>
+                  <div class="usage-bar"><div class="usage-fill" style="width: {Math.min(100, (key.requestCount / Math.max(...data.keys.map(k => k.requestCount))) * 100)}%"></div></div>
                   <div class="usage-last">{formatRelative(key.lastUsedAt)}</div>
                 </div>
               </td>
               <td class="td-expiry">
                 {#if key.expiresAt}
                   <div class="expiry-cell" class:expiry-soon={new Date(key.expiresAt).getTime() - Date.now() < 7 * 24 * 60 * 60 * 1000 && key.status === 'active'}>
-                    <Calendar size={12} />
-                    <span>{formatDate(key.expiresAt)}</span>
+                    <Calendar size={12} /><span>{formatDate(key.expiresAt)}</span>
                   </div>
                 {:else}
                   <span class="td-muted">Never</span>
@@ -504,38 +423,18 @@
               <td class="td-actions">
                 <div class="row-actions">
                   {#if key.status === 'active'}
-                    <form method="POST" action="?/revoke" use:enhance={() => {
-                      return async ({ update }) => {
-                        await update();
-                        showToast('Key revoked', 'info');
-                      };
-                    }}>
+                    <form method="POST" action="?/revoke" use:enhance={() => { return async ({ update }) => { await update(); showToast('Key revoked', 'info'); }; }}>
                       <input type="hidden" name="id" value={key.id} />
-                      <button type="submit" class="action-btn action-revoke" title="Revoke key">
-                        <Lock size={13} />
-                      </button>
+                      <button type="submit" class="action-btn action-revoke" title="Revoke key"><Lock size={13} /></button>
                     </form>
                   {:else}
-                    <button class="action-btn action-revoke" disabled title="Already revoked">
-                      <Lock size={13} />
-                    </button>
+                    <button class="action-btn action-revoke" disabled title="Already revoked"><Lock size={13} /></button>
                   {/if}
-                  <form method="POST" action="?/delete" use:enhance={() => {
-                    return async ({ update }) => {
-                      await update();
-                      showToast('Key deleted', 'info');
-                    };
-                  }}>
+                  <form method="POST" action="?/delete" use:enhance={() => { return async ({ update }) => { await update(); showToast('Key deleted', 'info'); }; }}>
                     <input type="hidden" name="id" value={key.id} />
-                    <button type="submit" class="action-btn action-delete" title="Delete key" onclick={(e) => {
-                      if (!confirm('Are you sure? This cannot be undone.')) e.preventDefault();
-                    }}>
-                      <Trash2 size={13} />
-                    </button>
+                    <button type="submit" class="action-btn action-delete" title="Delete key" onclick={(e) => { if (!confirm('Are you sure? This cannot be undone.')) e.preventDefault(); }}><Trash2 size={13} /></button>
                   </form>
-                  <button class="action-btn action-expand" onclick={() => expandedKey = expandedKey === key.id ? null : key.id}>
-                    <MoreHorizontal size={13} />
-                  </button>
+                  <button class="action-btn action-expand" onclick={() => expandedKey = expandedKey === key.id ? null : key.id}><MoreHorizontal size={13} /></button>
                 </div>
               </td>
             </tr>
@@ -554,61 +453,31 @@
                                 {#if scope === 'admin_full'}<Zap size={10} />{:else if scope.startsWith('write_')}<Shield size={10} />{:else}<Eye size={10} />{/if}
                                 {scope.replace(/_/g,' ')}
                               </span>
-                              {#if scopeDef}
-                                <span class="scope-desc">{scopeDef.desc}</span>
-                              {/if}
+                              {#if scopeDef}<span class="scope-desc">{scopeDef.desc}</span>{/if}
                             </div>
                           {/each}
                         </div>
                       </div>
-
                       <div class="detail-section">
                         <h4><Globe size={13} /> IP Whitelist</h4>
                         {#if key.ipWhitelist.length}
                           <div class="ip-list">
-                            {#each key.ipWhitelist as ip}
-                              <span class="ip-chip">
-                                <Globe size={11} />
-                                {ip}
-                              </span>
-                            {/each}
+                            {#each key.ipWhitelist as ip}<span class="ip-chip"><Globe size={11} />{ip}</span>{/each}
                           </div>
                         {:else}
-                          <div class="detail-empty">
-                            <Unlock size={14} />
-                            <span>No restrictions — all IPs allowed</span>
-                          </div>
+                          <div class="detail-empty"><Unlock size={14} /><span>No restrictions — all IPs allowed</span></div>
                         {/if}
                       </div>
-
                       <div class="detail-section">
                         <h4><Info size={13} /> Metadata</h4>
                         <div class="meta-grid">
-                          <div class="meta-item">
-                            <span class="meta-label">Created</span>
-                            <span class="meta-value">{formatDate(key.createdAt)}</span>
-                          </div>
-                          <div class="meta-item">
-                            <span class="meta-label">Created by</span>
-                            <span class="meta-value">{key.createdBy.fullName}</span>
-                          </div>
-                          <div class="meta-item">
-                            <span class="meta-label">Last used</span>
-                            <span class="meta-value">{formatRelative(key.lastUsedAt)}</span>
-                          </div>
-                          <div class="meta-item">
-                            <span class="meta-label">Total requests</span>
-                            <span class="meta-value">{key.requestCount.toLocaleString()}</span>
-                          </div>
+                          <div class="meta-item"><span class="meta-label">Created</span><span class="meta-value">{formatDate(key.createdAt)}</span></div>
+                          <div class="meta-item"><span class="meta-label">Created by</span><span class="meta-value">{key.createdBy.fullName}</span></div>
+                          <div class="meta-item"><span class="meta-label">Last used</span><span class="meta-value">{formatRelative(key.lastUsedAt)}</span></div>
+                          <div class="meta-item"><span class="meta-label">Total requests</span><span class="meta-value">{key.requestCount.toLocaleString()}</span></div>
                           {#if key.revokedBy}
-                            <div class="meta-item">
-                              <span class="meta-label">Revoked by</span>
-                              <span class="meta-value">{key.revokedBy.fullName}</span>
-                            </div>
-                            <div class="meta-item">
-                              <span class="meta-label">Revoked on</span>
-                              <span class="meta-value">{formatDate(key.revokedAt)}</span>
-                            </div>
+                            <div class="meta-item"><span class="meta-label">Revoked by</span><span class="meta-value">{key.revokedBy.fullName}</span></div>
+                            <div class="meta-item"><span class="meta-label">Revoked on</span><span class="meta-value">{formatDate(key.revokedAt)}</span></div>
                           {/if}
                         </div>
                       </div>
@@ -623,22 +492,14 @@
     {/if}
   </div>
 
-  <!-- Recent Access Logs -->
+  <!-- Logs -->
   {#if data.stats.recentLogs.length > 0}
     <div class="logs-section" transition:fade>
       <div class="logs-header">
-        <h3 class="section-title">
-          <Activity size={16} /> 
-          Recent API Activity
-          <span class="section-badge">{data.stats.recentLogs.length}</span>
-        </h3>
+        <h3 class="section-title"><Activity size={16} /> Recent API Activity <span class="section-badge">{data.stats.recentLogs.length}</span></h3>
         <div class="logs-actions">
-          <button class="btn-ghost btn-sm" onclick={() => showToast('Export feature coming soon', 'info')}>
-            <Download size={13} /> Export
-          </button>
-          <button class="btn-ghost btn-sm" onclick={() => showToast('Refreshed', 'success')}>
-            <RefreshCw size={13} /> Refresh
-          </button>
+          <button class="btn-ghost btn-sm" onclick={() => showToast('Export coming soon', 'info')}><Download size={13} /> Export</button>
+          <button class="btn-ghost btn-sm" onclick={() => showToast('Refreshed', 'success')}><RefreshCw size={13} /> Refresh</button>
         </div>
       </div>
       <div class="logs-table-wrap">
@@ -655,12 +516,8 @@
                     <span class="log-key-name">{log.key.name}</span>
                   </div>
                 </td>
-                <td>
-                  <span class="method-badge method-{log.method.toLowerCase()}">{log.method}</span>
-                </td>
-                <td class="log-endpoint">
-                  <code>{log.endpoint}</code>
-                </td>
+                <td><span class="method-badge method-{log.method.toLowerCase()}">{log.method}</span></td>
+                <td class="log-endpoint"><code>{log.endpoint}</code></td>
                 <td>
                   <span class="status-code" class:sc-ok={log.statusCode < 400} class:sc-warn={log.statusCode >= 400 && log.statusCode < 500} class:sc-err={log.statusCode >= 500}>
                     {log.statusCode}
@@ -668,7 +525,7 @@
                 </td>
                 <td class="td-muted">
                   <div class="duration-cell">
-                    <div class="duration-bar" style="width: {Math.min(100, (log.durationMs || 0) / 10)}%; background: {log.durationMs && log.durationMs > 1000 ? '#f97316' : '#22c55e'};"></div>
+                    <div class="duration-bar" style="width: {Math.min(100, (log.durationMs || 0) / 10)}%; background: {log.durationMs && log.durationMs > 1000 ? 'var(--color-warning)' : 'var(--color-success)'};"></div>
                     <span>{log.durationMs ? `${log.durationMs}ms` : '—'}</span>
                   </div>
                 </td>
@@ -683,7 +540,7 @@
 
 </div>
 
-<!-- ── Create Modal ────────────────────────────────────────────────────────── -->
+<!-- Create Modal -->
 {#if showCreateModal}
   <div class="modal-bg" onclick={() => showCreateModal = false} role="dialog" aria-modal="true">
     <div class="modal" onclick={(e) => e.stopPropagation()} transition:slide={{ duration: 200 }}>
@@ -695,23 +552,12 @@
         </div>
         <button class="modal-close" onclick={() => showCreateModal = false}><X size={16} /></button>
       </div>
-
-      <form method="POST" action="?/create" use:enhance={() => {
-        createLoading = true;
-        return async ({ update }) => { createLoading = false; await update(); };
-      }}>
+      <form method="POST" action="?/create" use:enhance={() => { createLoading = true; return async ({ update }) => { createLoading = false; await update(); }; }}>
         <div class="form-field">
           <label for="key-name">Key Name <span class="req">*</span></label>
-          <input 
-            id="key-name" 
-            name="name" 
-            bind:value={newKeyName} 
-            placeholder="e.g. LMS Integration, Mobile App" 
-            required 
-          />
+          <input id="key-name" name="name" bind:value={newKeyName} placeholder="e.g. LMS Integration" required />
           <span class="field-hint">Give it a descriptive name so you remember what it's for</span>
         </div>
-
         <div class="form-field">
           <label>Scopes <span class="req">*</span></label>
           <div class="scopes-grid">
@@ -719,28 +565,11 @@
               <div class="scope-group">
                 <div class="scope-group-label">{group}</div>
                 {#each ALL_SCOPES.filter(s => s.group === group) as scope}
-                  <label 
-                    class="scope-check" 
-                    class:scope-check-admin={scope.value === 'admin_full'}
-                    class:checked={selectedScopes.includes(scope.value)}
-                  >
-                    <input
-                      type="checkbox"
-                      name="scopes"
-                      value={scope.value}
-                      checked={selectedScopes.includes(scope.value)}
-                      onchange={() => toggleScope(scope.value)}
-                    />
-                    <div class="scope-check-box">
-                      {#if selectedScopes.includes(scope.value)}
-                        <Check size={10} strokeWidth={3} />
-                      {/if}
-                    </div>
+                  <label class="scope-check" class:scope-check-admin={scope.value === 'admin_full'} class:checked={selectedScopes.includes(scope.value)}>
+                    <input type="checkbox" name="scopes" value={scope.value} checked={selectedScopes.includes(scope.value)} onchange={() => toggleScope(scope.value)} />
+                    <div class="scope-check-box">{#if selectedScopes.includes(scope.value)}<Check size={10} strokeWidth={3} />{/if}</div>
                     <div class="scope-check-content">
-                      <div class="scope-check-header">
-                        <svelte:component this={scope.icon} size={12} />
-                        <span class="scope-check-label">{scope.label}</span>
-                      </div>
+                      <div class="scope-check-header"><svelte:component this={scope.icon} size={12} /><span class="scope-check-label">{scope.label}</span></div>
                       <span class="scope-check-desc">{scope.desc}</span>
                     </div>
                   </label>
@@ -748,63 +577,25 @@
               </div>
             {/each}
           </div>
-          {#if selectedScopes.length === 0}
-            <span class="field-hint field-hint-warn">Select at least one scope</span>
-          {:else}
-            <span class="field-hint">{selectedScopes.length} scope{selectedScopes.length > 1 ? 's' : ''} selected</span>
-          {/if}
+          {#if selectedScopes.length === 0}<span class="field-hint field-hint-warn">Select at least one scope</span>{:else}<span class="field-hint">{selectedScopes.length} scope{selectedScopes.length > 1 ? 's' : ''} selected</span>{/if}
         </div>
-
         <div class="form-row">
           <div class="form-field">
             <label for="key-expiry">Expires in (days)</label>
-            <div class="input-with-icon">
-              <Calendar size={14} />
-              <input 
-                id="key-expiry" 
-                name="expiresIn" 
-                type="number" 
-                min="1" 
-                bind:value={newKeyExpiry} 
-                placeholder="Never expires" 
-              />
-            </div>
+            <div class="input-with-icon"><Calendar size={14} /><input id="key-expiry" name="expiresIn" type="number" min="1" bind:value={newKeyExpiry} placeholder="Never" /></div>
             <span class="field-hint">Leave empty for no expiration</span>
           </div>
           <div class="form-field">
             <label for="key-ip">IP Whitelist</label>
-            <div class="input-with-icon">
-              <Globe size={14} />
-              <input 
-                id="key-ip" 
-                name="ipWhitelist" 
-                bind:value={newKeyIpWhitelist} 
-                placeholder="192.168.1.1, 10.0.0.0/24" 
-              />
-            </div>
+            <div class="input-with-icon"><Globe size={14} /><input id="key-ip" name="ipWhitelist" bind:value={newKeyIpWhitelist} placeholder="192.168.1.1, 10.0.0.0/24" /></div>
             <span class="field-hint">Comma-separated IP addresses or CIDR ranges</span>
           </div>
         </div>
-
-        {#if form?.error}
-          <div class="form-error" transition:slide>
-            <AlertTriangle size={13} /> {form.error}
-          </div>
-        {/if}
-
+        {#if form?.error}<div class="form-error" transition:slide><AlertTriangle size={13} /> {form.error}</div>{/if}
         <div class="modal-foot">
           <button type="button" class="btn-ghost" onclick={() => showCreateModal = false}>Cancel</button>
-          <button 
-            type="submit" 
-            class="btn-primary" 
-            disabled={createLoading || !newKeyName || selectedScopes.length === 0}
-          >
-            {#if createLoading}
-              <Loader2 size={14} class="spin" />
-              Generating...
-            {:else}
-              <Key size={14} /> Generate Key
-            {/if}
+          <button type="submit" class="btn-primary" disabled={createLoading || !newKeyName || selectedScopes.length === 0}>
+            {#if createLoading}<Loader2 size={14} class="spin" /> Generating...{:else}<Key size={14} /> Generate Key{/if}
           </button>
         </div>
       </form>
@@ -812,72 +603,44 @@
   </div>
 {/if}
 
-<!-- ── Raw Key Display Modal ──────────────────────────────────────────────── -->
+<!-- Raw Key Modal -->
 {#if showRawKey}
   <div class="modal-bg" role="dialog" aria-modal="true" transition:fade>
     <div class="modal raw-key-modal" transition:slide={{ duration: 200 }}>
-      <div class="rk-success-ring">
-        <div class="rk-icon"><CheckCircle size={32} /></div>
-      </div>
+      <div class="rk-success-ring"><div class="rk-icon"><CheckCircle size={32} /></div></div>
       <h2 class="rk-title">API Key Created</h2>
       <p class="rk-subtitle">Your new key is ready to use</p>
-      
       <div class="rk-warning">
         <AlertTriangle size={14} />
-        <div>
-          <strong>Copy this key now.</strong>
-          <span>It will never be shown again for security reasons.</span>
-        </div>
+        <div><strong>Copy this key now.</strong><span>It will never be shown again for security reasons.</span></div>
       </div>
-      
       <div class="rk-key-wrap">
         <code class="rk-key">{showRawKey}</code>
         <button class="rk-copy-btn" onclick={copyKey}>
-          {#if rawKeyCopied}
-            <Check size={15} /> Copied!
-          {:else}
-            <Copy size={15} /> Copy to Clipboard
-          {/if}
+          {#if rawKeyCopied}<Check size={15} /> Copied!{:else}<Copy size={15} /> Copy to Clipboard{/if}
         </button>
       </div>
-      
-      <div class="rk-actions">
-        <button class="btn-primary rk-done" onclick={() => { showRawKey = null; rawKeyCopied = false; }}>
-          Done — I've Saved the Key
-        </button>
-      </div>
-    </div>
-  </div>
-{/if}
-
-<!-- ── Revoke Confirmation ────────────────────────────────────────────────── -->
-{#if revokeConfirmId}
-  <div class="modal-bg" onclick={() => revokeConfirmId = null} role="dialog" aria-modal="true" transition:fade>
-    <div class="modal confirm-modal" onclick={(e) => e.stopPropagation()} transition:slide>
-      <div class="confirm-icon warn"><ShieldOff size={24} /></div>
-      <h2>Revoke API Key?</h2>
-      <p>This key will immediately stop working. Any integrations using it will fail.</p>
-      <div class="modal-foot">
-        <button class="btn-ghost" onclick={() => revokeConfirmId = null}>Cancel</button>
-        <form method="POST" action="?/revoke" use:enhance>
-          <input type="hidden" name="id" value={revokeConfirmId} />
-          <button type="submit" class="btn-warning">
-            <Lock size={14} /> Yes, Revoke
-          </button>
-        </form>
-      </div>
+      <div class="rk-actions"><button class="btn-primary rk-done" onclick={() => { showRawKey = null; rawKeyCopied = false; }}>Done — I've Saved the Key</button></div>
     </div>
   </div>
 {/if}
 
 <style>
-  .ak-page { 
-    display: flex; 
-    flex-direction: column; 
+  /* ═══════════════════════════════════════════════════════════════
+     THEME-AWARE STYLES — uses only layout CSS variables
+     No hardcoded light-mode colors. All colors reference:
+     --color-bg, --color-surface, --color-surface-hover,
+     --color-text, --color-muted, --color-border
+     ═══════════════════════════════════════════════════════════════ */
+
+  .ak-page {
+    display: flex;
+    flex-direction: column;
     gap: 1.5rem;
     max-width: 1400px;
     margin: 0 auto;
-    padding: 0;
+    padding: 1.5rem;
+    color: var(--color-text);
   }
 
   /* ── Toast ───────────────────────────────────────────────────── */
@@ -892,208 +655,208 @@
     align-items: center;
     gap: 0.625rem;
     padding: 0.875rem 1.25rem;
-    border-radius: 0.75rem;
+    border-radius: 0.625rem;
     font-size: 0.875rem;
     font-weight: 500;
-    box-shadow: 0 10px 40px rgba(0,0,0,0.15);
+    box-shadow: 0 20px 25px -5px rgb(0 0 0 / 0.15);
     animation: toastSlide 0.3s ease;
     min-width: 280px;
+    backdrop-filter: blur(8px);
   }
-  .toast-success { background: #16a34a; color: white; }
-  .toast-error { background: #dc2626; color: white; }
-  .toast-info { background: var(--color-surface); color: var(--color-text); border: 1px solid var(--color-border); }
+  .toast-success {
+    background: rgba(22, 163, 74, 0.95);
+    color: white;
+  }
+  .toast-error {
+    background: rgba(220, 38, 38, 0.95);
+    color: white;
+  }
+  .toast-info {
+    background: var(--color-surface);
+    color: var(--color-text);
+    border: 1px solid var(--color-border);
+  }
   @keyframes toastSlide {
     from { transform: translateX(100%); opacity: 0; }
     to { transform: translateX(0); opacity: 1; }
   }
 
   /* ── Header ──────────────────────────────────────────────────── */
-  .ak-header { 
-    display: flex; 
-    align-items: center; 
-    justify-content: space-between; 
-    gap: 1rem; 
-    flex-wrap: wrap; 
+  .ak-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    flex-wrap: wrap;
   }
-  .ak-header-left { 
-    display: flex; 
-    align-items: center; 
-    gap: 1rem; 
+  .ak-header-left {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
   }
   .ak-header-icon {
-    width: 48px; 
-    height: 48px; 
+    width: 48px;
+    height: 48px;
     border-radius: 0.75rem;
     background: linear-gradient(135deg, #3b82f6, #2563eb);
-    display: flex; 
-    align-items: center; 
-    justify-content: center; 
-    color: white; 
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: white;
     flex-shrink: 0;
     box-shadow: 0 4px 12px rgba(59, 130, 246, 0.3);
   }
-  .ak-title { 
-    font-size: 1.35rem; 
-    font-weight: 800; 
-    color: var(--color-text); 
+  .ak-title {
+    font-size: 1.35rem;
+    font-weight: 800;
+    color: var(--color-text);
     line-height: 1.2;
     letter-spacing: -0.025em;
   }
-  .ak-subtitle { 
-    font-size: 0.8rem; 
-    color: var(--color-muted); 
-    margin-top: 0.25rem; 
+  .ak-subtitle {
+    font-size: 0.8rem;
+    color: var(--color-muted);
+    margin-top: 0.25rem;
   }
 
   /* ── Buttons ─────────────────────────────────────────────────── */
   .btn-primary {
-    display: flex; 
-    align-items: center; 
+    display: flex;
+    align-items: center;
     gap: 0.5rem;
-    padding: 0.625rem 1.25rem; 
-    background: linear-gradient(135deg, #3b82f6, #2563eb); 
+    padding: 0.625rem 1.25rem;
+    background: linear-gradient(135deg, #3b82f6, #2563eb);
     color: white;
-    border: none; 
-    border-radius: 0.5rem; 
-    font-size: 0.875rem; 
+    border: none;
+    border-radius: 0.5rem;
+    font-size: 0.875rem;
     font-weight: 600;
-    cursor: pointer; 
-    font-family: inherit; 
+    cursor: pointer;
+    font-family: inherit;
     transition: all 0.2s;
     box-shadow: 0 2px 8px rgba(59, 130, 246, 0.25);
   }
-  .btn-primary:hover { 
+  .btn-primary:hover {
     transform: translateY(-1px);
-    box-shadow: 0 4px 12px rgba(59, 130, 246, 0.35); 
+    box-shadow: 0 4px 12px rgba(59, 130, 246, 0.35);
   }
   .btn-primary:active { transform: translateY(0); }
-  .btn-primary:disabled { 
-    opacity: 0.5; 
+  .btn-primary:disabled {
+    opacity: 0.5;
     cursor: not-allowed;
     transform: none;
     box-shadow: none;
   }
   .btn-ghost {
-    display: flex; 
-    align-items: center; 
+    display: flex;
+    align-items: center;
     gap: 0.5rem;
-    padding: 0.625rem 1.25rem; 
+    padding: 0.625rem 1.25rem;
     background: transparent;
-    border: 1px solid var(--color-border); 
+    border: 1px solid var(--color-border);
     color: var(--color-muted);
-    border-radius: 0.5rem; 
-    font-size: 0.875rem; 
-    font-weight: 600; 
-    cursor: pointer; 
+    border-radius: 0.5rem;
+    font-size: 0.875rem;
+    font-weight: 600;
+    cursor: pointer;
     font-family: inherit;
     transition: all 0.2s;
   }
-  .btn-ghost:hover { 
-    background: var(--color-surface-hover); 
+  .btn-ghost:hover {
+    background: var(--color-surface-hover);
     color: var(--color-text);
     border-color: var(--color-muted);
   }
   .btn-sm { padding: 0.4rem 0.875rem; font-size: 0.78rem; }
   .btn-warning {
-    display: flex; 
-    align-items: center; 
+    display: flex;
+    align-items: center;
     gap: 0.5rem;
-    padding: 0.625rem 1.25rem; 
-    background: #f59e0b; 
+    padding: 0.625rem 1.25rem;
+    background: #f59e0b;
     color: white;
-    border: none; 
-    border-radius: 0.5rem; 
-    font-size: 0.875rem; 
+    border: none;
+    border-radius: 0.5rem;
+    font-size: 0.875rem;
     font-weight: 600;
-    cursor: pointer; 
+    cursor: pointer;
     font-family: inherit;
     transition: all 0.2s;
   }
   .btn-warning:hover { background: #d97706; }
   .btn-danger {
-    display: flex; 
-    align-items: center; 
+    display: flex;
+    align-items: center;
     gap: 0.5rem;
-    padding: 0.625rem 1.25rem; 
-    background: #dc2626; 
+    padding: 0.625rem 1.25rem;
+    background: #dc2626;
     color: white;
-    border: none; 
-    border-radius: 0.5rem; 
-    font-size: 0.875rem; 
+    border: none;
+    border-radius: 0.5rem;
+    font-size: 0.875rem;
     font-weight: 600;
-    cursor: pointer; 
+    cursor: pointer;
     font-family: inherit;
     transition: all 0.2s;
   }
   .btn-danger:hover { background: #b91c1c; }
 
   /* ── Stats Dashboard ─────────────────────────────────────────── */
-  .stats-dashboard { 
-    display: grid; 
-    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); 
-    gap: 1rem; 
+  .stats-dashboard {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    gap: 1rem;
   }
   .stat-card {
-    display: flex; 
-    align-items: center; 
+    display: flex;
+    align-items: center;
     gap: 1rem;
-    padding: 1.25rem; 
+    padding: 1.25rem;
     background: var(--color-surface);
-    border: 1px solid var(--color-border); 
+    border: 1px solid var(--color-border);
     border-radius: 0.875rem;
     transition: all 0.3s ease;
-    opacity: 0;
-    transform: translateY(10px);
   }
-  .stat-card.animate {
-    opacity: 1;
-    transform: translateY(0);
-  }
-  .stat-card:nth-child(1) { transition-delay: 0ms; }
-  .stat-card:nth-child(2) { transition-delay: 80ms; }
-  .stat-card:nth-child(3) { transition-delay: 160ms; }
-  .stat-card:nth-child(4) { transition-delay: 240ms; }
-  .stat-card:nth-child(5) { transition-delay: 320ms; }
   .stat-card:hover {
     transform: translateY(-2px);
-    box-shadow: 0 4px 12px rgba(0,0,0,0.06);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
   }
   .stat-highlight {
-    background: linear-gradient(135deg, rgba(59,130,246,0.06), var(--color-surface));
-    border-color: rgba(59,130,246,0.2);
+    background: linear-gradient(135deg, rgba(59, 130, 246, 0.06), var(--color-surface));
+    border-color: rgba(59, 130, 246, 0.2);
   }
   .stat-wide { grid-column: span 2; }
   .stat-content { flex: 1; }
   .stat-icon {
-    width: 40px; 
-    height: 40px; 
+    width: 40px;
+    height: 40px;
     border-radius: 0.625rem;
-    display: flex; 
-    align-items: center; 
-    justify-content: center; 
+    display: flex;
+    align-items: center;
+    justify-content: center;
     flex-shrink: 0;
   }
-  .stat-total  { background: rgba(59,130,246,0.1);  color: #3b82f6; }
-  .stat-active { background: rgba(22,163,74,0.1);   color: #16a34a; }
-  .stat-revoked{ background: rgba(220,38,38,0.1);   color: #dc2626; }
-  .stat-expired{ background: rgba(234,179,8,0.1);   color: #ca8a04; }
-  .stat-logs   { background: rgba(139,92,246,0.1);   color: #8b5cf6; }
-  .stat-val { 
-    font-size: 1.5rem; 
-    font-weight: 800; 
-    color: var(--color-text); 
-    line-height: 1; 
+  .stat-total  { background: rgba(59, 130, 246, 0.12); color: #3b82f6; }
+  .stat-active { background: rgba(22, 163, 74, 0.12); color: #16a34a; }
+  .stat-revoked{ background: rgba(220, 38, 38, 0.12); color: #dc2626; }
+  .stat-expired{ background: rgba(234, 179, 8, 0.12); color: #ca8a04; }
+  .stat-logs   { background: rgba(139, 92, 246, 0.12); color: #8b5cf6; }
+  .stat-val {
+    font-size: 1.5rem;
+    font-weight: 800;
+    color: var(--color-text);
+    line-height: 1;
     letter-spacing: -0.025em;
   }
-  .stat-lbl { 
-    font-size: 0.75rem; 
-    color: var(--color-muted); 
+  .stat-lbl {
+    font-size: 0.75rem;
+    color: var(--color-muted);
     margin-top: 0.375rem;
     font-weight: 500;
   }
-  .stat-sub { 
-    font-size: 0.7rem; 
-    color: var(--color-muted); 
+  .stat-sub {
+    font-size: 0.7rem;
+    color: var(--color-muted);
     margin-top: 0.25rem;
     opacity: 0.7;
   }
@@ -1187,14 +950,14 @@
     gap: 0.5rem;
   }
   .search-wrap {
-    display: flex; 
-    align-items: center; 
+    display: flex;
+    align-items: center;
     gap: 0.625rem;
-    padding: 0.625rem 1rem; 
+    padding: 0.625rem 1rem;
     background: var(--color-surface);
-    border: 1px solid var(--color-border); 
-    border-radius: 0.5rem; 
-    flex: 1; 
+    border: 1px solid var(--color-border);
+    border-radius: 0.5rem;
+    flex: 1;
     max-width: 360px;
     transition: all 0.2s;
   }
@@ -1202,18 +965,18 @@
     border-color: #3b82f6;
     box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
   }
-  .search-wrap svg { 
-    color: var(--color-muted); 
-    flex-shrink: 0; 
+  .search-wrap svg {
+    color: var(--color-muted);
+    flex-shrink: 0;
   }
-  .search-input { 
-    background: none; 
-    border: none; 
-    outline: none; 
-    font-size: 0.875rem; 
-    color: var(--color-text); 
-    width: 100%; 
-    font-family: inherit; 
+  .search-input {
+    background: none;
+    border: none;
+    outline: none;
+    font-size: 0.875rem;
+    color: var(--color-text);
+    width: 100%;
+    font-family: inherit;
   }
   .search-clear {
     background: none;
@@ -1222,39 +985,43 @@
     cursor: pointer;
     padding: 0.125rem;
     display: flex;
-    border-radius: 0.375rem;
+    border-radius: 0.25rem;
+    transition: all 0.15s;
   }
-  .search-clear:hover { color: var(--color-text); background: var(--color-bg); }
+  .search-clear:hover {
+    color: var(--color-text);
+    background: var(--color-bg);
+  }
 
-  .filter-tabs { 
-    display: flex; 
-    gap: 0.25rem; 
-    background: var(--color-bg); 
-    border: 1px solid var(--color-border); 
-    border-radius: 0.5rem; 
-    padding: 0.25rem; 
+  .filter-tabs {
+    display: flex;
+    gap: 0.25rem;
+    background: var(--color-bg);
+    border: 1px solid var(--color-border);
+    border-radius: 0.5rem;
+    padding: 0.25rem;
   }
-  .filter-tab { 
+  .filter-tab {
     display: flex;
     align-items: center;
     gap: 0.375rem;
-    padding: 0.5rem 0.875rem; 
-    border-radius: 0.375rem; 
-    border: none; 
-    background: none; 
-    font-size: 0.8rem; 
-    font-weight: 600; 
-    color: var(--color-muted); 
-    cursor: pointer; 
-    font-family: inherit; 
-    transition: all 0.15s; 
+    padding: 0.5rem 0.875rem;
+    border-radius: 0.375rem;
+    border: none;
+    background: none;
+    font-size: 0.8rem;
+    font-weight: 600;
+    color: var(--color-muted);
+    cursor: pointer;
+    font-family: inherit;
+    transition: all 0.15s;
   }
   .filter-tab:hover { color: var(--color-text); }
-  .filter-tab.active { 
-    background: var(--color-surface); 
-    color: var(--color-text); 
+  .filter-tab.active {
+    background: var(--color-surface);
+    color: var(--color-text);
     font-weight: 700;
-    box-shadow: 0 1px 3px rgba(0,0,0,0.08); 
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
   }
   .tab-count {
     font-size: 0.65rem;
@@ -1264,7 +1031,7 @@
     color: var(--color-muted);
   }
   .filter-tab.active .tab-count {
-    background: rgba(59,130,246,0.1);
+    background: rgba(59, 130, 246, 0.1);
     color: #3b82f6;
   }
 
@@ -1294,11 +1061,14 @@
     color: var(--color-muted);
     cursor: pointer;
     padding: 0.375rem;
-    border-radius: 0.375rem;
+    border-radius: 0.25rem;
     display: flex;
     transition: all 0.15s;
   }
-  .sort-dir-btn:hover { background: var(--color-bg); color: var(--color-text); }
+  .sort-dir-btn:hover {
+    background: var(--color-bg);
+    color: var(--color-text);
+  }
 
   /* ── Bulk Actions ────────────────────────────────────────────── */
   .bulk-bar {
@@ -1306,8 +1076,8 @@
     align-items: center;
     justify-content: space-between;
     padding: 0.875rem 1.25rem;
-    background: rgba(59, 130, 246, 0.04);
-    border: 1px solid rgba(59, 130, 246, 0.15);
+    background: linear-gradient(90deg, rgba(59, 130, 246, 0.06), var(--color-surface));
+    border: 1px solid rgba(59, 130, 246, 0.2);
     border-radius: 0.5rem;
     gap: 1rem;
     flex-wrap: wrap;
@@ -1326,41 +1096,47 @@
 
   /* ── Table ───────────────────────────────────────────────────── */
   .keys-table-wrap {
-    background: var(--color-surface); 
+    background: var(--color-surface);
     border: 1px solid var(--color-border);
-    border-radius: 0.875rem; 
+    border-radius: 0.875rem;
     overflow: hidden;
-    box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
   }
-  .keys-table { 
+  .keys-table {
     width: 100%;
-    border-collapse: collapse; 
-  }     
+    border-collapse: collapse;
+  }
   .keys-table th {
-    padding: 0.875rem 1rem; 
+    padding: 0.875rem 1rem;
     background: var(--color-bg);
-    font-size: 0.7rem; 
-    font-weight: 700; 
+    font-size: 0.7rem;
+    font-weight: 700;
     text-transform: uppercase;
-    letter-spacing: 0.06em; 
+    letter-spacing: 0.06em;
     color: var(--color-muted);
-    text-align: left; 
+    text-align: left;
     border-bottom: 1px solid var(--color-border);
     white-space: nowrap;
   }
-  .keys-table td { 
-    padding: 1rem; 
-    border-bottom: 1px solid var(--color-border-light); 
-    vertical-align: middle; 
+  .keys-table td {
+    padding: 1rem;
+    border-bottom: 1px solid var(--color-border);
+    vertical-align: middle;
   }
   .key-row {
     animation: fadeInUp 0.3s ease forwards;
     opacity: 0;
     transition: all 0.15s;
   }
-  .key-row:hover { background: var(--color-surface-hover); }
-  .key-row.selected { background: #eff6ff; }
-  .key-row:last-child td { border-bottom: none; }
+  .key-row:hover {
+    background: var(--color-surface-hover);
+  }
+  .key-row.selected {
+    background: rgba(59, 130, 246, 0.06);
+  }
+  .key-row:last-child td {
+    border-bottom: none;
+  }
   @keyframes fadeInUp {
     from { opacity: 0; transform: translateY(8px); }
     to { opacity: 1; transform: translateY(0); }
@@ -1408,27 +1184,17 @@
     transform: rotate(45deg);
     margin-bottom: 2px;
   }
-  .checkbox-wrap input:indeterminate + .check-custom {
-    background: #3b82f6;
-    border-color: #3b82f6;
-  }
-  .checkbox-wrap input:indeterminate + .check-custom::after {
-    content: '';
-    width: 8px;
-    height: 2px;
-    background: white;
-  }
 
   /* Key Cell */
-  .key-name-btn { 
-    display: flex; 
-    align-items: center; 
-    gap: 0.625rem; 
-    background: none; 
-    border: none; 
-    cursor: pointer; 
-    color: var(--color-text); 
-    font-family: inherit; 
+  .key-name-btn {
+    display: flex;
+    align-items: center;
+    gap: 0.625rem;
+    background: none;
+    border: none;
+    cursor: pointer;
+    color: var(--color-text);
+    font-family: inherit;
     padding: 0;
     text-align: left;
     width: 100%;
@@ -1436,7 +1202,7 @@
   .key-avatar {
     width: 36px;
     height: 36px;
-    border-radius: var(--radius);
+    border-radius: 0.5rem;
     background: linear-gradient(135deg, #3b82f6, #2563eb);
     display: flex;
     align-items: center;
@@ -1450,52 +1216,57 @@
     gap: 0.25rem;
     min-width: 0;
   }
-  .key-name { 
-    font-weight: 700; 
+  .key-name {
+    font-weight: 700;
     font-size: 0.875rem;
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
+    color: var(--color-text);
   }
-  .key-meta { 
-    display: flex; 
-    align-items: center; 
+  .key-meta {
+    display: flex;
+    align-items: center;
     gap: 0.375rem;
-    font-size: 0.72rem; 
-    color: var(--color-muted); 
+    font-size: 0.72rem;
+    color: var(--color-muted);
     flex-wrap: wrap;
   }
   .key-meta code {
     background: var(--color-bg);
     padding: 0.125rem 0.375rem;
-    border-radius: var(--radius-sm);
+    border-radius: 0.25rem;
     font-size: 0.65rem;
+    color: var(--color-muted);
   }
-  .meta-dot { opacity: 0.4; }
+  .meta-dot {
+    opacity: 0.4;
+    color: var(--color-muted);
+  }
 
   /* Scope Badges */
-  .scope-list { 
-    display: flex; 
-    flex-wrap: wrap; 
-    gap: 0.375rem; 
+  .scope-list {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.375rem;
   }
-  .scope-badge { 
+  .scope-badge {
     display: inline-flex;
     align-items: center;
     gap: 0.25rem;
-    font-size: 0.7rem; 
-    font-weight: 600; 
-    padding: 0.25rem 0.625rem; 
-    border-radius: 2rem; 
-    text-transform: capitalize; 
-    white-space: nowrap; 
+    font-size: 0.7rem;
+    font-weight: 600;
+    padding: 0.25rem 0.625rem;
+    border-radius: 2rem;
+    text-transform: capitalize;
+    white-space: nowrap;
   }
-  .scope-read  { background: rgba(59,130,246,0.1);  color: #3b82f6; }
-  .scope-write { background: rgba(234,179,8,0.1);   color: #ca8a04; }
-  .scope-admin { background: rgba(220,38,38,0.1);   color: #dc2626; }
-  .scope-more  { 
-    background: var(--color-bg); 
-    color: var(--color-muted); 
+  .scope-read  { background: rgba(59, 130, 246, 0.1); color: #3b82f6; }
+  .scope-write { background: rgba(234, 179, 8, 0.1); color: #ca8a04; }
+  .scope-admin { background: rgba(220, 38, 38, 0.1); color: #dc2626; }
+  .scope-more {
+    background: var(--color-bg);
+    color: var(--color-muted);
     border: 1px solid var(--color-border);
     cursor: pointer;
     transition: all 0.15s;
@@ -1505,21 +1276,21 @@
     color: var(--color-text);
   }
 
-  /* Status */
-  .status-badge { 
+  /* Status badges */
+  .status-badge {
     display: inline-flex;
     align-items: center;
     gap: 0.375rem;
-    font-size: 0.72rem; 
-    font-weight: 700; 
-    padding: 0.375rem 0.875rem; 
-    border-radius: 2rem; 
+    font-size: 0.72rem;
+    font-weight: 700;
+    padding: 0.375rem 0.875rem;
+    border-radius: 2rem;
     text-transform: capitalize;
     white-space: nowrap;
   }
-  .status-active  { background: rgba(22,163,74,0.1);  color: #16a34a; }
-  .status-revoked { background: rgba(220,38,38,0.1);  color: #dc2626; }
-  .status-expired { background: rgba(234,179,8,0.1);  color: #ca8a04; }
+  .status-active  { background: rgba(22, 163, 74, 0.1); color: #16a34a; }
+  .status-revoked { background: rgba(220, 38, 38, 0.1); color: #dc2626; }
+  .status-expired { background: rgba(234, 179, 8, 0.1); color: #ca8a04; }
 
   /* Usage */
   .usage-cell {
@@ -1562,27 +1333,33 @@
     color: #f59e0b;
     font-weight: 600;
   }
-  .expiry-soon svg { color: #f59e0b; }
+  .expiry-soon svg {
+    color: #f59e0b;
+  }
+  .td-muted {
+    color: var(--color-muted);
+    font-size: 0.8rem;
+  }
 
   /* Actions */
   .th-actions { text-align: right; }
   .td-actions { text-align: right; }
-  .row-actions { 
-    display: flex; 
-    gap: 0.375rem; 
+  .row-actions {
+    display: flex;
+    gap: 0.375rem;
     justify-content: flex-end;
   }
   .action-btn {
-    width: 32px; 
-    height: 32px; 
-    border-radius: var(--radius); 
+    width: 32px;
+    height: 32px;
+    border-radius: 0.5rem;
     border: 1px solid var(--color-border);
-    background: none; 
-    cursor: pointer; 
-    display: flex; 
-    align-items: center; 
+    background: none;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
     justify-content: center;
-    color: var(--color-muted); 
+    color: var(--color-muted);
     transition: all 0.15s;
   }
   .action-btn:hover:not(:disabled) {
@@ -1592,15 +1369,15 @@
     opacity: 0.3;
     cursor: not-allowed;
   }
-  .action-revoke:hover:not(:disabled) { 
-    border-color: #f59e0b; 
-    color: #f59e0b; 
-    background: rgba(245,158,11,0.08); 
+  .action-revoke:hover:not(:disabled) {
+    border-color: #f59e0b;
+    color: #f59e0b;
+    background: rgba(245, 158, 11, 0.08);
   }
-  .action-delete:hover:not(:disabled) { 
-    border-color: #dc2626; 
-    color: #dc2626; 
-    background: rgba(220,38,38,0.08); 
+  .action-delete:hover:not(:disabled) {
+    border-color: #dc2626;
+    color: #dc2626;
+    background: rgba(220, 38, 38, 0.08);
   }
   .action-expand:hover {
     border-color: var(--color-muted);
@@ -1608,28 +1385,28 @@
   }
 
   /* Detail Row */
-  .key-detail-row td { 
-    background: var(--color-bg); 
-    padding: 0; 
-    border-bottom: 1px solid var(--color-border); 
+  .key-detail-row td {
+    background: var(--color-bg);
+    padding: 0;
+    border-bottom: 1px solid var(--color-border);
   }
-  .key-detail { 
-    padding: 1.5rem; 
+  .key-detail {
+    padding: 1.5rem;
   }
   .detail-grid {
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
     gap: 2rem;
   }
-  .detail-section h4 { 
+  .detail-section h4 {
     display: flex;
     align-items: center;
     gap: 0.375rem;
-    font-size: 0.72rem; 
-    font-weight: 800; 
-    text-transform: uppercase; 
-    letter-spacing: 0.08em; 
-    color: var(--color-muted); 
+    font-size: 0.72rem;
+    font-weight: 800;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--color-muted);
     margin-bottom: 0.875rem;
   }
   .scope-detail-list {
@@ -1647,21 +1424,21 @@
     font-size: 0.75rem;
     color: var(--color-muted);
   }
-  .ip-list { 
-    display: flex; 
-    flex-wrap: wrap; 
-    gap: 0.5rem; 
+  .ip-list {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
   }
-  .ip-chip { 
-    display: flex; 
-    align-items: center; 
-    gap: 0.375rem; 
-    font-size: 0.78rem; 
-    background: var(--color-surface); 
-    border: 1px solid var(--color-border); 
-    border-radius: var(--radius); 
-    padding: 0.375rem 0.75rem; 
-    color: var(--color-text); 
+  .ip-chip {
+    display: flex;
+    align-items: center;
+    gap: 0.375rem;
+    font-size: 0.78rem;
+    background: var(--color-surface);
+    border: 1px solid var(--color-border);
+    border-radius: 0.5rem;
+    padding: 0.375rem 0.75rem;
+    color: var(--color-text);
   }
   .detail-empty {
     display: flex;
@@ -1694,12 +1471,12 @@
   }
 
   /* Empty State */
-  .empty-state { 
-    padding: 4rem 2rem; 
-    display: flex; 
-    flex-direction: column; 
-    align-items: center; 
-    gap: 1.25rem; 
+  .empty-state {
+    padding: 4rem 2rem;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 1.25rem;
     color: var(--color-muted);
     text-align: center;
   }
@@ -1710,10 +1487,9 @@
     display: flex;
     align-items: center;
     justify-content: center;
-    color: var(--color-border);
   }
   .empty-illustration > :global(svg:first-child) {
-    color: #e5e7eb;
+    color: var(--color-border);
   }
   .empty-orbit {
     position: absolute;
@@ -1727,7 +1503,7 @@
     display: flex;
     align-items: center;
     justify-content: center;
-    color: #9ca3af;
+    color: var(--color-muted);
   }
   .empty-state h3 {
     font-size: 1.1rem;
@@ -1740,13 +1516,14 @@
     max-width: 320px;
     margin: 0;
     line-height: 1.5;
+    color: var(--color-muted);
   }
 
   /* ── Logs ────────────────────────────────────────────────────── */
-  .logs-section { 
-    display: flex; 
-    flex-direction: column; 
-    gap: 1rem; 
+  .logs-section {
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
   }
   .logs-header {
     display: flex;
@@ -1755,12 +1532,12 @@
     flex-wrap: wrap;
     gap: 1rem;
   }
-  .section-title { 
-    display: flex; 
-    align-items: center; 
-    gap: 0.625rem; 
-    font-size: 1rem; 
-    font-weight: 800; 
+  .section-title {
+    display: flex;
+    align-items: center;
+    gap: 0.625rem;
+    font-size: 1rem;
+    font-weight: 800;
     color: var(--color-text);
     letter-spacing: -0.025em;
   }
@@ -1776,48 +1553,50 @@
     display: flex;
     gap: 0.5rem;
   }
-  .logs-table-wrap { 
-    background: var(--color-surface); 
-    border: 1px solid var(--color-border); 
-    border-radius: var(--radius-lg); 
+  .logs-table-wrap {
+    background: var(--color-surface);
+    border: 1px solid var(--color-border);
+    border-radius: 0.875rem;
     overflow: hidden;
-    box-shadow: var(--shadow-sm);
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
   }
-  .logs-table { 
-    width: 100%; 
-    border-collapse: collapse; 
+  .logs-table {
+    width: 100%;
+    border-collapse: collapse;
   }
-  .logs-table th { 
-    padding: 0.75rem 1rem; 
-    background: var(--color-bg); 
-    font-size: 0.68rem; 
-    font-weight: 700; 
-    text-transform: uppercase; 
-    letter-spacing: 0.06em; 
-    color: var(--color-muted); 
-    text-align: left; 
-    border-bottom: 1px solid var(--color-border); 
+  .logs-table th {
+    padding: 0.75rem 1rem;
+    background: var(--color-bg);
+    font-size: 0.68rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--color-muted);
+    text-align: left;
+    border-bottom: 1px solid var(--color-border);
   }
-  .logs-table td { 
-    padding: 0.875rem 1rem; 
-    border-bottom: 1px solid var(--color-border-light); 
-    font-size: 0.82rem; 
+  .logs-table td {
+    padding: 0.875rem 1rem;
+    border-bottom: 1px solid var(--color-border);
+    font-size: 0.82rem;
   }
   .logs-table tr {
     animation: fadeInUp 0.3s ease forwards;
     opacity: 0;
   }
-  .logs-table tr:last-child td { border-bottom: none; }
+  .logs-table tr:last-child td {
+    border-bottom: none;
+  }
   .log-key-cell {
     display: flex;
     flex-direction: column;
     gap: 0.125rem;
   }
-  .log-key { 
-    font-size: 0.72rem; 
-    background: var(--color-bg); 
-    padding: 0.2rem 0.5rem; 
-    border-radius: var(--radius-sm);
+  .log-key {
+    font-size: 0.72rem;
+    background: var(--color-bg);
+    padding: 0.2rem 0.5rem;
+    border-radius: 0.25rem;
     font-weight: 600;
     color: var(--color-text);
     width: fit-content;
@@ -1826,32 +1605,32 @@
     font-size: 0.75rem;
     color: var(--color-muted);
   }
-  .log-endpoint code { 
-    font-size: 0.75rem; 
-    color: var(--color-muted); 
+  .log-endpoint code {
+    font-size: 0.75rem;
+    color: var(--color-muted);
   }
-  .method-badge { 
-    font-size: 0.65rem; 
-    font-weight: 800; 
-    padding: 0.25rem 0.625rem; 
-    border-radius: var(--radius-sm); 
+  .method-badge {
+    font-size: 0.65rem;
+    font-weight: 800;
+    padding: 0.25rem 0.625rem;
+    border-radius: 0.25rem;
   }
-  .method-get    { background: rgba(59,130,246,0.1);  color: #3b82f6; }
-  .method-post   { background: rgba(22,163,74,0.1);   color: #16a34a; }
-  .method-put    { background: rgba(234,179,8,0.1);   color: #ca8a04; }
-  .method-delete { background: rgba(220,38,38,0.1);   color: #dc2626; }
-  .method-patch  { background: rgba(139,92,246,0.1);  color: #8b5cf6; }
+  .method-get    { background: rgba(59, 130, 246, 0.1); color: #3b82f6; }
+  .method-post   { background: rgba(22, 163, 74, 0.1); color: #16a34a; }
+  .method-put    { background: rgba(234, 179, 8, 0.1); color: #ca8a04; }
+  .method-delete { background: rgba(220, 38, 38, 0.1); color: #dc2626; }
+  .method-patch  { background: rgba(139, 92, 246, 0.1); color: #8b5cf6; }
 
-  .status-code { 
-    font-weight: 700; 
-    font-size: 0.8rem; 
+  .status-code {
+    font-weight: 700;
+    font-size: 0.8rem;
     padding: 0.25rem 0.5rem;
-    border-radius: var(--radius-sm);
+    border-radius: 0.25rem;
     background: var(--color-bg);
   }
-  .sc-ok  { color: #16a34a; background: rgba(22,163,74,0.08); }
-  .sc-warn { color: #ca8a04; background: rgba(234,179,8,0.08); }
-  .sc-err { color: #dc2626; background: rgba(220,38,38,0.08); }
+  .sc-ok  { color: #16a34a; background: rgba(22, 163, 74, 0.08); }
+  .sc-warn { color: #ca8a04; background: rgba(234, 179, 8, 0.08); }
+  .sc-err { color: #dc2626; background: rgba(220, 38, 38, 0.08); }
 
   .duration-cell {
     display: flex;
@@ -1869,14 +1648,14 @@
 
   /* ── Modal ───────────────────────────────────────────────────── */
   .modal-bg {
-    position: fixed; 
-    inset: 0; 
-    background: rgba(0,0,0,0.6);
-    backdrop-filter: blur(8px); 
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.6);
+    backdrop-filter: blur(8px);
     z-index: 200;
-    display: flex; 
-    align-items: center; 
-    justify-content: center; 
+    display: flex;
+    align-items: center;
+    justify-content: center;
     padding: 1rem;
     animation: modalFade 0.2s ease;
   }
@@ -1885,13 +1664,13 @@
     to { opacity: 1; }
   }
   .modal {
-    background: var(--color-surface); 
+    background: var(--color-surface);
     border: 1px solid var(--color-border);
-    border-radius: var(--radius-xl); 
-    width: 100%; 
+    border-radius: 1rem;
+    width: 100%;
     max-width: 600px;
-    box-shadow: var(--shadow-xl); 
-    max-height: 90vh; 
+    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.25);
+    max-height: 90vh;
     overflow-y: auto;
     animation: modalSlide 0.3s cubic-bezier(0.16, 1, 0.3, 1);
   }
@@ -1899,17 +1678,17 @@
     from { opacity: 0; transform: translateY(20px) scale(0.98); }
     to { opacity: 1; transform: translateY(0) scale(1); }
   }
-  .modal-head { 
-    display: flex; 
-    align-items: center; 
+  .modal-head {
+    display: flex;
+    align-items: center;
     gap: 1rem;
-    padding: 1.5rem; 
-    border-bottom: 1px solid var(--color-border); 
+    padding: 1.5rem;
+    border-bottom: 1px solid var(--color-border);
   }
   .modal-icon {
     width: 40px;
     height: 40px;
-    border-radius: var(--radius);
+    border-radius: 0.5rem;
     background: linear-gradient(135deg, #3b82f6, #2563eb);
     display: flex;
     align-items: center;
@@ -1917,8 +1696,8 @@
     color: white;
     flex-shrink: 0;
   }
-  .modal-head h2 { 
-    font-size: 1.1rem; 
+  .modal-head h2 {
+    font-size: 1.1rem;
     font-weight: 800;
     color: var(--color-text);
     margin: 0;
@@ -1928,48 +1707,48 @@
     color: var(--color-muted);
     margin: 0.25rem 0 0;
   }
-  .modal-close { 
+  .modal-close {
     margin-left: auto;
-    background: none; 
-    border: none; 
-    cursor: pointer; 
-    color: var(--color-muted); 
-    display: flex; 
-    border-radius: var(--radius); 
+    background: none;
+    border: none;
+    cursor: pointer;
+    color: var(--color-muted);
+    display: flex;
+    border-radius: 0.375rem;
     padding: 0.5rem;
     transition: all 0.15s;
   }
-  .modal-close:hover { 
-    color: var(--color-text); 
-    background: var(--color-bg); 
+  .modal-close:hover {
+    color: var(--color-text);
+    background: var(--color-bg);
   }
 
-  .modal form { 
-    padding: 1.5rem; 
-    display: flex; 
-    flex-direction: column; 
-    gap: 1.25rem; 
+  .modal form {
+    padding: 1.5rem;
+    display: flex;
+    flex-direction: column;
+    gap: 1.25rem;
   }
-  .form-field { 
-    display: flex; 
-    flex-direction: column; 
-    gap: 0.5rem; 
+  .form-field {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
   }
-  .form-row { 
-    display: grid; 
-    grid-template-columns: 1fr 1fr; 
-    gap: 1rem; 
+  .form-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1rem;
   }
-  .form-field label { 
-    font-size: 0.8rem; 
-    font-weight: 700; 
+  .form-field label {
+    font-size: 0.8rem;
+    font-weight: 700;
     color: var(--color-text);
     display: flex;
     align-items: center;
     gap: 0.25rem;
   }
-  .req { 
-    color: #dc2626; 
+  .req {
+    color: #dc2626;
   }
   .field-hint {
     font-size: 0.72rem;
@@ -1986,7 +1765,7 @@
     padding: 0.625rem 0.875rem;
     background: var(--color-bg);
     border: 1px solid var(--color-border);
-    border-radius: var(--radius);
+    border-radius: 0.5rem;
     transition: all 0.2s;
   }
   .input-with-icon:focus-within {
