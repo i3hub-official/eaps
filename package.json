@@ -76,6 +76,7 @@
 		"lru-cache": "^11.5.0",
 		"lucide-svelte": "^1.0.1",
 		"nanoid": "^5.1.11",
+		"node-cron": "^4.2.1",
 		"nodemailer": "^8.0.7",
 		"ws": "^8.20.1"
 	}

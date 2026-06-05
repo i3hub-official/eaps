@@ -191,7 +191,7 @@
             <a href="/lecturer/exams/{exam.id}/questions" class="action-btn">
               <FileText size={13} /> Questions
             </a>
-            <a href="/lecturer/exams/{exam.id}/results" class="action-btn">
+            <a href="/lecturer/results/{exam.id}" class="action-btn">
               <BarChart2 size={13} /> Results
             </a>
             <a href="/lecturer/exams/{exam.id}" class="action-btn outline">

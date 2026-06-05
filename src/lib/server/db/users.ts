@@ -97,26 +97,38 @@ export async function createUser(input: {
   matricNumber?: string; staffId?: string; departmentId?: string;
   level?: number; photoUrl?: string;
 }) {
-  return prisma.user.create({
-    data: {
-      email: input.email.toLowerCase().trim(),
-      fullName: input.fullName.trim(),
-      passwordHash: input.passwordHash,
-      role: input.role,
-      matricNumber: input.matricNumber?.toUpperCase().trim() ?? null,
-      staffId: input.staffId?.trim() ?? null,
-      departmentId: input.departmentId ?? null,
-      level: input.level ?? null,
-      photoUrl: input.photoUrl ?? null,
-    },
-  });
+  const data: any = {
+    email: input.email.toLowerCase().trim(),
+    fullName: input.fullName.trim(),
+    passwordHash: input.passwordHash,
+    role: input.role,
+    matricNumber: input.matricNumber?.toUpperCase().trim() ?? null,
+    staffId: input.staffId?.trim() ?? null,
+    departmentId: input.departmentId ?? null,
+    photoUrl: input.photoUrl ?? null,
+  };
+
+  if (input.level != null) {
+    data.level = { connect: { id: input.level } };
+  }
+
+  return prisma.user.create({ data });
 }
 
 export async function updateUser(id: string, input: {
   fullName?: string; email?: string; departmentId?: string;
   level?: number; photoUrl?: string; isActive?: boolean;
 }): Promise<SafeUser> {
-  return prisma.user.update({ where: { id }, data: input, select: safeSelect });
+  const { level, ...data } = input;
+
+  return prisma.user.update({
+    where: { id },
+    data: {
+      ...data,
+      level: level != null ? { connect: { id: level } } : undefined,
+    },
+    select: safeSelect,
+  });
 }
 
 export async function updatePasswordHash(id: string, passwordHash: string) {

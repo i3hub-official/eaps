@@ -1,24 +1,32 @@
-<!-- src/routes/lecturer/results/[examId]/+page.svelte -->
 <script lang="ts">
   import type { PageData } from './$types';
   import {
     BarChart3, Users, CheckCircle, XCircle, TrendingUp,
-    TrendingDown, Award, AlertTriangle, ChevronDown,
-    ChevronRight, Clock, Shield, BookOpen, Target
+    TrendingDown, Award, BookOpen, Target, GraduationCap,
+    Building2, Layers, ChevronDown, School
   } from 'lucide-svelte';
 
   let { data }: { data: PageData } = $props();
-  const { exam, results, studentBreakdowns, stats, gradeDist, weakTopics, strongTopics, topicStats } = data;
+  const { exam, results, studentBreakdowns, stats, gradeDist, weakTopics, strongTopics, topicStats, groupings } = data;
 
   let expandedStudent = $state<string | null>(null);
   let sortBy = $state<'percentage'|'name'|'violations'>('percentage');
   let sortDir = $state<'asc'|'desc'>('desc');
   let filterPass = $state<'all'|'passed'|'failed'>('all');
+  let activeGroup = $state<'none'|'level'|'department'|'college'|'grade'>('none');
 
   const GRADE_COLORS: Record<string,string> = {
     'A': '#16a34a', 'B': '#0ea5e9', 'C': '#f59e0b',
     'D': '#f97316', 'E': '#ef4444', 'F': '#dc2626', 'N/A': '#9ca3af',
   };
+
+  const GROUP_TABS = [
+    { id: 'none', label: 'All Students', icon: Users },
+    { id: 'level', label: 'By Level', icon: GraduationCap },
+    { id: 'department', label: 'By Department', icon: Layers },
+    { id: 'college', label: 'By College', icon: Building2 },
+    { id: 'grade', label: 'By Grade', icon: School },
+  ] as const;
 
   function fmt(d: Date | string | null) {
     if (!d) return '—';
@@ -40,10 +48,10 @@
     rows.sort((a, b) => {
       let va: any, vb: any;
       if (sortBy === 'percentage') { va = Number(a.percentage ?? 0); vb = Number(b.percentage ?? 0); }
-      else if (sortBy === 'name')  { va = a.student.fullName; vb = b.student.fullName; }
-      else                         { va = a.violationCount; vb = b.violationCount; }
+      else if (sortBy === 'name') { va = a.student.fullName; vb = b.student.fullName; }
+      else { va = a.session.violationCount; vb = b.session.violationCount; }
       if (va < vb) return sortDir === 'asc' ? -1 : 1;
-      if (va > vb) return sortDir === 'asc' ?  1 : -1;
+      if (va > vb) return sortDir === 'asc' ? 1 : -1;
       return 0;
     });
     return rows;
@@ -62,30 +70,35 @@
 </script>
 
 <div class="results-page">
-
   <!-- Header -->
   <div class="page-header">
     <div>
-      <div class="breadcrumb"><a href="/lecturer/results">Results</a> / {exam.course.code}</div>
+      <div class="breadcrumb">
+        <a href="/lecturer/results">Results</a>
+        <span>/</span>
+        <span>{exam.course.code}</span>
+      </div>
       <h1>{exam.title}</h1>
-      <p>{exam.course.code} — {exam.course.title} · {exam.session} · Sem {exam.semester}</p>
+      <p>{exam.course.code} — {exam.course.title} · {exam.session} · Semester {exam.semester}</p>
     </div>
   </div>
 
-  <!-- Summary stats -->
+  <!-- Stats -->
   <div class="stats-grid">
     {#each [
-      { icon: Users,       label: 'Students',   val: stats.totalStudents,                    color: '#6366f1' },
-      { icon: CheckCircle, label: 'Passed',      val: stats.passed,                           color: '#16a34a' },
-      { icon: XCircle,     label: 'Failed',      val: stats.failed,                           color: '#dc2626' },
-      { icon: Target,      label: 'Pass Rate',   val: `${stats.passRate}%`,                   color: '#0ea5e9' },
-      { icon: BarChart3,   label: 'Avg Score',   val: `${stats.avgPercentage.toFixed(1)}%`,   color: '#f59e0b' },
-      { icon: TrendingUp,  label: 'Highest',     val: `${stats.highestScore.toFixed(1)}%`,    color: '#10b981' },
-      { icon: TrendingDown,label: 'Lowest',      val: `${stats.lowestScore.toFixed(1)}%`,     color: '#f97316' },
-      { icon: Award,       label: 'Total Marks', val: totalMarks,                             color: '#8b5cf6' },
+      { icon: Users, label: 'Students', val: stats.totalStudents, color: '#6366f1' },
+      { icon: CheckCircle, label: 'Passed', val: stats.passed, color: '#16a34a' },
+      { icon: XCircle, label: 'Failed', val: stats.failed, color: '#dc2626' },
+      { icon: Target, label: 'Pass Rate', val: `${stats.passRate}%`, color: '#0ea5e9' },
+      { icon: BarChart3, label: 'Avg Score', val: `${stats.avgPercentage.toFixed(1)}%`, color: '#f59e0b' },
+      { icon: TrendingUp, label: 'Highest', val: `${stats.highestScore.toFixed(1)}%`, color: '#10b981' },
+      { icon: TrendingDown, label: 'Lowest', val: `${stats.lowestScore.toFixed(1)}%`, color: '#f97316' },
+      { icon: Award, label: 'Total Marks', val: totalMarks, color: '#8b5cf6' },
     ] as s}
       <div class="stat-card">
-        <div class="stat-icon" style="background:{s.color}1a;color:{s.color}"><s.icon size={16} /></div>
+        <div class="stat-icon" style="background:{s.color}1a;color:{s.color}">
+          <s.icon size={16} />
+        </div>
         <div>
           <div class="stat-val">{s.val}</div>
           <div class="stat-lbl">{s.label}</div>
@@ -94,8 +107,8 @@
     {/each}
   </div>
 
+  <!-- Analysis Cards -->
   <div class="two-col">
-    <!-- Grade distribution -->
     <div class="card">
       <div class="card-head"><Award size={14} /> Grade Distribution</div>
       <div class="grade-dist">
@@ -103,10 +116,7 @@
           <div class="grade-row">
             <span class="grade-label" style="color:{GRADE_COLORS[grade] ?? '#9ca3af'}">{grade}</span>
             <div class="grade-bar-wrap">
-              <div
-                class="grade-bar"
-                style="width:{Math.round((count / stats.totalStudents) * 100)}%;background:{GRADE_COLORS[grade] ?? '#9ca3af'}"
-              ></div>
+              <div class="grade-bar" style="width:{Math.round((count / stats.totalStudents) * 100)}%;background:{GRADE_COLORS[grade] ?? '#9ca3af'}"></div>
             </div>
             <span class="grade-count">{count}</span>
           </div>
@@ -117,7 +127,6 @@
       </div>
     </div>
 
-    <!-- Topic analysis -->
     <div class="card">
       <div class="card-head"><BookOpen size={14} /> Topic Analysis</div>
       <div class="topic-panels">
@@ -151,16 +160,38 @@
     </div>
   </div>
 
-  <!-- Student results table -->
+  <!-- Grouping Tabs -->
+  <div class="group-tabs-bar">
+    {#each GROUP_TABS as tab}
+      <button
+        class="group-tab"
+        class:group-tab--active={activeGroup === tab.id}
+        onclick={() => activeGroup = tab.id as typeof activeGroup}
+      >
+        <tab.icon size={14} />
+        <span>{tab.label}</span>
+      </button>
+    {/each}
+  </div>
+
+  <!-- Table Content -->
+  {#if activeGroup === 'none'}
+    {@render studentTable(sorted(), 'All Students')}
+  {:else}
+    {@render groupedView(activeGroup)}
+  {/if}
+</div>
+
+{#snippet studentTable(students: typeof results, title: string)}
   <div class="table-card">
     <div class="table-toolbar">
-      <h3 class="toolbar-title"><Users size={15} /> Student Results</h3>
+      <h3 class="toolbar-title"><Users size={15} /> {title}</h3>
       <div class="toolbar-right">
         <div class="filter-tabs">
           {#each [
-            { k:'all',    l:`All (${results.length})` },
-            { k:'passed', l:`Passed (${stats.passed})` },
-            { k:'failed', l:`Failed (${stats.failed})` },
+            { k: 'all', l: `All (${students.length})` },
+            { k: 'passed', l: `Passed (${students.filter(r => r.passed).length})` },
+            { k: 'failed', l: `Failed (${students.filter(r => !r.passed).length})` },
           ] as tab}
             <button
               class="filter-tab"
@@ -176,31 +207,19 @@
       <thead>
         <tr>
           <th></th>
-          <th>
-            <button class="sort-btn" onclick={() => toggleSort('name')}>
-              Student {sortBy === 'name' ? (sortDir === 'asc' ? '↑' : '↓') : ''}
-            </button>
-          </th>
+          <th><button class="sort-btn" onclick={() => toggleSort('name')}>Student {sortBy === 'name' ? (sortDir === 'asc' ? '↑' : '↓') : ''}</button></th>
           <th>Matric</th>
-          <th>
-            <button class="sort-btn" onclick={() => toggleSort('percentage')}>
-              Score {sortBy === 'percentage' ? (sortDir === 'asc' ? '↑' : '↓') : ''}
-            </button>
-          </th>
+          <th><button class="sort-btn" onclick={() => toggleSort('percentage')}>Score {sortBy === 'percentage' ? (sortDir === 'asc' ? '↑' : '↓') : ''}</button></th>
           <th>Grade</th>
           <th>Status</th>
-          <th>
-            <button class="sort-btn" onclick={() => toggleSort('violations')}>
-              Violations {sortBy === 'violations' ? (sortDir === 'asc' ? '↑' : '↓') : ''}
-            </button>
-          </th>
+          <th><button class="sort-btn" onclick={() => toggleSort('violations')}>Violations {sortBy === 'violations' ? (sortDir === 'asc' ? '↑' : '↓') : ''}</button></th>
           <th>Duration</th>
           <th>Weakness</th>
           <th>Strength</th>
         </tr>
       </thead>
       <tbody>
-        {#each sorted() as r (r.id)}
+        {#each students as r (r.id)}
           {@const bd = breakdown(r.studentId)}
           <tr
             class="result-row"
@@ -209,33 +228,26 @@
             onclick={() => expandedStudent = expandedStudent === r.studentId ? null : r.studentId}
           >
             <td class="td-expand">
-              <ChevronDown
-                size={13}
-                style="transform:rotate({expandedStudent === r.studentId ? '180deg':'0deg'});transition:transform .2s;color:var(--color-muted)"
-              />
+              <ChevronDown size={13} style="transform:rotate({expandedStudent === r.studentId ? '180deg':'0deg'});transition:transform .2s;color:var(--color-muted)" />
             </td>
             <td>
-              <div class="student-name">
-                {[r.student.title, r.student.fullName].filter(Boolean).join(' ')}
+              <div class="student-name">{[r.student.title, r.student.fullName].filter(Boolean).join(' ')}</div>
+              <div class="student-meta">
+                {r.student.level?.level ? `${r.student.level.level} Level` : ''}
+                {r.student.department?.name ? `· ${r.student.department.name}` : ''}
               </div>
-              <div class="student-dept">{r.student.department?.name ?? '—'}</div>
             </td>
             <td class="td-muted">{r.student.matricNumber ?? '—'}</td>
             <td>
               <div class="score-wrap">
                 <span class="score-val">{Number(r.percentage ?? 0).toFixed(1)}%</span>
                 <div class="score-bar-bg">
-                  <div
-                    class="score-bar-fill"
-                    style="width:{Number(r.percentage ?? 0)}%;background:{r.passed ? '#16a34a' : '#dc2626'}"
-                  ></div>
+                  <div class="score-bar-fill" style="width:{Number(r.percentage ?? 0)}%;background:{r.passed ? '#16a34a' : '#dc2626'}"></div>
                 </div>
               </div>
             </td>
             <td>
-              <span class="grade-chip" style="color:{GRADE_COLORS[r.grade ?? 'N/A']};background:{GRADE_COLORS[r.grade ?? 'N/A']}1a">
-                {r.grade ?? '—'}
-              </span>
+              <span class="grade-chip" style="color:{GRADE_COLORS[r.grade ?? 'N/A']};background:{GRADE_COLORS[r.grade ?? 'N/A']}1a">{r.grade ?? '—'}</span>
             </td>
             <td>
               {#if r.session.status === 'force_submitted'}
@@ -246,13 +258,12 @@
                 <span class="status-chip status-fail">Failed</span>
               {/if}
             </td>
-            <td class="td-muted" class:td-warn={r.violationCount > 0}>{r.violationCount}</td>
+            <td class="td-muted" class:td-warn={r.session.violationCount > 0}>{r.session.violationCount}</td>
             <td class="td-muted">{duration(r.session.startedAt, r.session.submittedAt)}</td>
             <td class="td-topic td-weak">{bd?.weakestTopic ?? '—'}</td>
             <td class="td-topic td-strong">{bd?.strongestTopic ?? '—'}</td>
           </tr>
 
-          <!-- Expanded topic detail -->
           {#if expandedStudent === r.studentId && bd}
             <tr class="expanded-row">
               <td colspan="10">
@@ -264,10 +275,7 @@
                       <div class="exp-topic-row">
                         <span class="exp-topic-name">{topic}</span>
                         <div class="exp-bar-bg">
-                          <div
-                            class="exp-bar-fill"
-                            style="width:{pct}%;background:{pct >= 60 ? '#16a34a' : pct >= 40 ? '#f59e0b' : '#dc2626'}"
-                          ></div>
+                          <div class="exp-bar-fill" style="width:{pct}%;background:{pct >= 60 ? '#16a34a' : pct >= 40 ? '#f59e0b' : '#dc2626'}"></div>
                         </div>
                         <span class="exp-pct">{counts.correct}/{counts.total} · {pct}%</span>
                       </div>
@@ -279,28 +287,64 @@
           {/if}
         {/each}
 
-        {#if sorted().length === 0}
+        {#if students.length === 0}
           <tr><td colspan="10" class="empty-row">No results match the current filter.</td></tr>
         {/if}
       </tbody>
     </table>
   </div>
+{/snippet}
 
-</div>
+{#snippet groupedView(groupType: typeof activeGroup)}
+  {@const groups = groupings[`by${groupType.charAt(0).toUpperCase() + groupType.slice(1)}` as keyof typeof groupings] ?? []}
+  <div class="groups-container">
+    {#each groups as group}
+      <div class="group-section">
+        <div class="group-header-bar">
+          <div class="group-title">
+            <div class="group-icon">
+              {#if groupType === 'level'}<GraduationCap size={16} />
+              {:else if groupType === 'department'}<Layers size={16} />
+              {:else if groupType === 'college'}<Building2 size={16} />
+              {:else}<School size={16} />{/if}
+            </div>
+            <div>
+              <div class="group-name">{group.name}</div>
+              <div class="group-count">{group.totalStudents} students · {group.passed} passed · {group.failed} failed</div>
+            </div>
+          </div>
+          <div class="group-stats-row">
+            <div class="g-stat">
+              <span class="g-stat-val" style="color: #3b82f6">{group.avgScore ?? '—'}{#if group.avgScore != null}%{/if}</span>
+              <span class="g-stat-lbl">Avg</span>
+            </div>
+            <div class="g-stat">
+              <span class="g-stat-val" style="color: #10b981">{group.passRate}%</span>
+              <span class="g-stat-lbl">Pass Rate</span>
+            </div>
+          </div>
+        </div>
+        {@render studentTable(group.results, `${group.name} — ${group.totalStudents} students`)}
+      </div>
+    {/each}
+  </div>
+{/snippet}
 
 <style>
-  .results-page { display: flex; flex-direction: column; gap: 1.25rem; }
-  .breadcrumb { font-size: .72rem; color: var(--color-muted); margin-bottom: .25rem; }
-  .breadcrumb a { color: var(--indigo-600); text-decoration: none; }
+  .results-page { display: flex; flex-direction: column; gap: 1.25rem; padding: 1.5rem 2rem; max-width: 1400px; margin: 0 auto; }
+
+  /* Header */
+  .breadcrumb { font-size: .72rem; color: var(--color-muted); margin-bottom: .25rem; display: flex; align-items: center; gap: .375rem; }
+  .breadcrumb a { color: #3b82f6; text-decoration: none; }
   .breadcrumb a:hover { text-decoration: underline; }
-  h1 { font-size: 1.2rem; font-weight: 800; color: var(--color-text); }
-  p  { font-size: .8rem; color: var(--color-muted); margin-top: .2rem; }
+  h1 { font-size: 1.3rem; font-weight: 800; color: var(--color-text); margin: 0; letter-spacing: -0.02em; }
+  .page-header p { font-size: .85rem; color: var(--color-muted); margin: .25rem 0 0; }
 
   /* Stats */
-  .stats-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(148px, 1fr)); gap: .75rem; }
+  .stats-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: .75rem; }
   .stat-card { display: flex; align-items: center; gap: .75rem; padding: .875rem 1rem; background: var(--color-surface); border: 1px solid var(--color-border); border-radius: .75rem; }
   .stat-icon { width: 34px; height: 34px; border-radius: .5rem; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
-  .stat-val { font-size: 1.15rem; font-weight: 800; color: var(--color-text); }
+  .stat-val { font-size: 1.15rem; font-weight: 800; color: var(--color-text); line-height: 1; }
   .stat-lbl { font-size: .68rem; color: var(--color-muted); }
 
   /* Two col */
@@ -327,9 +371,28 @@
   .tp-name { font-size: .75rem; color: var(--color-text); min-width: 80px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100px; }
   .tp-bar-wrap { flex: 1; height: 6px; background: var(--color-bg); border-radius: 3px; overflow: hidden; }
   .tp-bar { height: 100%; border-radius: 3px; }
-  .tp-bar-weak   { background: #dc2626; }
+  .tp-bar-weak { background: #dc2626; }
   .tp-bar-strong { background: #16a34a; }
   .tp-pct { font-size: .72rem; color: var(--color-muted); min-width: 32px; text-align: right; }
+
+  /* Group Tabs */
+  .group-tabs-bar { display: flex; gap: .25rem; padding: .25rem; background: var(--color-bg); border: 1px solid var(--color-border); border-radius: .625rem; overflow-x: auto; }
+  .group-tab { display: flex; align-items: center; gap: .5rem; padding: .625rem 1rem; border: none; border-radius: .5rem; background: transparent; color: var(--color-muted); font-size: .82rem; font-weight: 600; cursor: pointer; font-family: inherit; white-space: nowrap; transition: all .15s; }
+  .group-tab:hover { color: var(--color-text); background: var(--color-surface); }
+  .group-tab--active { background: var(--color-surface) !important; color: #3b82f6 !important; box-shadow: 0 1px 3px rgba(0,0,0,.08); }
+
+  /* Groups */
+  .groups-container { display: flex; flex-direction: column; gap: 1rem; }
+  .group-section { background: var(--color-surface); border: 1px solid var(--color-border); border-radius: .875rem; overflow: hidden; }
+  .group-header-bar { display: flex; align-items: center; justify-content: space-between; gap: 1rem; padding: 1rem 1.25rem; border-bottom: 1px solid var(--color-border); background: linear-gradient(to right, var(--color-surface), var(--color-bg)); }
+  .group-title { display: flex; align-items: center; gap: .875rem; }
+  .group-icon { width: 36px; height: 36px; border-radius: .625rem; background: linear-gradient(135deg, #3b82f6, #2563eb); display: flex; align-items: center; justify-content: center; color: white; flex-shrink: 0; }
+  .group-name { font-size: .95rem; font-weight: 700; color: var(--color-text); }
+  .group-count { font-size: .75rem; color: var(--color-muted); }
+  .group-stats-row { display: flex; align-items: center; gap: 1.5rem; }
+  .g-stat { display: flex; flex-direction: column; align-items: center; gap: .125rem; }
+  .g-stat-val { font-size: 1.1rem; font-weight: 800; color: var(--color-text); }
+  .g-stat-lbl { font-size: .65rem; color: var(--color-muted); font-weight: 600; text-transform: uppercase; letter-spacing: .04em; }
 
   /* Table */
   .table-card { background: var(--color-surface); border: 1px solid var(--color-border); border-radius: .875rem; overflow: hidden; }
@@ -343,32 +406,31 @@
   .results-table td { padding: .75rem .875rem; border-bottom: 1px solid var(--color-border); font-size: .82rem; vertical-align: middle; }
   .result-row { cursor: pointer; transition: background .1s; }
   .result-row:hover { background: var(--color-surface-hover); }
-  .result-row:last-child td { border-bottom: none; }
   .sort-btn { background: none; border: none; cursor: pointer; font-size: .68rem; font-weight: 700; text-transform: uppercase; letter-spacing: .05em; color: var(--color-muted); font-family: inherit; padding: 0; }
   .sort-btn:hover { color: var(--color-text); }
 
   .student-name { font-weight: 600; color: var(--color-text); }
-  .student-dept { font-size: .7rem; color: var(--color-muted); }
+  .student-meta { font-size: .7rem; color: var(--color-muted); }
   .td-muted { color: var(--color-muted); white-space: nowrap; }
-  .td-warn  { color: #dc2626 !important; font-weight: 600; }
+  .td-warn { color: #dc2626 !important; font-weight: 600; }
   .td-expand { width: 28px; }
 
   .score-wrap { display: flex; flex-direction: column; gap: .25rem; min-width: 80px; }
-  .score-val  { font-weight: 700; font-size: .82rem; color: var(--color-text); }
+  .score-val { font-weight: 700; font-size: .82rem; color: var(--color-text); }
   .score-bar-bg { height: 4px; background: var(--color-bg); border-radius: 2px; overflow: hidden; }
   .score-bar-fill { height: 100%; border-radius: 2px; transition: width .3s; }
 
   .grade-chip { font-size: .75rem; font-weight: 800; padding: .2rem .5rem; border-radius: .375rem; }
   .status-chip { font-size: .68rem; font-weight: 700; padding: .2rem .5rem; border-radius: 2rem; white-space: nowrap; }
-  .status-pass  { background: rgba(22,163,74,.1);  color: #16a34a; }
-  .status-fail  { background: rgba(220,38,38,.1);  color: #dc2626; }
-  .status-force { background: var(--indigo-soft); color: var(--indigo-600); }
+  .status-pass { background: rgba(22,163,74,.1); color: #16a34a; }
+  .status-fail { background: rgba(220,38,38,.1); color: #dc2626; }
+  .status-force { background: rgba(99,102,241,.1); color: #6366f1; }
 
   .td-topic { font-size: .75rem; max-width: 120px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  .td-weak   { color: #dc2626; }
+  .td-weak { color: #dc2626; }
   .td-strong { color: #16a34a; }
 
-  /* Expanded row */
+  /* Expanded */
   .expanded-row td { background: var(--color-bg); padding: 0; border-bottom: 1px solid var(--color-border); }
   .expanded-content { padding: 1rem 1.5rem; }
   .exp-title { font-size: .78rem; font-weight: 700; color: var(--color-muted); margin-bottom: .75rem; text-transform: uppercase; letter-spacing: .04em; }
@@ -384,5 +446,6 @@
   @media (max-width: 900px) {
     .two-col { grid-template-columns: 1fr; }
     .results-table th:nth-child(n+9), .results-table td:nth-child(n+9) { display: none; }
+    .group-stats-row { display: none; }
   }
 </style>

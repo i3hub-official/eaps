@@ -1,50 +1,117 @@
+// src/routes/admin/api-keys/playground/+page.server.ts
 import type { PageServerLoad, Actions } from './$types';
-import { fail } from '@sveltejs/kit';
+import { prisma } from '$lib/server/db/index.js';
 import { requireAdmin } from '$lib/server/auth/guards.js';
-import { listApiKeys, createApiKey, revokeApiKey } from '$lib/server/db/api-keys.js';
-import type { ApiScope } from '@prisma/client';
+import { randomBytes } from 'crypto';
+import { hashPassword } from '$lib/server/auth/password.js';
+
+const TEST_KEY_PREFIX = 'test_';
+const TEST_KEY_EXPIRY_MINUTES = 60;
 
 export const load: PageServerLoad = async ({ locals }) => {
-  await requireAdmin(locals.user);
-  const { keys } = await listApiKeys();
-  const activeKeys = keys.filter(k =>
-    k.status === 'active' &&
-    (!k.expiresAt || new Date(k.expiresAt) > new Date())
-  );
-  return { keys: activeKeys };
+  requireAdmin(locals.user);
+
+  // Load ALL active test keys for this user (not just one)
+  const testKeys = await prisma.apiKey.findMany({
+    where: {
+      createdById: locals.user.id,
+      name: { startsWith: 'Test Key' },
+      status: 'active',
+      expiresAt: { gt: new Date() },
+    },
+    select: {
+      id: true,
+      name: true,
+      keyPrefix: true,
+      scopes: true,
+      expiresAt: true,
+    },
+    orderBy: { createdAt: 'desc' },
+  });
+
+  return { testKeys };
 };
 
 export const actions: Actions = {
-  // Creates a short-lived test key for playground use
   createTestKey: async ({ locals }) => {
-    await requireAdmin(locals.user);
+    requireAdmin(locals.user);
 
-    const expiresAt = new Date(Date.now() + 60 * 60 * 1000); // 1 hour
-
-    const { key, rawKey } = await createApiKey({
-      name: `Playground Test Key — ${new Date().toLocaleTimeString()}`,
-      scopes: [
-        'read_users',
-        'read_exams',
-        'read_results',
-        'read_reports',
-        'read_violations',
-      ] as ApiScope[],
-      createdById: locals.user!.id,
-      expiresAt,
-      ipWhitelist: [],
+    // Revoke any existing test keys for this user
+    await prisma.apiKey.updateMany({
+      where: {
+        createdById: locals.user.id,
+        name: { startsWith: 'Test Key' },
+        status: 'active',
+      },
+      data: {
+        status: 'revoked',
+        revokedAt: new Date(),
+        revokedById: locals.user.id,
+      },
     });
 
-    return { success: true, rawKey, keyId: key.id, keyName: key.name };
+    // Generate raw key
+    const rawKey = `${TEST_KEY_PREFIX}${randomBytes(32).toString('hex')}`;
+    const keyHash = await hashPassword(rawKey);
+    const keyPrefix = rawKey.slice(0, 12);
+
+    // Create test key with read-only scopes
+    const testKey = await prisma.apiKey.create({
+      data: {
+        name: `Test Key — ${new Date().toLocaleString('en-NG', { hour: '2-digit', minute: '2-digit' })}`,
+        keyHash,
+        keyPrefix,
+        scopes: ['read_users', 'read_exams', 'read_results', 'read_reports', 'read_violations'],
+        status: 'active',
+        createdById: locals.user.id,
+        expiresAt: new Date(Date.now() + TEST_KEY_EXPIRY_MINUTES * 60 * 1000),
+      },
+      select: {
+        id: true,
+        name: true,
+      },
+    });
+
+    return {
+      success: true,
+      rawKey,
+      keyId: testKey.id,
+      keyName: testKey.name,
+    };
   },
 
-  // Revoke a key (used when playground unloads or user manually revokes)
   revokeKey: async ({ request, locals }) => {
-    await requireAdmin(locals.user);
-    const fd = await request.formData();
-    const id  = fd.get('id')?.toString() ?? '';
-    if (!id) return fail(400, { error: 'Missing id' });
-    await revokeApiKey(id, locals.user!.id);
+    requireAdmin(locals.user);
+
+    const formData = await request.formData();
+    const id = formData.get('id') as string;
+
+    if (!id) {
+      return { success: false, error: 'Key ID required' };
+    }
+
+    const key = await prisma.apiKey.findFirst({
+      where: {
+        id,
+        createdById: locals.user.id,
+        name: { startsWith: 'Test Key' },
+        status: 'active',
+      },
+    });
+
+    if (!key) {
+      return { success: false, error: 'Test key not found or already revoked' };
+    }
+
+    await prisma.apiKey.update({
+      where: { id },
+      data: {
+        status: 'revoked',
+        revokedAt: new Date(),
+        revokedById: locals.user.id,
+      },
+    });
+
     return { success: true };
   },
 };

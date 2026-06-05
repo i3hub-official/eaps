@@ -41,7 +41,7 @@
       label: 'Exams',
       icon: ClipboardList,
       children: [
-        { href: '/lecturer/exams',        label: 'All Exams',     icon: ClipboardList },
+                { href: '/lecturer/exams',        label: 'Overview',     icon: ClipboardList },
         { href: '/lecturer/exams/create', label: 'Create Exam',   icon: PlusCircle },
       ],
     },

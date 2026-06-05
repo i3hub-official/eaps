@@ -4,6 +4,8 @@ import { redirect } from '@sveltejs/kit';
 import { getSessionToken, validateSession } from '$lib/server/auth/session.js';
 import { getWss } from '$lib/server/ws/server.js';
 import { tickExamScheduler } from '$lib/server/exam/scheduler.js';
+import { expireApiKeys } from '$jobs/expire-api-keys.js'; 
+
 
 // ─── WebSocket server ─────────────────────────────────────────────────────────
 //
@@ -22,23 +24,31 @@ try {
 // errors means a DB hiccup during one tick doesn't affect subsequent ticks
 // or the request handler.
 
-async function safeTick() {
+// ─── Reusable safe-tick wrapper ───────────────────────────────────────────────
+async function safeTick<T>(label: string, fn: () => Promise<T>) {
   try {
-    await tickExamScheduler();
+    await fn();
   } catch (err) {
-    // Log and continue — the next tick will retry.
-    console.error('[Scheduler] Tick failed (non-fatal):', err);
+    console.error(`[${label}] Tick failed (non-fatal):`, err);
   }
 }
 
-// Fire immediately on startup, then every 60s.
-safeTick();
-setInterval(safeTick, 60_000);
+// ─── Exam scheduler ───────────────────────────────────────────────────────────
+console.log('Starting exam scheduler');
+safeTick('Scheduler', tickExamScheduler);
+setInterval(() => safeTick('Scheduler', tickExamScheduler), 60_000);
+
+// ─── API key expiration ─────────────────────────────────────────────────────
+// Run immediately on startup, then every 5 minutes
+console.log('[Cron] API key expiration job registered (every 5 min)');
+safeTick('API Keys', expireApiKeys);
+setInterval(() => safeTick('API Keys', expireApiKeys), 5 * 60_000);
+
 
 // ─── Face verification paths that require protection ─────────────────────────
-const PROTECTED_EXAM_PATHS = ['/exam/'];
+// const PROTECTED_EXAM_PATHS = ['/exam/'];
 const VERIFY_PATH = '/verify';
-const ENROLL_PATH = '/enroll';
+// const ENROLL_PATH = '/enroll';
 const API_FACE_PATHS = ['/api/face/'];
 
 function isProtectedExamPath(pathname: string): boolean {

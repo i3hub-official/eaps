@@ -1,6 +1,8 @@
 // src/lib/server/auth/guards.ts
 import { redirect, error } from '@sveltejs/kit';
 import type { UserRole, User } from '@prisma/client';
+import { requireApiKey } from './api-key-guard.js';
+import type { ApiScope } from '@prisma/client';
 
 const ROLE_HOME: Record<UserRole, string> = {
   student:     '/student',
@@ -34,4 +36,38 @@ export function requireOwnership(user: User, ownerId: string): void {
   if (user.id !== ownerId && user.role !== 'admin') {
     error(403, 'You do not have permission to access this resource');
   }
+}
+
+// ── Admin OR API Key ─────────────────────────────────────────────────────────
+
+type AdminOrKeySuccess = { ok: true; user?: User; keyId?: string; scopes?: string[] };
+type AdminOrKeyFailure = { ok: false; response: Response };
+
+/**
+ * Allows either:
+ *   1. An authenticated admin session (cookie-based), or
+ *   2. A valid API key with the required scope.
+ *
+ * Usage in +server.ts:
+ *   const auth = await requireAdminOrApiKey({ locals, request }, 'read_users');
+ *   if (!auth.ok) return auth.response;
+ */
+export async function requireAdminOrApiKey(
+  ctx: { locals: App.Locals; request: Request },
+  requiredScope?: ApiScope,
+  endpoint = '(unknown)'
+): Promise<AdminOrKeySuccess | AdminOrKeyFailure> {
+  // 1. Try session-based admin auth first
+  const user = ctx.locals.user;
+  if (user?.role === 'admin') {
+    return { ok: true, user };
+  }
+
+  // 2. Fall back to API key
+  const auth = await requireApiKey(ctx.request, requiredScope, endpoint);
+  if (!auth.ok) {
+    return { ok: false, response: auth.response };
+  }
+
+  return { ok: true, keyId: auth.keyId, scopes: auth.scopes };
 }
