@@ -8,7 +8,7 @@
     FileText, Timer, BarChart3, ShieldAlert
   } from 'lucide-svelte';
 
-  let { data, form }: { data: PageData; form: ActionData } = $props();
+  let { data, form }: { data: PageData & { departments: Array<{ id: string; name: string; code: string }> }; form: ActionData } = $props();
 
   // ── Levels ──────────────────────────────────────────────────────────────────
   const LEVELS = [100, 200, 300, 400, 500, 600] as const;
@@ -28,9 +28,7 @@
   );
 
   // ── Departments ──────────────────────────────────────────────────────────────
-  const departments = $derived(
-    [...new Map(data.courses.map(c => [c.department.id, c.department])).values()]
-  );
+ const departments = data.departments;
   let selectedDepartments = $state<Set<string>>(new Set());
   let deptOpen = $state(false);
   let deptSearch = $state('');

@@ -121,9 +121,10 @@ model Department {
   code      String   @unique
   createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz()
 
-  college College  @relation(fields: [collegeId], references: [id], onDelete: Cascade)
-  users   User[]
-  courses Course[]
+  college         College          @relation(fields: [collegeId], references: [id], onDelete: Cascade)
+  users           User[]
+  courses         Course[]
+  examDepartments ExamDepartment[]
 
   @@unique([name, collegeId])
   @@index([collegeId])
@@ -399,6 +400,7 @@ model Exam {
   examLevels           ExamLevel[]
   faceSimilarities     FaceSimilarity[]
   faceVerificationLogs FaceVerificationLog[]
+  examDepartments      ExamDepartment[]
 
   @@index([courseId])
   @@index([status])
@@ -414,6 +416,17 @@ model ExamLevel {
 
   @@id([examId, levelId])
   @@map("exam_levels")
+}
+
+model ExamDepartment {
+  examId       String @map("exam_id") @db.Uuid
+  departmentId String @map("department_id") @db.Uuid
+
+  exam       Exam       @relation(fields: [examId], references: [id], onDelete: Cascade)
+  department Department @relation(fields: [departmentId], references: [id], onDelete: Cascade)
+
+  @@id([examId, departmentId])
+  @@map("exam_departments")
 }
 
 // ─── Questions ────────────────────────────────────────────────────────────────

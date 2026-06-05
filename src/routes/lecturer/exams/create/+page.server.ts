@@ -7,12 +7,22 @@ import { createExam } from '$lib/server/db/exams.js';
 
 export const load: PageServerLoad = async ({ locals }) => {
   const user = requireLecturer(locals.user);
+
+  // Fetch ALL courses with their departments — lecturers may teach across
+  // departments, levels, and colleges. We load all courses so they can
+  // select any course they administer.
   const courses = await prisma.course.findMany({
-    where: { department: { users: { some: { id: user.id } } } },
     include: { department: true },
     orderBy: { code: 'asc' },
   });
-  return { user, courses };
+
+  // Also fetch all departments for the scope selector
+  const departments = await prisma.department.findMany({
+    orderBy: { name: 'asc' },
+    select: { id: true, name: true, code: true },
+  });
+
+  return { user, courses, departments };
 };
 
 export const actions: Actions = {
@@ -35,15 +45,17 @@ export const actions: Actions = {
     const randomizeO      = d.get('randomize_options')   === 'on';
     const showResult      = d.get('show_result_after')   === 'on';
 
-    // ── Scope ────────────────────────────────────────────────────────────────
-    // levels: hidden input sends "all" or "100,200,300" or ""
+    // ── Scope: Levels ────────────────────────────────────────────────────────
     const levelsRaw = String(d.get('levels') ?? '').trim();
     const levels: number[] =
       !levelsRaw || levelsRaw === 'all'
-        ? []                                                 // empty = no restriction
+        ? []  // empty = all levels allowed (no restriction)
         : levelsRaw.split(',').map(Number).filter(n => !isNaN(n) && n > 0);
 
-    // department: free-text, split on commas, store as single nullable string
+    // ── Scope: Departments ───────────────────────────────────────────────────
+    // Frontend sends comma-separated department NAMES (not IDs).
+    // We store as-is in the nullable `department` string field.
+    // If you want to store IDs instead, change the schema and frontend.
     const departmentRaw = String(d.get('department') ?? '').trim();
     const department    = departmentRaw || null;
 
@@ -52,12 +64,37 @@ export const actions: Actions = {
     if (!courseId) return fail(400, { error: 'Course is required' });
     if (!session)  return fail(400, { error: 'Session is required' });
 
+    // Validate scheduled times
+    if (scheduledStart && scheduledEnd && scheduledEnd <= scheduledStart) {
+      return fail(400, { error: 'End time must be after start time' });
+    }
+
+    // Verify the course exists
+    const course = await prisma.course.findUnique({
+      where: { id: courseId },
+    });
+    if (!course) {
+      return fail(400, { error: 'Selected course does not exist' });
+    }
+
     const exam = await createExam({
-      courseId, createdBy: user.id, title, instructions,
-      durationMinutes, totalMarks, passMark, maxViolations,
-      scheduledStart, scheduledEnd, session, semester,
-      randomizeQuestions: randomizeQ, randomizeOptions: randomizeO, showResultAfter: showResult,
-      levels, department,
+      courseId,
+      createdBy: user.id,
+      title,
+      instructions,
+      durationMinutes,
+      totalMarks,
+      passMark,
+      maxViolations,
+      scheduledStart,
+      scheduledEnd,
+      session,
+      semester,
+      randomizeQuestions: randomizeQ,
+      randomizeOptions: randomizeO,
+      showResultAfter: showResult,
+      levels,
+      department,
     });
 
     redirect(302, `/lecturer/exams/${exam.id}/questions`);
