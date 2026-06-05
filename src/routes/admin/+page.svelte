@@ -68,23 +68,15 @@
   ]);
 
   // Weekly activity data for chart
-  const weeklyData = $derived([
-    { day: 'Mon', exams: 12, logins: 45 },
-    { day: 'Tue', exams: 18, logins: 52 },
-    { day: 'Wed', exams: 8,  logins: 38 },
-    { day: 'Thu', exams: 24, logins: 61 },
-    { day: 'Fri', exams: 15, logins: 49 },
-    { day: 'Sat', exams: 6,  logins: 22 },
-    { day: 'Sun', exams: 3,  logins: 15 },
-  ]);
+const weeklyData = $derived(data.weeklyData ?? []);
 
   // Quick stats
-  const quickStats = $derived([
-    { label: 'Avg. Response', value: '142ms', change: '-12%', trend: 'up', icon: Zap },
-    { label: 'Uptime', value: '99.97%', change: '+0.02%', trend: 'up', icon: Activity },
-    { label: 'Active Sessions', value: '847', change: '+23%', trend: 'up', icon: Users },
-    { label: 'Storage Used', value: '42%', change: '+5%', trend: 'neutral', icon: Database },
-  ]);
+ const quickStats = $derived([
+  { label: 'Active Sessions', value: String(data.activeSessions ?? 0),  change: 'right now',  trend: 'up',     icon: Users    },
+  { label: 'Active Exams',    value: String(data.activeExams ?? 0),      change: 'live',       trend: 'up',     icon: Activity },
+  { label: 'Total Users',     value: String(totalUsers),                  change: 'registered', trend: 'neutral',icon: Database },
+  { label: 'Threats (24h)',   value: String(data.threatCount ?? 0),       change: 'violations', trend: (data.threatCount ?? 0) > 0 ? 'down' : 'up', icon: Zap },
+]);
 
   // PDF Export
   async function exportToPDF() {
