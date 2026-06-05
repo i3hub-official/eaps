@@ -1,745 +1,1199 @@
 <!-- src/routes/admin/manage/course-registrations/+page.svelte -->
 <script lang="ts">
-  import type { PageData } from './$types';
+  import type { PageData, ActionData } from './$types';
   import { enhance } from '$app/forms';
-  import { UserPlus, Plus, Pencil, Trash2, X, Check, AlertCircle, Search, Eye, Loader2 } from 'lucide-svelte';
+  import { goto } from '$app/navigation';
+  import { page } from '$app/stores';
+  import {
+    BookOpen, Plus, Trash2, Pencil, X, ChevronRight,
+    GraduationCap, Building2, Hash, Users, Search,
+    RefreshCw, ArrowRightLeft, CheckCircle2, AlertCircle,
+    LoaderCircle, Filter, Eye, LayersIcon, Layers,
+  } from 'lucide-svelte';
+  import { fly, slide, fade } from 'svelte/transition';
 
-  let { data, form }: { data: PageData; form: any } = $props();
+  let { data, form }: { data: PageData; form: ActionData } = $props();
 
+  // ── UI state ──────────────────────────────────────────────────────────────
   let showCreateModal = $state(false);
-  let showEditModal = $state(false);
-  let showDeleteModal = $state(false);
-  let showViewModal = $state(false);
-  let selectedRegistration = $state<any>(null);
+  let editingReg = $state<(typeof data.registrations)[0] | null>(null);
+  let deletingId = $state<string | null>(null);
+  let submitting = $state(false);
   let searchQuery = $state('');
-  let loadingAction = $state<string | null>(null);
+  let regTypeFilter = $state('');
 
-  const SESSIONS = ['2022/2023', '2023/2024', '2024/2025', '2025/2026', '2026/2027'];
-  const SEMESTERS = [{ value: 1, label: 'First Semester' }, { value: 2, label: 'Second Semester' }];
+  // ── Student drawer state ──────────────────────────────────────────────────
+  let drawerOpen = $state(!!data.selectedStudentId);
+  let drawerStudentId = $state<string | null>(data.selectedStudentId);
+  let drawerTab = $state<'registered' | 'available'>('registered');
+  let availableTab = $state<'normal' | 'carryOver' | 'borrowed'>('normal');
+  let registeringCourseId = $state<string | null>(null);
 
-  const registrations = $derived(
-    data.registrations?.filter((r: any) =>
-      r.student?.fullName?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      r.student?.matricNumber?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      r.course?.code?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      r.course?.title?.toLowerCase().includes(searchQuery.toLowerCase())
-    ) ?? []
+  const drawerStudent = $derived(
+    drawerStudentId ? data.students.find((s) => s.id === drawerStudentId) : null
   );
 
-  function openView(reg: any) {
-    selectedRegistration = reg;
-    showViewModal = true;
+  const drawerRegistrations = $derived(
+    drawerStudentId
+      ? data.registrations.filter((r) => r.studentId === drawerStudentId)
+      : []
+  );
+
+  // ── Table filters ─────────────────────────────────────────────────────────
+  const filtered = $derived(() => {
+    let rows = data.registrations;
+    const q = searchQuery.trim().toLowerCase();
+    if (q) {
+      rows = rows.filter(
+        (r) =>
+          r.student.fullName.toLowerCase().includes(q) ||
+          r.student.matricNumber?.toLowerCase().includes(q) ||
+          r.course.code.toLowerCase().includes(q) ||
+          r.course.title.toLowerCase().includes(q)
+      );
+    }
+    if (regTypeFilter) rows = rows.filter((r) => r.registrationType === regTypeFilter);
+    return rows;
+  });
+
+  // ── Helpers ───────────────────────────────────────────────────────────────
+  const currentSession = '2024/2025';
+
+  function openDrawer(studentId: string) {
+    drawerStudentId = studentId;
+    drawerOpen = true;
+    drawerTab = 'registered';
+    goto(`?studentId=${studentId}`, { replaceState: true, noScroll: true });
   }
 
-  function openEdit(reg: any) {
-    selectedRegistration = reg;
-    showEditModal = true;
+  function closeDrawer() {
+    drawerOpen = false;
+    drawerStudentId = null;
+    goto('?', { replaceState: true, noScroll: true });
   }
 
-  function openDelete(reg: any) {
-    selectedRegistration = reg;
-    showDeleteModal = true;
+  function getTypeColor(type: string) {
+    if (type === 'carry_over') return '#f59e0b';
+    if (type === 'borrowed') return '#8b5cf6';
+    return '#3b82f6';
   }
 
-  function closeModals() {
-    showCreateModal = false;
-    showEditModal = false;
-    showDeleteModal = false;
-    showViewModal = false;
-    selectedRegistration = null;
-    loadingAction = null;
+  function getTypeLabel(type: string) {
+    if (type === 'carry_over') return 'Carry-over';
+    if (type === 'borrowed') return 'Borrowed';
+    return 'Normal';
   }
 
-  function handleEnhance(action: string) {
-    return () => {
-      loadingAction = action;
-      return async ({ update }: { update: () => Promise<void> }) => {
-        await update();
-        loadingAction = null;
-        closeModals();
-      };
-    };
+  function getSemesterLabel(studentLevel: number) {
+    return studentLevel % 2 === 0 ? 2 : 1;
   }
 </script>
 
-<svelte:head><title>Manage Course Registrations — MOUAU eTest Admin</title></svelte:head>
+<svelte:head><title>Course Registrations — Admin</title></svelte:head>
 
-<div class="manage-page">
-  <div class="page-header">
-    <div class="page-title">
-      <UserPlus size={22} class="title-icon" />
+<!-- Toast -->
+{#if form?.message || form?.error}
+  <div
+    class="toast"
+    class:success={form?.success}
+    class:error={!form?.success}
+    transition:fly={{ y: -12, duration: 250 }}
+  >
+    {#if form?.success}<CheckCircle2 size={16} />{:else}<AlertCircle size={16} />{/if}
+    <span>{form?.message ?? form?.error}</span>
+  </div>
+{/if}
+
+<div class="admin-page" class:drawer-open={drawerOpen}>
+  <!-- ── Page header ────────────────────────────────────────────────────── -->
+  <header class="page-head">
+    <div class="head-left">
+      <BookOpen size={22} class="head-icon" />
       <div>
         <h1>Course Registrations</h1>
-        <p class="subtitle">{registrations.length} registration{registrations.length !== 1 ? 's' : ''}</p>
+        <p class="sub">{data.registrations.length} registrations · {data.students.length} students</p>
       </div>
     </div>
-    <button class="btn-primary" onclick={() => showCreateModal = true}>
-      <Plus size={16} />
-      Add Registration
+    <button class="btn-primary" onclick={() => (showCreateModal = true)}>
+      <Plus size={16} /> Add Registration
     </button>
+  </header>
+
+  <!-- ── Filters ───────────────────────────────────────────────────────── -->
+  <div class="filters-row">
+    <div class="search-wrap">
+      <Search size={15} class="search-icon" />
+      <input
+        class="search-input"
+        placeholder="Search student, matric, course..."
+        bind:value={searchQuery}
+      />
+    </div>
+    <div class="filter-select-wrap">
+      <Filter size={14} />
+      <select bind:value={regTypeFilter} class="filter-select">
+        <option value="">All types</option>
+        <option value="normal">Normal</option>
+        <option value="carry_over">Carry-over</option>
+        <option value="borrowed">Borrowed</option>
+      </select>
+    </div>
+    <span class="result-count">{filtered().length} results</span>
   </div>
 
-  <div class="page-toolbar">
-    <div class="search-box">
-      <Search size={16} />
-      <input type="text" placeholder="Search by student name, matric number, or course..." bind:value={searchQuery} />
-      {#if searchQuery}
-        <button class="search-clear" onclick={() => searchQuery = ''}><X size={14} /></button>
-      {/if}
-    </div>
-  </div>
-
-  {#if form?.error}
-    <div class="toast error" role="alert">
-      <AlertCircle size={16} />
-      <span>{form.error}</span>
-      <button class="toast-close" onclick={() => form = null}><X size={14} /></button>
-    </div>
-  {/if}
-  {#if form?.success}
-    <div class="toast success" role="status">
-      <Check size={16} />
-      <span>{form.message}</span>
-      <button class="toast-close" onclick={() => form = null}><X size={14} /></button>
-    </div>
-  {/if}
-
-  <div class="table-card">
-    <div class="table-wrap">
-      <table class="data-table">
-        <thead>
+  <!-- ── Table ─────────────────────────────────────────────────────────── -->
+  <div class="table-wrap">
+    <table class="reg-table">
+      <thead>
+        <tr>
+          <th>Student</th>
+          <th>Course</th>
+          <th>Session / Sem</th>
+          <th>Type</th>
+          <th>Level</th>
+          <th>Date</th>
+          <th>Actions</th>
+        </tr>
+      </thead>
+      <tbody>
+        {#each filtered() as reg (reg.id)}
           <tr>
-            <th>Student</th>
-            <th>Matric No</th>
-            <th>Course</th>
-            <th>Department</th>
-            <th>Session</th>
-            <th>Semester</th>
-            <th>Registered</th>
-            <th class="actions">Actions</th>
-          </tr>
-        </thead>
-        <tbody>
-          {#if registrations.length === 0}
-            <tr>
-              <td colspan="8" class="empty">
-                <div class="empty-state">
-                  <UserPlus size={40} class="empty-icon" />
-                  <p class="empty-title">No registrations found</p>
-                  <p class="empty-desc">{searchQuery ? 'Try adjusting your search terms.' : 'Get started by adding your first course registration.'}</p>
-                  {#if !searchQuery}
-                    <button class="btn-primary btn-sm" onclick={() => showCreateModal = true}>
-                      <Plus size={14} /> Add Registration
-                    </button>
-                  {/if}
+            <td>
+              <button class="student-cell" onclick={() => openDrawer(reg.student.id)}>
+                <div class="student-avatar">
+                  {reg.student.fullName.charAt(0)}
                 </div>
-              </td>
-            </tr>
-          {:else}
-            {#each registrations as reg}
-              <tr>
-                <td>
-                  <div class="student-cell">
-                    <div class="student-avatar">{reg.student?.fullName?.charAt(0)?.toUpperCase() ?? 'S'}</div>
-                    <span class="student-name">{reg.student?.fullName || '—'}</span>
-                  </div>
-                </td>
-                <td><span class="matric">{reg.student?.matricNumber || '—'}</span></td>
-                <td>
-                  <div class="course-cell">
-                    <div class="course-code">{reg.course?.code}</div>
-                    <div class="course-title">{reg.course?.title}</div>
-                  </div>
-                </td>
-                <td>{reg.course?.department?.name || '—'}</td>
-                <td><span class="session-badge">{reg.session}</span></td>
-                <td><span class="semester-badge">{reg.semester === 1 ? 'First' : 'Second'}</span></td>
-                <td class="date-cell">{new Date(reg.createdAt).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' })}</td>
-                <td class="actions">
-                  <div class="action-group">
-                    <button class="action-btn view" onclick={() => openView(reg)} title="View details">
-                      <Eye size={15} />
-                    </button>
-                    <button class="action-btn edit" onclick={() => openEdit(reg)} title="Edit registration">
-                      <Pencil size={15} />
-                    </button>
-                    <button class="action-btn delete" onclick={() => openDelete(reg)} title="Delete registration">
-                      <Trash2 size={15} />
-                    </button>
-                  </div>
-                </td>
-              </tr>
-            {/each}
-          {/if}
-        </tbody>
-      </table>
-    </div>
+                <div>
+                  <span class="student-name">{reg.student.fullName}</span>
+                  <span class="matric">{reg.student.matricNumber ?? '—'}</span>
+                </div>
+                <ChevronRight size={14} class="chevron" />
+              </button>
+            </td>
+            <td>
+              <div class="course-cell">
+                <span class="course-code">{reg.course.code}</span>
+                <span class="course-title">{reg.course.title}</span>
+                <span class="dept-tag">{reg.course.department.code}</span>
+              </div>
+            </td>
+            <td>
+              <span class="session-tag">{reg.session}</span>
+              <span class="sem-tag">Sem {reg.semester}</span>
+            </td>
+            <td>
+              <span class="type-badge" style="background:{getTypeColor(reg.registrationType)}18;color:{getTypeColor(reg.registrationType)}">
+                {getTypeLabel(reg.registrationType)}
+              </span>
+            </td>
+            <td>
+              <span class="level-tag">{reg.level?.name ?? reg.student.level?.name ?? '—'}</span>
+            </td>
+            <td class="date-cell">
+              {new Date(reg.createdAt).toLocaleDateString('en-NG', { day: '2-digit', month: 'short', year: '2-digit' })}
+            </td>
+            <td>
+              <div class="row-actions">
+                <button class="icon-btn edit" title="Edit" onclick={() => (editingReg = reg)}>
+                  <Pencil size={14} />
+                </button>
+                <form
+                  method="POST"
+                  action="?/delete"
+                  use:enhance={() => {
+                    deletingId = reg.id;
+                    return async ({ update }) => { deletingId = null; update(); };
+                  }}
+                >
+                  <input type="hidden" name="id" value={reg.id} />
+                  <button type="submit" class="icon-btn delete" title="Delete" disabled={deletingId === reg.id}>
+                    {#if deletingId === reg.id}
+                      <LoaderCircle size={14} class="spin" />
+                    {:else}
+                      <Trash2 size={14} />
+                    {/if}
+                  </button>
+                </form>
+              </div>
+            </td>
+          </tr>
+        {:else}
+          <tr>
+            <td colspan="7" class="empty-row">No registrations found.</td>
+          </tr>
+        {/each}
+      </tbody>
+    </table>
   </div>
-
-  <!-- Create Modal -->
-  {#if showCreateModal}
-    <div class="modal-overlay" onclick={closeModals} role="dialog" aria-modal="true" aria-labelledby="create-title">
-      <div class="modal modal-large" onclick={(e) => e.stopPropagation()}>
-        <div class="modal-header">
-          <div class="modal-title-wrap">
-            <div class="modal-icon blue"><Plus size={18} /></div>
-            <h2 id="create-title">Add Course Registration</h2>
-          </div>
-          <button class="modal-close" onclick={closeModals} aria-label="Close modal"><X size={18} /></button>
-        </div>
-        <form method="POST" action="?/create" use:enhance={handleEnhance('create')}>
-          <div class="form-body">
-            <div class="form-row">
-              <div class="form-group">
-                <label for="create-student">Student <span class="req">*</span></label>
-                <select id="create-student" name="studentId" required>
-                  <option value="">Select a student...</option>
-                  {#each data.students as student}
-                    <option value={student.id}>{student.fullName} ({student.matricNumber})</option>
-                  {/each}
-                </select>
-              </div>
-              <div class="form-group">
-                <label for="create-course">Course <span class="req">*</span></label>
-                <select id="create-course" name="courseId" required>
-                  <option value="">Select a course...</option>
-                  {#each data.courses as course}
-                    <option value={course.id}>{course.code} — {course.title}</option>
-                  {/each}
-                </select>
-              </div>
-            </div>
-            <div class="form-row">
-              <div class="form-group">
-                <label for="create-session">Session <span class="req">*</span></label>
-                <select id="create-session" name="session" required>
-                  <option value="">Select session...</option>
-                  {#each SESSIONS as session}
-                    <option value={session}>{session}</option>
-                  {/each}
-                </select>
-              </div>
-              <div class="form-group">
-                <label for="create-semester">Semester <span class="req">*</span></label>
-                <select id="create-semester" name="semester" required>
-                  <option value="">Select semester...</option>
-                  {#each SEMESTERS as sem}
-                    <option value={sem.value}>{sem.label}</option>
-                  {/each}
-                </select>
-              </div>
-            </div>
-          </div>
-          <div class="modal-footer">
-            <button type="button" class="btn-secondary" onclick={closeModals}>Cancel</button>
-            <button type="submit" class="btn-primary" disabled={loadingAction === 'create'}>
-              {#if loadingAction === 'create'}
-                <Loader2 size={14} class="spin" /> Creating...
-              {:else}
-                <Plus size={14} /> Create Registration
-              {/if}
-            </button>
-          </div>
-        </form>
-      </div>
-    </div>
-  {/if}
-
-  <!-- Edit Modal -->
-  {#if showEditModal && selectedRegistration}
-    <div class="modal-overlay" onclick={closeModals} role="dialog" aria-modal="true" aria-labelledby="edit-title">
-      <div class="modal modal-large" onclick={(e) => e.stopPropagation()}>
-        <div class="modal-header">
-          <div class="modal-title-wrap">
-            <div class="modal-icon blue"><Pencil size={18} /></div>
-            <h2 id="edit-title">Edit Course Registration</h2>
-          </div>
-          <button class="modal-close" onclick={closeModals} aria-label="Close modal"><X size={18} /></button>
-        </div>
-        <form method="POST" action="?/edit" use:enhance={handleEnhance('edit')}>
-          <input type="hidden" name="id" value={selectedRegistration.id} />
-          <div class="form-body">
-            <div class="form-row">
-              <div class="form-group">
-                <label for="edit-student">Student <span class="req">*</span></label>
-                <select id="edit-student" name="studentId" required>
-                  <option value="">Select a student...</option>
-                  {#each data.students as student}
-                    <option value={student.id} selected={selectedRegistration.studentId === student.id}>
-                      {student.fullName} ({student.matricNumber})
-                    </option>
-                  {/each}
-                </select>
-              </div>
-              <div class="form-group">
-                <label for="edit-course">Course <span class="req">*</span></label>
-                <select id="edit-course" name="courseId" required>
-                  <option value="">Select a course...</option>
-                  {#each data.courses as course}
-                    <option value={course.id} selected={selectedRegistration.courseId === course.id}>
-                      {course.code} — {course.title}
-                    </option>
-                  {/each}
-                </select>
-              </div>
-            </div>
-            <div class="form-row">
-              <div class="form-group">
-                <label for="edit-session">Session <span class="req">*</span></label>
-                <select id="edit-session" name="session" required>
-                  <option value="">Select session...</option>
-                  {#each SESSIONS as session}
-                    <option value={session} selected={selectedRegistration.session === session}>
-                      {session}
-                    </option>
-                  {/each}
-                </select>
-              </div>
-              <div class="form-group">
-                <label for="edit-semester">Semester <span class="req">*</span></label>
-                <select id="edit-semester" name="semester" required>
-                  <option value="">Select semester...</option>
-                  {#each SEMESTERS as sem}
-                    <option value={sem.value} selected={selectedRegistration.semester === sem.value}>
-                      {sem.label}
-                    </option>
-                  {/each}
-                </select>
-              </div>
-            </div>
-          </div>
-          <div class="modal-footer">
-            <button type="button" class="btn-secondary" onclick={closeModals}>Cancel</button>
-            <button type="submit" class="btn-primary" disabled={loadingAction === 'edit'}>
-              {#if loadingAction === 'edit'}
-                <Loader2 size={14} class="spin" /> Saving...
-              {:else}
-                <Check size={14} /> Save Changes
-              {/if}
-            </button>
-          </div>
-        </form>
-      </div>
-    </div>
-  {/if}
-
-  <!-- View Modal -->
-  {#if showViewModal && selectedRegistration}
-    <div class="modal-overlay" onclick={closeModals} role="dialog" aria-modal="true" aria-labelledby="view-title">
-      <div class="modal modal-large" onclick={(e) => e.stopPropagation()}>
-        <div class="modal-header">
-          <div class="modal-title-wrap">
-            <div class="modal-icon blue"><Eye size={18} /></div>
-            <h2 id="view-title">Registration Details</h2>
-          </div>
-          <button class="modal-close" onclick={closeModals} aria-label="Close modal"><X size={18} /></button>
-        </div>
-        <div class="view-content">
-          <div class="view-section">
-            <h3>Student Information</h3>
-            <div class="view-row"><span class="view-label">Full Name</span><span>{selectedRegistration.student?.fullName || '—'}</span></div>
-            <div class="view-row"><span class="view-label">Matric Number</span><span class="mono">{selectedRegistration.student?.matricNumber || '—'}</span></div>
-            <div class="view-row"><span class="view-label">Email</span><span>{selectedRegistration.student?.email || '—'}</span></div>
-            <div class="view-row"><span class="view-label">Level</span><span>{selectedRegistration.student?.level || '—'}</span></div>
-          </div>
-          <div class="view-section">
-            <h3>Course Information</h3>
-            <div class="view-row"><span class="view-label">Course Code</span><span class="mono">{selectedRegistration.course?.code || '—'}</span></div>
-            <div class="view-row"><span class="view-label">Course Title</span><span>{selectedRegistration.course?.title || '—'}</span></div>
-            <div class="view-row"><span class="view-label">Credit Units</span><span>{selectedRegistration.course?.creditUnits ?? '—'}</span></div>
-            <div class="view-row"><span class="view-label">Department</span><span>{selectedRegistration.course?.department?.name || '—'}</span></div>
-          </div>
-          <div class="view-section">
-            <h3>Registration Details</h3>
-            <div class="view-row"><span class="view-label">Session</span><span class="session-badge">{selectedRegistration.session}</span></div>
-            <div class="view-row"><span class="view-label">Semester</span><span class="semester-badge">{selectedRegistration.semester === 1 ? 'First Semester' : 'Second Semester'}</span></div>
-            <div class="view-row"><span class="view-label">Registered On</span><span class="date-cell">{new Date(selectedRegistration.createdAt).toLocaleString('en-US', { year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}</span></div>
-          </div>
-        </div>
-        <div class="modal-footer">
-          <button type="button" class="btn-secondary" onclick={closeModals}>Close</button>
-        </div>
-      </div>
-    </div>
-  {/if}
-
-  <!-- Delete Modal -->
-  {#if showDeleteModal && selectedRegistration}
-    <div class="modal-overlay" onclick={closeModals} role="dialog" aria-modal="true" aria-labelledby="delete-title">
-      <div class="modal delete-modal" onclick={(e) => e.stopPropagation()}>
-        <div class="modal-icon-wrap danger"><AlertCircle size={28} /></div>
-        <h2 id="delete-title">Delete Registration?</h2>
-        <p class="delete-target">Remove <strong>{selectedRegistration.student?.fullName}</strong> from <strong>{selectedRegistration.course?.code}</strong>?</p>
-        <div class="warning-box">
-          <AlertCircle size={16} />
-          <span>This action cannot be undone and may affect grade calculations.</span>
-        </div>
-        <div class="modal-footer center">
-          <button type="button" class="btn-secondary" onclick={closeModals}>Cancel</button>
-          <form method="POST" action="?/delete" use:enhance={handleEnhance('delete')} style="display:contents">
-            <input type="hidden" name="id" value={selectedRegistration.id} />
-            <button type="submit" class="btn-danger" disabled={loadingAction === 'delete'}>
-              {#if loadingAction === 'delete'}
-                <Loader2 size={14} class="spin" /> Deleting...
-              {:else}
-                <Trash2 size={14} /> Yes, Delete
-              {/if}
-            </button>
-          </form>
-        </div>
-      </div>
-    </div>
-  {/if}
 </div>
 
+<!-- ── Student Drawer ──────────────────────────────────────────────────────── -->
+{#if drawerOpen && drawerStudent}
+  <!-- backdrop -->
+  <button class="drawer-backdrop" onclick={closeDrawer} aria-label="Close drawer" transition:fade={{ duration: 200 }}></button>
+
+  <aside class="student-drawer" transition:fly={{ x: 420, duration: 280 }}>
+    <!-- Drawer header -->
+    <div class="drawer-head">
+      <div class="drawer-avatar">{drawerStudent.fullName.charAt(0)}</div>
+      <div class="drawer-student-info">
+        <h2>{drawerStudent.fullName}</h2>
+        <p>{drawerStudent.matricNumber ?? drawerStudent.email}</p>
+        <div class="drawer-badges">
+          {#if drawerStudent.department}
+            <span class="dbadge dept"><Building2 size={11} /> {drawerStudent.department.code}</span>
+          {/if}
+          {#if drawerStudent.level}
+            <span class="dbadge lvl"><GraduationCap size={11} /> {drawerStudent.level.name ?? drawerStudent.level.level + ' Level'}</span>
+          {/if}
+        </div>
+      </div>
+      <button class="close-drawer" onclick={closeDrawer}><X size={18} /></button>
+    </div>
+
+    <!-- Drawer tabs -->
+    <div class="drawer-tabs">
+      <button class="dtab" class:active={drawerTab === 'registered'} onclick={() => (drawerTab = 'registered')}>
+        <CheckCircle2 size={13} /> Registered
+        <span class="dtab-count">{drawerRegistrations.length}</span>
+      </button>
+      <button class="dtab" class:active={drawerTab === 'available'} onclick={() => (drawerTab = 'available')}>
+        <Plus size={13} /> Add Courses
+      </button>
+    </div>
+
+    <!-- Registered tab -->
+    {#if drawerTab === 'registered'}
+      <div class="drawer-body" in:fly={{ y: 8, duration: 180 }}>
+        {#if drawerRegistrations.length === 0}
+          <div class="drawer-empty">
+            <BookOpen size={32} />
+            <p>No courses registered</p>
+          </div>
+        {:else}
+          <!-- Summary pills -->
+          <div class="drawer-summary">
+            {#each ['normal', 'carry_over', 'borrowed'] as t}
+              {@const cnt = drawerRegistrations.filter((r) => r.registrationType === t).length}
+              {#if cnt > 0}
+                <span class="sum-pill" style="background:{getTypeColor(t)}15;color:{getTypeColor(t)};border:1px solid {getTypeColor(t)}40">
+                  {getTypeLabel(t)}: {cnt}
+                </span>
+              {/if}
+            {/each}
+            <span class="sum-pill credits">
+              <Hash size={11} />
+              {drawerRegistrations.reduce((s, r) => s + r.course.creditUnits, 0)} credits
+            </span>
+          </div>
+
+          <div class="drawer-course-list">
+            {#each drawerRegistrations as reg (reg.id)}
+              <div class="drawer-course-item">
+                <div class="dci-left">
+                  <span class="dci-code">{reg.course.code}</span>
+                  <div>
+                    <div class="dci-title">{reg.course.title}</div>
+                    <div class="dci-meta">
+                      <span>{reg.course.department.code}</span>
+                      <span>·</span>
+                      <span>{reg.course.creditUnits} CR</span>
+                      <span>·</span>
+                      <span>Sem {reg.semester}</span>
+                    </div>
+                  </div>
+                </div>
+                <div class="dci-right">
+                  <span class="type-badge sm" style="background:{getTypeColor(reg.registrationType)}18;color:{getTypeColor(reg.registrationType)}">
+                    {getTypeLabel(reg.registrationType)}
+                  </span>
+                  <form
+                    method="POST"
+                    action="?/delete"
+                    use:enhance={() => {
+                      deletingId = reg.id;
+                      return async ({ update }) => { deletingId = null; update(); };
+                    }}
+                  >
+                    <input type="hidden" name="id" value={reg.id} />
+                    <button type="submit" class="icon-btn delete sm" title="Drop" disabled={deletingId === reg.id}>
+                      {#if deletingId === reg.id}
+                        <LoaderCircle size={12} class="spin" />
+                      {:else}
+                        <Trash2 size={12} />
+                      {/if}
+                    </button>
+                  </form>
+                </div>
+              </div>
+            {/each}
+          </div>
+        {/if}
+      </div>
+
+    <!-- Available / Add tab -->
+    {:else}
+      <div class="drawer-body" in:fly={{ y: 8, duration: 180 }}>
+        {#if !data.studentAvailableCourses}
+          <div class="drawer-empty">
+            <BookOpen size={32} />
+            <p>Student profile incomplete</p>
+          </div>
+        {:else}
+          <!-- Sub-tabs -->
+          <div class="avail-tabs">
+            <button class="atab" class:active={availableTab === 'normal'} onclick={() => (availableTab = 'normal')}>
+              <BookOpen size={12} /> Normal
+              <span>{data.studentAvailableCourses.normal.length}</span>
+            </button>
+            {#if drawerStudent.level && drawerStudent.level.level >= 200}
+              <button class="atab" class:active={availableTab === 'carryOver'} onclick={() => (availableTab = 'carryOver')}>
+                <RefreshCw size={12} /> Carry-over
+                <span>{data.studentAvailableCourses.carryOver.length}</span>
+              </button>
+            {/if}
+            <button class="atab" class:active={availableTab === 'borrowed'} onclick={() => (availableTab = 'borrowed')}>
+              <ArrowRightLeft size={12} /> Borrow
+              <span>{data.studentAvailableCourses.borrowed.length}</span>
+            </button>
+          </div>
+
+          {@const courseList =
+            availableTab === 'normal'
+              ? data.studentAvailableCourses.normal
+              : availableTab === 'carryOver'
+                ? data.studentAvailableCourses.carryOver
+                : data.studentAvailableCourses.borrowed}
+
+          {#if courseList.length === 0}
+            <div class="drawer-empty small">
+              <p>No {availableTab === 'carryOver' ? 'carry-over' : availableTab === 'borrowed' ? 'borrowable' : 'normal'} courses available</p>
+            </div>
+          {:else}
+            <div class="drawer-course-list">
+              {#each courseList as course (course.id)}
+                <div class="drawer-course-item addable">
+                  <div class="dci-left">
+                    <span class="dci-code" style="color:{availableTab === 'carryOver' ? '#f59e0b' : availableTab === 'borrowed' ? '#8b5cf6' : '#3b82f6'}">{course.code}</span>
+                    <div>
+                      <div class="dci-title">{course.title}</div>
+                      <div class="dci-meta">
+                        <span>{course.department.code}</span>
+                        <span>·</span>
+                        <span>{course.creditUnits} CR</span>
+                        {#if availableTab === 'carryOver'}
+                          <span>· {course.level}L</span>
+                        {/if}
+                      </div>
+                    </div>
+                  </div>
+                  <form
+                    method="POST"
+                    action="?/create"
+                    use:enhance={() => {
+                      registeringCourseId = course.id;
+                      return async ({ update }) => {
+                        registeringCourseId = null;
+                        update();
+                        // reload data after register
+                        await goto(`?studentId=${drawerStudentId}`, { replaceState: true, noScroll: true, invalidateAll: true });
+                      };
+                    }}
+                  >
+                    <input type="hidden" name="studentId" value={drawerStudentId} />
+                    <input type="hidden" name="courseId" value={course.id} />
+                    <input type="hidden" name="session" value={drawerStudent.session ?? currentSession} />
+                    <input
+                      type="hidden"
+                      name="semester"
+                      value={drawerStudent.level ? getSemesterLabel(drawerStudent.level.level) : 1}
+                    />
+                    <input
+                      type="hidden"
+                      name="registrationType"
+                      value={availableTab === 'carryOver' ? 'carry_over' : availableTab === 'borrowed' ? 'borrowed' : 'normal'}
+                    />
+                    {#if drawerStudent.level}
+                      <input type="hidden" name="levelId" value={drawerStudent.level.id} />
+                    {/if}
+                    <button
+                      type="submit"
+                      class="add-course-btn"
+                      class:carry={availableTab === 'carryOver'}
+                      class:borrow={availableTab === 'borrowed'}
+                      disabled={registeringCourseId === course.id}
+                    >
+                      {#if registeringCourseId === course.id}
+                        <LoaderCircle size={13} class="spin" />
+                      {:else}
+                        <Plus size={13} />
+                      {/if}
+                    </button>
+                  </form>
+                </div>
+              {/each}
+            </div>
+          {/if}
+        {/if}
+      </div>
+    {/if}
+  </aside>
+{/if}
+
+<!-- ── Create Modal ──────────────────────────────────────────────────────────── -->
+{#if showCreateModal}
+  <div class="modal-backdrop" transition:fade={{ duration: 180 }}>
+    <div class="modal" transition:fly={{ y: 20, duration: 220 }}>
+      <div class="modal-head">
+        <h3>Add Course Registration</h3>
+        <button class="close-btn" onclick={() => (showCreateModal = false)}><X size={18} /></button>
+      </div>
+      <form
+        method="POST"
+        action="?/create"
+        class="modal-form"
+        use:enhance={() => {
+          submitting = true;
+          return async ({ update }) => { submitting = false; showCreateModal = false; update(); };
+        }}
+      >
+        <div class="field">
+          <label>Student</label>
+          <select name="studentId" required>
+            <option value="">Select student…</option>
+            {#each data.students as s}
+              <option value={s.id}>{s.fullName} ({s.matricNumber ?? s.id.slice(0, 8)})</option>
+            {/each}
+          </select>
+        </div>
+        <div class="field">
+          <label>Course</label>
+          <select name="courseId" required>
+            <option value="">Select course…</option>
+            {#each data.courses as c}
+              <option value={c.id}>{c.code} — {c.title}</option>
+            {/each}
+          </select>
+        </div>
+        <div class="field-row">
+          <div class="field">
+            <label>Session</label>
+            <input type="text" name="session" placeholder="2024/2025" value={currentSession} required />
+          </div>
+          <div class="field">
+            <label>Semester</label>
+            <select name="semester" required>
+              <option value="1">1st Semester</option>
+              <option value="2">2nd Semester</option>
+            </select>
+          </div>
+        </div>
+        <div class="field-row">
+          <div class="field">
+            <label>Registration Type</label>
+            <select name="registrationType">
+              <option value="normal">Normal</option>
+              <option value="carry_over">Carry-over</option>
+              <option value="borrowed">Borrowed</option>
+            </select>
+          </div>
+          <div class="field">
+            <label>Level</label>
+            <select name="levelId">
+              <option value="">Auto</option>
+              {#each data.levels as l}
+                <option value={l.id}>{l.name ?? l.level + ' Level'}</option>
+              {/each}
+            </select>
+          </div>
+        </div>
+        <div class="modal-actions">
+          <button type="button" class="btn-ghost" onclick={() => (showCreateModal = false)}>Cancel</button>
+          <button type="submit" class="btn-primary" disabled={submitting}>
+            {#if submitting}<LoaderCircle size={15} class="spin" />{/if}
+            Add Registration
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+{/if}
+
+<!-- ── Edit Modal ────────────────────────────────────────────────────────────── -->
+{#if editingReg}
+  <div class="modal-backdrop" transition:fade={{ duration: 180 }}>
+    <div class="modal" transition:fly={{ y: 20, duration: 220 }}>
+      <div class="modal-head">
+        <h3>Edit Registration</h3>
+        <button class="close-btn" onclick={() => (editingReg = null)}><X size={18} /></button>
+      </div>
+      <form
+        method="POST"
+        action="?/edit"
+        class="modal-form"
+        use:enhance={() => {
+          submitting = true;
+          return async ({ update }) => { submitting = false; editingReg = null; update(); };
+        }}
+      >
+        <input type="hidden" name="id" value={editingReg.id} />
+        <div class="field">
+          <label>Student</label>
+          <select name="studentId" required>
+            {#each data.students as s}
+              <option value={s.id} selected={s.id === editingReg.studentId}>
+                {s.fullName} ({s.matricNumber ?? s.id.slice(0, 8)})
+              </option>
+            {/each}
+          </select>
+        </div>
+        <div class="field">
+          <label>Course</label>
+          <select name="courseId" required>
+            {#each data.courses as c}
+              <option value={c.id} selected={c.id === editingReg.courseId}>
+                {c.code} — {c.title}
+              </option>
+            {/each}
+          </select>
+        </div>
+        <div class="field-row">
+          <div class="field">
+            <label>Session</label>
+            <input type="text" name="session" value={editingReg.session} required />
+          </div>
+          <div class="field">
+            <label>Semester</label>
+            <select name="semester" required>
+              <option value="1" selected={editingReg.semester === 1}>1st Semester</option>
+              <option value="2" selected={editingReg.semester === 2}>2nd Semester</option>
+            </select>
+          </div>
+        </div>
+        <div class="field-row">
+          <div class="field">
+            <label>Registration Type</label>
+            <select name="registrationType">
+              <option value="normal" selected={editingReg.registrationType === 'normal'}>Normal</option>
+              <option value="carry_over" selected={editingReg.registrationType === 'carry_over'}>Carry-over</option>
+              <option value="borrowed" selected={editingReg.registrationType === 'borrowed'}>Borrowed</option>
+            </select>
+          </div>
+          <div class="field">
+            <label>Level</label>
+            <select name="levelId">
+              <option value="">Auto</option>
+              {#each data.levels as l}
+                <option value={l.id} selected={l.id === editingReg.levelId}>
+                  {l.name ?? l.level + ' Level'}
+                </option>
+              {/each}
+            </select>
+          </div>
+        </div>
+        <div class="modal-actions">
+          <button type="button" class="btn-ghost" onclick={() => (editingReg = null)}>Cancel</button>
+          <button type="submit" class="btn-primary" disabled={submitting}>
+            {#if submitting}<LoaderCircle size={15} class="spin" />{/if}
+            Save Changes
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+{/if}
+
 <style>
-  .manage-page { display: flex; flex-direction: column; gap: 1.25rem; }
-
-  /* ── Page Header ─────────────────────────────────────────────── */
-  .page-header {
-    display: flex; justify-content: space-between; align-items: flex-start; gap: 1rem; flex-wrap: wrap;
+  /* ── Layout ────────────────────────────────────────────────────────────── */
+  .admin-page {
+    padding: 1.5rem;
+    max-width: 1400px;
+    margin: 0 auto;
+    transition: padding-right 0.3s ease;
   }
-  .page-title { display: flex; align-items: center; gap: 0.875rem; }
-  .page-title :global(.title-icon) { color: #3b82f6; flex-shrink: 0; }
-  .page-title h1 { font-size: 1.35rem; font-weight: 700; color: var(--color-text); line-height: 1.2; margin: 0; }
-  .subtitle { font-size: 0.8rem; color: var(--color-muted); margin-top: 0.15rem; }
+  .admin-page.drawer-open {
+    padding-right: calc(440px + 1.5rem);
+  }
 
-  /* ── Toolbar ─────────────────────────────────────────────────── */
-  .page-toolbar { display: flex; align-items: center; gap: 1rem; }
-  .search-box {
-    display: flex; align-items: center; gap: 0.5rem;
-    padding: 0.55rem 0.875rem;
-    background: var(--color-bg);
+  /* ── Header ────────────────────────────────────────────────────────────── */
+  .page-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    margin-bottom: 1.25rem;
+  }
+  .head-left {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+  }
+  .head-left :global(.head-icon) { color: #3b82f6; }
+  .page-head h1 {
+    font-size: 1.375rem;
+    font-weight: 700;
+    color: var(--color-text);
+    margin: 0;
+  }
+  .sub { font-size: 0.8rem; color: var(--color-muted); margin: 0.15rem 0 0; }
+
+  /* ── Filters ───────────────────────────────────────────────────────────── */
+  .filters-row {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    margin-bottom: 1rem;
+    flex-wrap: wrap;
+  }
+  .search-wrap {
+    position: relative;
+    flex: 1;
+    min-width: 200px;
+  }
+  .search-wrap :global(.search-icon) {
+    position: absolute;
+    left: 0.75rem;
+    top: 50%;
+    transform: translateY(-50%);
+    color: var(--color-muted);
+    pointer-events: none;
+  }
+  .search-input {
+    width: 100%;
+    padding: 0.55rem 0.875rem 0.55rem 2.25rem;
+    background: var(--color-surface);
     border: 1px solid var(--color-border);
-    border-radius: 0.625rem;
-    flex: 1; max-width: 450px;
-    transition: border-color 0.15s, box-shadow 0.15s;
+    border-radius: 0.5rem;
+    color: var(--color-text);
+    font-size: 0.85rem;
   }
-  .search-box:focus-within { border-color: #3b82f6; box-shadow: 0 0 0 3px rgba(59,130,246,0.1); }
-  .search-box input { border: none; background: none; outline: none; width: 100%; color: var(--color-text); font-size: 0.875rem; }
-  .search-box :global(svg) { color: var(--color-muted); flex-shrink: 0; }
-  .search-clear {
-    background: none; border: none; cursor: pointer; color: var(--color-muted);
-    padding: 0.15rem; border-radius: 0.25rem; display: flex; align-items: center;
-    transition: color 0.15s;
+  .search-input:focus { outline: none; border-color: #3b82f6; }
+  .filter-select-wrap {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    color: var(--color-muted);
   }
-  .search-clear:hover { color: var(--color-text); }
+  .filter-select {
+    padding: 0.5rem 0.75rem;
+    background: var(--color-surface);
+    border: 1px solid var(--color-border);
+    border-radius: 0.5rem;
+    color: var(--color-text);
+    font-size: 0.85rem;
+  }
+  .result-count { font-size: 0.8rem; color: var(--color-muted); margin-left: auto; }
 
-  /* ── Buttons ─────────────────────────────────────────────────── */
-  .btn-primary {
-    display: inline-flex; align-items: center; gap: 0.5rem;
-    padding: 0.55rem 1.1rem;
-    background: #3b82f6; color: white;
-    border: none; border-radius: 0.5rem;
-    font-size: 0.875rem; font-weight: 600; cursor: pointer;
-    transition: background 0.15s, transform 0.1s;
-    white-space: nowrap;
-  }
-  .btn-primary:hover:not(:disabled) { background: #2563eb; }
-  .btn-primary:active:not(:disabled) { transform: translateY(1px); }
-  .btn-primary:disabled { opacity: 0.6; cursor: not-allowed; }
-  .btn-sm { padding: 0.4rem 0.875rem; font-size: 0.8rem; }
-
-  .btn-secondary {
-    display: inline-flex; align-items: center; gap: 0.5rem;
-    padding: 0.55rem 1.1rem;
-    background: transparent;
-    border: 1px solid var(--color-border); border-radius: 0.5rem;
-    color: var(--color-text); font-size: 0.875rem; font-weight: 600;
-    cursor: pointer; transition: all 0.15s;
-  }
-  .btn-secondary:hover { background: var(--color-bg); border-color: var(--color-text); }
-
-  .btn-danger {
-    display: inline-flex; align-items: center; gap: 0.5rem;
-    padding: 0.55rem 1.1rem;
-    background: #dc2626; color: white;
-    border: none; border-radius: 0.5rem;
-    font-size: 0.875rem; font-weight: 600; cursor: pointer;
-    transition: background 0.15s, transform 0.1s;
-  }
-  .btn-danger:hover:not(:disabled) { background: #b91c1c; }
-  .btn-danger:active:not(:disabled) { transform: translateY(1px); }
-  .btn-danger:disabled { opacity: 0.6; cursor: not-allowed; }
-
-  /* ── Toasts ──────────────────────────────────────────────────── */
-  .toast {
-    display: flex; align-items: center; gap: 0.625rem;
-    padding: 0.875rem 1rem;
-    border-radius: 0.625rem;
-    font-size: 0.875rem; font-weight: 500;
-    animation: slideIn 0.2s ease;
-  }
-  .toast.error {
-    background: rgba(220,38,38,0.08);
-    color: #dc2626;
-    border: 1px solid rgba(220,38,38,0.15);
-  }
-  .toast.success {
-    background: rgba(34,197,94,0.08);
-    color: #16a34a;
-    border: 1px solid rgba(34,197,94,0.15);
-  }
-  .toast-close {
-    margin-left: auto;
-    background: none; border: none; cursor: pointer;
-    color: currentColor; opacity: 0.5; padding: 0.15rem;
-    border-radius: 0.25rem; display: flex; align-items: center;
-    transition: opacity 0.15s;
-  }
-  .toast-close:hover { opacity: 1; }
-  @keyframes slideIn {
-    from { opacity: 0; transform: translateY(-8px); }
-    to   { opacity: 1; transform: translateY(0); }
-  }
-
-  /* ── Table ───────────────────────────────────────────────────── */
-  .table-card {
+  /* ── Table ─────────────────────────────────────────────────────────────── */
+  .table-wrap {
     background: var(--color-surface);
     border: 1px solid var(--color-border);
     border-radius: 0.75rem;
     overflow: hidden;
+    overflow-x: auto;
   }
-  .table-wrap { overflow-x: auto; }
-  .data-table { width: 100%; border-collapse: collapse; }
-  .data-table th, .data-table td {
-    padding: 0.85rem 1.125rem;
-    text-align: left;
+  .reg-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.85rem;
+  }
+  .reg-table thead tr {
+    background: var(--color-bg);
     border-bottom: 1px solid var(--color-border);
   }
-  .data-table th {
-    color: var(--color-muted);
-    font-size: 0.7rem;
+  .reg-table th {
+    padding: 0.75rem 1rem;
+    text-align: left;
+    font-size: 0.75rem;
     font-weight: 700;
     text-transform: uppercase;
-    letter-spacing: 0.06em;
-    background: var(--color-bg);
+    letter-spacing: 0.04em;
+    color: var(--color-muted);
     white-space: nowrap;
   }
-  .data-table tbody tr { transition: background 0.1s; }
-  .data-table tbody tr:hover td { background: var(--color-bg); }
-  .data-table tbody tr:last-child td { border-bottom: none; }
+  .reg-table tbody tr {
+    border-bottom: 1px solid var(--color-border);
+    transition: background 0.15s;
+  }
+  .reg-table tbody tr:last-child { border-bottom: none; }
+  .reg-table tbody tr:hover { background: var(--color-bg); }
+  .reg-table td { padding: 0.75rem 1rem; vertical-align: middle; }
 
-  .student-cell { display: flex; align-items: center; gap: 0.625rem; }
+  .student-cell {
+    display: flex;
+    align-items: center;
+    gap: 0.625rem;
+    background: none;
+    border: none;
+    cursor: pointer;
+    padding: 0;
+    color: inherit;
+    text-align: left;
+    min-width: 200px;
+  }
+  .student-cell:hover .student-name { color: #3b82f6; }
+  .student-cell :global(.chevron) { color: var(--color-muted); margin-left: auto; }
+
   .student-avatar {
-    width: 30px; height: 30px; border-radius: 50%;
-    background: linear-gradient(135deg, #3b82f6, #1d4ed8);
-    display: flex; align-items: center; justify-content: center;
-    font-weight: 700; font-size: 0.72rem; color: white; flex-shrink: 0;
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    background: rgba(34,197,94,0.12);
+    color: #3b82f6;
+    font-size: 0.875rem;
+    font-weight: 700;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
   }
-  .student-name { font-weight: 600; color: var(--color-text); font-size: 0.875rem; }
-  .matric { font-size: 0.75rem; color: var(--color-muted); font-family: ui-monospace, SFMono-Regular, monospace; }
-  .course-cell { display: flex; flex-direction: column; gap: 0.15rem; }
-  .course-code { font-weight: 600; font-size: 0.8rem; color: var(--color-text); font-family: ui-monospace, SFMono-Regular, monospace; }
-  .course-title { font-size: 0.72rem; color: var(--color-muted); }
-  .session-badge {
-    display: inline-flex; align-items: center;
-    padding: 0.25rem 0.625rem;
-    background: rgba(99,102,241,0.08);
-    color: #6366f1;
-    border-radius: 0.375rem;
-    font-size: 0.7rem; font-weight: 600;
+  .student-name {
+    display: block;
+    font-weight: 600;
+    color: var(--color-text);
+    font-size: 0.85rem;
+    white-space: nowrap;
+    transition: color 0.15s;
   }
-  .semester-badge {
-    display: inline-flex; align-items: center;
-    padding: 0.25rem 0.625rem;
-    background: rgba(22,163,74,0.08);
-    color: #16a34a;
-    border-radius: 0.375rem;
-    font-size: 0.7rem; font-weight: 600;
-  }
-  .date-cell { color: var(--color-muted); font-size: 0.8rem; white-space: nowrap; }
+  .matric { display: block; font-size: 0.72rem; color: var(--color-muted); }
 
-  .actions { text-align: center; width: 110px; white-space: nowrap; }
-  .action-group {
-    display: inline-flex; align-items: center; gap: 0.25rem;
-    opacity: 0.6;
-    transition: opacity 0.15s;
+  .course-cell { display: flex; flex-direction: column; gap: 0.15rem; }
+  .course-code {
+    font-family: monospace;
+    font-size: 0.78rem;
+    font-weight: 700;
+    color: #3b82f6;
   }
-  .data-table tbody tr:hover .action-group { opacity: 1; }
-  .action-btn {
-    display: inline-flex; align-items: center; justify-content: center;
-    width: 30px; height: 30px;
-    background: none; border: none; cursor: pointer;
+  .course-title { font-size: 0.82rem; color: var(--color-text); }
+  .dept-tag {
+    font-size: 0.7rem;
     color: var(--color-muted);
+    background: var(--color-bg);
+    padding: 0.1rem 0.35rem;
+    border-radius: 0.25rem;
+    width: fit-content;
+  }
+
+  .session-tag, .sem-tag {
+    display: inline-block;
+    font-size: 0.72rem;
+    color: var(--color-muted);
+  }
+  .session-tag { font-weight: 600; color: var(--color-text); }
+  .sem-tag::before { content: ' · '; }
+
+  .type-badge {
+    display: inline-block;
+    font-size: 0.7rem;
+    font-weight: 700;
+    padding: 0.2rem 0.5rem;
+    border-radius: 0.25rem;
+    white-space: nowrap;
+  }
+  .type-badge.sm { font-size: 0.65rem; padding: 0.15rem 0.4rem; }
+
+  .level-tag { font-size: 0.8rem; color: var(--color-muted); }
+  .date-cell { font-size: 0.78rem; color: var(--color-muted); white-space: nowrap; }
+
+  .row-actions { display: flex; gap: 0.35rem; }
+  .icon-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 30px;
+    height: 30px;
     border-radius: 0.375rem;
+    border: 1px solid var(--color-border);
+    background: var(--color-surface);
+    cursor: pointer;
+    color: var(--color-muted);
     transition: all 0.15s;
   }
-  .action-btn:hover { color: var(--color-text); background: var(--color-bg); }
-  .action-btn.view:hover { color: #6366f1; background: rgba(99,102,241,0.1); }
-  .action-btn.edit:hover { color: #3b82f6; background: rgba(59,130,246,0.1); }
-  .action-btn.delete:hover { color: #dc2626; background: rgba(220,38,38,0.1); }
+  .icon-btn.edit:hover { color: #3b82f6; border-color: #3b82f6; background: rgba(59,130,246,0.08); }
+  .icon-btn.delete:hover { color: #ef4444; border-color: #ef4444; background: rgba(239,68,68,0.08); }
+  .icon-btn.sm { width: 26px; height: 26px; }
+  .icon-btn:disabled { opacity: 0.5; cursor: not-allowed; }
 
-  /* ── Empty State ─────────────────────────────────────────────── */
-  .empty { padding: 0 !important; }
-  .empty-state {
-    display: flex; flex-direction: column; align-items: center; gap: 0.75rem;
-    padding: 3rem 1.5rem; text-align: center;
+  .empty-row { text-align: center; color: var(--color-muted); padding: 3rem 1rem; }
+
+  /* ── Drawer ─────────────────────────────────────────────────────────────── */
+  .drawer-backdrop {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.3);
+    z-index: 40;
+    border: none;
+    cursor: pointer;
   }
-  .empty-state :global(.empty-icon) { color: var(--color-border); }
-  .empty-title { font-size: 0.95rem; font-weight: 600; color: var(--color-text); margin: 0; }
-  .empty-desc { font-size: 0.8rem; color: var(--color-muted); margin: 0; }
+  .student-drawer {
+    position: fixed;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    width: 440px;
+    background: var(--color-surface);
+    border-left: 1px solid var(--color-border);
+    z-index: 50;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
 
-  /* ── Modal ───────────────────────────────────────────────────── */
-  .modal-overlay {
-    position: fixed; inset: 0;
-    background: rgba(0,0,0,0.45);
-    backdrop-filter: blur(4px);
-    display: flex; align-items: center; justify-content: center;
-    z-index: 1000;
+  .drawer-head {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.875rem;
+    padding: 1.25rem;
+    border-bottom: 1px solid var(--color-border);
+    background: var(--color-bg);
+  }
+  .drawer-avatar {
+    width: 44px;
+    height: 44px;
+    border-radius: 50%;
+    background: rgba(34,197,94,0.15);
+    color: #3b82f6;
+    font-size: 1.125rem;
+    font-weight: 800;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+  }
+  .drawer-student-info { flex: 1; min-width: 0; }
+  .drawer-student-info h2 {
+    font-size: 1rem;
+    font-weight: 700;
+    color: var(--color-text);
+    margin: 0 0 0.15rem;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .drawer-student-info p { font-size: 0.78rem; color: var(--color-muted); margin: 0 0 0.5rem; }
+  .drawer-badges { display: flex; gap: 0.4rem; flex-wrap: wrap; }
+  .dbadge {
+    display: flex;
+    align-items: center;
+    gap: 0.25rem;
+    font-size: 0.7rem;
+    font-weight: 600;
+    padding: 0.2rem 0.45rem;
+    border-radius: 0.25rem;
+  }
+  .dbadge.dept { background: rgba(59,130,246,0.1); color: #3b82f6; }
+  .dbadge.lvl { background: rgba(34,197,94,0.1); color: #3b82f6; }
+
+  .close-drawer {
+    background: none;
+    border: none;
+    color: var(--color-muted);
+    cursor: pointer;
+    padding: 0.25rem;
+    border-radius: 0.25rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+  }
+  .close-drawer:hover { color: var(--color-text); background: var(--color-border); }
+
+  .drawer-tabs {
+    display: flex;
+    gap: 0;
+    border-bottom: 1px solid var(--color-border);
+    padding: 0 1rem;
+  }
+  .dtab {
+    display: flex;
+    align-items: center;
+    gap: 0.35rem;
+    padding: 0.75rem 1rem;
+    font-size: 0.82rem;
+    font-weight: 600;
+    color: var(--color-muted);
+    background: none;
+    border: none;
+    border-bottom: 2px solid transparent;
+    cursor: pointer;
+    transition: all 0.2s;
+    margin-bottom: -1px;
+  }
+  .dtab:hover { color: var(--color-text); }
+  .dtab.active { color: #3b82f6; border-bottom-color: #3b82f6; }
+  .dtab-count {
+    background: var(--color-bg);
+    border-radius: 999px;
+    padding: 0 0.375rem;
+    font-size: 0.68rem;
+    min-width: 18px;
+    text-align: center;
+  }
+  .dtab.active .dtab-count { background: rgba(34,197,94,0.15); color: #3b82f6; }
+
+  .drawer-body {
+    flex: 1;
+    overflow-y: auto;
     padding: 1rem;
-    animation: fadeIn 0.15s ease;
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
   }
-  @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
 
+  .drawer-empty {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 0.625rem;
+    padding: 3rem 1rem;
+    color: var(--color-muted);
+    text-align: center;
+  }
+  .drawer-empty :global(svg) { opacity: 0.3; }
+  .drawer-empty.small { padding: 1.5rem 1rem; }
+
+  .drawer-summary { display: flex; flex-wrap: wrap; gap: 0.5rem; }
+  .sum-pill {
+    display: flex;
+    align-items: center;
+    gap: 0.3rem;
+    font-size: 0.72rem;
+    font-weight: 700;
+    padding: 0.2rem 0.6rem;
+    border-radius: 999px;
+  }
+  .sum-pill.credits {
+    background: var(--color-bg);
+    color: var(--color-muted);
+    border: 1px solid var(--color-border);
+  }
+
+  .drawer-course-list { display: flex; flex-direction: column; gap: 0.5rem; }
+
+  .drawer-course-item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.75rem;
+    padding: 0.75rem;
+    background: var(--color-bg);
+    border: 1px solid var(--color-border);
+    border-radius: 0.5rem;
+    transition: border-color 0.15s;
+  }
+  .drawer-course-item.addable:hover { border-color: #3b82f640; }
+
+  .dci-left { display: flex; align-items: center; gap: 0.625rem; flex: 1; min-width: 0; }
+  .dci-code {
+    font-family: monospace;
+    font-size: 0.72rem;
+    font-weight: 800;
+    color: #3b82f6;
+    background: rgba(34,197,94,0.08);
+    padding: 0.25rem 0.4rem;
+    border-radius: 0.25rem;
+    white-space: nowrap;
+    flex-shrink: 0;
+  }
+  .dci-title {
+    font-size: 0.82rem;
+    font-weight: 600;
+    color: var(--color-text);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    max-width: 220px;
+  }
+  .dci-meta {
+    font-size: 0.7rem;
+    color: var(--color-muted);
+    display: flex;
+    gap: 0.3rem;
+  }
+  .dci-right { display: flex; align-items: center; gap: 0.4rem; flex-shrink: 0; }
+
+  /* Available sub-tabs */
+  .avail-tabs {
+    display: flex;
+    gap: 0.25rem;
+    background: var(--color-bg);
+    border: 1px solid var(--color-border);
+    border-radius: 0.5rem;
+    padding: 0.25rem;
+  }
+  .atab {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.3rem;
+    padding: 0.4rem 0.5rem;
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: var(--color-muted);
+    background: none;
+    border: none;
+    border-radius: 0.35rem;
+    cursor: pointer;
+    transition: all 0.15s;
+  }
+  .atab:hover { color: var(--color-text); }
+  .atab.active { background: var(--color-surface); color: var(--color-text); box-shadow: 0 1px 3px rgba(0,0,0,0.08); }
+  .atab span {
+    background: var(--color-border);
+    border-radius: 999px;
+    padding: 0 0.3rem;
+    font-size: 0.65rem;
+  }
+
+  .add-course-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 30px;
+    height: 30px;
+    border-radius: 0.375rem;
+    border: none;
+    background: #3b82f6;
+    color: white;
+    cursor: pointer;
+    transition: background 0.15s;
+    flex-shrink: 0;
+  }
+  .add-course-btn:hover:not(:disabled) { background: #16a34a; }
+  .add-course-btn.carry { background: #f59e0b; }
+  .add-course-btn.carry:hover:not(:disabled) { background: #d97706; }
+  .add-course-btn.borrow { background: #8b5cf6; }
+  .add-course-btn.borrow:hover:not(:disabled) { background: #7c3aed; }
+  .add-course-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+  /* ── Modals ─────────────────────────────────────────────────────────────── */
+  .modal-backdrop {
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.45);
+    z-index: 60;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 1rem;
+  }
   .modal {
     background: var(--color-surface);
     border: 1px solid var(--color-border);
     border-radius: 0.875rem;
-    width: 100%; max-width: 500px;
-    max-height: 90vh;
-    overflow: hidden;
-    display: flex; flex-direction: column;
-    animation: modalUp 0.2s cubic-bezier(.16,1,.3,1);
-    box-shadow: 0 20px 60px rgba(0,0,0,0.2);
-  }
-  .modal-large { max-width: 680px; }
-  @keyframes modalUp {
-    from { opacity: 0; transform: translateY(16px) scale(0.97); }
-    to   { opacity: 1; transform: translateY(0) scale(1); }
-  }
-
-  .modal-header {
-    display: flex; justify-content: space-between; align-items: center;
-    padding: 1.125rem 1.25rem;
-    border-bottom: 1px solid var(--color-border);
-    flex-shrink: 0;
-  }
-  .modal-title-wrap { display: flex; align-items: center; gap: 0.75rem; }
-  .modal-icon {
-    width: 36px; height: 36px; border-radius: 0.5rem;
-    display: flex; align-items: center; justify-content: center;
-    flex-shrink: 0;
-  }
-  .modal-icon.blue { background: rgba(59,130,246,0.1); color: #3b82f6; }
-  .modal-header h2 { font-size: 1.05rem; font-weight: 700; color: var(--color-text); margin: 0; }
-  .modal-close {
-    background: none; border: none; cursor: pointer;
-    color: var(--color-muted); padding: 0.35rem;
-    border-radius: 0.375rem; display: flex; align-items: center;
-    transition: all 0.15s;
-  }
-  .modal-close:hover { color: var(--color-text); background: var(--color-bg); }
-
-  .form-body {
-    padding: 1.25rem;
-    display: flex; flex-direction: column;
-    gap: 1rem;
-    overflow-y: auto;
-  }
-  .form-group { display: flex; flex-direction: column; gap: 0.4rem; }
-  .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; }
-  label { font-size: 0.72rem; font-weight: 700; color: var(--color-muted); text-transform: uppercase; letter-spacing: 0.06em; }
-  .req { color: #dc2626; }
-  input, select {
-    padding: 0.65rem 0.875rem;
-    border: 1px solid var(--color-border);
-    border-radius: 0.5rem;
-    background: var(--color-bg);
-    color: var(--color-text);
-    font-size: 0.875rem;
     width: 100%;
-    transition: border-color 0.15s, box-shadow 0.15s;
-  }
-  input:focus, select:focus { outline: none; border-color: #3b82f6; box-shadow: 0 0 0 3px rgba(59,130,246,0.1); }
-
-  .modal-footer {
-    display: flex; justify-content: flex-end; gap: 0.75rem;
-    padding: 1rem 1.25rem;
-    border-top: 1px solid var(--color-border);
-    flex-shrink: 0;
-  }
-  .modal-footer.center { justify-content: center; }
-
-  /* ── View Modal Content ────────────────────────────────────── */
-  .view-content {
-    padding: 1.25rem;
-    display: flex; flex-direction: column;
-    gap: 1.5rem;
+    max-width: 520px;
+    max-height: 90vh;
     overflow-y: auto;
   }
-  .view-section h3 {
-    font-size: 0.8rem;
-    font-weight: 700;
-    color: var(--color-text);
-    margin: 0 0 0.75rem;
-    padding-bottom: 0.5rem;
-    border-bottom: 1px solid var(--color-border);
-    text-transform: uppercase;
-    letter-spacing: 0.05em;
-  }
-  .view-row {
+  .modal-head {
     display: flex;
     align-items: center;
-    padding: 0.5rem 0;
-    border-bottom: 1px solid var(--color-border);
+    justify-content: space-between;
+    padding: 1.25rem 1.25rem 0;
   }
-  .view-row:last-child { border-bottom: none; }
-  .view-label {
-    width: 150px;
-    flex-shrink: 0;
-    font-size: 0.75rem;
+  .modal-head h3 { font-size: 1.05rem; font-weight: 700; color: var(--color-text); margin: 0; }
+  .close-btn {
+    background: none;
+    border: none;
     color: var(--color-muted);
-    font-weight: 600;
-    text-transform: uppercase;
-    letter-spacing: 0.04em;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0.25rem;
+    border-radius: 0.25rem;
   }
-  .view-row span:last-child { font-size: 0.875rem; color: var(--color-text); }
-  .view-row .mono { font-family: ui-monospace, SFMono-Regular, monospace; }
-  .view-row .session-badge,
-  .view-row .semester-badge { font-size: 0.75rem; }
+  .close-btn:hover { color: var(--color-text); background: var(--color-bg); }
 
-  /* ── Delete Modal ────────────────────────────────────────────── */
-  .delete-modal { max-width: 420px; text-align: center; padding: 2rem 1.5rem 1.5rem; }
-  .delete-modal .modal-icon-wrap {
-    width: 56px; height: 56px; border-radius: 50%;
-    display: flex; align-items: center; justify-content: center;
-    margin: 0 auto 1rem;
-  }
-  .delete-modal .modal-icon-wrap.danger { background: rgba(220,38,38,0.1); color: #dc2626; }
-  .delete-modal h2 { font-size: 1.1rem; font-weight: 700; color: var(--color-text); margin: 0 0 0.5rem; }
-  .delete-target { color: var(--color-muted); font-size: 0.875rem; margin: 0 0 1rem; }
-  .delete-target strong { color: var(--color-text); }
-  .warning-box {
-    display: flex; align-items: flex-start; gap: 0.625rem;
-    padding: 0.875rem 1rem;
-    background: rgba(245,158,11,0.08);
-    border: 1px solid rgba(245,158,11,0.2);
+  .modal-form { padding: 1.25rem; display: flex; flex-direction: column; gap: 1rem; }
+
+  .field { display: flex; flex-direction: column; gap: 0.4rem; }
+  .field label { font-size: 0.8rem; font-weight: 600; color: var(--color-text); }
+  .field input,
+  .field select {
+    padding: 0.55rem 0.75rem;
+    background: var(--color-bg);
+    border: 1px solid var(--color-border);
     border-radius: 0.5rem;
-    color: #b45309;
-    font-size: 0.8rem;
-    text-align: left;
-    margin-bottom: 1.25rem;
+    color: var(--color-text);
+    font-size: 0.875rem;
   }
-  .warning-box :global(svg) { flex-shrink: 0; margin-top: 0.1rem; }
+  .field input:focus,
+  .field select:focus { outline: none; border-color: #3b82f6; }
+  .field-row { display: grid; grid-template-columns: 1fr 1fr; gap: 0.75rem; }
 
-  /* ── Spin ────────────────────────────────────────────────────── */
-  :global(.spin) { animation: spin 0.7s linear infinite; display: inline-block; }
+  .modal-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 0.625rem;
+    padding-top: 0.5rem;
+    border-top: 1px solid var(--color-border);
+  }
+
+  /* ── Buttons ────────────────────────────────────────────────────────────── */
+  .btn-primary {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    padding: 0.55rem 1.125rem;
+    background: #3b82f6;
+    color: white;
+    border: none;
+    border-radius: 0.5rem;
+    font-size: 0.875rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background 0.15s;
+    white-space: nowrap;
+  }
+  .btn-primary:hover:not(:disabled) { background: #16a34a; }
+  .btn-primary:disabled { opacity: 0.6; cursor: not-allowed; }
+
+  .btn-ghost {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    padding: 0.55rem 1rem;
+    background: none;
+    color: var(--color-muted);
+    border: 1px solid var(--color-border);
+    border-radius: 0.5rem;
+    font-size: 0.875rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.15s;
+  }
+  .btn-ghost:hover { color: var(--color-text); background: var(--color-bg); }
+
+  /* ── Toast ──────────────────────────────────────────────────────────────── */
+  .toast {
+    position: fixed;
+    top: 1.25rem;
+    right: 1.25rem;
+    z-index: 100;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.75rem 1.125rem;
+    border-radius: 0.625rem;
+    font-size: 0.875rem;
+    font-weight: 500;
+    box-shadow: 0 4px 16px rgba(0,0,0,0.15);
+  }
+  .toast.success { background: #16a34a; color: white; }
+  .toast.error { background: #ef4444; color: white; }
+
+  /* ── Spin ───────────────────────────────────────────────────────────────── */
+  :global(.spin) { animation: spin 0.8s linear infinite; }
   @keyframes spin { to { transform: rotate(360deg); } }
 
-  /* ── Responsive ──────────────────────────────────────────────── */
-  @media (max-width: 640px) {
-    .page-header { flex-direction: column; align-items: stretch; }
-    .page-title { justify-content: center; text-align: center; }
-    .page-toolbar { flex-direction: column; }
-    .search-box { max-width: none; width: 100%; }
-    .form-row { grid-template-columns: 1fr; }
-    .data-table th, .data-table td { padding: 0.75rem 0.75rem; }
-    .actions { width: 90px; }
-    .modal-footer { flex-direction: column-reverse; }
-    .modal-footer :global(.btn-secondary), .modal-footer :global(.btn-primary), .modal-footer :global(.btn-danger) { width: 100%; justify-content: center; }
-    .view-row { flex-direction: column; align-items: flex-start; gap: 0.25rem; }
-    .view-label { width: auto; }
-    .modal-large { max-width: 100%; }
+  /* ── Responsive ─────────────────────────────────────────────────────────── */
+  @media (max-width: 768px) {
+    .admin-page.drawer-open { padding-right: 1.5rem; }
+    .student-drawer { width: 100%; border-left: none; border-top: 1px solid var(--color-border); top: auto; height: 75vh; border-radius: 1rem 1rem 0 0; }
+    .field-row { grid-template-columns: 1fr; }
   }
 </style>

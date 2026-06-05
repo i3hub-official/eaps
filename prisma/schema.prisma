@@ -97,6 +97,13 @@ enum RiskLevel {
   critical
 }
 
+enum RegistrationType {
+  normal
+  carry_over
+  borrowed
+}
+
+
 // ─── Institutional hierarchy ──────────────────────────────────────────────────
 
 model College {
@@ -348,17 +355,18 @@ model Course {
 }
 
 model CourseRegistration {
-  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  studentId String   @map("student_id") @db.Uuid
-  courseId  String   @map("course_id") @db.Uuid
-  session   String
-  levelId   Int?     @map("level_id") // CHANGE: was `level Int?`
-  semester  Int      @db.SmallInt
-  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz()
+  id               String           @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  studentId        String           @map("student_id") @db.Uuid
+  courseId         String           @map("course_id") @db.Uuid
+  session          String
+  levelId          Int?             @map("level_id")
+  semester         Int              @db.SmallInt
+  registrationType RegistrationType @default(normal) @map("registration_type")
+  createdAt        DateTime         @default(now()) @map("created_at") @db.Timestamptz()
 
   student User   @relation(fields: [studentId], references: [id], onDelete: Cascade)
   course  Course @relation(fields: [courseId], references: [id], onDelete: Cascade)
-  level   Level? @relation(fields: [levelId], references: [id]) // ADD this relation
+  level   Level? @relation(fields: [levelId], references: [id])
 
   @@unique([studentId, courseId, session, semester])
   @@map("course_registrations")

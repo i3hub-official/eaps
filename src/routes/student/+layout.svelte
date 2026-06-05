@@ -31,7 +31,7 @@
     { href: '/student',                label: 'Dashboard',           icon: LayoutDashboard },
     { href: '/student/exams',          label: 'My Exams',            icon: ClipboardList   },
     { href: '/student/results',        label: 'My Results',          icon: BarChart2       },
-    { href: '/student/registrations',  label: 'Course Registration', icon: BookOpen          },
+    { href: '/student/courses/register',  label: 'Course Registration', icon: BookOpen          },
     { href: '/enroll',                 label: 'Face Enrolment',      icon: Camera          },
   ];
 
