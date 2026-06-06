@@ -1,4 +1,3 @@
-<!-- src/routes/(student)/+layout.svelte -->
 <script lang="ts">
   import { page, navigating } from '$app/stores';
   import { onMount } from 'svelte';
@@ -9,7 +8,10 @@
     Mail, Hash, Layers, GraduationCap, ShieldCheck,
     ChevronRight, X, BarChart2, Bell, CheckCheck,
     Loader2, BookOpen, Clock, Award, ClipboardList,
-    Calendar, FileText, UserCircle, AlertTriangle
+    Calendar, FileText, UserCircle, AlertTriangle,
+    Phone, MapPin, Flag, VenusAndMars, Cake, Building2,
+    Fingerprint, Eye, IdCard, Users, School, ScrollText,
+    Sparkles, CheckCircle2, XCircle, Timer, TrendingUp
   } from 'lucide-svelte';
 
   let { data, children }: { data: LayoutData; children: import('svelte').Snippet } = $props();
@@ -23,16 +25,16 @@
   let showNotifs    = $state(false);
   let notifications = $state<any[]>(data.notifications ?? []);
   let markingAll    = $state(false);
+  let notifLoading  = $state(false);
 
   const unreadCount = $derived(notifications.filter(n => !n.isRead).length);
 
-  // ── Navigation links with course registration ──────────────────────────────
+  // ── Navigation links ───────────────────────────────────────────────────────
   const links = [
     { href: '/student',                label: 'Dashboard',           icon: LayoutDashboard },
     { href: '/student/exams',          label: 'My Exams',            icon: ClipboardList   },
     { href: '/student/results',        label: 'My Results',          icon: BarChart2       },
-    { href: '/student/courses/register',  label: 'Course Registration', icon: BookOpen          },
-    { href: '/enroll',                 label: 'Face Enrolment',      icon: Camera          },
+    { href: '/student/courses/register',  label: 'Course Registration', icon: BookOpen       },
   ];
 
   const currentPath = $derived($page.url.pathname);
@@ -53,8 +55,9 @@
     const map: Record<string, string> = {
       results:       'My Results',
       exams:         'My Exams',
-      registrations: 'Course Registration',
-      exam:          'Exam',
+      courses:       'Courses',
+      register:      'Registration',
+      exam:          'Exam Session',
       complete:      'Complete',
       upcoming:      'Upcoming',
       history:       'History',
@@ -79,20 +82,50 @@
       : parts[0].slice(0, 2).toUpperCase();
   });
 
+  // ── Full name display ───────────────────────────────────────────
+  const displayName = $derived(() => {
+    const parts = data.user.fullName.trim().split(/\s+/);
+    return parts[0];
+  });
+
   // ── Notifications ───────────────────────────────────────────────
   async function markAllRead() {
     if (markingAll || unreadCount === 0) return;
     markingAll = true;
     try {
-      await fetch('/api/notifications/read-all', { method: 'POST' });
-      notifications = notifications.map(n => ({ ...n, isRead: true }));
+      const res = await fetch('/api/notifications/read-all', { method: 'POST' });
+      if (res.ok) {
+        notifications = notifications.map(n => ({ ...n, isRead: true }));
+      }
     } catch { /* silent */ }
     finally { markingAll = false; }
   }
 
   async function markOneRead(id: string) {
+    const notif = notifications.find(n => n.id === id);
+    if (!notif || notif.isRead) return;
+
+    // Optimistic update
     notifications = notifications.map(n => n.id === id ? { ...n, isRead: true } : n);
-    await fetch(`/api/notifications/${id}/read`, { method: 'POST' }).catch(() => {});
+
+    try {
+      await fetch(`/api/notifications/${id}/read`, { method: 'POST' });
+    } catch {
+      // Revert on error
+      notifications = notifications.map(n => n.id === id ? { ...n, isRead: false } : n);
+    }
+  }
+
+  async function deleteNotification(id: string, e: Event) {
+    e.stopPropagation();
+    notifLoading = true;
+    try {
+      const res = await fetch(`/api/notifications/${id}`, { method: 'DELETE' });
+      if (res.ok) {
+        notifications = notifications.filter(n => n.id !== id);
+      }
+    } catch { /* silent */ }
+    finally { notifLoading = false; }
   }
 
   function handleNotifsOutside(e: MouseEvent) {
@@ -113,14 +146,69 @@
     if (m < 60) return `${m}m ago`;
     const h = Math.floor(m / 60);
     if (h < 24) return `${h}h ago`;
-    return `${Math.floor(h / 24)}d ago`;
+    const d = Math.floor(h / 24);
+    if (d < 30) return `${d}d ago`;
+    return new Date(date).toLocaleDateString();
   }
 
-  // Stats from server
+  // ── Stats ───────────────────────────────────────────────────────
   const activeExams      = $derived(data.stats?.activeExams ?? 0);
   const totalResults     = $derived(data.stats?.totalResults ?? 0);
   const pendingRegistrations = $derived(data.stats?.pendingRegistrations ?? 0);
   const upcomingExams    = $derived(data.stats?.upcomingExams ?? 0);
+
+  // ── Bio modal data sections ─────────────────────────────────────
+  const bioSections = $derived(() => {
+    const u = data.user;
+    const sections: { title: string; icon: any; fields: { label: string; value: string; icon: any }[] }[] = [];
+
+    // Personal Info
+    const personal = [];
+    if (u.fullName) personal.push({ label: 'Full Name', value: u.fullName, icon: UserCircle });
+    if (u.email) personal.push({ label: 'Email Address', value: u.email, icon: Mail });
+    if (u.phone) personal.push({ label: 'Phone Number', value: u.phone, icon: Phone });
+    if (u.gender) personal.push({ label: 'Gender', value: u.gender, icon: VenusAndMars });
+    if (u.dateOfBirth) personal.push({ label: 'Date of Birth', value: new Date(u.dateOfBirth).toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' }), icon: Cake });
+    if (personal.length) sections.push({ title: 'Personal Information', icon: UserCircle, fields: personal });
+
+    // Academic Info
+    const academic = [];
+    if (u.matricNumber) academic.push({ label: 'Matric Number', value: u.matricNumber, icon: Hash });
+    if (u.jambRegNo) academic.push({ label: 'JAMB Reg. No', value: u.jambRegNo, icon: IdCard });
+    if (u.level) academic.push({ label: 'Level', value: `${u.level} Level`, icon: TrendingUp });
+    if (u.session) academic.push({ label: 'Academic Session', value: u.session, icon: Calendar });
+    if (u.department?.name) academic.push({ label: 'Department', value: u.department.name, icon: BookOpen });
+    if (u.college?.name) academic.push({ label: 'College', value: u.college.name, icon: School });
+    if (u.programme?.name) academic.push({ label: 'Programme', value: u.programme.name, icon: ScrollText });
+    if (academic.length) sections.push({ title: 'Academic Information', icon: GraduationCap, fields: academic });
+
+    // Location
+    const location = [];
+    if (u.nationality) location.push({ label: 'Nationality', value: u.nationality, icon: Flag });
+    if (u.stateOfOrigin) location.push({ label: 'State of Origin', value: u.stateOfOrigin, icon: MapPin });
+    if (u.lga) location.push({ label: 'LGA', value: u.lga, icon: Building2 });
+    if (u.address) location.push({ label: 'Address', value: u.address, icon: MapPin });
+    if (location.length) sections.push({ title: 'Location', icon: MapPin, fields: location });
+
+    // Account
+    const account = [];
+    if (u.createdAt) account.push({ label: 'Account Created', value: new Date(u.createdAt).toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' }), icon: Calendar });
+    if (u.updatedAt) account.push({ label: 'Last Updated', value: new Date(u.updatedAt).toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' }), icon: Timer });
+    account.push({ label: 'Account Status', value: u.isActive ? 'Active' : 'Inactive', icon: u.isActive ? CheckCircle2 : XCircle });
+    if (u.enrolled !== undefined) account.push({ label: 'Face Enrollment', value: u.enrolled ? 'Enrolled' : 'Not Enrolled', icon: u.enrolled ? Fingerprint : Eye });
+    if (account.length) sections.push({ title: 'Account Details', icon: ShieldCheck, fields: account });
+
+    return sections;
+  });
+
+  // ── Scroll to section in bio modal ──────────────────────────────
+  let bioScrollContainer: HTMLDivElement;
+  function scrollToSection(index: number) {
+    const sections = bioScrollContainer?.querySelectorAll('.bio-section');
+    if (sections && sections[index]) {
+      sections[index].scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+  }
 </script>
 
 <div class="layout" class:collapsed>
@@ -154,7 +242,7 @@
     <!-- Quick stats strip (only when expanded) -->
     {#if !collapsed}
       <div class="stats-strip">
-        <div class="stat-pill">
+        <div class="stat-pill" class:active={activeExams > 0}>
           <div class="stat-dot" class:pulse={activeExams > 0}></div>
           <span class="stat-num">{activeExams}</span>
           <span class="stat-lbl">Active</span>
@@ -198,8 +286,8 @@
           {#if isActive(href)}
             <span class="active-pip" aria-hidden="true"></span>
           {/if}
-          <!-- Notification badge for registrations -->
-          {#if href === '/student/registrations' && pendingRegistrations > 0 && !collapsed}
+          <!-- Badge for course registrations -->
+          {#if href === '/student/courses/register' && pendingRegistrations > 0 && !collapsed}
             <span class="nav-badge">{pendingRegistrations}</span>
           {/if}
         </a>
@@ -229,7 +317,7 @@
         <div class="avatar"><span>{initials()}</span></div>
         {#if !collapsed}
           <div class="avatar-info">
-            <span class="avatar-name">{data.user.fullName.split(' ')[0]}</span>
+            <span class="avatar-name">{displayName()}</span>
             <span class="avatar-role">Student</span>
           </div>
           <ChevronRight size={12} class="avatar-chevron" />
@@ -269,7 +357,7 @@
           </nav>
         {:else}
           <span class="topbar-greeting">
-            Welcome back, <strong>{data.user.fullName.split(' ')[0]}</strong>
+            Welcome back, <strong>{displayName()}</strong>
           </span>
         {/if}
       </div>
@@ -300,7 +388,12 @@
           {#if showNotifs}
             <div class="notif-dropdown" onclick={(e) => e.stopPropagation()}>
               <div class="notif-head">
-                <span class="notif-title">Notifications</span>
+                <div class="notif-head-left">
+                  <span class="notif-title">Notifications</span>
+                  {#if unreadCount > 0}
+                    <span class="notif-unread-count">{unreadCount} new</span>
+                  {/if}
+                </div>
                 {#if unreadCount > 0}
                   <button class="mark-all-btn" onclick={markAllRead} disabled={markingAll} type="button">
                     {#if markingAll}<Loader2 size={11} class="spin-icon" />{:else}<CheckCheck size={11} />{/if}
@@ -312,11 +405,14 @@
               <div class="notif-list">
                 {#if notifications.length === 0}
                   <div class="notif-empty">
-                    <Bell size={26} strokeWidth={1.5} />
-                    <p>You're all caught up</p>
+                    <div class="notif-empty-icon">
+                      <Bell size={28} strokeWidth={1.5} />
+                    </div>
+                    <p class="notif-empty-title">All caught up</p>
+                    <p class="notif-empty-sub">No notifications to show</p>
                   </div>
                 {:else}
-                  {#each notifications.slice(0, 20) as n (n.id)}
+                  {#each notifications as n (n.id)}
                     <button
                       class="notif-item"
                       class:unread={!n.isRead}
@@ -329,7 +425,21 @@
                       <div class="notif-body">
                         <p class="notif-item-title">{n.title}</p>
                         <p class="notif-item-msg">{n.message}</p>
-                        <p class="notif-item-time">{relativeTime(n.createdAt)}</p>
+                        <div class="notif-item-meta">
+                          <span class="notif-item-time">{relativeTime(n.createdAt)}</span>
+                          {#if n.type}
+                            <span class="notif-item-type">{n.type}</span>
+                          {/if}
+                        </div>
+                      </div>
+                      <div
+                        class="notif-delete"
+                        onclick={(e) => deleteNotification(n.id, e)}
+                        role="button"
+                        tabindex="0"
+                        aria-label="Delete notification"
+                      >
+                        <X size={12} />
                       </div>
                     </button>
                   {/each}
@@ -340,6 +450,7 @@
                 <div class="notif-foot">
                   <a href="/student/notifications" onclick={() => showNotifs = false} class="notif-all-link">
                     View all notifications
+                    <ChevronRight size={12} />
                   </a>
                 </div>
               {/if}
@@ -347,14 +458,14 @@
           {/if}
         </div>
 
-        <!-- Theme toggle (header duplicate for mobile) -->
+        <!-- Theme toggle (header) -->
         <button class="topbar-btn" onclick={toggleTheme} type="button" aria-label="Toggle theme">
           {#if theme === 'dark'}<Sun size={16} />{:else}<Moon size={16} />{/if}
         </button>
       </div>
     </header>
 
-    <!-- Exam alert banner (if active exam session) -->
+    <!-- Exam alert banner -->
     {#if data.activeExamSession}
       <div class="exam-alert-banner">
         <AlertTriangle size={16} />
@@ -405,7 +516,7 @@
 <!-- ══ BIO MODAL ════════════════════════════════════════════════ -->
 {#if bioOpen}
   <div
-    class="modal-backdrop"
+    class="modal-backdrop bio-backdrop"
     role="dialog"
     aria-modal="true"
     aria-labelledby="bio-title"
@@ -413,12 +524,19 @@
     onkeydown={(e) => { if (e.key === 'Escape') bioOpen = false; }}
   >
     <div class="bio-modal">
+      <!-- Top gradient bar -->
       <div class="bio-top-bar"></div>
 
+      <!-- Header -->
       <div class="bio-header">
         <div class="bio-avatar-wrap">
           <div class="bio-avatar"><span>{initials()}</span></div>
           <div class="bio-ring" aria-hidden="true"></div>
+          {#if data.user.enrolled}
+            <div class="bio-verified-badge" title="Face enrolled">
+              <ShieldCheck size={10} />
+            </div>
+          {/if}
         </div>
         <div class="bio-header-info">
           <h2 id="bio-title">{data.user.fullName}</h2>
@@ -433,6 +551,11 @@
                 <Layers size={10} /> {data.user.level} Level
               </span>
             {/if}
+            {#if data.user.enrolled}
+              <span class="chip chip-teal">
+                <Fingerprint size={10} /> Face Enrolled
+              </span>
+            {/if}
           </div>
         </div>
         <button class="bio-close" onclick={() => bioOpen = false} type="button" aria-label="Close">
@@ -440,74 +563,52 @@
         </button>
       </div>
 
-      <div class="bio-body">
-        <div class="bio-field">
-          <div class="bio-field-icon"><Mail size={14} /></div>
-          <div>
-            <p class="bio-field-label">Email</p>
-            <p class="bio-field-value">{data.user.email}</p>
-          </div>
-        </div>
-        {#if data.user.matricNumber}
-          <div class="bio-field">
-            <div class="bio-field-icon"><Hash size={14} /></div>
-            <div>
-              <p class="bio-field-label">Matric Number</p>
-              <p class="bio-field-value mono">{data.user.matricNumber}</p>
-            </div>
-          </div>
-        {/if}
-        {#if data.user.jambRegNo}
-          <div class="bio-field">
-            <div class="bio-field-icon"><FileText size={14} /></div>
-            <div>
-              <p class="bio-field-label">JAMB Reg No</p>
-              <p class="bio-field-value mono">{data.user.jambRegNo}</p>
-            </div>
-          </div>
-        {/if}
-        {#if data.user.level}
-          <div class="bio-field">
-            <div class="bio-field-icon"><Layers size={14} /></div>
-            <div>
-              <p class="bio-field-label">Level</p>
-              <p class="bio-field-value">{data.user.level} Level</p>
-            </div>
-          </div>
-        {/if}
-        {#if data.user.department}
-          <div class="bio-field">
-            <div class="bio-field-icon"><BookOpen size={14} /></div>
-            <div>
-              <p class="bio-field-label">Department</p>
-              <p class="bio-field-value">{data.user.department.name}</p>
-            </div>
-          </div>
-        {/if}
-        {#if data.user.college}
-          <div class="bio-field">
-            <div class="bio-field-icon"><UserCircle size={14} /></div>
-            <div>
-              <p class="bio-field-label">College</p>
-              <p class="bio-field-value">{data.user.college.name}</p>
-            </div>
-          </div>
-        {/if}
-        {#if data.user.session}
-          <div class="bio-field">
-            <div class="bio-field-icon"><Calendar size={14} /></div>
-            <div>
-              <p class="bio-field-label">Academic Session</p>
-              <p class="bio-field-value">{data.user.session}</p>
-            </div>
-          </div>
-        {/if}
+      <!-- Section nav (sticky) -->
+      <div class="bio-nav">
+        {#each bioSections() as section, i}
+          <button class="bio-nav-item" onclick={() => scrollToSection(i)} type="button">
+            <svelte:component this={section.icon} size={12} />
+            {section.title}
+          </button>
+        {/each}
       </div>
 
+      <!-- Body -->
+      <div class="bio-body" bind:this={bioScrollContainer}>
+        {#each bioSections() as section}
+          <div class="bio-section">
+            <div class="bio-section-header">
+              <svelte:component this={section.icon} size={14} />
+              <h3>{section.title}</h3>
+            </div>
+            <div class="bio-section-grid">
+              {#each section.fields as field}
+                <div class="bio-field">
+                  <div class="bio-field-icon">
+                    <svelte:component this={field.icon} size={13} />
+                  </div>
+                  <div class="bio-field-content">
+                    <p class="bio-field-label">{field.label}</p>
+                    <p class="bio-field-value" class:mono={field.label === 'Matric Number' || field.label === 'JAMB Reg. No'}>
+                      {field.value}
+                    </p>
+                  </div>
+                </div>
+              {/each}
+            </div>
+          </div>
+        {/each}
+      </div>
+
+      <!-- Footer -->
       <div class="bio-footer">
-        <a href="/enroll" class="bio-btn-outline" onclick={() => bioOpen = false}>
-          <Camera size={13} /> Update Face ID
-        </a>
+        <button
+          type="button"
+          class="bio-btn-primary"
+          onclick={() => { bioOpen = false; }}
+        >
+          <CheckCircle2 size={13} /> Done
+        </button>
         <button
           type="button"
           class="bio-btn-danger"
@@ -530,7 +631,9 @@
     --green-soft: rgba(34,197,94,0.08);
     --blue-500: #3b82f6;
     --blue-soft: rgba(59,130,246,0.08);
-    --sidebar-w: 230px;
+    --teal-500: #14b8a6;
+    --teal-soft: rgba(20,184,166,0.08);
+    --sidebar-w: 300px;
     --sidebar-collapsed: 60px;
     --topbar-h: 52px;
     --radius-card: 0.875rem;
@@ -557,8 +660,9 @@
     border-right: 1px solid var(--color-border);
     height: 100vh; position: sticky; top: 0;
     overflow: hidden;
+    width: var(--sidebar-w);
     transition: width var(--transition);
-    z-index: 40;
+    z-index: 50;
   }
 
   /* Brand */
@@ -617,7 +721,9 @@
     flex: 1; display: flex; align-items: center; justify-content: center;
     gap: 0.3rem; padding: 0.5rem 0.5rem;
     color: var(--color-muted); font-size: 0.68rem;
+    transition: background 0.15s;
   }
+  .stat-pill.active { background: var(--green-soft); }
   .stat-num { font-weight: 800; font-size: 0.8rem; color: var(--color-text); }
   .stat-lbl { font-size: 0.62rem; color: var(--color-muted); }
   .stat-divider { width: 1px; height: 24px; background: var(--color-border); }
@@ -797,7 +903,7 @@
 
   .notif-dropdown {
     position: absolute; top: calc(100% + 8px); right: 0;
-    width: 330px; background: var(--color-surface);
+    width: 360px; background: var(--color-surface);
     border: 1px solid var(--color-border); border-radius: var(--radius-card);
     box-shadow: 0 12px 40px rgba(0,0,0,0.15);
     z-index: 200; overflow: hidden;
@@ -814,7 +920,14 @@
     padding: 0.75rem 1rem 0.5rem;
     border-bottom: 1px solid var(--color-border);
   }
+  .notif-head-left { display: flex; align-items: center; gap: 0.5rem; }
   .notif-title { font-weight: 700; font-size: 0.82rem; color: var(--color-text); }
+  .notif-unread-count {
+    font-size: 0.6rem; font-weight: 700;
+    padding: 0.1rem 0.4rem;
+    background: var(--green-soft); color: var(--green-600);
+    border-radius: 999px;
+  }
 
   .mark-all-btn {
     display: flex; align-items: center; gap: 0.3rem;
@@ -826,23 +939,34 @@
   .mark-all-btn:hover { background: var(--green-soft); }
   .mark-all-btn:disabled { opacity: 0.5; cursor: not-allowed; }
 
-  .notif-list { max-height: 300px; overflow-y: auto; }
+  .notif-list { max-height: 340px; overflow-y: auto; }
   .notif-list::-webkit-scrollbar { width: 3px; }
   .notif-list::-webkit-scrollbar-thumb { background: var(--color-border); border-radius: 2px; }
 
   .notif-empty {
-    display: flex; flex-direction: column; align-items: center; gap: 0.4rem;
-    padding: 2rem 1rem; color: var(--color-muted); font-size: 0.78rem;
+    display: flex; flex-direction: column; align-items: center; gap: 0.5rem;
+    padding: 2.5rem 1rem; color: var(--color-muted);
   }
+  .notif-empty-icon {
+    width: 48px; height: 48px; border-radius: 50%;
+    background: var(--color-bg); border: 1px solid var(--color-border);
+    display: flex; align-items: center; justify-content: center;
+    color: var(--color-muted);
+  }
+  .notif-empty-title { font-size: 0.85rem; font-weight: 600; color: var(--color-text); margin: 0; }
+  .notif-empty-sub { font-size: 0.72rem; color: var(--color-muted); margin: 0; }
 
   .notif-item {
     width: 100%; display: flex; gap: 0.5rem;
-    padding: 0.7rem 1rem; border: none; background: transparent;
+    padding: 0.7rem 0.75rem 0.7rem 1rem;
+    border: none; background: transparent;
     cursor: pointer; text-align: left; font-family: inherit;
-    border-bottom: 1px solid var(--color-border); transition: background 0.12s;
+    border-bottom: 1px solid var(--color-border);
+    transition: background 0.12s; position: relative;
   }
   .notif-item:last-child { border-bottom: none; }
   .notif-item:hover { background: var(--color-bg); }
+  .notif-item:hover .notif-delete { opacity: 1; }
   .notif-item.unread { background: rgba(22,163,94,0.03); }
 
   .notif-dot-col { width: 14px; flex-shrink: 0; display: flex; align-items: flex-start; padding-top: 4px; }
@@ -851,11 +975,31 @@
   .notif-body { flex: 1; min-width: 0; }
   .notif-item-title { font-size: 0.76rem; font-weight: 600; color: var(--color-text); margin: 0 0 0.12rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .notif-item-msg { font-size: 0.71rem; color: var(--color-muted); margin: 0 0 0.25rem; line-height: 1.4; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+  .notif-item-meta { display: flex; align-items: center; gap: 0.5rem; }
   .notif-item-time { font-size: 0.65rem; color: var(--color-muted); opacity: 0.65; margin: 0; }
+  .notif-item-type {
+    font-size: 0.6rem; font-weight: 700;
+    padding: 0.05rem 0.35rem;
+    background: var(--color-bg); color: var(--color-muted);
+    border-radius: 999px; border: 1px solid var(--color-border);
+    text-transform: uppercase; letter-spacing: 0.03em;
+  }
+
+  .notif-delete {
+    width: 22px; height: 22px; border-radius: 0.35rem;
+    border: none; background: none; color: var(--color-muted);
+    cursor: pointer; display: flex; align-items: center; justify-content: center;
+    opacity: 0; transition: all 0.15s; flex-shrink: 0; align-self: flex-start;
+  }
+  .notif-delete:hover { background: rgba(220,38,38,0.1); color: #dc2626; }
 
   .notif-foot { padding: 0.5rem 1rem; border-top: 1px solid var(--color-border); text-align: center; }
-  .notif-all-link { font-size: 0.72rem; font-weight: 600; color: var(--green-600); text-decoration: none; }
-  .notif-all-link:hover { text-decoration: underline; }
+  .notif-all-link {
+    display: inline-flex; align-items: center; gap: 0.2rem;
+    font-size: 0.72rem; font-weight: 600; color: var(--green-600);
+    text-decoration: none; transition: gap 0.15s;
+  }
+  .notif-all-link:hover { gap: 0.4rem; text-decoration: underline; }
 
   /* Exam alert banner */
   .exam-alert-banner {
@@ -903,6 +1047,8 @@
     display: flex; align-items: center; justify-content: center;
     padding: 1rem; animation: fade-in 0.2s ease;
   }
+
+  .bio-backdrop { align-items: flex-start; padding-top: 2rem; padding-bottom: 2rem; overflow-y: auto; }
 
   @keyframes fade-in { from { opacity: 0; } to { opacity: 1; } }
 
@@ -954,9 +1100,11 @@
   /* Bio modal */
   .bio-modal {
     background: var(--color-surface); border: 1px solid var(--color-border);
-    border-radius: 1.25rem; width: 100%; max-width: 400px;
+    border-radius: 1.25rem; width: 100%; max-width: 520px;
     box-shadow: 0 32px 80px rgba(0,0,0,0.2); overflow: hidden;
     animation: modal-up 0.25s cubic-bezier(0.16,1,0.3,1);
+    display: flex; flex-direction: column;
+    max-height: calc(100vh - 4rem);
   }
 
   .bio-top-bar {
@@ -968,6 +1116,7 @@
     display: flex; align-items: flex-start; gap: 1rem; padding: 1.5rem;
     background: linear-gradient(160deg, var(--green-soft) 0%, transparent 60%);
     border-bottom: 1px solid var(--color-border);
+    flex-shrink: 0;
   }
 
   .bio-avatar-wrap { position: relative; flex-shrink: 0; }
@@ -990,6 +1139,14 @@
     50%      { opacity: 0.8; transform: scale(1.05); }
   }
 
+  .bio-verified-badge {
+    position: absolute; bottom: -2px; right: -2px;
+    width: 18px; height: 18px; border-radius: 50%;
+    background: var(--green-500); color: white;
+    display: flex; align-items: center; justify-content: center;
+    border: 2px solid var(--color-surface);
+  }
+
   .bio-header-info { flex: 1; min-width: 0; }
   .bio-header-info h2 {
     font-size: 1rem; font-weight: 800; color: var(--color-text);
@@ -1007,8 +1164,10 @@
   }
   .chip-green { background: var(--green-soft); border-color: rgba(34,197,94,0.25); color: var(--green-700); }
   .chip-blue { background: var(--blue-soft); border-color: rgba(59,130,246,0.25); color: var(--blue-500); }
+  .chip-teal { background: var(--teal-soft); border-color: rgba(20,184,166,0.25); color: var(--teal-500); }
   [data-theme="dark"] .chip-green { color: var(--green-400); }
   [data-theme="dark"] .chip-blue { color: var(--blue-500); }
+  [data-theme="dark"] .chip-teal { color: #2dd4bf; }
   .chip-active   { background: rgba(34,197,94,0.08); border-color: rgba(34,197,94,0.2); color: var(--green-700); }
   .chip-inactive { background: rgba(220,38,38,0.08); border-color: rgba(220,38,38,0.2); color: #dc2626; }
 
@@ -1021,43 +1180,99 @@
   }
   .bio-close:hover { border-color: var(--color-text); color: var(--color-text); }
 
-  .bio-body { padding: 1.25rem 1.5rem; display: flex; flex-direction: column; gap: 0.875rem; }
+  /* Bio nav */
+  .bio-nav {
+    display: flex; gap: 0.25rem; padding: 0.5rem 1rem;
+    border-bottom: 1px solid var(--color-border);
+    overflow-x: auto; flex-shrink: 0;
+    background: var(--color-bg);
+    scrollbar-width: none;
+  }
+  .bio-nav::-webkit-scrollbar { display: none; }
 
-  .bio-field { display: flex; align-items: flex-start; gap: 0.75rem; }
+  .bio-nav-item {
+    display: flex; align-items: center; gap: 0.35rem;
+    padding: 0.35rem 0.6rem; border-radius: 0.4rem;
+    border: none; background: none; cursor: pointer;
+    font-size: 0.7rem; font-weight: 600; color: var(--color-muted);
+    font-family: inherit; white-space: nowrap;
+    transition: all 0.15s;
+  }
+  .bio-nav-item:hover { background: var(--color-surface-hover); color: var(--color-text); }
+  .bio-nav-item :global(svg) { flex-shrink: 0; }
+
+  /* Bio body */
+  .bio-body {
+    flex: 1; overflow-y: auto; padding: 0.5rem 0;
+    scrollbar-width: thin;
+    scrollbar-color: var(--color-border) transparent;
+  }
+  .bio-body::-webkit-scrollbar { width: 4px; }
+  .bio-body::-webkit-scrollbar-thumb { background: var(--color-border); border-radius: 2px; }
+
+  .bio-section {
+    padding: 1rem 1.5rem;
+    border-bottom: 1px solid var(--color-border);
+  }
+  .bio-section:last-child { border-bottom: none; }
+
+  .bio-section-header {
+    display: flex; align-items: center; gap: 0.5rem;
+    margin-bottom: 0.875rem;
+  }
+  .bio-section-header :global(svg) { color: var(--green-600); flex-shrink: 0; }
+  .bio-section-header h3 {
+    font-size: 0.78rem; font-weight: 700; color: var(--color-text);
+    text-transform: uppercase; letter-spacing: 0.06em; margin: 0;
+  }
+
+  .bio-section-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+    gap: 0.75rem;
+  }
+
+  .bio-field { display: flex; align-items: flex-start; gap: 0.625rem; }
   .bio-field-icon {
-    width: 30px; height: 30px; border-radius: 0.45rem; flex-shrink: 0;
-    background: var(--green-soft); border: 1px solid rgba(34,197,94,0.15);
+    width: 28px; height: 28px; border-radius: 0.4rem; flex-shrink: 0;
+    background: var(--green-soft); border: 1px solid rgba(34,197,94,0.12);
     display: flex; align-items: center; justify-content: center;
-    color: var(--green-700); margin-top: 0.1rem;
+    color: var(--green-700); margin-top: 0.05rem;
   }
   [data-theme="dark"] .bio-field-icon { color: var(--green-400); }
 
+  .bio-field-content { flex: 1; min-width: 0; }
   .bio-field-label {
     font-size: 0.6rem; font-weight: 700; color: var(--color-muted);
     margin: 0 0 0.15rem; text-transform: uppercase; letter-spacing: 0.06em;
   }
-  .bio-field-value { font-size: 0.85rem; font-weight: 500; color: var(--color-text); margin: 0; }
-  .bio-field-value.mono { font-family: monospace; font-size: 0.875rem; }
+  .bio-field-value { font-size: 0.82rem; font-weight: 500; color: var(--color-text); margin: 0; word-break: break-word; }
+  .bio-field-value.mono { font-family: 'SF Mono', 'Fira Code', monospace; font-size: 0.8rem; letter-spacing: 0.02em; }
 
   .bio-footer {
     display: flex; gap: 0.6rem; align-items: center;
-    padding: 1rem 1.5rem 1.5rem; border-top: 1px solid var(--color-border);
+    padding: 1rem 1.5rem 1.25rem;
+    border-top: 1px solid var(--color-border);
+    background: var(--color-bg);
+    flex-shrink: 0;
   }
 
-  .bio-btn-outline {
+  .bio-btn-primary {
     display: inline-flex; align-items: center; gap: 0.4rem;
-    padding: 0.55rem 0.9rem; border: 1.5px solid var(--color-border);
-    border-radius: var(--radius-btn); font-size: 0.78rem; font-weight: 700;
-    color: var(--color-text); text-decoration: none; background: none;
-    transition: all 0.15s; white-space: nowrap; font-family: inherit;
+    padding: 0.6rem 1.2rem;
+    background: linear-gradient(135deg, var(--green-700), var(--green-600));
+    border: none; border-radius: var(--radius-btn);
+    font-size: 0.82rem; font-weight: 700;
+    color: white; cursor: pointer; font-family: inherit;
+    transition: all 0.15s; box-shadow: 0 2px 8px rgba(22,163,74,0.25);
   }
-  .bio-btn-outline:hover { border-color: var(--green-600); color: var(--green-700); background: var(--green-soft); }
+  .bio-btn-primary:hover { transform: translateY(-1px); box-shadow: 0 4px 12px rgba(22,163,74,0.35); }
 
   .bio-btn-danger {
     display: flex; align-items: center; justify-content: center; gap: 0.4rem;
-    flex: 1; padding: 0.55rem 0.9rem;
+    padding: 0.6rem 1.2rem;
     background: rgba(220,38,38,0.06); border: 1.5px solid rgba(220,38,38,0.2);
-    border-radius: var(--radius-btn); font-size: 0.78rem; font-weight: 700;
+    border-radius: var(--radius-btn); font-size: 0.82rem; font-weight: 700;
     color: #dc2626; cursor: pointer; font-family: inherit; transition: all 0.15s;
   }
   .bio-btn-danger:hover { background: rgba(220,38,38,0.1); border-color: rgba(220,38,38,0.4); }
@@ -1071,8 +1286,11 @@
     .brand-text, .nav-link-label, .avatar-info, .icon-btn span,
     .avatar-chevron, .stats-strip, .collapse-btn { display: none; }
     .topbar { padding: 0 1rem; }
-    .notif-dropdown { width: 290px; }
+    .notif-dropdown { width: calc(100vw - 2rem); right: -0.5rem; }
     .exam-alert-banner { padding: 0.5rem 1rem; }
     .exam-alert-course { display: none; }
+    .bio-modal { max-width: 100%; border-radius: 1rem; }
+    .bio-section-grid { grid-template-columns: 1fr; }
+    .bio-backdrop { padding: 0.5rem; align-items: center; }
   }
 </style>

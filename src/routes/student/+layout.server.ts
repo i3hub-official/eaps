@@ -6,6 +6,19 @@ import { prisma } from '$lib/server/db/index.js';
 export const load: LayoutServerLoad = async ({ locals }) => {
   const user = requireStudent(locals.user);
 
+  // Fetch full student profile with all relations
+  const fullUser = await prisma.user.findUnique({
+    where: { id: user.id },
+    include: {
+      department: true,
+      college: true,
+      programme: true,
+      faceEnrollment: {
+        select: { id: true, createdAt: true },
+      },
+    },
+  });
+
   const [
     notifications,
     activeExams,
@@ -57,7 +70,11 @@ export const load: LayoutServerLoad = async ({ locals }) => {
   ]);
 
   return {
-    user,
+    user: {
+      ...user,
+      ...fullUser,
+      enrolled: !!fullUser?.faceEnrollment,
+    },
     notifications,
     stats: {
       activeExams,

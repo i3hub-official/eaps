@@ -4,6 +4,8 @@ import type { RequestHandler } from './$types';
 import { requireStudent } from '$lib/server/auth/guards.js';
 import { prisma } from '$lib/server/db/index.js';
 
+const VERIFICATION_WINDOW_MS = 5 * 60 * 1000; // 5 minutes
+
 export const POST: RequestHandler = async ({ request, locals, cookies }) => {
   try {
     const user = await requireStudent(locals.user);

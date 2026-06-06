@@ -22,31 +22,70 @@
 
   let videoEl: HTMLVideoElement;
   let canvasEl: HTMLCanvasElement;
-  let faceApi: typeof import('@vladmandic/face-api') | null = null;
+
+  let human: any = null;
   let stream: MediaStream | null = null;
   let interval: ReturnType<typeof setInterval> | null = null;
   let ready = false;
   let consecutiveNoFace = 0;
 
-  // ── Thresholds ────────────────────────────────────────────────────────────
-  // dist < 0.45 → same person (confident match)
-  // dist 0.45–0.55 → uncertain (log only, don't punish)
-  // dist > 0.55 → likely different person → soft flag to invigilator
-  const MATCH_THRESHOLD   = 0.45; // hard match gate
-  const SOFT_THRESHOLD    = 0.55; // above this → report mismatch
-  const NO_FACE_GRACE     = 2;    // consecutive misses before flagging
+  let livenessConfirmed = false;
+  let eyeOpenHistory: number[] = [];
+  const LIVENESS_WINDOW = 8;
+
+  const MATCH_THRESHOLD = 0.82;
+  const SOFT_THRESHOLD = 0.70;
+  const NO_FACE_GRACE = 2;
+  const EAR_OPEN = 0.25;
+  const EAR_CLOSED = 0.18;
+
+  // ── UI State ──────────────────────────────────────────────────────────────
+  type MonitorStatus = 'initializing' | 'active' | 'warning' | 'error' | 'paused';
+  let monitorStatus = $state<MonitorStatus>('initializing');
+  let faceCount = $state(0);
+  let lastCheckTime = $state<Date | null>(null);
+  let similarityScore = $state<number | null>(null);
+  let violationCount = $state({ no_face: 0, multiple: 0, mismatch: 0 });
+  let isExpanded = $state(false);
+  let showDetails = $state(false);
+  let cameraPermission = $state<'prompt' | 'granted' | 'denied'>('prompt');
+
+  const HUMAN_CONFIG = {
+    modelBasePath: '/models/',
+    face: {
+      enabled: true,
+      detector: { enabled: true, maxDetected: 4, minConfidence: 0.45 },
+      mesh: { enabled: true },
+      iris: { enabled: false },
+      description: { enabled: true },
+      emotion: { enabled: false },
+      antispoof: { enabled: false },
+      liveness: { enabled: false },
+    },
+    body: { enabled: false },
+    hand: { enabled: false },
+    object: { enabled: false },
+    gesture: { enabled: false },
+    segmentation: { enabled: false },
+    backend: 'humangl' as const,
+    debug: false,
+  };
 
   onMount(async () => {
     try {
-      // ── Load models ───────────────────────────────────────────────────────
-      // Dynamic import keeps this out of the SSR bundle.
-      // loadFromUri is idempotent — safe to call even if enroll page already loaded them.
-      faceApi = await import('@vladmandic/face-api');
-      await Promise.all([
-        faceApi.nets.tinyFaceDetector.loadFromUri('/models'),
-        faceApi.nets.faceLandmark68TinyNet.loadFromUri('/models'),
-        faceApi.nets.faceRecognitionNet.loadFromUri('/models'),
-      ]);
+      // Check camera permission first
+      if ('permissions' in navigator) {
+        const perm = await navigator.permissions.query({ name: 'camera' as PermissionName });
+        cameraPermission = perm.state as 'prompt' | 'granted' | 'denied';
+        perm.addEventListener('change', () => {
+          cameraPermission = perm.state as 'prompt' | 'granted' | 'denied';
+        });
+      }
+
+      const { default: Human } = await import('@vladmandic/human');
+      human = new Human(HUMAN_CONFIG);
+      await human.load();
+      await human.warmup();
 
       stream = await navigator.mediaDevices.getUserMedia({
         video: { facingMode: 'user', width: 320, height: 240 },
@@ -57,12 +96,19 @@
       await videoEl.play();
 
       ready = true;
-
-      // First check after 3s so the student can settle
+      monitorStatus = 'active';
+      cameraPermission = 'granted';
+      
+      // Initial delay then start interval
       setTimeout(runCheck, 3_000);
       interval = setInterval(runCheck, checkInterval);
     } catch (e: any) {
-      onCameraError?.(e?.message ?? 'Camera unavailable');
+      const msg = e?.message ?? 'Camera unavailable';
+      monitorStatus = 'error';
+      if (msg.toLowerCase().includes('denied') || msg.toLowerCase().includes('permission')) {
+        cameraPermission = 'denied';
+      }
+      onCameraError?.(msg);
     }
   });
 
@@ -73,33 +119,86 @@
     stream?.getTracks().forEach(t => t.stop());
     stream = null;
     ready = false;
+    monitorStatus = 'paused';
   }
 
-  // ── Core check ────────────────────────────────────────────────────────────
+  export function pause() {
+    if (interval) { clearInterval(interval); interval = null; }
+    monitorStatus = 'paused';
+  }
+
+  export function resume() {
+    if (!interval && ready) {
+      interval = setInterval(runCheck, checkInterval);
+      monitorStatus = 'active';
+      runCheck();
+    }
+  }
+
+  function dist2d(a: number[], b: number[]): number {
+    return Math.hypot(a[0] - b[0], a[1] - b[1]);
+  }
+
+  function eyeAspectRatio(mesh: number[][], indices: number[]): number {
+    const [p1, p2, p3, p4, p5, p6] = indices.map(i => mesh[i]);
+    if (!p1 || !p4) return 1;
+    const vertical = dist2d(p2, p6) + dist2d(p3, p5);
+    const horizontal = 2 * dist2d(p1, p4);
+    return horizontal > 0 ? vertical / horizontal : 1;
+  }
+
+  const LEFT_EYE_IDX = [33, 160, 158, 133, 153, 144];
+  const RIGHT_EYE_IDX = [263, 387, 385, 362, 380, 373];
+
+  function getMeanEAR(mesh: number[][]): number {
+    const left = eyeAspectRatio(mesh, LEFT_EYE_IDX);
+    const right = eyeAspectRatio(mesh, RIGHT_EYE_IDX);
+    return (left + right) / 2;
+  }
+
+  function checkLiveness(ear: number): void {
+    if (livenessConfirmed) return;
+    eyeOpenHistory.push(ear);
+    if (eyeOpenHistory.length > LIVENESS_WINDOW) eyeOpenHistory.shift();
+    if (eyeOpenHistory.length < LIVENESS_WINDOW) return;
+    const openFrames = eyeOpenHistory.filter(v => v > EAR_OPEN).length;
+    const closedFrames = eyeOpenHistory.filter(v => v < EAR_CLOSED).length;
+    if (openFrames >= 4 && closedFrames >= 1) livenessConfirmed = true;
+  }
+
+  function cosineSimilarity(a: number[], b: number[]): number {
+    if (a.length !== b.length || a.length === 0) return 0;
+    let dot = 0, normA = 0, normB = 0;
+    for (let i = 0; i < a.length; i++) {
+      dot += a[i] * b[i];
+      normA += a[i] * a[i];
+      normB += b[i] * b[i];
+    }
+    const denom = Math.sqrt(normA) * Math.sqrt(normB);
+    return denom > 0 ? dot / denom : 0;
+  }
+
   async function runCheck() {
-    if (!ready || !faceApi || !videoEl) return;
+    if (!ready || !human || !videoEl) return;
 
     try {
       const ctx = canvasEl.getContext('2d')!;
-      canvasEl.width  = videoEl.videoWidth;
-      canvasEl.height = videoEl.videoHeight;
+      canvasEl.width = videoEl.videoWidth || 320;
+      canvasEl.height = videoEl.videoHeight || 240;
       ctx.drawImage(videoEl, 0, 0);
 
-      const detections = await faceApi
-        .detectAllFaces(canvasEl, new faceApi.TinyFaceDetectorOptions({
-          inputSize: 224,
-          scoreThreshold: 0.45,
-        }))
-        .withFaceLandmarks(true)
-        .withFaceDescriptors();
+      const result = await human.detect(canvasEl);
+      const faces = result?.face ?? [];
+      const count = faces.length;
+      faceCount = count;
+      lastCheckTime = new Date();
 
-      const count = detections.length;
-
-      // ── No face ───────────────────────────────────────────────────────────
       if (count === 0) {
         consecutiveNoFace++;
+        monitorStatus = 'warning';
         if (consecutiveNoFace >= NO_FACE_GRACE) {
           consecutiveNoFace = 0;
+          violationCount.no_face++;
           onViolation('no_face_detected');
           await reportViolation('no_face_detected');
         }
@@ -108,105 +207,592 @@
 
       consecutiveNoFace = 0;
 
-      // ── Multiple faces ────────────────────────────────────────────────────
       if (count > 1) {
+        monitorStatus = 'warning';
+        violationCount.multiple++;
         onViolation('multiple_faces');
         await reportViolation('multiple_faces');
         return;
       }
 
-      // ── Identity match ────────────────────────────────────────────────────
-      // Only runs if we have the enrolled descriptor to compare against.
-      if (enrolledDescriptor && detections[0]) {
-        const liveDescriptor = detections[0].descriptor; // Float32Array
+      monitorStatus = 'active';
+      const face = faces[0];
 
-        // Euclidean distance — the canonical metric for these 128-d embeddings.
-        // faceApi.euclideanDistance expects two Float32Array / number[].
-        const dist = faceApi.euclideanDistance(
-          liveDescriptor,
-          new Float32Array(enrolledDescriptor)
-        ) as number;
+      if (face.mesh && face.mesh.length > 0) {
+        const ear = getMeanEAR(face.mesh as number[][]);
+        checkLiveness(ear);
+      }
 
-        if (dist > SOFT_THRESHOLD) {
-          // Likely a different person — soft-flag only, does NOT auto-submit.
-          // The invigilator dashboard sees this and can act.
-          await reportMismatch(dist);
+      if (enrolledDescriptor && face.embedding && face.embedding.length > 0) {
+        const similarity = cosineSimilarity(
+          Array.from(face.embedding as number[]),
+          enrolledDescriptor
+        );
+        similarityScore = similarity;
+        if (similarity < SOFT_THRESHOLD) {
+          violationCount.mismatch++;
+          await reportMismatch(similarity);
         }
-        // dist 0.45–0.55: uncertain (angle/lighting shift) — log nothing, don't penalise student
-        // dist < 0.45: confident match — no action needed
+      } else {
+        similarityScore = null;
       }
     } catch {
-      // Swallow detection errors — never crash the exam session
+      // Swallow — exam must never break
     }
   }
 
-  // ── Reporting helpers ─────────────────────────────────────────────────────
   async function reportViolation(flagType: 'no_face_detected' | 'multiple_faces') {
     try {
       await fetch(`/api/exam/${examId}/violation`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          session_id: sessionId,
-          flag_type: flagType,
-        }),
+        body: JSON.stringify({ session_id: sessionId, flag_type: flagType }),
         keepalive: true,
       });
-    } catch { /* ignore — exam must not break on network hiccup */ }
+    } catch { }
   }
 
-  async function reportMismatch(distance: number) {
+  async function reportMismatch(similarity: number) {
     try {
       await fetch(`/api/exam/${examId}/violation`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           session_id: sessionId,
-          // Reuse multiple_faces flag type since schema has no face_mismatch variant.
-          // The meta.distance field lets the invigilator distinguish the cause.
           flag_type: 'multiple_faces',
           meta: {
             reason: 'face_mismatch',
-            distance: dist.toFixed(3),
-            threshold: SOFT_THRESHOLD,
-            verdict: distance > MATCH_THRESHOLD ? 'no_match' : 'uncertain',
+            similarity: similarity.toFixed(4),
+            soft_threshold: SOFT_THRESHOLD,
+            match_threshold: MATCH_THRESHOLD,
+            verdict: similarity < SOFT_THRESHOLD ? 'no_match' : 'uncertain',
+            liveness: livenessConfirmed,
           },
         }),
         keepalive: true,
       });
-    } catch { /* ignore */ }
+    } catch { }
   }
+
+  // ── Derived UI helpers ─────────────────────────────────────────────────────
+  let statusColor = $derived(
+    monitorStatus === 'error' ? '#ef4444' :
+    monitorStatus === 'warning' ? '#f59e0b' :
+    monitorStatus === 'paused' ? '#6b7280' :
+    livenessConfirmed ? '#22c55e' : '#3b82f6'
+  );
+
+  let statusLabel = $derived(
+    monitorStatus === 'error' ? 'Camera Error' :
+    monitorStatus === 'warning' ? 'Attention Needed' :
+    monitorStatus === 'paused' ? 'Monitoring Paused' :
+    !livenessConfirmed ? 'Verifying…' :
+    faceCount === 1 ? 'Monitoring Active' : 'Checking…'
+  );
+
+  let nextCheckIn = $derived(
+    lastCheckTime ? Math.max(0, Math.round((checkInterval - (Date.now() - lastCheckTime.getTime())) / 1000)) : checkInterval / 1000
+  );
 </script>
 
-<!-- Invisible monitor — tiny mirrored preview in corner -->
-<div class="monitor" aria-hidden="true">
-  <!-- svelte-ignore a11y_media_has_caption -->
-  <video bind:this={videoEl} muted playsinline class="feed"></video>
-  <canvas bind:this={canvasEl} class="offscreen"></canvas>
+<div class="monitor-wrap" class:expanded={isExpanded} aria-hidden="true">
+  <!-- Main Monitor Card -->
+  <div class="monitor" style="--status-color: {statusColor}">
+    <!-- Header / Drag Handle -->
+    <button 
+      class="monitor-header" 
+      onclick={() => isExpanded = !isExpanded}
+      aria-label={isExpanded ? 'Collapse monitor' : 'Expand monitor'}
+    >
+      <div class="status-pulse" class:warning={monitorStatus === 'warning'} class:error={monitorStatus === 'error'}></div>
+      <span class="status-text">{statusLabel}</span>
+      <svg class="chevron" class:rotated={isExpanded} width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+        <polyline points="6 9 12 15 18 9"/>
+      </svg>
+    </button>
+
+    <!-- Video Feed -->
+    <div class="video-container">
+      <video bind:this={videoEl} muted playsinline class="feed"></video>
+      <canvas bind:this={canvasEl} class="offscreen"></canvas>
+      
+      <!-- Overlay indicators -->
+      <div class="video-overlay">
+        {#if monitorStatus === 'warning'}
+          <div class="overlay-badge warning">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>
+              <line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/>
+            </svg>
+            {#if faceCount === 0}
+              No face visible
+            {:else}
+              Multiple faces!
+            {/if}
+          </div>
+        {:else if monitorStatus === 'error'}
+          <div class="overlay-badge error">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+              <circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/>
+            </svg>
+            Camera error
+          </div>
+        {:else if !livenessConfirmed}
+          <div class="overlay-badge info">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+              <circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/>
+            </svg>
+            Blink to verify
+          </div>
+        {/if}
+
+        <!-- Face count indicator -->
+        <div class="face-counter" class:bad={faceCount > 1} class:good={faceCount === 1}>
+          {#if faceCount === 0}
+            <span class="fc-dot"></span> No face
+          {:else if faceCount === 1}
+            <span class="fc-dot green"></span> 1 face
+          {:else}
+            <span class="fc-dot red"></span> {faceCount} faces
+          {/if}
+        </div>
+      </div>
+    </div>
+
+    <!-- Expanded Details -->
+    {#if isExpanded}
+      <div class="details-panel" transition:slide={{ duration: 200 }}>
+        <!-- Liveness -->
+        <div class="detail-row">
+          <span class="detail-label">Liveness</span>
+          <span class="detail-value" class:confirmed={livenessConfirmed}>
+            {#if livenessConfirmed}
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+                <polyline points="20 6 9 17 4 12"/>
+              </svg>
+              Confirmed
+            {:else}
+              <span class="detail-pulse"></span>
+              Checking…
+            {/if}
+          </span>
+        </div>
+
+        <!-- Identity Match -->
+        {#if enrolledDescriptor}
+          <div class="detail-row">
+            <span class="detail-label">Identity</span>
+            <span class="detail-value" class:confirmed={similarityScore !== null && similarityScore >= SOFT_THRESHOLD} class:bad={similarityScore !== null && similarityScore < SOFT_THRESHOLD}>
+              {#if similarityScore === null}
+                —
+              {:else}
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+                  {#if similarityScore >= SOFT_THRESHOLD}
+                    <polyline points="20 6 9 17 4 12"/>
+                  {:else}
+                    <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+                  {/if}
+                </svg>
+                {Math.round(similarityScore * 100)}%
+              {/if}
+            </span>
+          </div>
+        {/if}
+
+        <!-- Next Check -->
+        <div class="detail-row">
+          <span class="detail-label">Next scan</span>
+          <span class="detail-value muted">{nextCheckIn}s</span>
+        </div>
+
+        <!-- Violations -->
+        <div class="detail-row violations">
+          <span class="detail-label">Flags</span>
+          <div class="violation-chips">
+            {#if violationCount.no_face > 0}
+              <span class="v-chip amber">{violationCount.no_face} no-face</span>
+            {/if}
+            {#if violationCount.multiple > 0}
+              <span class="v-chip red">{violationCount.multiple} multi-face</span>
+            {/if}
+            {#if violationCount.mismatch > 0}
+              <span class="v-chip red">{violationCount.mismatch} mismatch</span>
+            {/if}
+            {#if violationCount.no_face === 0 && violationCount.multiple === 0 && violationCount.mismatch === 0}
+              <span class="v-chip green">Clean</span>
+            {/if}
+          </div>
+        </div>
+
+        <!-- Permission Warning -->
+        {#if cameraPermission === 'denied'}
+          <div class="permission-banner">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/>
+            </svg>
+            Camera access denied. Monitoring disabled.
+          </div>
+        {/if}
+      </div>
+    {/if}
+
+    <!-- Status Bar -->
+    <div class="status-bar" style="background: {statusColor}"></div>
+  </div>
 </div>
 
 <style>
-  .monitor {
+  .monitor-wrap {
     position: fixed;
     bottom: 1rem;
     right: 1rem;
-    z-index: 30;
-    border-radius: 0.5rem;
+    z-index: 50;
+    font-family: 'DM Sans', system-ui, sans-serif;
+  }
+
+  .monitor {
+    width: 160px;
+    background: #0f1115;
+    border-radius: 12px;
     overflow: hidden;
-    border: 2px solid var(--color-border);
-    box-shadow: 0 2px 8px rgba(0,0,0,0.3);
-    opacity: 0.85;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    box-shadow: 0 4px 24px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(0, 0, 0, 0.2);
+    transition: width 0.3s cubic-bezier(0.34, 1.56, 0.64, 1), box-shadow 0.3s;
+  }
+
+  .monitor-wrap.expanded .monitor {
+    width: 240px;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.6), 0 0 0 1px rgba(255, 255, 255, 0.05);
+  }
+
+  /* ── Header ── */
+  .monitor-header {
+    width: 100%;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 10px;
+    background: rgba(255, 255, 255, 0.03);
+    border: none;
+    color: rgba(255, 255, 255, 0.7);
+    font-size: 0.7rem;
+    font-weight: 600;
+    cursor: pointer;
+    font-family: inherit;
+    transition: background 0.15s;
+  }
+
+  .monitor-header:hover {
+    background: rgba(255, 255, 255, 0.06);
+  }
+
+  .status-pulse {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: var(--status-color, #3b82f6);
+    flex-shrink: 0;
+    position: relative;
+  }
+
+  .status-pulse::after {
+    content: '';
+    position: absolute;
+    inset: -3px;
+    border-radius: 50%;
+    border: 1.5px solid var(--status-color, #3b82f6);
+    opacity: 0;
+    animation: ping 2s cubic-bezier(0, 0, 0.2, 1) infinite;
+  }
+
+  .status-pulse.warning {
+    background: #f59e0b;
+    animation: pulse-amber 1.5s ease-in-out infinite;
+  }
+
+  .status-pulse.warning::after {
+    border-color: #f59e0b;
+  }
+
+  .status-pulse.error {
+    background: #ef4444;
+    animation: pulse-red 1s ease-in-out infinite;
+  }
+
+  .status-pulse.error::after {
+    border-color: #ef4444;
+  }
+
+  .status-text {
+    flex: 1;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .chevron {
+    flex-shrink: 0;
+    opacity: 0.4;
+    transition: transform 0.2s, opacity 0.2s;
+  }
+
+  .chevron.rotated {
+    transform: rotate(180deg);
+  }
+
+  .monitor-header:hover .chevron {
+    opacity: 0.7;
+  }
+
+  /* ── Video ── */
+  .video-container {
+    position: relative;
+    width: 100%;
+    aspect-ratio: 4/3;
+    background: #000;
+    overflow: hidden;
   }
 
   .feed {
-    width: 80px;
-    height: 60px;
+    width: 100%;
+    height: 100%;
     object-fit: cover;
     display: block;
     transform: scaleX(-1);
+    opacity: 0.9;
   }
 
   .offscreen {
     display: none;
+  }
+
+  .video-overlay {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    padding: 6px;
+  }
+
+  .overlay-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 3px 8px;
+    border-radius: 6px;
+    font-size: 0.65rem;
+    font-weight: 600;
+    backdrop-filter: blur(8px);
+    animation: slide-down 0.2s ease;
+    width: fit-content;
+  }
+
+  .overlay-badge.warning {
+    background: rgba(245, 158, 11, 0.2);
+    color: #fbbf24;
+    border: 1px solid rgba(245, 158, 11, 0.3);
+    animation: shake-subtle 0.5s ease, slide-down 0.2s ease;
+  }
+
+  .overlay-badge.error {
+    background: rgba(239, 68, 68, 0.2);
+    color: #fca5a5;
+    border: 1px solid rgba(239, 68, 68, 0.3);
+  }
+
+  .overlay-badge.info {
+    background: rgba(59, 130, 246, 0.15);
+    color: #93bbfc;
+    border: 1px solid rgba(59, 130, 246, 0.2);
+  }
+
+  .face-counter {
+    align-self: flex-end;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    padding: 2px 8px;
+    border-radius: 100px;
+    font-size: 0.6rem;
+    font-weight: 600;
+    background: rgba(0, 0, 0, 0.5);
+    backdrop-filter: blur(8px);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    color: rgba(255, 255, 255, 0.5);
+    transition: all 0.3s;
+  }
+
+  .face-counter.good {
+    background: rgba(34, 197, 94, 0.15);
+    border-color: rgba(34, 197, 94, 0.3);
+    color: #86efac;
+  }
+
+  .face-counter.bad {
+    background: rgba(239, 68, 68, 0.15);
+    border-color: rgba(239, 68, 68, 0.3);
+    color: #fca5a5;
+    animation: shake-subtle 0.4s ease;
+  }
+
+  .fc-dot {
+    width: 5px;
+    height: 5px;
+    border-radius: 50%;
+    background: rgba(255, 255, 255, 0.3);
+  }
+
+  .fc-dot.green {
+    background: #22c55e;
+    box-shadow: 0 0 4px rgba(34, 197, 94, 0.5);
+  }
+
+  .fc-dot.red {
+    background: #ef4444;
+    box-shadow: 0 0 4px rgba(239, 68, 68, 0.5);
+  }
+
+  /* ── Details Panel ── */
+  .details-panel {
+    padding: 10px;
+    border-top: 1px solid rgba(255, 255, 255, 0.06);
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .detail-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+  }
+
+  .detail-row.violations {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 6px;
+  }
+
+  .detail-label {
+    font-size: 0.65rem;
+    color: rgba(255, 255, 255, 0.35);
+    font-weight: 500;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+  }
+
+  .detail-value {
+    font-size: 0.7rem;
+    color: rgba(255, 255, 255, 0.7);
+    font-weight: 600;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+  }
+
+  .detail-value.confirmed {
+    color: #86efac;
+  }
+
+  .detail-value.bad {
+    color: #fca5a5;
+  }
+
+  .detail-value.muted {
+    color: rgba(255, 255, 255, 0.35);
+  }
+
+  .detail-pulse {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: #3b82f6;
+    animation: pulse-blue 1.5s ease-in-out infinite;
+  }
+
+  .violation-chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+  }
+
+  .v-chip {
+    padding: 2px 8px;
+    border-radius: 4px;
+    font-size: 0.6rem;
+    font-weight: 600;
+  }
+
+  .v-chip.green {
+    background: rgba(34, 197, 94, 0.15);
+    color: #86efac;
+  }
+
+  .v-chip.amber {
+    background: rgba(245, 158, 11, 0.15);
+    color: #fcd34d;
+  }
+
+  .v-chip.red {
+    background: rgba(239, 68, 68, 0.15);
+    color: #fca5a5;
+  }
+
+  .permission-banner {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 8px;
+    border-radius: 6px;
+    background: rgba(239, 68, 68, 0.1);
+    border: 1px solid rgba(239, 68, 68, 0.2);
+    color: #fca5a5;
+    font-size: 0.65rem;
+    font-weight: 500;
+    line-height: 1.4;
+  }
+
+  /* ── Status Bar ── */
+  .status-bar {
+    height: 3px;
+    width: 100%;
+    transition: background 0.3s;
+  }
+
+  /* ── Animations ── */
+  @keyframes ping {
+    75%, 100% {
+      transform: scale(2);
+      opacity: 0;
+    }
+  }
+
+  @keyframes pulse-amber {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.4; }
+  }
+
+  @keyframes pulse-red {
+    0%, 100% { opacity: 1; box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.4); }
+    50% { opacity: 0.7; box-shadow: 0 0 0 4px rgba(239, 68, 68, 0); }
+  }
+
+  @keyframes pulse-blue {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.3; }
+  }
+
+  @keyframes slide-down {
+    from { opacity: 0; transform: translateY(-4px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+
+  @keyframes shake-subtle {
+    0%, 100% { transform: translateX(0); }
+    25% { transform: translateX(-2px); }
+    75% { transform: translateX(2px); }
   }
 </style>

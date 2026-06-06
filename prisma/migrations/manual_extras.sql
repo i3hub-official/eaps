@@ -1,7 +1,7 @@
 -- prisma/migrations/manual_extras.sql
 --
 -- Run ONCE after `pnpm prisma migrate dev` or `pnpm prisma db push`:
---   psql $DATABASE_URL -f prisma/migrations/manual_extras.sql
+--   psql $DATABASE_URL_UNPOOLED -f prisma/migrations/manual_extras.sql
 --
 -- Contains only things Prisma cannot express:
 --   • PostgreSQL extensions

@@ -21,6 +21,6 @@ export default defineConfig({
 
   // Database connection — moved here from schema.prisma in Prisma 7
   datasource: {
-    url: env('DATABASE_URL'),
+    url: env('DATABASE_URL_UNPOOLED'),
   },
 });

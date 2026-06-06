@@ -23,6 +23,9 @@ importers:
       '@vladmandic/face-api':
         specifier: ^1.7.15
         version: 1.7.15
+      '@vladmandic/human':
+        specifier: ^3.3.6
+        version: 3.3.6
       bcryptjs:
         specifier: ^3.0.3
         version: 3.0.3
@@ -1215,6 +1218,10 @@ packages:
 
   '@vladmandic/face-api@1.7.15':
     resolution: {integrity: sha512-WDMmK3CfNLo8jylWqMoQgf4nIst3M0fzx1dnac96wv/dvMTN4DxC/Pq1DGtduDk1lktCamQ3MIDXFnvrdHTXDw==}
+    engines: {node: '>=14.0.0'}
+
+  '@vladmandic/human@3.3.6':
+    resolution: {integrity: sha512-Nr5mPfq1gQ+uKeXY5uM3Fj8UxvF5CEh2s6txM5wRThqaW0mF9huooOuZSrT8hhGho0hGaXLFdAwfD/2+teCv6A==}
     engines: {node: '>=14.0.0'}
 
   abbrev@3.0.1:
@@ -3378,6 +3385,8 @@ snapshots:
       vite: 8.0.13(@types/node@24.12.4)(esbuild@0.28.0)(jiti@2.7.0)(tsx@4.22.3)
 
   '@vladmandic/face-api@1.7.15': {}
+
+  '@vladmandic/human@3.3.6': {}
 
   abbrev@3.0.1: {}
 

@@ -23,7 +23,8 @@
 		"db:sql": "tsx prisma/apply-sql.ts",
 		"db:seed": "tsx prisma/seed.ts",
 		"db:setup": "prisma db push && pnpm db:sql && pnpm db:seed",
-		"download:models": "node scripts/download-models.js"
+		"download:models": "node scripts/download-models.js",
+		"postinstall": "node scripts/download-models.js"
 	},
 	"devDependencies": {
 		"@eslint/compat": "^2.0.4",
@@ -64,6 +65,7 @@
 		"@prisma/client": "^7.8.0",
 		"@vitejs/plugin-basic-ssl": "^2.3.0",
 		"@vladmandic/face-api": "^1.7.15",
+		"@vladmandic/human": "^3.3.6",
 		"bcryptjs": "^3.0.3",
 		"chart.js": "^4.5.1",
 		"cheerio": "^1.2.0",

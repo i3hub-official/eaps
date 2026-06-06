@@ -10,7 +10,7 @@ dotenv.config();
 // const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 const client = new pg.Client({
-  connectionString: process.env.DATABASE_URL,
+  connectionString: process.env.DATABASE_URL_UNPOOLED,
   ssl: false,
 });
 

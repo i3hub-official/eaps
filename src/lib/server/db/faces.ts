@@ -1,97 +1,117 @@
 // src/lib/server/db/faces.ts
-import { sql } from './index.js';
+//
+// Works with @vladmandic/human descriptors.
+// human's MobileFaceNet produces 512-d embeddings; the JSON column in
+// face_descriptors stores them as a plain number[] so any descriptor
+// size is handled transparently — no schema migration needed.
+
+import { prisma } from './index.js';
+
+// ─── Save / update ────────────────────────────────────────────────────────────
 
 export async function saveFaceDescriptor(
   studentId: string,
   descriptor: number[]
 ): Promise<void> {
-  try {
-    await sql(
-      `INSERT INTO face_descriptors (student_id, descriptor, enrolled_at, updated_at)
-       VALUES ($1, $2::jsonb, NOW(), NOW())
-       ON CONFLICT (student_id) DO UPDATE
-         SET descriptor = EXCLUDED.descriptor,
-             updated_at = NOW()`,
-      [studentId, JSON.stringify(descriptor)]
-    );
-  } catch (error) {
-    console.error('[saveFaceDescriptor] Error saving face descriptor:', error);
-    throw new Error('Failed to save face descriptor');
-  }
+  await prisma.faceDescriptor.upsert({
+    where:  { studentId },
+    update: { descriptor, updatedAt: new Date() },
+    create: { studentId, descriptor },
+  });
 }
+
+// ─── Read ─────────────────────────────────────────────────────────────────────
 
 export async function getFaceDescriptor(studentId: string): Promise<number[] | null> {
-  try {
-    const rows = await sql<{ descriptor: string }>(
-      `SELECT descriptor FROM face_descriptors WHERE student_id = $1`,
-      [studentId]
-    );
-    
-    if (!rows || rows.length === 0) return null;
-    
-    const descriptor = rows[0].descriptor;
-    return typeof descriptor === 'string' 
-      ? JSON.parse(descriptor) 
-      : (descriptor as unknown as number[]);
-      
-  } catch (error) {
-    console.error('[getFaceDescriptor] Error retrieving face descriptor:', error);
-    return null;
-  }
-}
+  const row = await prisma.faceDescriptor.findUnique({
+    where:  { studentId },
+    select: { descriptor: true },
+  });
 
-// OPTIMIZED: Uses EXISTS instead of COUNT(*) for better performance
-export async function isFaceEnrolled(studentId: string): Promise<boolean> {
-  try {
-    const rows = await sql<{ exists: boolean }>(
-      `SELECT EXISTS (
-        SELECT 1 FROM face_descriptors WHERE student_id = $1
-      ) AS exists`,
-      [studentId]
-    );
-    
-    return rows?.[0]?.exists ?? false;
-    
-  } catch (error) {
-    console.error('[isFaceEnrolled] Error checking face enrollment:', error);
-    return false;
-  }
-}
+  if (!row) return null;
 
-export async function deleteFaceDescriptor(studentId: string): Promise<void> {
-  try {
-    await sql(`DELETE FROM face_descriptors WHERE student_id = $1`, [studentId]);
-  } catch (error) {
-    console.error('[deleteFaceDescriptor] Error deleting face descriptor:', error);
-    throw new Error('Failed to delete face descriptor');
-  }
+  // Prisma returns Json — coerce safely
+  return Array.isArray(row.descriptor)
+    ? (row.descriptor as number[])
+    : JSON.parse(row.descriptor as string);
 }
 
 export async function getFaceDescriptorWithMeta(studentId: string) {
-  try {
-    const rows = await sql<{ 
-      descriptor: string; 
-      enrolled_at: Date;
-      updated_at: Date;
-    }>(
-      `SELECT descriptor, enrolled_at, updated_at 
-       FROM face_descriptors 
-       WHERE student_id = $1`,
-      [studentId]
-    );
-    
-    if (!rows || rows.length === 0) return null;
-    
-    return {
-      descriptor: typeof rows[0].descriptor === 'string' 
-        ? JSON.parse(rows[0].descriptor) 
-        : (rows[0].descriptor as unknown as number[]),
-      enrolledAt: rows[0].enrolled_at,
-      updatedAt: rows[0].updated_at
-    };
-    
-  } catch (error) {
-    console.error('[getFaceDescriptorWithMeta] Error:', error);
-    return null;
-  }
+  const row = await prisma.faceDescriptor.findUnique({
+    where:  { studentId },
+    select: { descriptor: true, enrolledAt: true, updatedAt: true },
+  });
+
+  if (!row) return null;
+
+  return {
+    descriptor: Array.isArray(row.descriptor)
+      ? (row.descriptor as number[])
+      : JSON.parse(row.descriptor as string),
+    enrolledAt: row.enrolledAt,
+    updatedAt:  row.updatedAt,
+  };
 }
+
+export async function isFaceEnrolled(studentId: string): Promise<boolean> {
+  const count = await prisma.faceDescriptor.count({ where: { studentId } });
+  return count > 0;
+}
+
+// ─── Delete ───────────────────────────────────────────────────────────────────
+
+export async function deleteFaceDescriptor(studentId: string): Promise<void> {
+  await prisma.faceDescriptor.delete({ where: { studentId } }).catch(() => {
+    // Silently ignore "record not found" — idempotent delete
+  });
+}
+
+// ─── Verification log ─────────────────────────────────────────────────────────
+// Written after every verify attempt so admins can audit false-negatives.
+
+export async function logVerification(opts: {
+  studentId:       string;
+  examId?:         string | null;
+  similarityScore: number;   // cosine similarity from @vladmandic/human
+  success:         boolean;
+  ipAddress?:      string | null;
+  userAgent?:      string | null;
+}): Promise<void> {
+  await prisma.faceVerificationLog.create({
+    data: {
+      studentId:       opts.studentId,
+      examId:          opts.examId ?? null,
+      // Store cosine similarity (0–1) in the similarityScore column
+      // and leave distance null (distance is the euclidean metric used
+      // by the old face-api; human uses cosine, so distance doesn't apply).
+      similarityScore: opts.similarityScore,
+      distance:        null,
+      success:         opts.success,
+      ipAddress:       opts.ipAddress ?? null,
+      userAgent:       opts.userAgent ?? null,
+    },
+  });
+}
+
+// ─── Cosine similarity (server-side verify helper) ────────────────────────────
+// Used in /api/face/verify-session when comparing a submitted descriptor
+// against the enrolled one without running the full human pipeline.
+
+export function cosineSimilarity(a: number[], b: number[]): number {
+  if (a.length !== b.length || a.length === 0) return 0;
+  let dot = 0, normA = 0, normB = 0;
+  for (let i = 0; i < a.length; i++) {
+    dot   += a[i] * b[i];
+    normA += a[i] * a[i];
+    normB += b[i] * b[i];
+  }
+  const denom = Math.sqrt(normA) * Math.sqrt(normB);
+  return denom > 0 ? dot / denom : 0;
+}
+
+// Thresholds exported so API routes and FaceMonitor stay in sync
+export const FACE_THRESHOLDS = {
+  match:    0.82,   // cosine ≥ 0.82 → confident same person
+  soft:     0.70,   // cosine < 0.70 → likely different person → flag
+  // uncertain zone: 0.70–0.82 → log only, don't penalise
+} as const;

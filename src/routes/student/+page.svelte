@@ -1,12 +1,18 @@
-<!-- src/routes/student/+page.svelte -->
 <script lang="ts">
   import type { PageData } from './$types';
   import { onMount } from 'svelte';
-  
+  import FaceEnrollmentModal from '$lib/components/exam/FaceEnrollmentModal.svelte';
+  import FaceVerifyModal from '$lib/components/exam/FaceVerifyModal.svelte';
+
   let { data }: { data: PageData } = $props();
   const { user, exams, results, enrolled } = data;
 
-  // Toast notification state
+  // ── Modal states ───────────────────────────────────────────────────────────
+  let showEnrollmentModal = $state(false);
+  let showVerifyModal = $state(false);
+  let pendingExamId = $state<string | null>(null);
+
+  // ── Toast notification state ───────────────────────────────────────────────
   let showToast = $state(false);
   let toastMessage = $state('');
   let toastType = $state<'success' | 'info' | 'warning'>('success');
@@ -37,7 +43,6 @@
     A: '#16a34a', B: '#2563eb', C: '#d97706', D: '#9333ea', E: '#dc2626', F: '#dc2626',
   };
 
-  // MOUAU: fullName = "SURNAME FIRSTNAME [OTHERNAME]"
   const firstName  = user.fullName.split(' ')[1] ?? user.fullName.split(' ')[0];
   const liveExams  = exams.filter(e => e.status === 'active');
   const upcoming   = exams.filter(e => e.status === 'scheduled');
@@ -46,27 +51,51 @@
     ? results.reduce((s, r) => s + Number(r.percentage ?? 0), 0) / results.length
     : 0;
 
-  // Check URL params for enrollment/verification success messages
+  // Handle URL params for redirects from exam guard
   onMount(() => {
-    const urlParams = new URLSearchParams(window.location.search);
-    const enrolled = urlParams.get('enrolled');
-    const verified = urlParams.get('verified');
-    
-    if (enrolled === 'success') {
-      toastMessage = 'Face enrollment completed successfully! Your face has been registered.';
-      toastType = 'success';
-      showToast = true;
-      setTimeout(() => { showToast = false; }, 5000);
-      // Clean URL without reloading page
+    const url = new URL(window.location.href);
+    const enroll = url.searchParams.get('enroll');
+    const verify = url.searchParams.get('verify');
+    const exam = url.searchParams.get('exam');
+
+    if (enroll === 'required') {
+      pendingExamId = exam;
+      showEnrollmentModal = true;
       window.history.replaceState({}, '', '/student');
-    } else if (verified === 'success') {
-      toastMessage = 'Face verification successful! You can now take exams.';
-      toastType = 'success';
-      showToast = true;
-      setTimeout(() => { showToast = false; }, 5000);
+    } else if (verify === 'required') {
+      pendingExamId = exam;
+      showVerifyModal = true;
       window.history.replaceState({}, '', '/student');
     }
   });
+
+  function handleEnrollmentComplete() {
+    showEnrollmentModal = false;
+    showToast = true;
+    toastType = 'success';
+    toastMessage = 'Face enrollment completed! You can now verify to enter exams.';
+    setTimeout(() => showToast = false, 5000);
+    // Refresh page data to update enrolled status
+    window.location.reload();
+  }
+
+  function handleVerified() {
+    showVerifyModal = false;
+    if (pendingExamId) {
+      window.location.href = `/student/exam/${pendingExamId}`;
+    }
+    pendingExamId = null;
+  }
+
+  function enterExam(examId: string) {
+    if (!enrolled) {
+      pendingExamId = examId;
+      showEnrollmentModal = true;
+      return;
+    }
+    pendingExamId = examId;
+    showVerifyModal = true;
+  }
 
   function closeToast() {
     showToast = false;
@@ -75,41 +104,68 @@
 
 <svelte:head><title>Dashboard — MOUAU eTest</title></svelte:head>
 
+<!-- ═══════════════════════════════════════════════════════════════════════════ -->
+<!-- MODALS - Rendered at top level, no wrapper divs                             -->
+<!-- ═══════════════════════════════════════════════════════════════════════════ -->
+
+<FaceEnrollmentModal 
+  bind:open={showEnrollmentModal}
+  onClose={() => { showEnrollmentModal = false; pendingExamId = null; }}
+  onComplete={handleEnrollmentComplete}
+/>
+
+<FaceVerifyModal
+  bind:open={showVerifyModal}
+  examId={pendingExamId ?? ''}
+  onClose={() => { showVerifyModal = false; pendingExamId = null; }}
+  onVerified={handleVerified}
+/>
+
+<!-- ═══════════════════════════════════════════════════════════════════════════ -->
+<!-- TOAST - Fixed position, high z-index                                        -->
+<!-- ═══════════════════════════════════════════════════════════════════════════ -->
+
+{#if showToast}
+  <div class="toast-container">
+    <div class="toast" class:toast-{toastType} role="alert">
+      <div class="toast-icon">
+        {#if toastType === 'success'}
+          <svg viewBox="0 0 20 20" fill="none" width="18" height="18">
+            <path d="M16.25 6.25L8.125 14.375L3.75 10" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+          </svg>
+        {:else if toastType === 'info'}
+          <svg viewBox="0 0 20 20" fill="none" width="18" height="18">
+            <path d="M10 17.5C14.1421 17.5 17.5 14.1421 17.5 10C17.5 5.85786 14.1421 2.5 10 2.5C5.85786 2.5 2.5 5.85786 2.5 10C2.5 14.1421 5.85786 17.5 10 17.5Z" stroke="currentColor" stroke-width="1.5"/>
+            <path d="M10 6.25V10" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+            <circle cx="10" cy="13.75" r="0.625" fill="currentColor"/>
+          </svg>
+        {:else}
+          <svg viewBox="0 0 20 20" fill="none" width="18" height="18">
+            <path d="M10 17.5C14.1421 17.5 17.5 14.1421 17.5 10C17.5 5.85786 14.1421 2.5 10 2.5C5.85786 2.5 2.5 5.85786 2.5 10C2.5 14.1421 5.85786 17.5 10 17.5Z" stroke="currentColor" stroke-width="1.5"/>
+            <path d="M10 6.25V10.625" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+            <circle cx="10" cy="13.75" r="0.625" fill="currentColor"/>
+          </svg>
+        {/if}
+      </div>
+      <span class="toast-message">{toastMessage}</span>
+      <button class="toast-close" onclick={closeToast} aria-label="Close">
+        <svg viewBox="0 0 24 24" fill="none" width="14" height="14">
+          <path d="M6 18L18 6M6 6L18 18" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+        </svg>
+      </button>
+    </div>
+  </div>
+{/if}
+
+<!-- ═══════════════════════════════════════════════════════════════════════════ -->
+<!-- MAIN CONTENT - Normal flow, no special handling needed                      -->
+<!-- The modal's internal backdrop covers this when open                       -->
+<!-- ═══════════════════════════════════════════════════════════════════════════ -->
+
 <div class="page">
   <div class="content">
 
-    <!-- Toast Notification -->
-    {#if showToast}
-      <div class="toast" class:toast-{toastType} role="alert">
-        <div class="toast-icon">
-          {#if toastType === 'success'}
-            <svg viewBox="0 0 20 20" fill="none" width="18" height="18">
-              <path d="M16.25 6.25L8.125 14.375L3.75 10" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
-            </svg>
-          {:else if toastType === 'info'}
-            <svg viewBox="0 0 20 20" fill="none" width="18" height="18">
-              <path d="M10 17.5C14.1421 17.5 17.5 14.1421 17.5 10C17.5 5.85786 14.1421 2.5 10 2.5C5.85786 2.5 2.5 5.85786 2.5 10C2.5 14.1421 5.85786 17.5 10 17.5Z" stroke="currentColor" stroke-width="1.5"/>
-              <path d="M10 6.25V10" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
-              <circle cx="10" cy="13.75" r="0.625" fill="currentColor"/>
-            </svg>
-          {:else}
-            <svg viewBox="0 0 20 20" fill="none" width="18" height="18">
-              <path d="M10 17.5C14.1421 17.5 17.5 14.1421 17.5 10C17.5 5.85786 14.1421 2.5 10 2.5C5.85786 2.5 2.5 5.85786 2.5 10C2.5 14.1421 5.85786 17.5 10 17.5Z" stroke="currentColor" stroke-width="1.5"/>
-              <path d="M10 6.25V10.625" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
-              <circle cx="10" cy="13.75" r="0.625" fill="currentColor"/>
-            </svg>
-          {/if}
-        </div>
-        <span class="toast-message">{toastMessage}</span>
-        <button class="toast-close" onclick={closeToast} aria-label="Close">
-          <svg viewBox="0 0 24 24" fill="none" width="14" height="14">
-            <path d="M6 18L18 6M6 6L18 18" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
-          </svg>
-        </button>
-      </div>
-    {/if}
-
-    <!-- ── Greeting ───────────────────────────────────────────────── -->
+    <!-- ── Greeting ───────────────────────────────────────────────────────── -->
     <div class="greeting-row">
       <div>
         <h1>Hello, <span class="accent">{firstName}</span></h1>
@@ -125,7 +181,7 @@
       </div>
 
       {#if !enrolled}
-        <a href="/enroll" class="enroll-alert">
+        <button class="enroll-alert" onclick={() => showEnrollmentModal = true}>
           <span class="enroll-alert-dot"></span>
           <div>
             <strong>Face verification required</strong>
@@ -135,7 +191,7 @@
             <path d="M3 8h10M9 4l4 4-4 4" stroke="currentColor" stroke-width="1.5"
               stroke-linecap="round" stroke-linejoin="round"/>
           </svg>
-        </a>
+        </button>
       {:else}
         <div class="enrolled-badge">
           <svg viewBox="0 0 16 16" fill="none" width="13" height="13">
@@ -149,7 +205,7 @@
       {/if}
     </div>
 
-    <!-- ── Stats ──────────────────────────────────────────────────── -->
+    <!-- ── Stats ──────────────────────────────────────────────────────────── -->
     <div class="stats">
       <div class="stat">
         <span class="stat-n">{exams.length}</span>
@@ -179,7 +235,7 @@
       {/if}
     </div>
 
-    <!-- ── Live exams ─────────────────────────────────────────────── -->
+    <!-- ── Live exams ─────────────────────────────────────────────────────── -->
     {#if liveExams.length > 0}
       <section>
         <div class="sec-head">
@@ -201,20 +257,20 @@
                 <span class="meta-sep">·</span>
                 <span>Pass {exam.passMark}</span>
               </div>
-              <a href="/exam/{exam.id}" class="card-btn card-btn--enter">
-                {enrolled ? 'Enter Exam' : 'Verify Face First'}
+              <button class="card-btn card-btn--enter" onclick={() => enterExam(exam.id)}>
+                Enter Exam
                 <svg viewBox="0 0 16 16" fill="none" width="14" height="14">
                   <path d="M3 8h10M9 4l4 4-4 4" stroke="currentColor" stroke-width="1.5"
                     stroke-linecap="round" stroke-linejoin="round"/>
                 </svg>
-              </a>
+              </button>
             </div>
           {/each}
         </div>
       </section>
     {/if}
 
-    <!-- ── Upcoming exams ─────────────────────────────────────────── -->
+    <!-- ── Upcoming exams ───────────────────────────────────────────────────── -->
     {#if upcoming.length > 0}
       <section>
         <div class="sec-head"><h2>Upcoming</h2></div>
@@ -241,7 +297,7 @@
       </section>
     {/if}
 
-    <!-- ── All other exams ────────────────────────────────────────── -->
+    <!-- ── All other exams ────────────────────────────────────────────────── -->
     {#if otherExams.length > 0}
       <section>
         <div class="sec-head"><h2>All Exams</h2></div>
@@ -262,7 +318,7 @@
       </section>
     {/if}
 
-    <!-- ── Empty ──────────────────────────────────────────────────── -->
+    <!-- ── Empty ──────────────────────────────────────────────────────────── -->
     {#if exams.length === 0}
       <div class="empty">
         <svg viewBox="0 0 48 48" fill="none" width="40" height="40" opacity=".25">
@@ -275,7 +331,7 @@
       </div>
     {/if}
 
-    <!-- ── Results ────────────────────────────────────────────────── -->
+    <!-- ── Results ────────────────────────────────────────────────────────── -->
     {#if results.length > 0}
       <section>
         <div class="sec-head">
@@ -305,7 +361,7 @@
       </section>
     {/if}
 
-    <!-- ── Verification CTA ───────────────────────────────────────── -->
+    <!-- ── Verification CTA ───────────────────────────────────────────────── -->
     {#if !enrolled}
       <div class="verify-cta">
         <div class="verify-cta-inner">
@@ -320,7 +376,7 @@
             <p class="verify-cta-title">Face verification is required to sit any exam</p>
             <p class="verify-cta-sub">MOUAU eTest uses face recognition to maintain exam integrity. Enroll once and you're set for all future exams.</p>
           </div>
-          <a href="/enroll" class="verify-cta-btn">Complete Verification</a>
+          <button class="verify-cta-btn" onclick={() => showEnrollmentModal = true}>Complete Verification</button>
         </div>
       </div>
     {/if}
@@ -331,6 +387,87 @@
 <style>
   *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
+  /* ── Toast Container ──────────────────────────────────────────────────── */
+  .toast-container {
+    position: fixed;
+    top: 1rem;
+    right: 1rem;
+    z-index: 10000;
+    pointer-events: none;
+  }
+
+  .toast-container > * {
+    pointer-events: auto;
+  }
+
+  @media (max-width: 640px) {
+    .toast-container {
+      top: auto;
+      bottom: 1rem;
+      right: 1rem;
+      left: 1rem;
+    }
+  }
+
+  /* ── Toast ──────────────────────────────────────────────────────────────── */
+  .toast {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    padding: 0.875rem 1rem;
+    background: var(--color-surface);
+    border-radius: 0.75rem;
+    box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.1), 0 8px 10px -6px rgba(0, 0, 0, 0.02);
+    border: 1px solid var(--color-border);
+    animation: toast-slide-in 0.3s ease;
+    max-width: 380px;
+  }
+
+  @keyframes toast-slide-in {
+    from { opacity: 0; transform: translateX(100%); }
+    to { opacity: 1; transform: translateX(0); }
+  }
+
+  .toast-success { border-left: 4px solid #16a34a; }
+  .toast-success .toast-icon { color: #16a34a; }
+  .toast-info { border-left: 4px solid #3b82f6; }
+  .toast-info .toast-icon { color: #3b82f6; }
+  .toast-warning { border-left: 4px solid #f59e0b; }
+  .toast-warning .toast-icon { color: #f59e0b; }
+
+  .toast-icon {
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .toast-message {
+    flex: 1;
+    font-size: 0.875rem;
+    line-height: 1.4;
+    color: var(--color-text);
+  }
+
+  .toast-close {
+    background: none;
+    border: none;
+    cursor: pointer;
+    color: var(--color-muted);
+    padding: 0.25rem;
+    border-radius: 0.375rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: background 0.15s;
+  }
+
+  .toast-close:hover {
+    background: var(--color-surface-hover);
+    color: var(--color-text);
+  }
+
+  /* ── Page ─────────────────────────────────────────────────────────────── */
   .page {
     min-height: 100vh;
     background: var(--color-bg);
@@ -347,100 +484,7 @@
     gap: 2rem;
   }
 
-  /* ── Toast Notification ─────────────────────────────────────────── */
-  .toast {
-    position: fixed;
-    top: 1rem;
-    right: 1rem;
-    left: auto;
-    z-index: 1000;
-    display: flex;
-    align-items: center;
-    gap: 0.75rem;
-    padding: 0.875rem 1rem;
-    background: var(--color-surface);
-    border-radius: 0.75rem;
-    box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.1), 0 8px 10px -6px rgba(0, 0, 0, 0.02);
-    border: 1px solid var(--color-border);
-    animation: slide-in 0.3s ease;
-    max-width: 380px;
-  }
-  
-  @keyframes slide-in {
-    from {
-      opacity: 0;
-      transform: translateX(100%);
-    }
-    to {
-      opacity: 1;
-      transform: translateX(0);
-    }
-  }
-  
-  .toast-success {
-    border-left: 4px solid #16a34a;
-  }
-  .toast-success .toast-icon {
-    color: #16a34a;
-  }
-  
-  .toast-info {
-    border-left: 4px solid #3b82f6;
-  }
-  .toast-info .toast-icon {
-    color: #3b82f6;
-  }
-  
-  .toast-warning {
-    border-left: 4px solid #f59e0b;
-  }
-  .toast-warning .toast-icon {
-    color: #f59e0b;
-  }
-  
-  .toast-icon {
-    flex-shrink: 0;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-  }
-  
-  .toast-message {
-    flex: 1;
-    font-size: 0.875rem;
-    line-height: 1.4;
-    color: var(--color-text);
-  }
-  
-  .toast-close {
-    background: none;
-    border: none;
-    cursor: pointer;
-    color: var(--color-muted);
-    padding: 0.25rem;
-    border-radius: 0.375rem;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    transition: background 0.15s;
-  }
-  
-  .toast-close:hover {
-    background: var(--color-surface-hover);
-    color: var(--color-text);
-  }
-  
-  @media (max-width: 640px) {
-    .toast {
-      top: auto;
-      bottom: 1rem;
-      right: 1rem;
-      left: 1rem;
-      max-width: none;
-    }
-  }
-
-  /* ── Greeting ─────────────────────────────────────────────────────── */
+  /* ── Greeting ─────────────────────────────────────────────────────────── */
   .greeting-row {
     display: flex;
     align-items: flex-start;
@@ -478,12 +522,20 @@
     border: 1px solid #fde047;
     border-radius: .75rem;
     text-decoration: none;
-    transition: border-color .15s, box-shadow .15s;
+    transition: border-color .15s, box-shadow .15s, transform .15s;
     max-width: 360px;
+    cursor: pointer;
+    font-family: inherit;
+    text-align: left;
+    width: 100%;
   }
   .enroll-alert:hover {
     border-color: #facc15;
     box-shadow: 0 2px 8px rgba(234,179,8,.2);
+    transform: translateY(-1px);
+  }
+  .enroll-alert:active {
+    transform: translateY(0);
   }
   .enroll-alert-dot {
     width: 8px; height: 8px; border-radius: 50%;
@@ -530,7 +582,7 @@
     color: #4ade80;
   }
 
-  /* ── Stats ────────────────────────────────────────────────────────── */
+  /* ── Stats ────────────────────────────────────────────────────────────── */
   .stats {
     display: flex;
     align-items: center;
@@ -571,7 +623,7 @@
     flex-shrink: 0;
   }
 
-  /* ── Section head ─────────────────────────────────────────────────── */
+  /* ── Section head ─────────────────────────────────────────────────────── */
   section { display: flex; flex-direction: column; gap: .875rem; }
 
   .sec-head {
@@ -607,7 +659,7 @@
     100% { box-shadow: 0 0 0 0 rgba(34,197,94,0); }
   }
 
-  /* ── Exam cards ───────────────────────────────────────────────────── */
+  /* ── Exam cards ───────────────────────────────────────────────────────── */
   .card-grid {
     display: grid;
     grid-template-columns: repeat(auto-fill, minmax(265px, 1fr));
@@ -717,12 +769,15 @@
     transform: translateY(-1px);
     box-shadow: 0 4px 14px rgba(21,128,61,.4);
   }
+  .card-btn--enter:active {
+    transform: scale(0.98) translateY(0);
+  }
   .card-btn--waiting {
     background: var(--color-border);
     color: var(--color-muted);
   }
 
-  /* ── Compact list ─────────────────────────────────────────────────── */
+  /* ── Compact list ─────────────────────────────────────────────────────── */
   .list-card {
     background: var(--color-surface);
     border: 1px solid var(--color-border);
@@ -769,7 +824,7 @@
   .status-draft     { background: var(--color-border); color: var(--color-muted); }
   :global(.dark) .status-cancelled { background: rgba(220,38,38,.15); color: #f87171; }
 
-  /* ── Empty ────────────────────────────────────────────────────────── */
+  /* ── Empty ────────────────────────────────────────────────────────────── */
   .empty {
     display: flex;
     flex-direction: column;
@@ -785,7 +840,7 @@
   .empty-title { font-size: .925rem; font-weight: 600; }
   .empty-sub   { font-size: .8rem; max-width: 280px; line-height: 1.65; }
 
-  /* ── Results ──────────────────────────────────────────────────────── */
+  /* ── Results ──────────────────────────────────────────────────────────── */
   .results-card {
     background: var(--color-surface);
     border: 1px solid var(--color-border);
@@ -835,7 +890,7 @@
   :global(.dark) .pass-tag.pass { background: rgba(34,197,94,.15); color: #4ade80; }
   :global(.dark) .pass-tag.fail { background: rgba(220,38,38,.15); color: #f87171; }
 
-  /* ── Verify CTA ───────────────────────────────────────────────────── */
+  /* ── Verify CTA ───────────────────────────────────────────────────────── */
   .verify-cta {
     border-radius: .875rem;
     overflow: hidden;
@@ -890,13 +945,16 @@
     text-decoration: none;
     transition: all .15s;
     box-shadow: 0 4px 12px rgba(21,128,61,.35);
+    border: none;
+    cursor: pointer;
+    font-family: inherit;
   }
   .verify-cta-btn:hover {
     transform: translateY(-1px);
     box-shadow: 0 6px 18px rgba(21,128,61,.5);
   }
 
-  /* ── Responsive ───────────────────────────────────────────────────── */
+  /* ── Responsive ───────────────────────────────────────────────────────── */
   @media (max-width: 640px) {
     .content  { padding: 1.25rem 1rem 3rem; }
     .stat     { padding: .875rem .875rem; }

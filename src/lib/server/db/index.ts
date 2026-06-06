@@ -2,17 +2,23 @@
 import { PrismaClient } from '@prisma/client';
 import { PrismaPg } from '@prisma/adapter-pg';
 import pg from 'pg';
-import { DATABASE_URL } from '$env/static/private';
+import { DATABASE_URL, DATABASE_URL_UNPOOLED } from '$env/static/private';
+
+// ─── Prisma pool ──────────────────────────────────────────────────────────────
+// @prisma/adapter-pg requires a DIRECT (unpooled) connection.
+// Prisma's managed pool (pooled.db.prisma.io) is for Prisma Accelerate only;
+// using it with adapter-pg causes the "timeout exceeded" errors you're seeing.
 
 const prismaPool = new pg.Pool({
-  connectionString: DATABASE_URL,
-  max: 10,
+  connectionString: DATABASE_URL_UNPOOLED,   // ← direct Neon connection
+  ssl: { rejectUnauthorized: false },        // required for Neon SSL
+  max: 5,                                    // keep low — Neon free tier limit
   idleTimeoutMillis: 30_000,
-  connectionTimeoutMillis: 5_000,
+  connectionTimeoutMillis: 10_000,           // Neon cold-start can take ~3-5 s
 });
 
 prismaPool.on('error', (err) => {
-  console.error('[DB:prisma-pool] Idle client error (non-fatal):', err.message);
+  console.error('[DB:prisma-pool] idle client error:', err.message);
 });
 
 const adapter = new PrismaPg(prismaPool);
@@ -31,19 +37,21 @@ if (process.env.NODE_ENV !== 'production') {
 }
 
 // ─── Neon keepalive ───────────────────────────────────────────────────────────
-//
-// Neon free tier suspends the DB after ~5 minutes of inactivity, causing
-// 1–3 s cold-start delays on the next query. Pinging every 4 minutes keeps
-// the compute awake without counting as meaningful load.
-// Uses the raw pool directly so Prisma's connection state is unaffected.
+// Neon free tier suspends after ~5 min inactivity. Ping every 4 min via the
+// RAW pool (not prismaPool) to avoid inflating Prisma's connection count.
+// Only runs in long-lived server processes (dev), not in serverless.
 
-setInterval(() => {
-  prismaPool.query('SELECT 1').catch((err) => {
-    console.warn('[DB:keepalive] Ping failed (non-fatal):', err.message);
-  });
-}, 3 * 60 * 1000);
+if (typeof setInterval !== 'undefined') {
+  setInterval(() => {
+    getRawPool()
+      .query('SELECT 1')
+      .catch((err) => console.warn('[DB:keepalive] ping failed:', err.message));
+  }, 4 * 60 * 1000);
+}
 
 // ─── Raw pg pool ──────────────────────────────────────────────────────────────
+// Uses the POOLED URL for raw SQL — Neon's pgBouncer handles connection
+// multiplexing so many concurrent requests share fewer backend connections.
 
 let _rawPool: pg.Pool | null = null;
 
@@ -51,15 +59,15 @@ function getRawPool(): pg.Pool {
   if (_rawPool) return _rawPool;
 
   _rawPool = new pg.Pool({
-    connectionString: DATABASE_URL,
-    ssl: false,
+    connectionString: DATABASE_URL,   // ← pooled URL fine for raw queries
+    ssl: { rejectUnauthorized: false },
     max: 10,
     idleTimeoutMillis: 30_000,
-    connectionTimeoutMillis: 5_000,
+    connectionTimeoutMillis: 10_000,
   });
 
   _rawPool.on('error', (err) => {
-    console.error('[DB:raw-pool] Idle client error (non-fatal):', err.message);
+    console.error('[DB:raw-pool] idle client error:', err.message);
   });
 
   return _rawPool;
@@ -67,7 +75,6 @@ function getRawPool(): pg.Pool {
 
 // ─── Raw SQL helper ───────────────────────────────────────────────────────────
 
-/** Raw SQL query — use for complex joins, aggregates, DB functions */
 export async function sql<T extends pg.QueryResultRow = pg.QueryResultRow>(
   text: string,
   params?: unknown[]
@@ -76,17 +83,16 @@ export async function sql<T extends pg.QueryResultRow = pg.QueryResultRow>(
   try {
     const result = await getRawPool().query<T>(text, params);
     const ms = Date.now() - start;
-    if (ms > 500) console.warn(`[DB] Slow query (${ms}ms):`, text.slice(0, 120));
+    if (ms > 500) console.warn(`[DB] slow query (${ms}ms):`, text.slice(0, 120));
     return result.rows;
   } catch (err) {
-    console.error('[DB] Raw query error:', text.slice(0, 120), err);
+    console.error('[DB] query error:', text.slice(0, 120), err);
     throw err;
   }
 }
 
 // ─── Transaction wrapper ──────────────────────────────────────────────────────
 
-/** Wraps a raw-SQL callback in BEGIN / COMMIT / ROLLBACK */
 export async function withTransaction<T>(
   fn: (client: pg.PoolClient) => Promise<T>
 ): Promise<T> {
@@ -97,9 +103,9 @@ export async function withTransaction<T>(
     await client.query('COMMIT');
     return result;
   } catch (err) {
-    await client.query('ROLLBACK').catch((rbErr) => {
-      console.error('[DB] ROLLBACK failed:', rbErr.message);
-    });
+    await client.query('ROLLBACK').catch((e) =>
+      console.error('[DB] ROLLBACK failed:', e.message)
+    );
     throw err;
   } finally {
     client.release();
