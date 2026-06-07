@@ -179,7 +179,7 @@
     if (u.session) academic.push({ label: 'Academic Session', value: u.session, icon: Calendar });
     if (u.department?.name) academic.push({ label: 'Department', value: u.department.name, icon: BookOpen });
     if (u.college?.name) academic.push({ label: 'College', value: u.college.name, icon: School });
-    if (u.programme?.name) academic.push({ label: 'Programme', value: u.programme.name, icon: ScrollText });
+
     if (academic.length) sections.push({ title: 'Academic Information', icon: GraduationCap, fields: academic });
 
     // Location
@@ -413,11 +413,12 @@
                   </div>
                 {:else}
                   {#each notifications as n (n.id)}
-                    <button
+                    <div
                       class="notif-item"
                       class:unread={!n.isRead}
+                      role="button"
+                      tabindex="0"
                       onclick={() => markOneRead(n.id)}
-                      type="button"
                     >
                       <div class="notif-dot-col">
                         {#if !n.isRead}<div class="notif-dot"></div>{/if}
@@ -432,16 +433,15 @@
                           {/if}
                         </div>
                       </div>
-                      <div
+                      <button
                         class="notif-delete"
                         onclick={(e) => deleteNotification(n.id, e)}
-                        role="button"
-                        tabindex="0"
+                        type="button"
                         aria-label="Delete notification"
                       >
                         <X size={12} />
-                      </div>
-                    </button>
+                      </button>
+                    </div>
                   {/each}
                 {/if}
               </div>

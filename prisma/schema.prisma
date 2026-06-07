@@ -103,7 +103,6 @@ enum RegistrationType {
   borrowed
 }
 
-
 // ─── Institutional hierarchy ──────────────────────────────────────────────────
 
 model College {
@@ -131,6 +130,7 @@ model Department {
   college         College          @relation(fields: [collegeId], references: [id], onDelete: Cascade)
   users           User[]
   courses         Course[]
+  programmes      Programme[]
   examDepartments ExamDepartment[]
 
   @@unique([name, collegeId])
@@ -188,6 +188,8 @@ model User {
   college      College?    @relation(fields: [collegeId], references: [id])
   departmentId String?     @map("department_id") @db.Uuid
   department   Department? @relation(fields: [departmentId], references: [id])
+  programmeId  String?     @db.Uuid
+  programme    Programme?  @relation(fields: [programmeId], references: [id])
 
   // ── Profile ───────────────────────────────────────────────────────────────
   photoUrl String? @map("photo_url")
@@ -350,6 +352,8 @@ model Course {
   department    Department           @relation(fields: [departmentId], references: [id])
   registrations CourseRegistration[]
   exams         Exam[]
+  programme     Programme?           @relation(fields: [programmeId], references: [id])
+  programmeId   String?              @db.Uuid
 
   @@map("courses")
 }
@@ -370,6 +374,24 @@ model CourseRegistration {
 
   @@unique([studentId, courseId, session, semester])
   @@map("course_registrations")
+}
+
+model Programme {
+  id            String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  departmentId  String   @map("department_id") @db.Uuid
+  name          String
+  code          String?  @unique
+  durationYears Int      @default(4) @map("duration_years") @db.SmallInt
+  createdAt     DateTime @default(now()) @map("created_at") @db.Timestamptz()
+  updatedAt     DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz()
+
+  department Department @relation(fields: [departmentId], references: [id], onDelete: Cascade)
+  users      User[]
+  courses    Course[]
+
+  @@unique([name, departmentId])
+  @@index([departmentId])
+  @@map("programmes")
 }
 
 // ─── Exams ────────────────────────────────────────────────────────────────────
