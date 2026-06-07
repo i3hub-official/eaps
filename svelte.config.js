@@ -17,6 +17,8 @@ const config = {
     'svelte_component_deprecated',
     'non_reactive_update',
 	'a11y_autofocus',
+  'a11y_label',
+
   ]);
   if (suppress.has(warning.code)) return;
   handler(warning);
