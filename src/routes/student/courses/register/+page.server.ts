@@ -4,12 +4,12 @@ import { prisma } from '$lib/server/db/index.js';
 import { requireStudent } from '$lib/server/auth/guards.js';
 import { error, fail } from '@sveltejs/kit';
 
-const MAX_CREDITS   = 24;
+const MAX_CREDITS    = 24;
 const MAX_CARRY_OVER = 6;
 const MAX_BORROWED   = 6;
 
 export const load: PageServerLoad = async ({ locals }) => {
-  const user = requireStudent(locals.user);
+  const user      = requireStudent(locals.user);
   const studentId = user.id;
 
   const student = await prisma.user.findUnique({
@@ -27,15 +27,23 @@ export const load: PageServerLoad = async ({ locals }) => {
 
   const currentSession  = user.session ?? '2024/2025';
   const studentLevel    = student.level.level;
-  // semester derived from level: odd levels → sem 1, even → sem 2
   const currentSemester = studentLevel % 2 === 0 ? 2 : 1;
+
+  // CRITICAL FIX: Fallback to department's college if user.collegeId is null
+  const collegeId = student.collegeId ?? student.department?.collegeId ?? null;
+
+  if (!collegeId) {
+    throw error(400, 'Student college not assigned. Please update your profile.');
+  }
 
   // ── Current registrations ─────────────────────────────────────────────────
   const currentRegistrations = await prisma.courseRegistration.findMany({
-    where: { studentId, session: currentSession, semester: currentSemester },
+    where:   { studentId, session: currentSession, semester: currentSemester },
     include: {
       course: {
-        include: { department: { select: { name: true, code: true } } },
+        include: {
+          department: { select: { id: true, name: true, code: true, collegeId: true } },
+        },
       },
       level: { select: { level: true, name: true } },
     },
@@ -51,88 +59,71 @@ export const load: PageServerLoad = async ({ locals }) => {
     ? { id: { notIn: registeredCourseIds } }
     : {};
 
-  // ── All colleges ──────────────────────────────────────────────────────────
-  const colleges = await prisma.college.findMany({
-    orderBy: { name: 'asc' },
-    select: { id: true, name: true },
-  });
-
-  // ── All departments (for browsing) ────────────────────────────────────────
-  const allDepartments = await prisma.department.findMany({
-    orderBy: { name: 'asc' },
-    select: { id: true, name: true, code: true, collegeId: true },
-  });
-
-  // ── All levels ────────────────────────────────────────────────────────────
-  const allLevels = await prisma.level.findMany({
-    orderBy: { level: 'asc' },
-    select: { id: true, level: true, name: true },
-  });
-
-  // ── Normal courses: student's own dept, own level only ───────────────────
+  // ── NORMAL: same college, exact level ───────────────────────────────────
   const normalCourses = await prisma.course.findMany({
     where: {
-      departmentId: student.departmentId,
+      department: { collegeId },
       level: studentLevel,
       ...excludeFilter,
     },
     include: {
-      department: { select: { name: true, code: true } },
+      department: { select: { id: true, name: true, code: true, collegeId: true } },
       _count: { select: { registrations: true } },
     },
-    orderBy: { code: 'asc' },
+    orderBy: [{ department: { code: 'asc' } }, { code: 'asc' }],
   });
 
-  // ── Carry-over: student's own dept, strictly BELOW their level ───────────
-  // Any course below the student's level in their department is a potential
-  // carry-over (whether they failed it or never took it — institution decides).
+  // ── CARRY-OVER: same college, level < studentLevel ────────────────────────
   const carryOverCourses = studentLevel >= 200
     ? await prisma.course.findMany({
         where: {
-          departmentId: student.departmentId,
+          department: { collegeId },
           level: { lt: studentLevel },
           ...excludeFilter,
         },
         include: {
-          department: { select: { name: true, code: true } },
+          department: { select: { id: true, name: true, code: true, collegeId: true } },
           _count: { select: { registrations: true } },
         },
-        orderBy: [{ level: 'asc' }, { code: 'asc' }],
+        orderBy: [{ level: 'asc' }, { department: { code: 'asc' } }, { code: 'asc' }],
       })
     : [];
 
-  // ── Borrowed: other depts in same college, same level only ───────────────
-  const borrowedCourses = student.collegeId
-    ? await prisma.course.findMany({
-        where: {
-          departmentId: { not: student.departmentId },
-          department: { collegeId: student.collegeId },
-          level: studentLevel,
-          ...excludeFilter,
-        },
-        include: {
-          department: { select: { name: true, code: true } },
-          _count: { select: { registrations: true } },
-        },
-        orderBy: { code: 'asc' },
-      })
-    : [];
-
-  // ── Browse courses (filtered by college + dept + level on client) ─────────
-  // We load ALL courses; the client filters live. Keep this lean with select.
-  const browseCourses = await prisma.course.findMany({
+  // ── BORROWED: outside college, exact level ────────────────────────────────
+  const borrowedCourses = await prisma.course.findMany({
     where: {
-      // Only show levels the student is allowed to see:
-      // own level, or below own level (carry-over range)
-      level: { lte: studentLevel },
+      department: { collegeId: { not: collegeId } },
+      level: studentLevel,
+      ...excludeFilter,
     },
     include: {
       department: {
-        select: { id: true, name: true, code: true, collegeId: true },
+        select: {
+          id: true, name: true, code: true, collegeId: true,
+          college: { select: { id: true, name: true } },
+        },
       },
       _count: { select: { registrations: true } },
     },
-    orderBy: [{ level: 'asc' }, { code: 'asc' }],
+    orderBy: [{ department: { college: { name: 'asc' } } }, { department: { code: 'asc' } }, { code: 'asc' }],
+  });
+
+  // ── BROWSE ALL: all courses ≤ studentLevel, excluding already registered ──
+  const browseAllCourses = await prisma.course.findMany({
+    where: {
+      level: { lte: studentLevel },
+      ...excludeFilter,
+    },
+    include: {
+      department: {
+        select: {
+          id: true, name: true, code: true, collegeId: true,
+          college: { select: { id: true, name: true } },
+        },
+      },
+      _count: { select: { registrations: true } },
+    },
+    orderBy: [{ level: 'asc' }, { department: { college: { name: 'asc' } } }, { department: { code: 'asc' } }, { code: 'asc' }],
   });
 
   return {
@@ -141,11 +132,15 @@ export const load: PageServerLoad = async ({ locals }) => {
       normal:    normalCourses,
       carryOver: carryOverCourses,
       borrowed:  borrowedCourses,
+      browseAll: browseAllCourses,
     },
-    browseCourses,
-    colleges,
-    allDepartments,
-    allLevels,
+    student: {
+      collegeId:   collegeId,
+      collegeName: student.college?.name ?? '',
+      deptId:      student.departmentId,
+      deptName:    student.department?.name ?? '',
+      level:       studentLevel,
+    },
     stats: {
       totalRegistered:  currentRegistrations.length,
       totalCreditUnits,
@@ -157,10 +152,7 @@ export const load: PageServerLoad = async ({ locals }) => {
       currentSession,
       currentSemester,
       studentLevel,
-      studentDeptId:    student.departmentId,
-      studentCollegeId: student.collegeId,
     },
-    departments: allDepartments,
   };
 };
 
@@ -177,11 +169,11 @@ export const actions: Actions = {
     if (!courseId) return fail(400, { message: 'Course ID is required' });
 
     const student = await prisma.user.findUnique({
-      where: { id: studentId },
+      where:  { id: studentId },
       select: { departmentId: true, levelId: true, level: true, collegeId: true },
     });
 
-    if (!student?.departmentId || !student.level) {
+    if (!student?.level || !student.departmentId) {
       return fail(400, { message: 'Student profile incomplete' });
     }
 
@@ -189,19 +181,30 @@ export const actions: Actions = {
     const currentSession  = user.session ?? '2024/2025';
     const currentSemester = studentLevel % 2 === 0 ? 2 : 1;
 
+    // CRITICAL FIX: Also fix in actions - fallback to department's college
+    const collegeId = student.collegeId ?? await prisma.department.findUnique({
+      where: { id: student.departmentId },
+      select: { collegeId: true },
+    }).then(d => d?.collegeId ?? null);
+
+    if (!collegeId) {
+      return fail(400, { message: 'Student college not assigned. Please update your profile.' });
+    }
+
     const course = await prisma.course.findUnique({
-      where: { id: courseId },
-      include: { department: true },
+      where:   { id: courseId },
+      include: { department: { select: { collegeId: true, id: true } } },
     });
 
     if (!course) return fail(404, { message: 'Course not found' });
+    if (course.level == null) return fail(400, { message: 'Course level is not specified' });
 
-    // ── Block 100L from seeing/registering any course above their level ──────
+    // Hard block: cannot register above your level
     if (course.level > studentLevel) {
-      return fail(400, { message: 'You cannot register for courses above your current level' });
+      return fail(400, { message: 'You cannot register courses above your current level' });
     }
 
-    // ── Duplicate check ───────────────────────────────────────────────────────
+    // Duplicate check
     const alreadyRegistered = await prisma.courseRegistration.findFirst({
       where: { studentId, courseId, session: currentSession, semester: currentSemester },
     });
@@ -209,63 +212,50 @@ export const actions: Actions = {
       return fail(400, { message: 'Already registered for this course this semester' });
     }
 
-    // ── Credit limit ───────────────────────────────────────────────────────────
+    // Credit limit
     const currentRegs = await prisma.courseRegistration.findMany({
       where:   { studentId, session: currentSession, semester: currentSemester },
       include: { course: { select: { creditUnits: true } } },
     });
-
     const currentCredits    = currentRegs.reduce((s, r) => s + r.course.creditUnits, 0);
     const currentCarryOvers = currentRegs.filter(r => r.registrationType === 'carry_over').length;
     const currentBorrowed   = currentRegs.filter(r => r.registrationType === 'borrowed').length;
 
     if (currentCredits + course.creditUnits > MAX_CREDITS) {
       return fail(400, {
-        message: `Credit limit exceeded (${currentCredits}/${MAX_CREDITS}). Cannot add ${course.creditUnits} more credits.`,
+        message: `Credit limit exceeded (${currentCredits}/${MAX_CREDITS}). Cannot add ${course.creditUnits} more.`,
       });
     }
 
-    // ── Type-specific validation ───────────────────────────────────────────────
-    if (regType === 'carry_over') {
-      if (studentLevel < 200) {
-        return fail(400, { message: '100 Level students cannot register carry-over courses' });
-      }
-      if (course.level >= studentLevel) {
-        return fail(400, { message: 'Carry-over courses must be from a level below yours' });
-      }
-      if (course.departmentId !== student.departmentId) {
-        return fail(400, { message: 'Carry-over must be from your own department' });
-      }
-      if (currentCarryOvers >= MAX_CARRY_OVER) {
-        return fail(400, { message: `Maximum ${MAX_CARRY_OVER} carry-over courses allowed` });
-      }
-    }
+    const sameCollege = course.department.collegeId === collegeId;
 
-    if (regType === 'borrowed') {
-      if (course.departmentId === student.departmentId) {
-        return fail(400, { message: 'Cannot borrow from your own department' });
+    // Auto-infer and validate registration type
+    let finalRegType: 'normal' | 'carry_over' | 'borrowed';
+
+    if (sameCollege) {
+      if (course.level === studentLevel) {
+        finalRegType = 'normal';
+      } else if (course.level < studentLevel) {
+        if (studentLevel < 200) {
+          return fail(400, { message: '100 Level students cannot register carry-over courses' });
+        }
+        if (currentCarryOvers >= MAX_CARRY_OVER) {
+          return fail(400, { message: `Maximum ${MAX_CARRY_OVER} carry-over courses allowed` });
+        }
+        finalRegType = 'carry_over';
+      } else {
+        return fail(400, { message: 'Course level mismatch' });
       }
-      if (course.department.collegeId !== student.collegeId) {
-        return fail(400, { message: 'Can only borrow from departments in your college' });
-      }
+    } else {
       if (course.level !== studentLevel) {
         return fail(400, { message: 'Borrowed courses must be at your current level' });
       }
       if (currentBorrowed >= MAX_BORROWED) {
         return fail(400, { message: `Maximum ${MAX_BORROWED} borrowed courses allowed` });
       }
+      finalRegType = 'borrowed';
     }
 
-    if (regType === 'normal') {
-      if (course.departmentId !== student.departmentId) {
-        return fail(400, { message: 'Normal courses must be from your own department' });
-      }
-      if (course.level !== studentLevel) {
-        return fail(400, { message: 'Normal courses must be at your current level' });
-      }
-    }
-
-    // ── Create registration ────────────────────────────────────────────────────
     try {
       await prisma.courseRegistration.create({
         data: {
@@ -274,18 +264,16 @@ export const actions: Actions = {
           session:          currentSession,
           semester:         currentSemester,
           levelId:          student.levelId ?? undefined,
-          registrationType: regType,
+          registrationType: finalRegType,
         },
       });
     } catch (err: any) {
-      if (err.code === 'P2002') {
-        return fail(400, { message: 'Already registered for this course this semester' });
-      }
+      if (err.code === 'P2002') return fail(400, { message: 'Already registered for this course this semester' });
       throw err;
     }
 
-    const typeLabel = regType === 'carry_over' ? 'carry-over' : regType;
-    return { success: true, message: `Registered for ${course.code} as ${typeLabel} course` };
+    const label = finalRegType === 'carry_over' ? 'carry-over' : finalRegType;
+    return { success: true, message: `Registered ${course.code} as ${label} course` };
   },
 
   drop: async ({ request, locals }) => {
@@ -296,26 +284,19 @@ export const actions: Actions = {
 
     if (!registrationId) return fail(400, { message: 'Registration ID required' });
 
-    const registration = await prisma.courseRegistration.findFirst({
+    const reg = await prisma.courseRegistration.findFirst({
       where:   { id: registrationId, studentId },
       include: { course: { select: { id: true, code: true, title: true } } },
     });
 
-    if (!registration) return fail(404, { message: 'Registration not found' });
+    if (!reg) return fail(404, { message: 'Registration not found' });
 
     const activeExam = await prisma.exam.findFirst({
-      where: { courseId: registration.course.id, status: { in: ['active', 'completed'] } },
+      where: { courseId: reg.course.id, status: { in: ['active', 'completed'] } },
     });
-
-    if (activeExam) {
-      return fail(400, { message: 'Cannot drop — exam is active or already completed' });
-    }
+    if (activeExam) return fail(400, { message: 'Cannot drop — exam is active or already completed' });
 
     await prisma.courseRegistration.delete({ where: { id: registrationId } });
-
-    return {
-      success: true,
-      message: `Dropped ${registration.course.code}: ${registration.course.title}`,
-    };
+    return { success: true, message: `Dropped ${reg.course.code}: ${reg.course.title}` };
   },
 };
