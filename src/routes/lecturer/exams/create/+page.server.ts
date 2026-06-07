@@ -1,4 +1,4 @@
-// src/routes/(lecturer)/exams/create/+page.server.ts
+// src/routes/lecturer/exams/create/+page.server.ts
 import { fail, redirect } from '@sveltejs/kit';
 import type { Actions, PageServerLoad } from './$types';
 import { requireLecturer } from '$lib/server/auth/guards.js';
@@ -58,6 +58,7 @@ export const actions: Actions = {
     // If you want to store IDs instead, change the schema and frontend.
     const departmentRaw = String(d.get('department') ?? '').trim();
     const department    = departmentRaw || null;
+    const questionsToPresent = Number(d.get('questions_to_present') ?? 0);
 
     // ── Validation ───────────────────────────────────────────────────────────
     if (!title)    return fail(400, { error: 'Title is required' });
@@ -95,6 +96,7 @@ export const actions: Actions = {
       showResultAfter: showResult,
       levels,
       department,
+      questionsToPresent,   // ← add this line
     });
 
     redirect(302, `/lecturer/exams/${exam.id}/questions`);

@@ -5,7 +5,7 @@
     ChevronLeft, BookOpen, Clock, Settings,
     AlertCircle, Info, Users, ChevronDown, Check,
     Calendar, Search, X, GraduationCap, Building2,
-    FileText, Timer, BarChart3, ShieldAlert
+    FileText, Timer, BarChart3, ShieldAlert, Layers
   } from 'lucide-svelte';
 
   let { data, form }: { data: PageData & { departments: Array<{ id: string; name: string; code: string }> }; form: ActionData } = $props();
@@ -14,6 +14,8 @@
   const LEVELS = [100, 200, 300, 400, 500, 600] as const;
   let selectedLevels = $state<Set<number>>(new Set());
   let allLevels = $derived(selectedLevels.size === LEVELS.length);
+  let questionsToPresent = $state(0);
+
 
   function toggleLevel(level: number) {
     const next = new Set(selectedLevels);
@@ -28,7 +30,7 @@
   );
 
   // ── Departments ──────────────────────────────────────────────────────────────
- const departments = data.departments;
+  const departments = data.departments;
   let selectedDepartments = $state<Set<string>>(new Set());
   let deptOpen = $state(false);
   let deptSearch = $state('');
@@ -78,6 +80,10 @@
     SEMESTERS.find(s => s.value === selectedSemester)?.label ?? ''
   );
 
+  // ── Questions to present ─────────────────────────────────────────────────────
+  // 0 = present all questions (no limit)
+  let questionsToPresent = $state(0);
+
   // ── DateTime picker ──────────────────────────────────────────────────────────
   let startDate = $state('');
   let startTime = $state('09:00');
@@ -107,14 +113,10 @@
   }
   const todayStr = $derived(fmtDate(new Date().getFullYear(), new Date().getMonth(), new Date().getDate()));
 
-  function selectStartDay(day: number) {
-    startDate = fmtDate(startCalYear, startCalMonth, day);
-  }
-  function selectEndDay(day: number) {
-    endDate = fmtDate(endCalYear, endCalMonth, day);
-  }
+  function selectStartDay(day: number) { startDate = fmtDate(startCalYear, startCalMonth, day); }
+  function selectEndDay(day: number)   { endDate   = fmtDate(endCalYear,   endCalMonth,   day); }
   const startValue = $derived(startDate ? `${startDate}T${startTime}` : '');
-  const endValue = $derived(endDate ? `${endDate}T${endTime}` : '');
+  const endValue   = $derived(endDate   ? `${endDate}T${endTime}`     : '');
 
   function fmtDisplay(date: string, time: string) {
     if (!date) return '';
@@ -138,42 +140,11 @@
     return { destroy() { document.removeEventListener('mousedown', handle, true); } };
   }
 
-  // Close all other dropdowns when one opens
-  function openCourse() {
-    courseOpen = true;
-    deptOpen = false;
-    semesterOpen = false;
-    startOpen = false;
-    endOpen = false;
-  }
-  function openDept() {
-    deptOpen = true;
-    courseOpen = false;
-    semesterOpen = false;
-    startOpen = false;
-    endOpen = false;
-  }
-  function openSemester() {
-    semesterOpen = true;
-    courseOpen = false;
-    deptOpen = false;
-    startOpen = false;
-    endOpen = false;
-  }
-  function openStart() {
-    startOpen = true;
-    endOpen = false;
-    courseOpen = false;
-    deptOpen = false;
-    semesterOpen = false;
-  }
-  function openEnd() {
-    endOpen = true;
-    startOpen = false;
-    courseOpen = false;
-    deptOpen = false;
-    semesterOpen = false;
-  }
+  function openCourse()   { courseOpen = true;   deptOpen = false; semesterOpen = false; startOpen = false; endOpen = false; }
+  function openDept()     { deptOpen = true;     courseOpen = false; semesterOpen = false; startOpen = false; endOpen = false; }
+  function openSemester() { semesterOpen = true; courseOpen = false; deptOpen = false; startOpen = false; endOpen = false; }
+  function openStart()    { startOpen = true;    endOpen = false; courseOpen = false; deptOpen = false; semesterOpen = false; }
+  function openEnd()      { endOpen = true;      startOpen = false; courseOpen = false; deptOpen = false; semesterOpen = false; }
 </script>
 
 <svelte:head><title>Create Exam — MOUAU eTest</title></svelte:head>
@@ -233,14 +204,9 @@
           <div class="field">
             <label>Course <span class="req">*</span></label>
             <input type="hidden" name="course_id" value={selectedCourse} />
-            <div
-              class="dd-wrap"
-              use:clickOutside={() => { courseOpen = false; courseSearch = ''; }}
-            >
+            <div class="dd-wrap" use:clickOutside={() => { courseOpen = false; courseSearch = ''; }}>
               <button
-                type="button"
-                class="dd-trigger"
-                class:open={courseOpen}
+                type="button" class="dd-trigger" class:open={courseOpen}
                 onclick={() => courseOpen ? (courseOpen = false) : openCourse()}
               >
                 {#if selectedCourseObj}
@@ -251,17 +217,11 @@
                 {/if}
                 <ChevronDown size={15} class="dd-chevron" />
               </button>
-
               {#if courseOpen}
                 <div class="dd-panel">
                   <div class="dd-search">
                     <Search size={13} />
-                    <input
-                      type="text"
-                      placeholder="Search by code or name…"
-                      bind:value={courseSearch}
-                      autofocus
-                    />
+                    <input type="text" placeholder="Search by code or name…" bind:value={courseSearch} autofocus />
                   </div>
                   <div class="dd-list">
                     {#if filteredCourses.length === 0}
@@ -269,9 +229,7 @@
                     {:else}
                       {#each filteredCourses as c}
                         <button
-                          type="button"
-                          class="dd-item"
-                          class:active={selectedCourse === c.id}
+                          type="button" class="dd-item" class:active={selectedCourse === c.id}
                           onclick={() => { selectedCourse = c.id; courseOpen = false; courseSearch = ''; }}
                         >
                           <span class="item-code">{c.code}</span>
@@ -316,21 +274,14 @@
                 <span>Student Levels</span>
               </div>
               <button
-                type="button"
-                class="pill-btn"
-                class:active={allLevels}
-                onclick={toggleAll}
+                type="button" class="pill-btn" class:active={allLevels} onclick={toggleAll}
               >{allLevels ? '✓ All Selected' : 'Select All'}</button>
             </div>
-
             <div class="level-grid">
               {#each LEVELS as level}
                 <button
-                  type="button"
-                  class="level-chip"
-                  class:selected={selectedLevels.has(level)}
-                  onclick={() => toggleLevel(level)}
-                  aria-pressed={selectedLevels.has(level)}
+                  type="button" class="level-chip" class:selected={selectedLevels.has(level)}
+                  onclick={() => toggleLevel(level)} aria-pressed={selectedLevels.has(level)}
                 >
                   <span class="level-num">{level}</span>
                   <span class="level-lbl">Level</span>
@@ -362,15 +313,9 @@
               <span class="opt-badge">Optional</span>
             </div>
             <input type="hidden" name="department" value={departmentValue} />
-
-            <div
-              class="dd-wrap"
-              use:clickOutside={() => { deptOpen = false; deptSearch = ''; }}
-            >
+            <div class="dd-wrap" use:clickOutside={() => { deptOpen = false; deptSearch = ''; }}>
               <button
-                type="button"
-                class="dd-trigger multi"
-                class:open={deptOpen}
+                type="button" class="dd-trigger multi" class:open={deptOpen}
                 onclick={() => deptOpen ? (deptOpen = false) : openDept()}
               >
                 {#if selectedDepartments.size === 0}
@@ -382,9 +327,7 @@
                       {#if d}
                         <span class="tag">
                           {d.code}
-                          <button
-                            type="button"
-                            class="tag-x"
+                          <button type="button" class="tag-x"
                             onclick={(e) => { e.stopPropagation(); removeDept(id); }}
                           ><X size={9} strokeWidth={3} /></button>
                         </span>
@@ -394,7 +337,6 @@
                 {/if}
                 <ChevronDown size={15} class="dd-chevron" />
               </button>
-
               {#if deptOpen}
                 <div class="dd-panel">
                   <div class="dd-search">
@@ -407,9 +349,7 @@
                     {:else}
                       {#each filteredDepts as d}
                         <button
-                          type="button"
-                          class="dd-item"
-                          class:active={selectedDepartments.has(d.id)}
+                          type="button" class="dd-item" class:active={selectedDepartments.has(d.id)}
                           onclick={() => toggleDept(d.id)}
                         >
                           <span class="item-code">{d.code}</span>
@@ -444,22 +384,15 @@
         </div>
         <div class="card-body">
 
-          <!-- Hidden datetime values -->
           <input type="hidden" name="scheduled_start" value={startValue} />
-          <input type="hidden" name="scheduled_end" value={endValue} />
+          <input type="hidden" name="scheduled_end"   value={endValue}   />
 
           <!-- Scheduled Start -->
           <div class="field">
             <label>Scheduled Start</label>
-            <div
-              class="dd-wrap"
-              use:clickOutside={() => startOpen = false}
-            >
+            <div class="dd-wrap" use:clickOutside={() => startOpen = false}>
               <button
-                type="button"
-                class="dd-trigger"
-                class:open={startOpen}
-                class:has-val={!!startDate}
+                type="button" class="dd-trigger" class:open={startOpen} class:has-val={!!startDate}
                 onclick={() => startOpen ? (startOpen = false) : openStart()}
               >
                 <Calendar size={14} class="dt-cal-icon" />
@@ -480,16 +413,11 @@
                       onclick={() => { if (startCalMonth === 11) { startCalMonth = 0; startCalYear++; } else startCalMonth++; }}>›</button>
                   </div>
                   <div class="cal-grid">
-                    {#each DAY_NAMES as dn}
-                      <span class="cal-dn">{dn}</span>
-                    {/each}
+                    {#each DAY_NAMES as dn}<span class="cal-dn">{dn}</span>{/each}
                     {#each calDays(startCalYear, startCalMonth) as day}
-                      {#if day === null}
-                        <span></span>
+                      {#if day === null}<span></span>
                       {:else}
-                        <button
-                          type="button"
-                          class="cal-day"
+                        <button type="button" class="cal-day"
                           class:today={fmtDate(startCalYear, startCalMonth, day) === todayStr}
                           class:selected={startDate === fmtDate(startCalYear, startCalMonth, day)}
                           onclick={() => selectStartDay(day)}
@@ -500,9 +428,7 @@
                   <div class="time-row">
                     <Clock size={13} />
                     <select class="time-sel" bind:value={startTime}>
-                      {#each TIME_OPTIONS as t}
-                        <option value={t}>{t}</option>
-                      {/each}
+                      {#each TIME_OPTIONS as t}<option value={t}>{t}</option>{/each}
                     </select>
                     {#if startDate}
                       <button type="button" class="dt-done-btn" onclick={() => startOpen = false}>Done</button>
@@ -516,15 +442,9 @@
           <!-- Scheduled End -->
           <div class="field">
             <label>Scheduled End</label>
-            <div
-              class="dd-wrap"
-              use:clickOutside={() => endOpen = false}
-            >
+            <div class="dd-wrap" use:clickOutside={() => endOpen = false}>
               <button
-                type="button"
-                class="dd-trigger"
-                class:open={endOpen}
-                class:has-val={!!endDate}
+                type="button" class="dd-trigger" class:open={endOpen} class:has-val={!!endDate}
                 onclick={() => endOpen ? (endOpen = false) : openEnd()}
               >
                 <Calendar size={14} class="dt-cal-icon" />
@@ -545,16 +465,11 @@
                       onclick={() => { if (endCalMonth === 11) { endCalMonth = 0; endCalYear++; } else endCalMonth++; }}>›</button>
                   </div>
                   <div class="cal-grid">
-                    {#each DAY_NAMES as dn}
-                      <span class="cal-dn">{dn}</span>
-                    {/each}
+                    {#each DAY_NAMES as dn}<span class="cal-dn">{dn}</span>{/each}
                     {#each calDays(endCalYear, endCalMonth) as day}
-                      {#if day === null}
-                        <span></span>
+                      {#if day === null}<span></span>
                       {:else}
-                        <button
-                          type="button"
-                          class="cal-day"
+                        <button type="button" class="cal-day"
                           class:today={fmtDate(endCalYear, endCalMonth, day) === todayStr}
                           class:selected={endDate === fmtDate(endCalYear, endCalMonth, day)}
                           onclick={() => selectEndDay(day)}
@@ -565,9 +480,7 @@
                   <div class="time-row">
                     <Clock size={13} />
                     <select class="time-sel" bind:value={endTime}>
-                      {#each TIME_OPTIONS as t}
-                        <option value={t}>{t}</option>
-                      {/each}
+                      {#each TIME_OPTIONS as t}<option value={t}>{t}</option>{/each}
                     </select>
                     {#if endDate}
                       <button type="button" class="dt-done-btn" onclick={() => endOpen = false}>Done</button>
@@ -587,15 +500,9 @@
             <div class="field">
               <label>Semester <span class="req">*</span></label>
               <input type="hidden" name="semester" value={selectedSemester} />
-              <div
-                class="dd-wrap"
-                use:clickOutside={() => semesterOpen = false}
-              >
+              <div class="dd-wrap" use:clickOutside={() => semesterOpen = false}>
                 <button
-                  type="button"
-                  class="dd-trigger"
-                  class:open={semesterOpen}
-                  class:has-val={true}
+                  type="button" class="dd-trigger" class:open={semesterOpen} class:has-val={true}
                   onclick={() => semesterOpen ? (semesterOpen = false) : openSemester()}
                 >
                   <span class="dd-val">{selectedSemesterLabel}</span>
@@ -606,9 +513,7 @@
                     <div class="dd-list">
                       {#each SEMESTERS as s}
                         <button
-                          type="button"
-                          class="dd-item"
-                          class:active={selectedSemester === s.value}
+                          type="button" class="dd-item" class:active={selectedSemester === s.value}
                           onclick={() => { selectedSemester = s.value; semesterOpen = false; }}
                         >
                           <span class="item-label">{s.label}</span>
@@ -663,7 +568,7 @@
                 <span class="score-unit">pts</span>
               </div>
             </div>
-            <div class="score-field">
+           <div class="score-field">
               <label for="max_violations">
                 <ShieldAlert size={13} strokeWidth={2} /> Max Violations
               </label>
@@ -672,7 +577,69 @@
                 <span class="score-unit">×</span>
               </div>
             </div>
+            <!-- NEW -->
+            <div class="score-field" style="grid-column: 1 / -1;">
+              <label for="questions_to_present">
+                <Layers size={13} strokeWidth={2} /> Questions to Present
+              </label>
+              <div class="score-input-wrap">
+                <input
+                  id="questions_to_present"
+                  name="questions_to_present"
+                  type="number"
+                  bind:value={questionsToPresent}
+                  min="0"
+                  max="999"
+                  placeholder="0"
+                />
+                <span class="score-unit">qs</span>
+              </div>
+              <p class="field-hint" style="margin-top: 0.25rem;">
+                {questionsToPresent > 0
+                  ? `Each student receives ${questionsToPresent} question${questionsToPresent !== 1 ? 's' : ''} drawn from the full pool.`
+                  : 'Set to 0 to present all questions in the pool.'}
+              </p>
+            </div>
           </div>
+          </div>
+
+          <!-- ── Questions to present ─────────────────────────────────────── -->
+          <div class="qtp-wrap">
+            <div class="qtp-header">
+              <div class="qtp-label-group">
+                <Layers size={14} />
+                <span>Questions Per Student</span>
+              </div>
+              <span class="opt-badge">Optional</span>
+            </div>
+
+            <div class="qtp-row">
+              <div class="score-input-wrap qtp-input-wrap">
+                <input
+                  id="questions_to_present"
+                  name="questions_to_present"
+                  type="number"
+                  min="0"
+                  bind:value={questionsToPresent}
+                  placeholder="0"
+                />
+                <span class="score-unit">Qs</span>
+              </div>
+              <div class="qtp-hint-bubble" class:active={questionsToPresent > 0}>
+                {#if questionsToPresent > 0}
+                  Each student gets <strong>{questionsToPresent}</strong> random questions from the pool
+                {:else}
+                  <span class="muted">0 = present all questions</span>
+                {/if}
+              </div>
+            </div>
+
+            <p class="field-hint">
+              Set to 0 to present every question. Set e.g. 40 to randomly sample 40 from your full question pool — each student gets a different subset.
+            </p>
+          </div>
+          <!-- ──────────────────────────────────────────────────────────────── -->
+
         </div>
       </div>
 
@@ -733,7 +700,7 @@
         </div>
       </div>
 
-      <!-- Stats summary (shows what's configured) -->
+      <!-- Configuration preview -->
       <div class="summary-card">
         <div class="summary-title">Configuration Preview</div>
         <div class="summary-rows">
@@ -765,6 +732,13 @@
             <span>End</span>
             <span class="sum-val">{endDate ? fmtDisplay(endDate, endTime) : '—'}</span>
           </div>
+          <!-- ── Questions to present preview row ── -->
+        <div class="sum-row">
+            <span>Pool size</span>
+            <span class="sum-val">
+              {questionsToPresent > 0 ? questionsToPresent + ' / pool' : 'All questions'}
+            </span>
+          </div>
         </div>
       </div>
 
@@ -781,55 +755,22 @@
 
 <style>
   /* ── Root ─────────────────────────────────────────────────────────────── */
-  .page {
-    padding: 1.75rem 2rem 4rem;
-    max-width: 1400px;
-    margin: 0 auto;
-  }
+  .page { padding: 1.75rem 2rem 4rem; max-width: 1400px; margin: 0 auto; }
 
   /* ── Page header ──────────────────────────────────────────────────────── */
-  .page-header {
-    margin-bottom: 1.75rem;
-    padding-bottom: 1.25rem;
-    border-bottom: 1px solid var(--color-border);
-  }
-  .back-link {
-    display: inline-flex; align-items: center; gap: 0.2rem;
-    font-size: 0.75rem; font-weight: 600; color: var(--lc-600);
-    text-decoration: none; margin-bottom: 0.875rem;
-    transition: gap 0.12s;
-  }
+  .page-header { margin-bottom: 1.75rem; padding-bottom: 1.25rem; border-bottom: 1px solid var(--color-border); }
+  .back-link { display: inline-flex; align-items: center; gap: 0.2rem; font-size: 0.75rem; font-weight: 600; color: var(--lc-600); text-decoration: none; margin-bottom: 0.875rem; transition: gap 0.12s; }
   .back-link:hover { gap: 0.4rem; }
-  .page-header-main {
-    display: flex; align-items: flex-start; justify-content: space-between; gap: 1rem;
-    flex-wrap: wrap;
-  }
-  .page-header-main h1 {
-    font-size: 1.85rem; font-weight: 900; letter-spacing: -0.04em;
-    color: var(--color-text); margin: 0 0 0.2rem; line-height: 1;
-  }
-  .page-header-main > div > p {
-    font-size: 0.82rem; color: var(--color-muted); margin: 0;
-  }
-  .header-actions {
-    display: flex; gap: 0.625rem; align-items: center; flex-shrink: 0;
-  }
+  .page-header-main { display: flex; align-items: flex-start; justify-content: space-between; gap: 1rem; flex-wrap: wrap; }
+  .page-header-main h1 { font-size: 1.85rem; font-weight: 900; letter-spacing: -0.04em; color: var(--color-text); margin: 0 0 0.2rem; line-height: 1; }
+  .page-header-main > div > p { font-size: 0.82rem; color: var(--color-muted); margin: 0; }
+  .header-actions { display: flex; gap: 0.625rem; align-items: center; flex-shrink: 0; }
 
   /* ── Alert ────────────────────────────────────────────────────────────── */
-  .alert-error {
-    display: flex; align-items: center; gap: 0.6rem;
-    padding: 0.875rem 1rem; margin-bottom: 1.25rem;
-    background: rgba(239,68,68,0.08); border: 1px solid rgba(239,68,68,0.25);
-    border-radius: 0.75rem; font-size: 0.875rem; color: #dc2626;
-  }
+  .alert-error { display: flex; align-items: center; gap: 0.6rem; padding: 0.875rem 1rem; margin-bottom: 1.25rem; background: rgba(239,68,68,0.08); border: 1px solid rgba(239,68,68,0.25); border-radius: 0.75rem; font-size: 0.875rem; color: #dc2626; }
 
   /* ── Grid layout ──────────────────────────────────────────────────────── */
-  .exam-grid {
-    display: grid;
-    grid-template-columns: repeat(3, 1fr);
-    gap: 1.25rem;
-    align-items: start;
-  }
+  .exam-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1.25rem; align-items: start; }
   @media (max-width: 1100px) {
     .exam-grid { grid-template-columns: 1fr 1fr; }
     .col:nth-child(3) { grid-column: 1 / -1; display: grid; grid-template-columns: 1fr 1fr; gap: 1.25rem; }
@@ -839,458 +780,203 @@
     .col:nth-child(3) { grid-column: auto; display: flex; flex-direction: column; }
   }
 
-  .col {
-    display: flex; flex-direction: column; gap: 1.25rem;
-    animation: fadeUp 0.35s ease both;
-    position: relative; z-index: 0;
-  }
+  .col { display: flex; flex-direction: column; gap: 1.25rem; animation: fadeUp 0.35s ease both; position: relative; z-index: 0; }
   .col:has(.dd-panel) { z-index: 100; }
   .col:nth-child(2) { animation-delay: 0.06s; }
   .col:nth-child(3) { animation-delay: 0.12s; }
-  @keyframes fadeUp {
-    from { opacity: 0; transform: translateY(8px); }
-    to   { opacity: 1; transform: translateY(0); }
-  }
+  @keyframes fadeUp { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
 
   /* ── Cards ────────────────────────────────────────────────────────────── */
-  .card {
-    background: var(--color-surface);
-    border: 1px solid var(--color-border);
-    border-radius: 1rem;
-    overflow: visible;
-  }
-  .card-header {
-    display: flex; align-items: flex-start; gap: 0.75rem;
-    padding: 1rem 1.25rem 0.875rem;
-    border-bottom: 1px solid var(--color-border);
-    background: var(--color-bg);
-    border-radius: 1rem 1rem 0 0;
-  }
-  .card-icon {
-    width: 32px; height: 32px; flex-shrink: 0;
-    display: flex; align-items: center; justify-content: center;
-    background: var(--lc-soft); border-radius: 0.5rem;
-    color: var(--lc-600);
-  }
-  .card-header h2 {
-    font-size: 0.85rem; font-weight: 700; color: var(--color-text);
-    margin: 0 0 0.15rem; line-height: 1.2;
-  }
-  .card-header p {
-    font-size: 0.73rem; color: var(--color-muted); margin: 0;
-  }
-  .card-body {
-    padding: 1.125rem 1.25rem;
-    display: flex; flex-direction: column; gap: 0.875rem;
-  }
+  .card { background: var(--color-surface); border: 1px solid var(--color-border); border-radius: 1rem; overflow: visible; }
+  .card-header { display: flex; align-items: flex-start; gap: 0.75rem; padding: 1rem 1.25rem 0.875rem; border-bottom: 1px solid var(--color-border); background: var(--color-bg); border-radius: 1rem 1rem 0 0; }
+  .card-icon { width: 32px; height: 32px; flex-shrink: 0; display: flex; align-items: center; justify-content: center; background: var(--lc-soft); border-radius: 0.5rem; color: var(--lc-600); }
+  .card-header h2 { font-size: 0.85rem; font-weight: 700; color: var(--color-text); margin: 0 0 0.15rem; line-height: 1.2; }
+  .card-header p { font-size: 0.73rem; color: var(--color-muted); margin: 0; }
+  .card-body { padding: 1.125rem 1.25rem; display: flex; flex-direction: column; gap: 0.875rem; }
 
   /* ── Fields ───────────────────────────────────────────────────────────── */
   .field { display: flex; flex-direction: column; gap: 0.35rem; }
-  .field label {
-    font-size: 0.8rem; font-weight: 600; color: var(--color-text);
-    display: flex; align-items: center; gap: 0.3rem;
-  }
+  .field label { font-size: 0.8rem; font-weight: 600; color: var(--color-text); display: flex; align-items: center; gap: 0.3rem; }
   .req { color: #ef4444; }
   .opt { font-size: 0.7rem; font-weight: 500; color: var(--color-muted); margin-left: 0.25rem; }
+  .opt-badge { font-size: 0.68rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; color: var(--color-muted); background: var(--color-border); padding: 0.12rem 0.45rem; border-radius: 999px; }
   .field-hint { font-size: 0.72rem; color: var(--color-muted); line-height: 1.4; margin: 0; }
+  .muted { color: var(--color-muted); }
 
   .field input[type=text],
   .field input[type=number],
   .field textarea {
-    padding: 0.575rem 0.875rem;
-    border: 1px solid var(--color-border);
-    border-radius: 0.6rem;
-    background: var(--color-bg);
-    color: var(--color-text);
-    font-size: 0.875rem;
-    font-family: inherit;
-    outline: none;
-    width: 100%;
-    box-sizing: border-box;
-    resize: vertical;
-    transition: border-color 0.15s, box-shadow 0.15s;
+    padding: 0.575rem 0.875rem; border: 1px solid var(--color-border); border-radius: 0.6rem;
+    background: var(--color-bg); color: var(--color-text); font-size: 0.875rem;
+    font-family: inherit; outline: none; width: 100%; box-sizing: border-box;
+    resize: vertical; transition: border-color 0.15s, box-shadow 0.15s;
   }
   .field input[type=text]:focus,
   .field input[type=number]:focus,
-  .field textarea:focus {
-    border-color: var(--lc-600);
-    box-shadow: 0 0 0 3px var(--lc-soft);
-  }
+  .field textarea:focus { border-color: var(--lc-600); box-shadow: 0 0 0 3px var(--lc-soft); }
   .two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 0.75rem; }
 
   /* ── Dropdown system ──────────────────────────────────────────────────── */
   .dd-wrap { position: relative; width: 100%; z-index: 10; }
   .dd-wrap:has(.dd-panel) { z-index: 1000; }
-
-  .dd-trigger {
-    width: 100%; display: flex; align-items: center; gap: 0.5rem;
-    padding: 0.575rem 0.875rem;
-    border: 1px solid var(--color-border);
-    border-radius: 0.6rem;
-    background: var(--color-bg);
-    color: var(--color-text);
-    font-size: 0.875rem;
-    font-family: inherit;
-    cursor: pointer;
-    text-align: left;
-    outline: none;
-    min-height: 38px;
-    transition: border-color 0.15s, box-shadow 0.15s;
-  }
+  .dd-trigger { width: 100%; display: flex; align-items: center; gap: 0.5rem; padding: 0.575rem 0.875rem; border: 1px solid var(--color-border); border-radius: 0.6rem; background: var(--color-bg); color: var(--color-text); font-size: 0.875rem; font-family: inherit; cursor: pointer; text-align: left; outline: none; min-height: 38px; transition: border-color 0.15s, box-shadow 0.15s; }
   .dd-trigger:hover { border-color: rgba(79, 70, 229, 0.5); }
-  .dd-trigger.open,
-  .dd-trigger.has-val {
-    border-color: var(--lc-600);
-  }
-  .dd-trigger.open {
-    box-shadow: 0 0 0 3px var(--lc-soft);
-    border-radius: 0.6rem 0.6rem 0 0;
-  }
-
+  .dd-trigger.open, .dd-trigger.has-val { border-color: var(--lc-600); }
+  .dd-trigger.open { box-shadow: 0 0 0 3px var(--lc-soft); border-radius: 0.6rem 0.6rem 0 0; }
   .dd-placeholder { color: var(--color-muted); flex: 1; font-size: 0.85rem; }
   .dd-val { flex: 1; font-size: 0.85rem; color: var(--color-text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  .dd-badge {
-    flex-shrink: 0;
-    font-size: 0.7rem; font-weight: 800;
-    background: var(--lc-soft);
-    color: var(--lc-600);
-    padding: 0.1rem 0.45rem;
-    border-radius: 0.3rem;
-  }
-
-  :global(.dd-chevron) {
-    margin-left: auto; flex-shrink: 0;
-    color: var(--color-muted);
-    transition: transform 0.18s;
-  }
+  .dd-badge { flex-shrink: 0; font-size: 0.7rem; font-weight: 800; background: var(--lc-soft); color: var(--lc-600); padding: 0.1rem 0.45rem; border-radius: 0.3rem; }
+  :global(.dd-chevron) { margin-left: auto; flex-shrink: 0; color: var(--color-muted); transition: transform 0.18s; }
   .dd-trigger.open :global(.dd-chevron) { transform: rotate(180deg); }
-
-  .dd-panel {
-    position: absolute;
-    top: 100%;
-    left: 0; right: 0;
-    background: var(--color-surface);
-    border: 1px solid var(--lc-600);
-    border-top: none;
-    border-radius: 0 0 0.75rem 0.75rem;
-    box-shadow: 0 8px 24px rgba(0,0,0,0.12);
-    z-index: 1000;
-    overflow: hidden;
-    animation: panelIn 0.12s ease;
-  }
-  @keyframes panelIn {
-    from { opacity: 0; transform: translateY(-4px); }
-    to   { opacity: 1; transform: translateY(0); }
-  }
-
-  .dd-search {
-    display: flex; align-items: center; gap: 0.5rem;
-    padding: 0.55rem 0.875rem;
-    border-bottom: 1px solid var(--color-border);
-    color: var(--color-muted);
-  }
-  .dd-search input {
-    flex: 1; background: none; border: none; outline: none;
-    font-size: 0.82rem; color: var(--color-text); font-family: inherit;
-  }
-  .dd-search input::placeholder { color: var(--color-muted); }
-
+  .dd-panel { position: absolute; top: 100%; left: 0; right: 0; background: var(--color-surface); border: 1px solid var(--lc-600); border-top: none; border-radius: 0 0 0.75rem 0.75rem; box-shadow: 0 8px 24px rgba(0,0,0,0.12); z-index: 1000; overflow: hidden; animation: panelIn 0.12s ease; }
+  @keyframes panelIn { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: translateY(0); } }
+  .dd-search { display: flex; align-items: center; gap: 0.5rem; padding: 0.55rem 0.875rem; border-bottom: 1px solid var(--color-border); color: var(--color-muted); }
+  .dd-search input { flex: 1; background: none; border: none; outline: none; font-size: 0.82rem; color: var(--color-text); font-family: inherit; }
   .dd-list { max-height: 210px; overflow-y: auto; padding: 0.3rem; }
   .dd-list::-webkit-scrollbar { width: 3px; }
   .dd-list::-webkit-scrollbar-thumb { background: var(--color-border); border-radius: 2px; }
-
-  .dd-item {
-    width: 100%; display: flex; align-items: center; gap: 0.5rem;
-    padding: 0.5rem 0.75rem; border-radius: 0.45rem;
-    background: none; border: none; cursor: pointer; text-align: left;
-    font-family: inherit; transition: background 0.1s;
-  }
-  .dd-item:hover   { background: var(--lc-soft); }
-  .dd-item.active  { background: rgba(79, 70, 229, 0.1); }
-
-  .item-code {
-    font-size: 0.7rem; font-weight: 800; color: var(--lc-600);
-    background: var(--lc-soft);
-    padding: 0.1rem 0.4rem; border-radius: 0.3rem;
-    white-space: nowrap; flex-shrink: 0;
-  }
+  .dd-item { width: 100%; display: flex; align-items: center; gap: 0.5rem; padding: 0.5rem 0.75rem; border-radius: 0.45rem; background: none; border: none; cursor: pointer; text-align: left; font-family: inherit; transition: background 0.1s; }
+  .dd-item:hover { background: var(--lc-soft); }
+  .dd-item.active { background: rgba(79, 70, 229, 0.1); }
+  .item-code { font-size: 0.7rem; font-weight: 800; color: var(--lc-600); background: var(--lc-soft); padding: 0.1rem 0.4rem; border-radius: 0.3rem; white-space: nowrap; flex-shrink: 0; }
   .item-label { font-size: 0.83rem; color: var(--color-text); flex: 1; }
   :global(.item-check) { color: var(--lc-600); flex-shrink: 0; margin-left: auto; }
   .dd-empty { text-align: center; padding: 1.25rem; font-size: 0.82rem; color: var(--color-muted); }
-
-  /* Multi-select tags */
   .dd-trigger.multi { flex-wrap: wrap; height: auto; align-items: center; }
   .tag-row { display: flex; flex-wrap: wrap; gap: 0.25rem; flex: 1; }
-  .tag {
-    display: inline-flex; align-items: center; gap: 0.2rem;
-    font-size: 0.7rem; font-weight: 700;
-    padding: 0.2rem 0.3rem 0.2rem 0.45rem;
-    background: var(--lc-soft); color: var(--lc-600);
-    border-radius: 0.3rem; white-space: nowrap;
-  }
-  .tag-x {
-    background: none; border: none; cursor: pointer; color: var(--lc-600);
-    display: flex; align-items: center; padding: 0; opacity: 0.6;
-    transition: opacity 0.1s;
-  }
+  .tag { display: inline-flex; align-items: center; gap: 0.2rem; font-size: 0.7rem; font-weight: 700; padding: 0.2rem 0.3rem 0.2rem 0.45rem; background: var(--lc-soft); color: var(--lc-600); border-radius: 0.3rem; white-space: nowrap; }
+  .tag-x { background: none; border: none; cursor: pointer; color: var(--lc-600); display: flex; align-items: center; padding: 0; opacity: 0.6; transition: opacity 0.1s; }
   .tag-x:hover { opacity: 1; }
 
   /* ── DateTime picker ──────────────────────────────────────────────────── */
   :global(.dt-cal-icon) { flex-shrink: 0; color: var(--lc-600); }
-
   .dt-panel { width: 290px; min-width: unset; }
-
-  .cal-nav {
-    display: flex; align-items: center; justify-content: space-between;
-    padding: 0.7rem 0.875rem;
-    border-bottom: 1px solid var(--color-border);
-  }
-  .cal-arr {
-    background: none; border: none; cursor: pointer;
-    font-size: 1.1rem; padding: 0.2rem 0.45rem;
-    border-radius: 0.35rem; color: var(--color-text);
-    transition: background 0.1s;
-  }
+  .cal-nav { display: flex; align-items: center; justify-content: space-between; padding: 0.7rem 0.875rem; border-bottom: 1px solid var(--color-border); }
+  .cal-arr { background: none; border: none; cursor: pointer; font-size: 1.1rem; padding: 0.2rem 0.45rem; border-radius: 0.35rem; color: var(--color-text); transition: background 0.1s; }
   .cal-arr:hover { background: var(--lc-soft); color: var(--lc-600); }
   .cal-month-lbl { font-size: 0.83rem; font-weight: 700; color: var(--color-text); }
-
-  .cal-grid {
-    display: grid; grid-template-columns: repeat(7, 1fr);
-    gap: 1px; padding: 0.625rem;
-  }
-  .cal-dn {
-    text-align: center; font-size: 0.64rem; font-weight: 700;
-    color: var(--color-muted); padding: 0.15rem 0;
-    text-transform: uppercase;
-  }
-  .cal-day {
-    aspect-ratio: 1; display: flex; align-items: center; justify-content: center;
-    border-radius: 0.375rem; background: none; border: none;
-    font-size: 0.78rem; cursor: pointer; color: var(--color-text);
-    transition: all 0.1s; font-family: inherit;
-  }
+  .cal-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 1px; padding: 0.625rem; }
+  .cal-dn { text-align: center; font-size: 0.64rem; font-weight: 700; color: var(--color-muted); padding: 0.15rem 0; text-transform: uppercase; }
+  .cal-day { aspect-ratio: 1; display: flex; align-items: center; justify-content: center; border-radius: 0.375rem; background: none; border: none; font-size: 0.78rem; cursor: pointer; color: var(--color-text); transition: all 0.1s; font-family: inherit; }
   .cal-day:hover { background: var(--lc-soft); color: var(--lc-600); }
   .cal-day.today { color: var(--lc-600); font-weight: 800; }
   .cal-day.selected { background: var(--lc-600); color: white; font-weight: 700; }
   .cal-day.selected.today { background: var(--lc-700); }
-
-  .time-row {
-    display: flex; align-items: center; gap: 0.5rem;
-    padding: 0.55rem 0.875rem;
-    border-top: 1px solid var(--color-border);
-    color: var(--color-muted);
-  }
-  .time-sel {
-    flex: 1; padding: 0.3rem 0.5rem;
-    border: 1px solid var(--color-border);
-    border-radius: 0.4rem;
-    background: var(--color-bg); color: var(--color-text);
-    font-size: 0.8rem; font-family: inherit; outline: none; cursor: pointer;
-  }
+  .time-row { display: flex; align-items: center; gap: 0.5rem; padding: 0.55rem 0.875rem; border-top: 1px solid var(--color-border); color: var(--color-muted); }
+  .time-sel { flex: 1; padding: 0.3rem 0.5rem; border: 1px solid var(--color-border); border-radius: 0.4rem; background: var(--color-bg); color: var(--color-text); font-size: 0.8rem; font-family: inherit; outline: none; cursor: pointer; }
   .time-sel:focus { border-color: var(--lc-600); }
-  .dt-done-btn {
-    padding: 0.3rem 0.75rem; background: var(--lc-600); color: white;
-    border: none; border-radius: 0.4rem;
-    font-size: 0.75rem; font-weight: 700; cursor: pointer;
-  }
+  .dt-done-btn { padding: 0.3rem 0.75rem; background: var(--lc-600); color: white; border: none; border-radius: 0.4rem; font-size: 0.75rem; font-weight: 700; cursor: pointer; }
   .dt-done-btn:hover { background: var(--lc-700); }
 
   /* ── Scope section ────────────────────────────────────────────────────── */
   .scope-section { display: flex; flex-direction: column; gap: 0.7rem; }
-  .scope-row {
-    display: flex; align-items: center; justify-content: space-between; gap: 0.5rem;
-  }
-  .scope-label-group {
-    display: flex; align-items: center; gap: 0.35rem;
-    font-size: 0.8rem; font-weight: 600; color: var(--color-text);
-  }
-  .opt-badge {
-    font-size: 0.68rem; font-weight: 700; text-transform: uppercase;
-    letter-spacing: 0.04em; color: var(--color-muted);
-    background: var(--color-border); padding: 0.12rem 0.45rem;
-    border-radius: 999px;
-  }
-  .pill-btn {
-    font-size: 0.7rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em;
-    padding: 0.22rem 0.6rem; border-radius: 999px;
-    border: 1.5px solid var(--color-border);
-    background: none; color: var(--color-muted); cursor: pointer;
-    transition: all 0.15s;
-  }
+  .scope-row { display: flex; align-items: center; justify-content: space-between; gap: 0.5rem; }
+  .scope-label-group { display: flex; align-items: center; gap: 0.35rem; font-size: 0.8rem; font-weight: 600; color: var(--color-text); }
+  .pill-btn { font-size: 0.7rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; padding: 0.22rem 0.6rem; border-radius: 999px; border: 1.5px solid var(--color-border); background: none; color: var(--color-muted); cursor: pointer; transition: all 0.15s; }
   .pill-btn:hover { border-color: var(--lc-600); color: var(--lc-600); }
   .pill-btn.active { background: var(--lc-600); border-color: var(--lc-600); color: white; }
-
   .level-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 0.45rem; }
-  .level-chip {
-    display: flex; flex-direction: column; align-items: center; justify-content: center;
-    gap: 0.05rem; padding: 0.65rem 0.5rem;
-    border-radius: 0.6rem;
-    border: 1.5px solid var(--color-border);
-    background: var(--color-bg);
-    cursor: pointer; transition: all 0.15s;
-    font-family: inherit; position: relative;
-  }
+  .level-chip { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 0.05rem; padding: 0.65rem 0.5rem; border-radius: 0.6rem; border: 1.5px solid var(--color-border); background: var(--color-bg); cursor: pointer; transition: all 0.15s; font-family: inherit; position: relative; }
   .level-chip:hover { border-color: rgba(79, 70, 229, 0.5); background: var(--lc-soft); }
   .level-chip.selected { border-color: var(--lc-600); background: rgba(79, 70, 229, 0.08); }
-  .level-num {
-    font-size: 1.15rem; font-weight: 900; color: var(--color-text);
-    line-height: 1; font-variant-numeric: tabular-nums;
-  }
+  .level-num { font-size: 1.15rem; font-weight: 900; color: var(--color-text); line-height: 1; font-variant-numeric: tabular-nums; }
   .level-chip.selected .level-num { color: var(--lc-600); }
-  .level-lbl {
-    font-size: 0.6rem; font-weight: 600; color: var(--color-muted);
-    text-transform: uppercase; letter-spacing: 0.05em;
-  }
-  .level-check {
-    position: absolute; top: 5px; right: 6px;
-    color: var(--lc-600); display: flex;
-  }
-
-  .scope-note {
-    font-size: 0.75rem; color: var(--color-muted);
-    padding: 0.5rem 0.75rem;
-    background: var(--color-bg);
-    border-radius: 0.5rem;
-    border: 1px solid var(--color-border);
-    line-height: 1.5;
-    transition: all 0.2s;
-  }
+  .level-lbl { font-size: 0.6rem; font-weight: 600; color: var(--color-muted); text-transform: uppercase; letter-spacing: 0.05em; }
+  .level-check { position: absolute; top: 5px; right: 6px; color: var(--lc-600); display: flex; }
+  .scope-note { font-size: 0.75rem; color: var(--color-muted); padding: 0.5rem 0.75rem; background: var(--color-bg); border-radius: 0.5rem; border: 1px solid var(--color-border); line-height: 1.5; transition: all 0.2s; }
   .scope-note.active { color: var(--lc-600); background: rgba(79, 70, 229, 0.05); border-color: rgba(79, 70, 229, 0.25); }
-
   .divider { height: 1px; background: var(--color-border); margin: 0.25rem 0; }
 
   /* ── Score grid ───────────────────────────────────────────────────────── */
   .score-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0.75rem; }
   .score-field { display: flex; flex-direction: column; gap: 0.35rem; }
-  .score-field label {
-    font-size: 0.78rem; font-weight: 600; color: var(--color-muted);
-    display: flex; align-items: center; gap: 0.3rem;
-  }
+  .score-field label { font-size: 0.78rem; font-weight: 600; color: var(--color-muted); display: flex; align-items: center; gap: 0.3rem; }
   .score-input-wrap { position: relative; }
-  .score-input-wrap input {
-    width: 100%; padding: 0.575rem 2rem 0.575rem 0.875rem;
-    border: 1px solid var(--color-border); border-radius: 0.6rem;
-    background: var(--color-bg); color: var(--color-text);
-    font-size: 1rem; font-weight: 700;
-    font-family: inherit; outline: none; box-sizing: border-box;
-    transition: border-color 0.15s, box-shadow 0.15s;
+  .score-input-wrap input { width: 100%; padding: 0.575rem 2rem 0.575rem 0.875rem; border: 1px solid var(--color-border); border-radius: 0.6rem; background: var(--color-bg); color: var(--color-text); font-size: 1rem; font-weight: 700; font-family: inherit; outline: none; box-sizing: border-box; transition: border-color 0.15s, box-shadow 0.15s; }
+  .score-input-wrap input:focus { border-color: var(--lc-600); box-shadow: 0 0 0 3px var(--lc-soft); }
+  .score-unit { position: absolute; right: 0.75rem; top: 50%; transform: translateY(-50%); font-size: 0.72rem; font-weight: 700; color: var(--color-muted); pointer-events: none; }
+
+  /* ── Questions to present ─────────────────────────────────────────────── */
+  .qtp-wrap {
+    display: flex; flex-direction: column; gap: 0.5rem;
+    padding: 0.875rem;
+    background: var(--color-bg);
+    border: 1px solid var(--color-border);
+    border-radius: 0.75rem;
   }
-  .score-input-wrap input:focus {
-    border-color: var(--lc-600);
-    box-shadow: 0 0 0 3px var(--lc-soft);
+  .qtp-header {
+    display: flex; align-items: center; justify-content: space-between;
   }
-  .score-unit {
-    position: absolute; right: 0.75rem; top: 50%; transform: translateY(-50%);
-    font-size: 0.72rem; font-weight: 700; color: var(--color-muted);
-    pointer-events: none;
+  .qtp-label-group {
+    display: flex; align-items: center; gap: 0.35rem;
+    font-size: 0.8rem; font-weight: 600; color: var(--color-text);
   }
+  .qtp-row {
+    display: flex; align-items: center; gap: 0.75rem;
+  }
+  .qtp-input-wrap {
+    width: 100px; flex-shrink: 0;
+  }
+  .qtp-hint-bubble {
+    flex: 1; font-size: 0.75rem; color: var(--color-muted);
+    padding: 0.45rem 0.75rem;
+    background: var(--color-surface);
+    border: 1px solid var(--color-border);
+    border-radius: 0.5rem;
+    line-height: 1.4;
+    transition: all 0.2s;
+  }
+  .qtp-hint-bubble.active {
+    color: var(--lc-600);
+    background: rgba(79, 70, 229, 0.05);
+    border-color: rgba(79, 70, 229, 0.25);
+  }
+  .qtp-hint-bubble strong { font-weight: 800; }
 
   /* ── Toggles ──────────────────────────────────────────────────────────── */
   .toggles { display: flex; flex-direction: column; }
-  .toggle-row {
-    display: flex; align-items: center; justify-content: space-between; gap: 1rem;
-    padding: 0.875rem 1.25rem; cursor: pointer;
-    border-bottom: 1px solid var(--color-border);
-    transition: background 0.12s;
-  }
+  .toggle-row { display: flex; align-items: center; justify-content: space-between; gap: 1rem; padding: 0.875rem 1.25rem; cursor: pointer; border-bottom: 1px solid var(--color-border); transition: background 0.12s; }
   .toggle-row:last-child { border-bottom: none; }
   .toggle-row:hover { background: var(--lc-soft); }
   .toggle-label { display: block; font-size: 0.83rem; font-weight: 600; color: var(--color-text); margin-bottom: 0.1rem; }
   .toggle-desc  { display: block; font-size: 0.73rem; color: var(--color-muted); }
-
-  /* Custom toggle switch */
   .toggle-track { position: relative; width: 40px; height: 22px; flex-shrink: 0; }
-  .toggle-cb {
-    position: absolute; opacity: 0; width: 0; height: 0;
-  }
-  .toggle-knob {
-    position: absolute; inset: 0;
-    background: var(--color-border);
-    border-radius: 999px;
-    transition: background 0.2s;
-    cursor: pointer;
-  }
-  .toggle-knob::after {
-    content: '';
-    position: absolute;
-    width: 16px; height: 16px;
-    top: 3px; left: 3px;
-    background: white;
-    border-radius: 50%;
-    transition: transform 0.2s;
-    box-shadow: 0 1px 3px rgba(0,0,0,0.2);
-  }
+  .toggle-cb { position: absolute; opacity: 0; width: 0; height: 0; }
+  .toggle-knob { position: absolute; inset: 0; background: var(--color-border); border-radius: 999px; transition: background 0.2s; cursor: pointer; }
+  .toggle-knob::after { content: ''; position: absolute; width: 16px; height: 16px; top: 3px; left: 3px; background: white; border-radius: 50%; transition: transform 0.2s; box-shadow: 0 1px 3px rgba(0,0,0,0.2); }
   .toggle-cb:checked + .toggle-knob { background: var(--lc-600); }
   .toggle-cb:checked + .toggle-knob::after { transform: translateX(18px); }
 
   /* ── Info box ─────────────────────────────────────────────────────────── */
-  .info-box {
-    display: flex; gap: 0.75rem; padding: 1rem 1.125rem;
-    background: var(--lc-soft);
-    border: 1px solid rgba(79, 70, 229, 0.2);
-    border-radius: 0.875rem;
-  }
+  .info-box { display: flex; gap: 0.75rem; padding: 1rem 1.125rem; background: var(--lc-soft); border: 1px solid rgba(79, 70, 229, 0.2); border-radius: 0.875rem; }
   .info-dot { color: var(--lc-600); flex-shrink: 0; margin-top: 0.05rem; }
   .info-box strong { display: block; font-size: 0.82rem; font-weight: 700; color: var(--color-text); margin-bottom: 0.3rem; }
   .info-box p { font-size: 0.76rem; color: var(--color-muted); margin: 0; line-height: 1.55; }
 
   /* ── Summary card ─────────────────────────────────────────────────────── */
-  .summary-card {
-    background: var(--color-surface);
-    border: 1px solid var(--color-border);
-    border-radius: 0.875rem;
-    overflow: hidden;
-  }
-  .summary-title {
-    padding: 0.625rem 1rem;
-    font-size: 0.72rem; font-weight: 800; text-transform: uppercase; letter-spacing: 0.06em;
-    color: var(--color-muted);
-    background: var(--color-bg);
-    border-bottom: 1px solid var(--color-border);
-  }
+  .summary-card { background: var(--color-surface); border: 1px solid var(--color-border); border-radius: 0.875rem; overflow: hidden; }
+  .summary-title { padding: 0.625rem 1rem; font-size: 0.72rem; font-weight: 800; text-transform: uppercase; letter-spacing: 0.06em; color: var(--color-muted); background: var(--color-bg); border-bottom: 1px solid var(--color-border); }
   .summary-rows { padding: 0.5rem; }
-  .sum-row {
-    display: flex; align-items: center; justify-content: space-between;
-    padding: 0.4rem 0.5rem; border-radius: 0.4rem; gap: 0.5rem;
-  }
+  .sum-row { display: flex; align-items: center; justify-content: space-between; padding: 0.4rem 0.5rem; border-radius: 0.4rem; gap: 0.5rem; }
   .sum-row:hover { background: var(--lc-soft); }
   .sum-row span:first-child { font-size: 0.77rem; color: var(--color-muted); }
   .sum-val { font-size: 0.77rem; font-weight: 600; color: var(--color-text); text-align: right; }
+  .sum-val-accent { color: var(--lc-600); }
 
   /* ── Buttons ──────────────────────────────────────────────────────────── */
-  .btn {
-    display: inline-flex; align-items: center; justify-content: center;
-    gap: 0.4rem; padding: 0.625rem 1.125rem;
-    border-radius: 0.65rem;
-    font-size: 0.83rem; font-weight: 700;
-    cursor: pointer; transition: all 0.15s;
-    text-decoration: none; font-family: inherit;
-    white-space: nowrap;
-  }
-  .btn.primary {
-    background: var(--lc-600); border: 1px solid var(--lc-600); color: white;
-  }
+  .btn { display: inline-flex; align-items: center; justify-content: center; gap: 0.4rem; padding: 0.625rem 1.125rem; border-radius: 0.65rem; font-size: 0.83rem; font-weight: 700; cursor: pointer; transition: all 0.15s; text-decoration: none; font-family: inherit; white-space: nowrap; }
+  .btn.primary { background: var(--lc-600); border: 1px solid var(--lc-600); color: white; }
   .btn.primary:hover { background: var(--lc-700); border-color: var(--lc-700); }
-  .btn.ghost {
-    background: transparent; border: 1px solid var(--color-border); color: var(--color-text);
-  }
+  .btn.ghost { background: transparent; border: 1px solid var(--color-border); color: var(--color-text); }
   .btn.ghost:hover { border-color: var(--lc-600); color: var(--lc-600); }
 
-  /* ── Footer (mobile/column 3) ─────────────────────────────────────────── */
-  .form-footer {
-    display: flex; flex-direction: column; gap: 0.5rem;
-  }
+  /* ── Footer ───────────────────────────────────────────────────────────── */
+  .form-footer { display: flex; flex-direction: column; gap: 0.5rem; }
   .form-footer .btn { width: 100%; }
+  @media (min-width: 721px) { .form-footer { display: none; } }
+  @media (max-width: 720px) { .header-actions { display: none; } }
 
-  /* Hide footer on wide screens where header actions are visible */
-  @media (min-width: 721px) {
-    .form-footer { display: none; }
-  }
-  @media (max-width: 720px) {
-    .header-actions { display: none; }
-  }
-
-  /* ── Dark mode extras ─────────────────────────────────────────────────── */
+  /* ── Dark mode ────────────────────────────────────────────────────────── */
   :global(.dark) .dd-panel { box-shadow: 0 8px 24px rgba(0,0,0,0.4); }
   :global(.dark) .level-chip.selected { background: rgba(79, 70, 229, 0.14); }
   :global(.dark) .scope-note.active { background: rgba(79, 70, 229, 0.1); }

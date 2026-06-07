@@ -24,9 +24,76 @@
   let submitting = $state(false);
   let paused     = $state(session.status === 'flagged');
 
-  const currentQ      = $derived(questions[currentIndex]);
+  // ── Nav order: answered questions stay put, unanswered reshuffle ──────────
+  //
+  // We maintain a stable display list where:
+  //   - Answered questions keep their current position (locked in place)
+  //   - Unanswered questions reshuffle among themselves every SHUFFLE_INTERVAL ms
+  //
+  // `navOrder` is an array of question IDs in display order.
+  // `currentIndex` tracks position in navOrder, not in the raw `questions` array.
+
+  const SHUFFLE_INTERVAL = 30_000; // reshuffle unanswered every 30s
+
+  // Initialise nav order from the server-ordered questions
+  let navOrder = $state<string[]>(questions.map((q: any) => q.id));
+
+  // Map id → question for fast lookup
+  const qMap = new Map(questions.map((q: any) => [q.id, q]));
+
+  // The questions in current nav display order
+  const navQuestions = $derived(navOrder.map(id => qMap.get(id)!));
+
+  // Current question based on nav position
+  const currentQ = $derived(navQuestions[currentIndex]);
+
   const answered      = $derived(Object.keys(answers).length);
   const watermarkText = `${data.user?.matricNumber ?? ''} — ${data.user?.fullName ?? ''}`;
+
+  function shuffleUnanswered() {
+    const answeredIds   = new Set(Object.keys(answers));
+
+    // Split into answered (with their positions) and unanswered (with their positions)
+    const answeredSlots:   { pos: number; id: string }[] = [];
+    const unansweredSlots: { pos: number; id: string }[] = [];
+
+    navOrder.forEach((id, pos) => {
+      if (answeredIds.has(id)) answeredSlots.push({ pos, id });
+      else unansweredSlots.push({ pos, id });
+    });
+
+    // Don't shuffle if nothing to shuffle
+    if (unansweredSlots.length < 2) return;
+
+    // Fisher-Yates on unanswered IDs only
+    const ids = unansweredSlots.map(s => s.id);
+    for (let i = ids.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [ids[i], ids[j]] = [ids[j], ids[i]];
+    }
+
+    // Rebuild navOrder: answered stay at their original positions,
+    // unanswered get the shuffled IDs in those same slot positions
+    const next = [...navOrder];
+    unansweredSlots.forEach(({ pos }, i) => { next[pos] = ids[i]; });
+
+    // Keep currentIndex pointing at the same question even after reshuffle
+    const currentId = navOrder[currentIndex];
+    navOrder = next;
+    currentIndex = navOrder.indexOf(currentId);
+  }
+
+  let shuffleTimer: ReturnType<typeof setInterval> | null = null;
+
+  function startShuffleTimer() {
+    shuffleTimer = setInterval(shuffleUnanswered, SHUFFLE_INTERVAL);
+  }
+
+  function stopShuffleTimer() {
+    if (shuffleTimer) { clearInterval(shuffleTimer); shuffleTimer = null; }
+  }
+
+  // ─────────────────────────────────────────────────────────────────────────
 
   let ws: WebSocket | null = null;
 
@@ -38,8 +105,8 @@
     ws.onmessage = (e) => {
       try {
         const msg = JSON.parse(e.data);
-        if (msg.type === 'pause_session')  paused = true;
-        if (msg.type === 'resume_session') paused = false;
+        if (msg.type === 'pause_session')  { paused = true;  stopShuffleTimer();  }
+        if (msg.type === 'resume_session') { paused = false; startShuffleTimer(); }
         if (msg.type === 'force_submit')   handleSubmit('force_submitted');
       } catch {}
     };
@@ -79,13 +146,14 @@
     });
     const json = await res.json();
     violation = { count: json.violation_count, max: exam.maxViolations, action: json.action, flagType };
-    if (json.action === 'exam_paused')    paused = true;
+    if (json.action === 'exam_paused')    { paused = true; stopShuffleTimer(); }
     if (json.action === 'auto_submitted') goto(`/exam/${exam.id}/complete`);
   }
 
   async function handleSubmit(_type = 'submitted') {
     if (submitting) return;
     submitting = true;
+    stopShuffleTimer();
     await fetch(`/api/exam/${exam.id}/submit`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ session_id: session.id }),
@@ -106,8 +174,16 @@
     }
   }
 
-  onMount(() => { startSession(); connectWs(); });
-  onDestroy(() => ws?.close());
+  onMount(() => {
+    startSession();
+    connectWs();
+    if (!paused) startShuffleTimer();
+  });
+
+  onDestroy(() => {
+    ws?.close();
+    stopShuffleTimer();
+  });
 </script>
 
 <svelte:head><title>{exam.title} — MOUAU eTest</title></svelte:head>
@@ -152,11 +228,16 @@
     </header>
 
     <div class="body">
+      <!-- Nav uses navQuestions (reshuffled order), not raw questions -->
       <nav class="q-nav" aria-label="Question navigator">
-        {#each questions as q, i}
+        {#each navQuestions as q, i}
           <button
-            class="q-dot" class:active={i === currentIndex} class:answered={!!answers[q.id]}
-            onclick={() => { currentIndex = i; }} type="button" aria-label="Question {i + 1}"
+            class="q-dot"
+            class:active={i === currentIndex}
+            class:answered={!!answers[q.id]}
+            onclick={() => { currentIndex = i; }}
+            type="button"
+            aria-label="Question {i + 1}"
           >{i + 1}</button>
         {/each}
       </nav>
@@ -182,8 +263,8 @@
           <div class="nav-btns">
             <button onclick={() => { currentIndex = Math.max(0, currentIndex - 1); }}
               disabled={currentIndex === 0} type="button">← Previous</button>
-            <button onclick={() => { currentIndex = Math.min(questions.length - 1, currentIndex + 1); }}
-              disabled={currentIndex === questions.length - 1} type="button">Next →</button>
+            <button onclick={() => { currentIndex = Math.min(navQuestions.length - 1, currentIndex + 1); }}
+              disabled={currentIndex === navQuestions.length - 1} type="button">Next →</button>
           </div>
         {/if}
       </main>
@@ -202,14 +283,20 @@
   .submit-btn:disabled { opacity: 0.5; cursor: not-allowed; }
   .body   { display: flex; flex: 1; overflow: hidden; }
   .q-nav  { width: 5rem; background: var(--color-surface); border-right: 1px solid var(--color-border); padding: 1rem 0.5rem; display: flex; flex-direction: column; gap: 0.4rem; overflow-y: auto; flex-shrink: 0; }
-  .q-dot  { width: 2.5rem; height: 2.5rem; border-radius: 0.5rem; border: 2px solid var(--color-border); background: var(--color-bg); color: var(--color-text); font-size: 0.8rem; font-weight: 600; cursor: pointer; display: flex; align-items: center; justify-content: center; }
+  .q-dot  { width: 2.5rem; height: 2.5rem; border-radius: 0.5rem; border: 2px solid var(--color-border); background: var(--color-bg); color: var(--color-text); font-size: 0.8rem; font-weight: 600; cursor: pointer; display: flex; align-items: center; justify-content: center; transition: background 0.2s, border-color 0.2s, transform 0.15s; }
   .q-dot.answered { background: var(--color-primary-subtle); border-color: var(--color-primary); color: var(--color-primary); }
   .q-dot.active   { background: var(--color-primary); border-color: var(--color-primary); color: #fff; }
+  /* Subtle pop when a dot moves to a new slot after reshuffle */
+  .q-dot:not(.answered):not(.active) { animation: dot-settle 0.25s ease; }
+  @keyframes dot-settle {
+    0%   { transform: scale(0.88); opacity: 0.6; }
+    100% { transform: scale(1);    opacity: 1; }
+  }
   .q-panel { flex: 1; padding: 2rem; overflow-y: auto; display: flex; flex-direction: column; gap: 2rem; max-width: 720px; margin: 0 auto; width: 100%; }
   .nav-btns { display: flex; justify-content: space-between; padding-top: 1rem; border-top: 1px solid var(--color-border); margin-top: auto; }
   .nav-btns button { padding: 0.6rem 1.25rem; border: 1px solid var(--color-border); border-radius: 0.5rem; background: var(--color-surface); color: var(--color-text); font-size: 0.9rem; font-weight: 500; cursor: pointer; }
   .nav-btns button:disabled { opacity: 0.4; cursor: not-allowed; }
-  .overlay-block { position: fixed; inset: 0; z-index: 9998; background: rgba(0,0,0,0.8); display: flex; align-items: center; justify-content: center; }
+  .overlay-block { position: fixed; inset: 0; z-index: 9998; background: rgba(0,0,0,0.8); display: flex; align-items: center; justify-content: justify; }
   .overlay-card  { background: var(--color-surface); border-radius: 1rem; padding: 2.5rem; text-align: center; display: flex; flex-direction: column; align-items: center; gap: 1rem; }
   .overlay-card span { font-size: 3rem; }
   .overlay-card h2   { font-size: 1.3rem; font-weight: 700; margin: 0; }

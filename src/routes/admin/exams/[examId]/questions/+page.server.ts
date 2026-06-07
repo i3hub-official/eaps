@@ -152,27 +152,93 @@ export const actions: Actions = {
 
     const existing = await prisma.question.count({ where: { examId: params.examId } });
 
-    await prisma.$transaction(
-      questions.map((q, i) => {
-        const type = q.type === 'fitb' ? 'fill_in_the_blank' : 'mcq';
-        return prisma.question.create({
-          data: {
-            examId: params.examId,
-            type: type as 'mcq' | 'fill_in_the_blank',
-            body: q.body,
-            topic: q.topic,
-            marks: q.marks ?? 1,
-            orderIndex: existing + i,
-            options: type === 'mcq' && q.options
-              ? { create: q.options.map((o, oi) => ({ optionText: o.text, isCorrect: o.correct, orderIndex: oi })) }
-              : undefined,
-            fitbAnswers: type === 'fill_in_the_blank' && q.answers
-              ? { create: q.answers.map((a, ai) => ({ acceptedAnswer: a, isPrimary: ai === 0 })) }
-              : undefined,
-          },
+    // ── Strategy: createMany for the question rows (one round-trip),
+    //    then createMany for options and fitbAnswers separately.
+    //    No interactive transaction — no timeout risk.
+    //
+    //    We need the inserted question IDs to attach child rows, so we
+    //    insert questions one-by-one in a plain Promise.all with a
+    //    concurrency cap of 10 to stay well within connection limits.
+
+    const CHUNK = 10;
+    const created: { id: string; index: number }[] = [];
+
+    for (let i = 0; i < questions.length; i += CHUNK) {
+      const slice = questions.slice(i, i + CHUNK);
+
+      const results = await Promise.all(
+        slice.map((q, j) => {
+          const type = q.type === 'fitb' ? 'fill_in_the_blank' : 'mcq';
+          return prisma.question.create({
+            data: {
+              examId: params.examId,
+              type: type as 'mcq' | 'fill_in_the_blank',
+              body: (q.body ?? '').trim(),
+              topic: q.topic?.trim() || undefined,
+              marks: Number(q.marks ?? 1),
+              orderIndex: existing + i + j,
+            },
+            select: { id: true },
+          });
+        })
+      );
+
+      results.forEach((r, j) => created.push({ id: r.id, index: i + j }));
+    }
+
+    // ── Attach child rows in bulk ─────────────────────────────────────────
+    const optionRows: {
+      questionId: string;
+      optionText: string;
+      isCorrect: boolean;
+      orderIndex: number;
+    }[] = [];
+
+    const fitbRows: {
+      questionId: string;
+      acceptedAnswer: string;
+      isPrimary: boolean;
+    }[] = [];
+
+    for (const { id, index } of created) {
+      const q = questions[index];
+      const type = q.type === 'fitb' ? 'fill_in_the_blank' : 'mcq';
+
+      if (type === 'mcq' && Array.isArray(q.options)) {
+        q.options.forEach((o, oi) => {
+          if (o.text?.trim()) {
+            optionRows.push({
+              questionId: id,
+              optionText: o.text.trim(),
+              isCorrect: !!o.correct,
+              orderIndex: oi,
+            });
+          }
         });
-      })
-    );
+      }
+
+      if (type === 'fill_in_the_blank' && Array.isArray(q.answers)) {
+        q.answers.forEach((a, ai) => {
+          if (a?.trim()) {
+            fitbRows.push({
+              questionId: id,
+              acceptedAnswer: a.trim(),
+              isPrimary: ai === 0,
+            });
+          }
+        });
+      }
+    }
+
+    // createMany is a single INSERT per table — very fast, no timeout
+    await Promise.all([
+      optionRows.length > 0
+        ? prisma.questionOption.createMany({ data: optionRows })
+        : Promise.resolve(),
+      fitbRows.length > 0
+        ? prisma.fitbAnswer.createMany({ data: fitbRows })
+        : Promise.resolve(),
+    ]);
 
     return { success: true, imported: questions.length };
   },

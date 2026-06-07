@@ -2,6 +2,8 @@
 <script lang="ts">
   import type { PageData, ActionData } from './$types';
   import { enhance } from '$app/forms';
+  import { invalidateAll } from '$app/navigation';
+  import { tick } from 'svelte';
   import {
     ChevronLeft, Plus, Trash2, Check, X, Upload,
     FileText, AlignLeft, Hash, Tag, ChevronDown,
@@ -52,15 +54,109 @@
   let importJson = $state('');
   let importError = $state('');
 
-  function validateImportJson() {
+  // ── Import progress state ─────────────────────────────────────────────────
+  type ImportPhase = 'idle' | 'validating' | 'saving' | 'done' | 'error';
+  let importPhase = $state<ImportPhase>('idle');
+  let importProgress = $state(0);   // 0–100
+  let importTotal = $state(0);
+  let importValid = $state(0);
+  let importDone = $state(0);
+  let importLog = $state<{ text: string; kind: 'ok' | 'err' | 'info' | 'plain' }[]>([]);
+  let logEl: HTMLDivElement | undefined;
+
+  function resetImportState() {
+    importPhase = 'idle';
+    importProgress = 0;
+    importTotal = 0;
+    importValid = 0;
+    importLog = [];
+    importDone = 0;
     importError = '';
+  }
+
+  function addLog(text: string, kind: 'ok' | 'err' | 'info' | 'plain' = 'plain') {
+    importLog = [...importLog, { text, kind }];
+  }
+
+  const importBtnLabel = $derived(
+    importPhase === 'validating' ? `Checking ${importTotal} question${importTotal !== 1 ? 's' : ''}…`
+    : importPhase === 'saving'   ? `Saving ${importDone} / ${importTotal}…`
+    : 'Import Questions'
+  );
+
+  async function handleImport(questions: unknown[]) {
+    resetImportState();
+    importTotal = questions.length;
+    importPhase = 'validating';
+    addLog(`Parsed ${questions.length} question${questions.length !== 1 ? 's' : ''}`, 'info');
+
+    let errors = 0;
+
+    for (let i = 0; i < questions.length; i++) {
+      await tick();
+      await new Promise(r => setTimeout(r, 0));
+
+      const q = questions[i] as any;
+      let err: string | null = null;
+
+      if (!q.body || !q.type || !q.marks) {
+        err = `Q${i + 1}: missing required field (body / type / marks)`;
+      } else if (q.type === 'mcq' && (!Array.isArray(q.options) || q.options.length < 2)) {
+        err = `Q${i + 1}: MCQ needs at least 2 options`;
+      } else if (
+        (q.type === 'fitb' || q.type === 'fill_in_the_blank') &&
+        (!Array.isArray(q.answers) || q.answers.length < 1)
+      ) {
+        err = `Q${i + 1}: FITB needs at least 1 answer`;
+      }
+
+      if (err) { addLog(err, 'err'); errors++; }
+
+      importDone = i + 1;
+      importProgress = Math.round(((i + 1) / questions.length) * 50);
+      logEl?.scrollTo({ top: logEl.scrollHeight });
+    }
+
+    if (errors > 0) {
+      addLog(`${errors} invalid question${errors !== 1 ? 's' : ''} — fix and retry`, 'err');
+      importPhase = 'error';
+      importProgress = 0;
+      return;
+    }
+
+    addLog(`All ${questions.length} questions valid`, 'ok');
+    importPhase = 'saving';
+    importDone = 0;
+
+    const fd = new FormData();
+    fd.append('questions_json', importJson);
+
+    const ticker = setInterval(() => {
+      if (importDone < questions.length - 1) {
+        importDone++;
+        importProgress = 50 + Math.round((importDone / questions.length) * 50);
+        logEl?.scrollTo({ top: logEl.scrollHeight });
+      }
+    }, 80);
+
     try {
-      const parsed = JSON.parse(importJson);
-      if (!Array.isArray(parsed)) { importError = 'Must be a JSON array'; return false; }
-      return true;
-    } catch {
-      importError = 'Invalid JSON syntax';
-      return false;
+      const res = await fetch('?/bulkImport', { method: 'POST', body: fd });
+      clearInterval(ticker);
+
+      if (!res.ok) throw new Error(`Server returned ${res.status}`);
+
+      importDone = questions.length;
+      importValid = questions.length;
+      importProgress = 100;
+      importPhase = 'done';
+      addLog(`Saved ${questions.length} questions to database`, 'ok');
+
+      await invalidateAll();
+    } catch (e: any) {
+      clearInterval(ticker);
+      addLog('Server error: ' + e.message, 'err');
+      importPhase = 'error';
+      importProgress = 0;
     }
   }
 
@@ -80,12 +176,12 @@
     STATUS_OPTS.find(s => s.value === data.exam.status) ?? STATUS_OPTS[0]
   );
 
-  // ── Derived totals ─────────────────────────────────────────────────────────
+  // ── Derived totals ────────────────────────────────────────────────────────
   const totalMarks = $derived(data.exam.questions.reduce((s, q) => s + q.marks, 0));
   const mcqCount   = $derived(data.exam.questions.filter(q => q.type === 'mcq').length);
   const fitbCount  = $derived(data.exam.questions.filter(q => q.type === 'fill_in_the_blank').length);
 
-  // ── Reset form after successful submission ────────────────────────────────
+  // ── Reset form after successful single-question submission ────────────────
   $effect(() => {
     if (form?.success) {
       questionBody = '';
@@ -220,7 +316,7 @@
           type="button"
           class="tab tab-import"
           class:active={showImport}
-          onclick={() => { showImport = !showImport; }}
+          onclick={() => { showImport = !showImport; resetImportState(); }}
         >
           <Upload size={14} /> Bulk Import
         </button>
@@ -259,13 +355,20 @@
 ]`}</pre>
             </div>
 
+            <!-- Import form — submits via handleImport(), not use:enhance -->
             <form
-              method="POST"
-              action="?/bulkImport"
-              use:enhance={() => {
-                if (!validateImportJson()) return;
-                submitting = true;
-                return async ({ update }) => { await update(); submitting = false; };
+              onsubmit={(e) => {
+                e.preventDefault();
+                importError = '';
+                let parsed: unknown[];
+                try {
+                  parsed = JSON.parse(importJson);
+                  if (!Array.isArray(parsed)) throw new Error('Must be a JSON array');
+                } catch (e: any) {
+                  importError = e.message;
+                  return;
+                }
+                handleImport(parsed);
               }}
             >
               <div class="field">
@@ -277,24 +380,68 @@
                   placeholder="Paste JSON array here…"
                   bind:value={importJson}
                   class:error-input={!!importError}
+                  disabled={importPhase === 'validating' || importPhase === 'saving'}
                 ></textarea>
                 {#if importError}
                   <p class="field-error">{importError}</p>
                 {/if}
               </div>
 
-              {#if form?.imported}
-                <div class="import-success">
-                  <CheckCircle2 size={14} /> {form.imported} questions imported successfully
+              <!-- Progress area — visible once import starts -->
+              {#if importPhase !== 'idle'}
+                <div class="import-progress">
+                  <div class="prog-status">
+                    <span class="prog-label">
+                      {#if importPhase === 'validating'}Validating structure…
+                      {:else if importPhase === 'saving'}Saving to database…
+                      {:else if importPhase === 'done'}Complete
+                      {:else if importPhase === 'error'}Failed — see log below
+                      {/if}
+                    </span>
+                    {#if importTotal > 0}
+                      <span class="prog-count">{importDone} / {importTotal}</span>
+                    {/if}
+                  </div>
+                  <div class="prog-track">
+                    <div
+                      class="prog-fill"
+                      class:done={importPhase === 'done'}
+                      class:errfill={importPhase === 'error'}
+                      style="width: {importProgress}%"
+                    ></div>
+                  </div>
+                  {#if importLog.length > 0}
+                    <div class="prog-log" bind:this={logEl}>
+                      {#each importLog as line}
+                        <div class="log-line log-{line.kind}">
+                          <span class="log-pfx">
+                            {line.kind === 'ok' ? '✓' : line.kind === 'err' ? '✗' : line.kind === 'info' ? '›' : '·'}
+                          </span>
+                          <span>{line.text}</span>
+                        </div>
+                      {/each}
+                    </div>
+                  {/if}
                 </div>
               {/if}
 
-              <button type="submit" class="btn primary full" disabled={submitting || !importJson.trim()}>
-                {#if submitting}
-                  <Loader2 size={14} class="spin" /> Importing…
+              {#if importPhase === 'done'}
+                <div class="import-success">
+                  <CheckCircle2 size={14} /> {importValid} questions imported successfully
+                </div>
+              {/if}
+
+              <button
+                type="submit"
+                class="btn primary full"
+                disabled={importPhase === 'validating' || importPhase === 'saving' || !importJson.trim()}
+              >
+                {#if importPhase === 'validating' || importPhase === 'saving'}
+                  <Loader2 size={14} class="spin" />
                 {:else}
-                  <Upload size={14} /> Import Questions
+                  <Upload size={14} />
                 {/if}
+                {importBtnLabel}
               </button>
             </form>
           </div>
@@ -923,7 +1070,7 @@
   .primary-badge { background: #dcfce7; color: #16a34a; }
   .alt-badge     { background: var(--color-border); color: var(--color-muted); }
 
-  /* ── Import ──────────────────────────────────────────────────────────────── */
+  /* ── Import format preview ───────────────────────────────────────────────── */
   .import-format { background: var(--color-bg); border: 1px solid var(--color-border); border-radius: 0.625rem; overflow: hidden; }
   .format-title { font-size: 0.72rem; font-weight: 700; color: var(--color-muted); padding: 0.5rem 0.75rem; margin: 0; border-bottom: 1px solid var(--color-border); }
   .format-pre {
@@ -931,6 +1078,56 @@
     margin: 0; overflow-x: auto; font-family: 'SF Mono', 'Fira Code', monospace;
     line-height: 1.6; white-space: pre;
   }
+
+  /* ── Import progress ─────────────────────────────────────────────────────── */
+  .import-progress {
+    display: flex; flex-direction: column; gap: 0.45rem;
+  }
+  .prog-status {
+    display: flex; align-items: center; justify-content: space-between;
+    font-size: 0.78rem;
+  }
+  .prog-label { color: var(--color-muted); font-weight: 600; }
+  .prog-count { color: var(--color-text); font-weight: 700; font-variant-numeric: tabular-nums; }
+
+  .prog-track {
+    height: 6px; border-radius: 999px;
+    background: var(--color-border); overflow: hidden;
+  }
+  .prog-fill {
+    height: 100%; border-radius: 999px;
+    background: linear-gradient(90deg, var(--lc-600), #8b5cf6);
+    transition: width 0.18s ease;
+  }
+  .prog-fill.done    { background: #16a34a; }
+  .prog-fill.errfill { background: #dc2626; }
+
+  .prog-log {
+    background: var(--color-bg);
+    border: 1px solid var(--color-border);
+    border-radius: 0.5rem;
+    padding: 0.5rem 0.625rem;
+    max-height: 110px; overflow-y: auto;
+    display: flex; flex-direction: column; gap: 0.2rem;
+    scroll-behavior: smooth;
+  }
+  .log-line {
+    font-size: 0.7rem; font-family: 'SF Mono', 'Fira Code', monospace;
+    color: var(--color-muted);
+    display: flex; align-items: flex-start; gap: 0.35rem;
+    animation: fadein 0.12s ease;
+  }
+  .log-ok   { color: #16a34a; }
+  .log-err  { color: #dc2626; }
+  .log-info { color: var(--lc-600); }
+  .log-pfx  { flex-shrink: 0; font-weight: 700; }
+
+  @keyframes fadein {
+    from { opacity: 0; transform: translateY(2px); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
+
+  /* ── Import success banner ───────────────────────────────────────────────── */
   .import-success {
     display: flex; align-items: center; gap: 0.5rem;
     padding: 0.625rem 0.875rem;
@@ -994,7 +1191,7 @@
     transition: box-shadow 0.15s;
   }
   .q-card:hover { box-shadow: 0 2px 12px rgba(0,0,0,0.06); }
-  .q-card.mcq { border-left: 3px solid var(--lc-600); }
+  .q-card.mcq  { border-left: 3px solid var(--lc-600); }
   .q-card.fitb { border-left: 3px solid #16a34a; }
 
   .q-card-header {

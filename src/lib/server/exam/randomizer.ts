@@ -33,10 +33,11 @@ export async function buildStudentQuestionOrder(
   sessionId: string,
   questions: QuestionWithRelations[],
   randomizeQuestions: boolean,
-  randomizeOptions: boolean
+  randomizeOptions: boolean,
+  questionsToPresent: number = 35   // ← NEW: 0 = present all
 ): Promise<QuestionWithRelations[]> {
 
-  // ✅ Use sql() consistently (not prisma.$queryRaw which wasn't imported)
+  // ── Check if this session already has a locked order ─────────────────────
   const existing = await sql<{ question_id: string; display_index: number }>(
     `SELECT question_id, display_index
      FROM session_question_order
@@ -48,13 +49,32 @@ export async function buildStudentQuestionOrder(
   let orderedQuestions: QuestionWithRelations[];
 
   if (existing.length > 0) {
+    // ── Returning student: restore exactly what was locked in ───────────────
+    // Only include questions that were persisted for this session
+    // (respects the original questionsToPresent slice)
     const orderMap = new Map(existing.map((r) => [r.question_id, r.display_index]));
-    orderedQuestions = [...questions].sort(
-      (a, b) => (orderMap.get(a.id) ?? 0) - (orderMap.get(b.id) ?? 0)
-    );
-  } else {
-    orderedQuestions = randomizeQuestions ? shuffle(questions) : [...questions];
+    const lockedIds = new Set(existing.map((r) => r.question_id));
 
+    orderedQuestions = [...questions]
+      .filter((q) => lockedIds.has(q.id))
+      .sort((a, b) => (orderMap.get(a.id) ?? 0) - (orderMap.get(b.id) ?? 0));
+
+  } else {
+    // ── First load: shuffle → slice → persist ───────────────────────────────
+
+    // 1. Shuffle first (or keep original order)
+    let pool = randomizeQuestions ? shuffle(questions) : [...questions];
+
+    // 2. Slice to the requested count if set and valid
+    const limit = questionsToPresent > 0 && questionsToPresent < pool.length
+      ? questionsToPresent
+      : pool.length;
+
+    pool = pool.slice(0, limit);
+
+    orderedQuestions = pool;
+
+    // 3. Persist the locked subset — this is the student's permanent order
     await sql(
       `INSERT INTO session_question_order (session_id, question_id, display_index)
        SELECT $1, unnest($2::uuid[]), unnest($3::int[])`,
@@ -66,6 +86,7 @@ export async function buildStudentQuestionOrder(
     );
   }
 
+  // ── Randomize option order ────────────────────────────────────────────────
   if (randomizeOptions) {
     const existingOptions = await sql<{
       question_id: string; option_id: string; display_index: number;

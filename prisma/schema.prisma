@@ -412,6 +412,7 @@ model Exam {
   lateEntryMinutes   Int        @default(10) @map("late_entry_minutes") @db.SmallInt
   randomizeQuestions Boolean    @default(true) @map("randomize_questions")
   randomizeOptions   Boolean    @default(true) @map("randomize_options")
+  questionsToPresent Int        @default(0) @map("questions_to_present") @db.SmallInt  // ← NEW
   showResultAfter    Boolean    @default(false) @map("show_result_after")
   maxViolations      Int        @default(5) @map("max_violations") @db.SmallInt
   session            String
@@ -436,6 +437,7 @@ model Exam {
   @@index([status])
   @@map("exams")
 }
+
 
 model ExamLevel {
   examId  String @map("exam_id") @db.Uuid
