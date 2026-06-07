@@ -1,5 +1,6 @@
 import { redirect } from '@sveltejs/kit';
 import { prisma } from '$lib/server/db/index.js';
+import type { Cookies } from '@sveltejs/kit';
 
 const VERIFICATION_WINDOW_MS = 5 * 60 * 1000; // 5 minutes
 

@@ -85,7 +85,7 @@
   // ── Full name display ───────────────────────────────────────────
   const displayName = $derived(() => {
     const parts = data.user.fullName.trim().split(/\s+/);
-    return parts[0];
+    return parts[2];
   });
 
   // ── Notifications ───────────────────────────────────────────────

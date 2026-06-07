@@ -1,3 +1,4 @@
+<!-- // src/lib/components/face/FaceEnrollmentModal.svelte -->
 <script lang="ts">
   import { onMount, onDestroy } from 'svelte';
 
@@ -28,8 +29,15 @@
   let holdProgress = $state(0);
   let errorMessage = $state('');
 
-  // blink state
-  let blinkPhase: 'open' | 'closed' = 'open';
+  // Smile detection state
+  let smileHistory: boolean[] = [];
+  const SMILE_HISTORY_SIZE = 8;
+  let smileConfirmed = false;
+
+  // Nose circle detection state
+  let nosePositions: { x: number; y: number }[] = [];
+  const NOSE_HISTORY_SIZE = 20;
+  let circleBaseline: { x: number; y: number } | null = null;
 
   let faceapi: typeof import('@vladmandic/face-api') | null = null;
 
@@ -37,77 +45,242 @@
     { id: 'open_mouth', label: 'Open your mouth',  icon: 'mouth' },
     { id: 'turn_left',  label: 'Turn head left',   icon: 'left'  },
     { id: 'turn_right', label: 'Turn head right',  icon: 'right' },
-    { id: 'blink',      label: 'Blink both eyes',  icon: 'blink' },
+    { id: 'smile',      label: 'Smile!',           icon: 'smile' },
+    { id: 'nose_circle', label: 'Trace a circle with your nose', icon: 'circle' },
   ];
   const CAPTURES_PER  = 3;
   const TOTAL         = 3;
   const HOLD_DURATION = 1200;
 
-  // EAR thresholds
-  const BLINK_CLOSED_THRESH = 0.21;
-  const BLINK_OPEN_THRESH   = 0.27;
-
   let selected: typeof GESTURES = [];
 
-  // ── landmark helpers ────────────────────────────────────────────────────────
-  function ear(lm: any, idx: number[]): number {
-    const p = idx.map(i => lm.positions[i]);
-    const v1 = Math.abs(p[1].y - p[5].y);
-    const v2 = Math.abs(p[2].y - p[4].y);
-    const h  = Math.abs(p[0].x - p[3].x);
-    return h > 0 ? (v1 + v2) / (2 * h) : 1;
+  // ── Smile detection ─────────────────────────────────────────────────────────
+  function detectSmile(lm: any): boolean {
+    const p = lm.positions;
+    // Mouth corners: 48 (left), 54 (right)
+    // Mouth top: 51, bottom: 57
+    // Lip top: 62, bottom: 66 (inner mouth)
+    const mouthLeft = p[48], mouthRight = p[54];
+    const mouthTop = p[51], mouthBottom = p[57];
+    const lipTop = p[62], lipBottom = p[66];
+
+    if (!mouthLeft || !mouthRight || !mouthTop || !mouthBottom) return false;
+
+    const width = Math.abs(mouthRight.x - mouthLeft.x);
+    const height = Math.abs(mouthBottom.y - mouthTop.y);
+    const lipHeight = lipTop && lipBottom ? Math.abs(lipBottom.y - lipTop.y) : height;
+
+    if (width <= 0) return false;
+
+    // Smile: mouth is wide and relatively flat
+    // Also check that lips are apart (mouth slightly open or teeth showing)
+    const aspectRatio = height / width;
+    const lipRatio = lipHeight / width;
+
+    // Wide smile: width > 35px (scaled roughly), flat aspect, some lip separation
+    const isWide = width > 30;
+    const isFlat = aspectRatio < 0.45;
+    const hasSeparation = lipRatio > 0.08;
+
+    // Require sustained smile
+    const isSmiling = isWide && isFlat && hasSeparation;
+
+    smileHistory.push(isSmiling);
+    if (smileHistory.length > SMILE_HISTORY_SIZE) smileHistory.shift();
+
+    // Confirm only if majority of recent frames show smile
+    if (smileHistory.length >= 5) {
+      const trueCount = smileHistory.filter(Boolean).length;
+      const ratio = trueCount / smileHistory.length;
+      if (ratio >= 0.6 && !smileConfirmed) {
+        smileConfirmed = true;
+        return true;
+      }
+    }
+
+    return false;
   }
 
+  // ── Nose circle detection ─────────────────────────────────────────────────
+  function detectNoseCircle(lm: any): boolean {
+    const nose = lm.positions[30];
+    if (!nose) return false;
+
+    nosePositions.push({ x: nose.x, y: nose.y });
+    if (nosePositions.length > NOSE_HISTORY_SIZE) nosePositions.shift();
+
+    if (nosePositions.length < 12) return false;
+
+    // Set baseline from first position
+    if (!circleBaseline) {
+      circleBaseline = { ...nosePositions[0] };
+      return false;
+    }
+
+    // Calculate centroid
+    let cx = 0, cy = 0;
+    for (const pt of nosePositions) {
+      cx += pt.x;
+      cy += pt.y;
+    }
+    cx /= nosePositions.length;
+    cy /= nosePositions.length;
+
+    // Calculate average radius
+    let avgR = 0;
+    for (const pt of nosePositions) {
+      avgR += Math.sqrt((pt.x - cx) ** 2 + (pt.y - cy) ** 2);
+    }
+    avgR /= nosePositions.length;
+
+    // Too small or too large = not a circle
+    if (avgR < 8 || avgR > 60) {
+      circleBaseline = null;
+      nosePositions = [];
+      return false;
+    }
+
+    // Check points are distributed around full circle (not just a line)
+    let angleSum = 0;
+    let directionChanges = 0;
+    let lastAngle = Math.atan2(
+      nosePositions[0].y - cy,
+      nosePositions[0].x - cx
+    );
+
+    for (let i = 1; i < nosePositions.length; i++) {
+      const angle = Math.atan2(
+        nosePositions[i].y - cy,
+        nosePositions[i].x - cx
+      );
+      let diff = angle - lastAngle;
+
+      // Normalize to [-PI, PI]
+      while (diff > Math.PI) diff -= 2 * Math.PI;
+      while (diff < -Math.PI) diff += 2 * Math.PI;
+
+      angleSum += Math.abs(diff);
+      if (diff * (lastAngle - Math.atan2(nosePositions[i-1]?.y - cy || 0, nosePositions[i-1]?.x - cx || 0)) < 0) {
+        directionChanges++;
+      }
+      lastAngle = angle;
+    }
+
+    // Total rotation should be significant (at least ~1.5 radians = ~86 degrees)
+    // And should be mostly one direction (not back-and-forth)
+    const totalRotation = angleSum;
+    const isCircular = totalRotation > 2.5; // ~143 degrees minimum
+    const isConsistentDirection = directionChanges <= 3;
+
+    if (isCircular && isConsistentDirection) {
+      // Reset for next detection
+      circleBaseline = null;
+      nosePositions = [];
+      return true;
+    }
+
+    return false;
+  }
+
+  // ── Gesture router ────────────────────────────────────────────────────────
   function checkGesture(id: string, lm: any): boolean {
     const p = lm.positions;
     switch (id) {
       case 'open_mouth': {
-        const h  = Math.abs(p[62].y - p[66].y);
-        const fh = Math.abs(p[27].y - p[8].y);
+        const h  = Math.abs(p[62]?.y - p[66]?.y);
+        const fh = Math.abs(p[27]?.y - p[8]?.y);
         return fh > 0 && h / fh > 0.08;
       }
       case 'turn_left': {
         const n = p[30], l = p[36], r = p[45];
+        if (!n || !l || !r) return false;
         const w = Math.abs(l.x - r.x);
         return w > 0 && (n.x - l.x) / w < 0.32;
       }
       case 'turn_right': {
         const n = p[30], l = p[36], r = p[45];
+        if (!n || !l || !r) return false;
         const w = Math.abs(l.x - r.x);
         return w > 0 && (n.x - l.x) / w > 0.68;
       }
-      case 'blink': {
-        const leftEAR  = ear(lm, [36, 37, 38, 39, 40, 41]);
-        const rightEAR = ear(lm, [42, 43, 44, 45, 46, 47]);
-        const avgEAR   = (leftEAR + rightEAR) / 2;
-
-        if (blinkPhase === 'open' && avgEAR < BLINK_CLOSED_THRESH) {
-          blinkPhase = 'closed';
-          return false;
-        }
-        if (blinkPhase === 'closed' && avgEAR > BLINK_OPEN_THRESH) {
-          blinkPhase = 'open';
-          return true; // completed open → closed → open
-        }
-        return false;
+      case 'smile': {
+        return detectSmile(lm);
+      }
+      case 'nose_circle': {
+        return detectNoseCircle(lm);
       }
       default: return false;
     }
   }
 
-  // ── canvas overlay (vertical oval) ─────────────────────────────────────────
+  // ── Image capture & super compression ─────────────────────────────────────
+  async function captureAndCompress(): Promise<string | null> {
+    if (!video || !video.videoWidth) return null;
+
+    // Create offscreen canvas at small size
+    const captureCanvas = document.createElement('canvas');
+    const targetWidth = 160; // tiny for DB storage
+    const aspectRatio = video.videoHeight / video.videoWidth;
+    const targetHeight = Math.round(targetWidth * aspectRatio);
+
+    captureCanvas.width = targetWidth;
+    captureCanvas.height = targetHeight;
+
+    const c = captureCanvas.getContext('2d');
+    if (!c) return null;
+
+    // Draw flipped video (mirror correction)
+    c.translate(targetWidth, 0);
+    c.scale(-1, 1);
+    c.drawImage(video, 0, 0, targetWidth, targetHeight);
+
+    // Convert to WebP with aggressive quality reduction
+    // Fallback to JPEG if WebP not supported
+    let blob: Blob | null = null;
+    try {
+      blob = await new Promise<Blob | null>((resolve) => {
+        captureCanvas.toBlob(
+          (b) => resolve(b),
+          'image/webp',
+          0.15 // 15% quality — very compressed
+        );
+      });
+    } catch {
+      blob = null;
+    }
+
+    // Fallback to JPEG
+    if (!blob || blob.size > 15000) {
+      blob = await new Promise<Blob | null>((resolve) => {
+        captureCanvas.toBlob(
+          (b) => resolve(b),
+          'image/jpeg',
+          0.2 // 20% quality
+        );
+      });
+    }
+
+    if (!blob) return null;
+
+    // Convert to base64
+    return new Promise((resolve) => {
+      const reader = new FileReader();
+      reader.onloadend = () => resolve(reader.result as string);
+      reader.readAsDataURL(blob!);
+    });
+  }
+
+  // ── canvas overlay (vertical oval) ───────────────────────────────────────
   function drawOverlay(hit: boolean, multipleFaces: boolean = false, progress: number = 0) {
     if (!ctx || !canvas) return;
     const w = canvas.width, h = canvas.height;
     const cx = w / 2, cy = h / 2;
 
-    // vertical oval: rx < ry
     const rx = w * 0.28;
     const ry = h * 0.44;
 
     ctx.clearRect(0, 0, w, h);
 
-    // darken outside oval
     ctx.save();
     ctx.fillStyle = 'rgba(10,13,15,0.72)';
     ctx.fillRect(0, 0, w, h);
@@ -117,7 +290,6 @@
     ctx.fill();
     ctx.restore();
 
-    // oval stroke
     ctx.beginPath();
     ctx.ellipse(cx, cy, rx, ry, 0, 0, Math.PI * 2);
     if (multipleFaces) {
@@ -132,7 +304,6 @@
     }
     ctx.stroke();
 
-    // corner brackets
     const bLen = 20, bW = 2.5;
     const positions = [
       { x: cx - rx, y: cy - ry, d: [1,  1] as [number,number] },
@@ -151,7 +322,6 @@
       ctx.stroke();
     }
 
-    // progress ring when gesture detected
     if (hit && progress > 0 && !multipleFaces) {
       ctx.save();
       ctx.beginPath();
@@ -163,7 +333,6 @@
       ctx.restore();
     }
 
-    // multiple faces warning
     if (multipleFaces) {
       ctx.save();
       ctx.fillStyle = '#ef4444';
@@ -174,7 +343,7 @@
     }
   }
 
-  // ── detection loop ──────────────────────────────────────────────────────────
+  // ── detection loop ────────────────────────────────────────────────────────
   async function loop() {
     if (status !== 'gesture' || !faceapi) return;
 
@@ -225,10 +394,10 @@
                 submit(); return;
               }
               gestureIndex++;
-              captureCount   = 0;
+              captureCount    = 0;
               gestureDetected = false;
-              blinkPhase     = 'open';
-              subline        = selected[gestureIndex].label;
+              resetGestureState();
+              subline = selected[gestureIndex].label;
             } else {
               subline = `Captured ${captureCount}/${CAPTURES_PER}`;
             }
@@ -248,12 +417,15 @@
     }
   }
 
-  // ── submit ──────────────────────────────────────────────────────────────────
+  // ── submit ───────────────────────────────────────────────────────────────
   async function submit() {
     status   = 'processing';
     headline = 'Processing…';
     subline  = 'Saving your face data…';
     stopCamera();
+
+    // Capture and compress photo
+    const photoDataUrl = await captureAndCompress();
 
     const avg = descriptors[0].map((_, i) =>
       descriptors.reduce((s, d) => s + d[i], 0) / descriptors.length
@@ -263,9 +435,12 @@
       const res = await fetch('/api/face/enroll', {
         method:  'POST',
         headers: { 'Content-Type': 'application/json' },
-        body:    JSON.stringify({ descriptor: avg }),
+        body:    JSON.stringify({
+          descriptor: avg,
+          photo: photoDataUrl, // base64 data URL or null
+        }),
       });
-      if (!res.ok) throw new Error((await res.json().catch(() => ({}))).message ?? `${res.status}`);
+      if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error ?? `${res.status}`);
       status   = 'done';
       headline = 'Enrolled!';
       subline  = 'Your face has been saved successfully';
@@ -285,12 +460,19 @@
     stream = null;
   }
 
+  function resetGestureState() {
+    smileHistory = [];
+    smileConfirmed = false;
+    nosePositions = [];
+    circleBaseline = null;
+  }
+
   function resetState() {
     descriptors     = [];
     captureCount    = 0;
     gesturesDone    = 0;
     gestureDetected = false;
-    blinkPhase      = 'open';
+    resetGestureState();
     holdProgress    = 0;
     if (holdTimer) { clearTimeout(holdTimer); holdTimer = null; }
   }
@@ -349,7 +531,6 @@
   onMount(() => {});
   onDestroy(stopCamera);
 
-  // Start / teardown when modal opens/closes
   $effect(() => {
     if (open && status === 'intro') {
       startEnrollment();
@@ -378,7 +559,6 @@
   >
     <div class="modal" onclick={(e) => e.stopPropagation()}>
 
-      <!-- Header -->
       <header class="modal-header">
         <div class="header-left">
           <h2 id="enroll-title">{headline}</h2>
@@ -393,7 +573,6 @@
         </button>
       </header>
 
-      <!-- Camera -->
       <div class="cam-wrap">
         <video bind:this={video} class="feed" autoplay muted playsinline></video>
         <canvas bind:this={canvas} class="overlay"></canvas>
@@ -437,7 +616,6 @@
         {/if}
       </div>
 
-      <!-- Bottom panel -->
       <div class="bottom">
         {#if status === 'intro'}
           <div class="intro-content">
@@ -488,10 +666,15 @@
                     <path d="M12 2a5 5 0 1 0 0 10A5 5 0 0 0 12 2z"/>
                     <path d="M9 14l3 3 3-3"/>
                   </svg>
-                {:else if selected[gestureIndex]?.icon === 'blink'}
+                {:else if selected[gestureIndex]?.icon === 'smile'}
                   <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
-                    <path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7z"/>
-                    <circle cx="12" cy="12" r="3"/>
+                    <path d="M12 2a5 5 0 1 0 0 10A5 5 0 0 0 12 2z"/>
+                    <path d="M8 14s1.5 2 4 2 4-2 4-2"/>
+                  </svg>
+                {:else if selected[gestureIndex]?.icon === 'circle'}
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+                    <circle cx="12" cy="12" r="5"/>
+                    <path d="M12 2v4M12 18v4M2 12h4M18 12h4"/>
                   </svg>
                 {/if}
               </span>
@@ -543,7 +726,6 @@
     flex-direction: column;
   }
 
-  /* ── Header ──────────────────────────────────────────────────────────────── */
   .modal-header {
     display: flex;
     align-items: center;
@@ -595,7 +777,6 @@
     color: #fff;
   }
 
-  /* ── Camera ──────────────────────────────────────────────────────────────── */
   .cam-wrap {
     position: relative;
     width: 100%;
@@ -621,7 +802,6 @@
     pointer-events: none;
   }
 
-  /* ── Center states ───────────────────────────────────────────────────────── */
   .center-state {
     position: absolute;
     inset: 0;
@@ -665,7 +845,6 @@
   .success-text     { color: #00c9a7; font-weight: 600; }
   .error-text       { color: #ef4444; font-weight: 600; }
 
-  /* ── Bottom panel ────────────────────────────────────────────────────────── */
   .bottom {
     padding: 1.25rem;
     display: flex;
@@ -706,7 +885,6 @@
   .cta:hover  { transform: translateY(-1px); box-shadow: 0 6px 20px rgba(21, 128, 61, 0.4); }
   .cta:active { transform: scale(0.98) translateY(0); }
 
-  /* ── Intro ───────────────────────────────────────────────────────────────── */
   .intro-content {
     display: flex;
     flex-direction: column;
@@ -768,7 +946,6 @@
     flex-shrink: 0;
   }
 
-  /* ── Gesture panel ───────────────────────────────────────────────────────── */
   .gesture-panel {
     display: flex;
     flex-direction: column;
@@ -824,7 +1001,6 @@
     transition: width 0.1s linear;
   }
 
-  /* ── Spinner ─────────────────────────────────────────────────────────────── */
   .spinner {
     width: 36px;
     height: 36px;
@@ -836,7 +1012,6 @@
 
   .spinner.teal { border-top-color: #00c9a7; }
 
-  /* ── Keyframes ───────────────────────────────────────────────────────────── */
   @keyframes spin     { to { transform: rotate(360deg); } }
   @keyframes fade-in  { from { opacity: 0; } to { opacity: 1; } }
   @keyframes scale-in {
@@ -848,7 +1023,6 @@
     to   { opacity: 1; transform: translateY(0);    }
   }
 
-  /* ── Mobile ──────────────────────────────────────────────────────────────── */
   @media (max-width: 480px) {
     .modal-backdrop { padding: 0.5rem; }
     .modal          { max-width: 100%; border-radius: 1rem; }

@@ -43,7 +43,9 @@
     A: '#16a34a', B: '#2563eb', C: '#d97706', D: '#9333ea', E: '#dc2626', F: '#dc2626',
   };
 
-  const firstName  = user.fullName.split(' ')[1] ?? user.fullName.split(' ')[0];
+  // return all names of the user except the first one, which is often the surname in many cultures
+    const fullName    = user.fullName.trim().split(/\s+/).slice(0).join(' ') || user.fullName;
+    const matricNumber = user.matricNumber ?? '—';
   const liveExams  = exams.filter(e => e.status === 'active');
   const upcoming   = exams.filter(e => e.status === 'scheduled');
   const otherExams = exams.filter(e => e.status !== 'active' && e.status !== 'scheduled');
@@ -168,7 +170,8 @@
     <!-- ── Greeting ───────────────────────────────────────────────────────── -->
     <div class="greeting-row">
       <div>
-        <h1>Hello, <span class="accent">{firstName}</span></h1>
+        <h1><span class="accent">{fullName}</span></h1>
+        <h2><span class="sub">{matricNumber}</span></h2>
         <p class="sub">
           {#if liveExams.length > 0}
             <span class="sub-urgent">{liveExams.length} exam{liveExams.length > 1 ? 's' : ''} live right now — enter immediately</span>
@@ -491,6 +494,7 @@
     justify-content: space-between;
     gap: 1rem;
     flex-wrap: wrap;
+    text-size: clamp(0.9rem, 2vw, 1rem);
   }
 
   h1 {

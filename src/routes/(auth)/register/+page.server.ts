@@ -217,15 +217,15 @@ export const actions: Actions = {
       // and matricNumber (.toUpperCase()) internally. Extra fields not in the
       // helper's input type (jambRegNo, phone, receiptNo …) are written via a
       // follow-up update so we don't have to fork the helper.
-      const user = await createUser({
-        email,
-        fullName,
-        passwordHash,
-        role:         'student',
-        matricNumber: matricNumber ?? undefined,
-        departmentId: departmentId,
-        level:        levelStr ? parseInt(levelStr, 10) : undefined,
-      });
+     const user = await createUser({
+  email,
+  fullName,
+  passwordHash,
+  role:         'student',
+  matricNumber: matricNumber ?? undefined,
+  departmentId: departmentId,
+  level:        levelStr ? parseInt(levelStr, 10) : undefined,  // 100, 200, 300...
+});
 
       // ── Write extra fields not in createUser() helper ──────────────────────
       // jambRegNo, phone, collegeId, and receipt audit fields are all in the

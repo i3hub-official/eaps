@@ -103,13 +103,17 @@ export async function createUser(input: {
     passwordHash: input.passwordHash,
     role: input.role,
     matricNumber: input.matricNumber?.toUpperCase().trim() ?? null,
-    staffId: input.staffId?.trim() ?? null,
-    departmentId: input.departmentId ?? null,
+    staffId: input.stId?.trim() ?? null,
     photoUrl: input.photoUrl ?? null,
   };
 
+  if (input.departmentId) {
+    data.department = { connect: { id: input.departmentId } };
+  }
+
+  // ✅ Connect by 'level' (the @unique academic value), not 'id'
   if (input.level != null) {
-    data.level = { connect: { id: input.level } };
+    data.level = { connect: { level: input.level } };  // was: { id: input.level }
   }
 
   return prisma.user.create({ data });
@@ -119,12 +123,13 @@ export async function updateUser(id: string, input: {
   fullName?: string; email?: string; departmentId?: string;
   level?: number; photoUrl?: string; isActive?: boolean;
 }): Promise<SafeUser> {
-  const { level, ...data } = input;
+  const { level, departmentId, ...data } = input;
 
   return prisma.user.update({
     where: { id },
     data: {
       ...data,
+      department: departmentId ? { connect: { id: departmentId } } : undefined,
       level: level != null ? { connect: { id: level } } : undefined,
     },
     select: safeSelect,
