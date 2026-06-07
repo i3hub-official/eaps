@@ -24,31 +24,37 @@
   let captureCount = 0;
   let descriptors: number[][] = [];
   let gestureDetected = false;
-  let lastNodY: number | null = null;
   let holdTimer: number | null = null;
   let holdProgress = $state(0);
   let errorMessage = $state('');
 
+  // blink state
+  let blinkPhase: 'open' | 'closed' = 'open';
+
   let faceapi: typeof import('@vladmandic/face-api') | null = null;
 
   const GESTURES = [
-    { id: 'open_mouth', label: 'Open your mouth', icon: 'mouth' },
-    { id: 'turn_left', label: 'Turn head left', icon: 'left' },
-    { id: 'turn_right', label: 'Turn head right', icon: 'right' },
-    { id: 'nod', label: 'Nod your head', icon: 'nod' },
+    { id: 'open_mouth', label: 'Open your mouth',  icon: 'mouth' },
+    { id: 'turn_left',  label: 'Turn head left',   icon: 'left'  },
+    { id: 'turn_right', label: 'Turn head right',  icon: 'right' },
+    { id: 'blink',      label: 'Blink both eyes',  icon: 'blink' },
   ];
-  const CAPTURES_PER = 3;
-  const TOTAL = 3;
+  const CAPTURES_PER  = 3;
+  const TOTAL         = 3;
   const HOLD_DURATION = 1200;
-  const NOD_THRESHOLD = 6;
+
+  // EAR thresholds
+  const BLINK_CLOSED_THRESH = 0.21;
+  const BLINK_OPEN_THRESH   = 0.27;
 
   let selected: typeof GESTURES = [];
 
   // ── landmark helpers ────────────────────────────────────────────────────────
   function ear(lm: any, idx: number[]): number {
     const p = idx.map(i => lm.positions[i]);
-    const v1 = Math.abs(p[1].y - p[5].y), v2 = Math.abs(p[2].y - p[4].y);
-    const h = Math.abs(p[0].x - p[3].x);
+    const v1 = Math.abs(p[1].y - p[5].y);
+    const v2 = Math.abs(p[2].y - p[4].y);
+    const h  = Math.abs(p[0].x - p[3].x);
     return h > 0 ? (v1 + v2) / (2 * h) : 1;
   }
 
@@ -56,48 +62,64 @@
     const p = lm.positions;
     switch (id) {
       case 'open_mouth': {
-        const h = Math.abs(p[62].y - p[66].y), fh = Math.abs(p[27].y - p[8].y);
+        const h  = Math.abs(p[62].y - p[66].y);
+        const fh = Math.abs(p[27].y - p[8].y);
         return fh > 0 && h / fh > 0.08;
       }
       case 'turn_left': {
-        const n = p[30], l = p[36], r = p[45], w = Math.abs(l.x - r.x);
+        const n = p[30], l = p[36], r = p[45];
+        const w = Math.abs(l.x - r.x);
         return w > 0 && (n.x - l.x) / w < 0.32;
       }
       case 'turn_right': {
-        const n = p[30], l = p[36], r = p[45], w = Math.abs(l.x - r.x);
+        const n = p[30], l = p[36], r = p[45];
+        const w = Math.abs(l.x - r.x);
         return w > 0 && (n.x - l.x) / w > 0.68;
       }
-      case 'nod': {
-        const ny = p[30].y;
-        if (lastNodY === null) { lastNodY = ny; return false; }
-        const d = Math.abs(ny - lastNodY);
-        if (d > NOD_THRESHOLD) { lastNodY = ny; return true; }
-        lastNodY = lastNodY * 0.7 + ny * 0.3;
+      case 'blink': {
+        const leftEAR  = ear(lm, [36, 37, 38, 39, 40, 41]);
+        const rightEAR = ear(lm, [42, 43, 44, 45, 46, 47]);
+        const avgEAR   = (leftEAR + rightEAR) / 2;
+
+        if (blinkPhase === 'open' && avgEAR < BLINK_CLOSED_THRESH) {
+          blinkPhase = 'closed';
+          return false;
+        }
+        if (blinkPhase === 'closed' && avgEAR > BLINK_OPEN_THRESH) {
+          blinkPhase = 'open';
+          return true; // completed open → closed → open
+        }
         return false;
       }
       default: return false;
     }
   }
 
-  // ── canvas overlay ──────────────────────────────────────────────────────────
+  // ── canvas overlay (vertical oval) ─────────────────────────────────────────
   function drawOverlay(hit: boolean, multipleFaces: boolean = false, progress: number = 0) {
     if (!ctx || !canvas) return;
     const w = canvas.width, h = canvas.height;
     const cx = w / 2, cy = h / 2;
-    const rx = w * 0.34, ry = h * 0.42;
+
+    // vertical oval: rx < ry
+    const rx = w * 0.28;
+    const ry = h * 0.44;
 
     ctx.clearRect(0, 0, w, h);
 
-    // darken outside
+    // darken outside oval
     ctx.save();
     ctx.fillStyle = 'rgba(10,13,15,0.72)';
     ctx.fillRect(0, 0, w, h);
     ctx.globalCompositeOperation = 'destination-out';
-    ctx.beginPath(); ctx.ellipse(cx, cy, rx, ry, 0, 0, Math.PI * 2); ctx.fill();
+    ctx.beginPath();
+    ctx.ellipse(cx, cy, rx, ry, 0, 0, Math.PI * 2);
+    ctx.fill();
     ctx.restore();
 
     // oval stroke
-    ctx.beginPath(); ctx.ellipse(cx, cy, rx, ry, 0, 0, Math.PI * 2);
+    ctx.beginPath();
+    ctx.ellipse(cx, cy, rx, ry, 0, 0, Math.PI * 2);
     if (multipleFaces) {
       ctx.strokeStyle = '#ef4444';
       ctx.lineWidth = 2.5;
@@ -105,33 +127,38 @@
       ctx.strokeStyle = '#00c9a7';
       ctx.lineWidth = 2.5;
     } else {
-      ctx.strokeStyle = 'rgba(255,255,255,0.15)';
+      ctx.strokeStyle = 'rgba(255,255,255,0.18)';
       ctx.lineWidth = 1.5;
     }
     ctx.stroke();
 
     // corner brackets
-    const bLen = 22, bW = 2.5;
+    const bLen = 20, bW = 2.5;
     const positions = [
-      { x: cx - rx, y: cy - ry, d: [1, 1] },
-      { x: cx + rx, y: cy - ry, d: [-1, 1] },
-      { x: cx - rx, y: cy + ry, d: [1, -1] },
-      { x: cx + rx, y: cy + ry, d: [-1, -1] },
+      { x: cx - rx, y: cy - ry, d: [1,  1] as [number,number] },
+      { x: cx + rx, y: cy - ry, d: [-1, 1] as [number,number] },
+      { x: cx - rx, y: cy + ry, d: [1, -1] as [number,number] },
+      { x: cx + rx, y: cy + ry, d: [-1,-1] as [number,number] },
     ];
     ctx.strokeStyle = multipleFaces ? '#ef4444' : hit ? '#00c9a7' : 'rgba(0,201,167,0.6)';
-    ctx.lineWidth = bW;
-    ctx.lineCap = 'round';
+    ctx.lineWidth   = bW;
+    ctx.lineCap     = 'round';
     for (const { x, y, d } of positions) {
-      ctx.beginPath(); ctx.moveTo(x + d[0] * bLen, y); ctx.lineTo(x, y); ctx.lineTo(x, y + d[1] * bLen); ctx.stroke();
+      ctx.beginPath();
+      ctx.moveTo(x + d[0] * bLen, y);
+      ctx.lineTo(x, y);
+      ctx.lineTo(x, y + d[1] * bLen);
+      ctx.stroke();
     }
 
     // progress ring when gesture detected
     if (hit && progress > 0 && !multipleFaces) {
       ctx.save();
-      ctx.beginPath(); ctx.ellipse(cx, cy, rx + 8, ry + 8, 0, -Math.PI / 2, -Math.PI / 2 + (progress * Math.PI * 2));
+      ctx.beginPath();
+      ctx.ellipse(cx, cy, rx + 8, ry + 8, 0, -Math.PI / 2, -Math.PI / 2 + progress * Math.PI * 2);
       ctx.strokeStyle = 'rgba(0,201,167,0.6)';
-      ctx.lineWidth = 3;
-      ctx.lineCap = 'round';
+      ctx.lineWidth   = 3;
+      ctx.lineCap     = 'round';
       ctx.stroke();
       ctx.restore();
     }
@@ -140,7 +167,7 @@
     if (multipleFaces) {
       ctx.save();
       ctx.fillStyle = '#ef4444';
-      ctx.font = 'bold 14px system-ui';
+      ctx.font      = 'bold 14px system-ui';
       ctx.textAlign = 'center';
       ctx.fillText('⚠ Multiple faces detected', cx, cy + ry + 28);
       ctx.restore();
@@ -180,7 +207,7 @@
       }
 
       const det = detections[0];
-      const g = selected[gestureIndex];
+      const g   = selected[gestureIndex];
       const hit = checkGesture(g.id, det.landmarks);
 
       if (hit && !gestureDetected) {
@@ -190,7 +217,7 @@
             descriptors.push(Array.from(det.descriptor));
             captureCount++;
             holdProgress = 0;
-            holdTimer = null;
+            holdTimer    = null;
 
             if (captureCount >= CAPTURES_PER) {
               gesturesDone = gestureIndex + 1;
@@ -198,10 +225,10 @@
                 submit(); return;
               }
               gestureIndex++;
-              captureCount = 0;
+              captureCount   = 0;
               gestureDetected = false;
-              lastNodY = null;
-              subline = selected[gestureIndex].label;
+              blinkPhase     = 'open';
+              subline        = selected[gestureIndex].label;
             } else {
               subline = `Captured ${captureCount}/${CAPTURES_PER}`;
             }
@@ -210,7 +237,7 @@
         holdProgress = Math.min(holdProgress + 0.05, 1);
       } else if (!hit) {
         if (holdTimer) { clearTimeout(holdTimer); holdTimer = null; }
-        holdProgress = 0;
+        holdProgress    = 0;
         gestureDetected = false;
       }
 
@@ -223,9 +250,9 @@
 
   // ── submit ──────────────────────────────────────────────────────────────────
   async function submit() {
-    status = 'processing';
+    status   = 'processing';
     headline = 'Processing…';
-    subline = 'Saving your face data…';
+    subline  = 'Saving your face data…';
     stopCamera();
 
     const avg = descriptors[0].map((_, i) =>
@@ -234,28 +261,38 @@
 
     try {
       const res = await fetch('/api/face/enroll', {
-        method: 'POST',
+        method:  'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ descriptor: avg }),
+        body:    JSON.stringify({ descriptor: avg }),
       });
       if (!res.ok) throw new Error((await res.json().catch(() => ({}))).message ?? `${res.status}`);
-      status = 'done';
+      status   = 'done';
       headline = 'Enrolled!';
-      subline = 'Your face has been saved successfully';
+      subline  = 'Your face has been saved successfully';
       setTimeout(() => onComplete(), 1800);
     } catch (e: any) {
-      status = 'error';
-      headline = 'Enrollment failed';
-      errorMessage = e.message ?? 'Please try again';
-      subline = errorMessage;
+      status        = 'error';
+      headline      = 'Enrollment failed';
+      errorMessage  = e.message ?? 'Please try again';
+      subline       = errorMessage;
     }
   }
 
   function stopCamera() {
-    if (raf) cancelAnimationFrame(raf);
+    if (raf)       cancelAnimationFrame(raf);
     if (holdTimer) clearTimeout(holdTimer);
     stream?.getTracks().forEach(t => t.stop());
     stream = null;
+  }
+
+  function resetState() {
+    descriptors     = [];
+    captureCount    = 0;
+    gesturesDone    = 0;
+    gestureDetected = false;
+    blinkPhase      = 'open';
+    holdProgress    = 0;
+    if (holdTimer) { clearTimeout(holdTimer); holdTimer = null; }
   }
 
   function startEnrollment() {
@@ -264,10 +301,9 @@
   }
 
   function retry() {
-    descriptors = []; captureCount = 0; gesturesDone = 0;
-    gestureDetected = false; lastNodY = null; holdProgress = 0;
-    if (holdTimer) clearTimeout(holdTimer);
-    status = 'loading'; init();
+    resetState();
+    status = 'loading';
+    init();
   }
 
   async function init() {
@@ -282,26 +318,30 @@
       }
 
       stream = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: 'user', width: { ideal: 640 }, height: { ideal: 480 } }
+        video: { facingMode: 'user', width: { ideal: 640 }, height: { ideal: 480 } },
       });
       video.srcObject = stream;
       await video.play();
-      canvas.width = video.videoWidth || 640;
+      canvas.width  = video.videoWidth  || 640;
       canvas.height = video.videoHeight || 480;
       ctx = canvas.getContext('2d');
 
-      selected = [...GESTURES].sort(() => 0.5 - Math.random()).slice(0, TOTAL);
-      gestureIndex = 0; gesturesDone = 0; captureCount = 0;
+      selected     = [...GESTURES].sort(() => 0.5 - Math.random()).slice(0, TOTAL);
+      gestureIndex = 0;
+      gesturesDone = 0;
+      captureCount = 0;
 
-      status = 'gesture';
+      status   = 'gesture';
       headline = 'Face Enrollment';
-      subline = selected[0].label;
+      subline  = selected[0].label;
 
       raf = requestAnimationFrame(loop);
     } catch (e: any) {
-      status = 'error';
-      headline = 'Camera error';
-      errorMessage = e.message?.includes('denied') ? 'Allow camera access and retry' : 'Failed to load — refresh and try again';
+      status       = 'error';
+      headline     = 'Camera error';
+      errorMessage = e.message?.includes('denied')
+        ? 'Allow camera access and retry'
+        : 'Failed to load — refresh and try again';
       subline = errorMessage;
     }
   }
@@ -309,33 +349,35 @@
   onMount(() => {});
   onDestroy(stopCamera);
 
-  // Start when modal opens
+  // Start / teardown when modal opens/closes
   $effect(() => {
     if (open && status === 'intro') {
       startEnrollment();
     }
     if (!open) {
       stopCamera();
-      status = 'intro';
-      holdProgress = 0;
-      gestureDetected = false;
+      resetState();
+      status       = 'intro';
       errorMessage = '';
-      descriptors = [];
-      captureCount = 0;
-      gesturesDone = 0;
       gestureIndex = 0;
-      lastNodY = null;
     }
   });
 
-  let currentGestureLabel = $derived(
+  const currentGestureLabel = $derived(
     status === 'gesture' && selected[gestureIndex] ? selected[gestureIndex].label : ''
   );
 </script>
 
 {#if open}
-  <div class="modal-backdrop" onclick={onClose} role="dialog" aria-modal="true" aria-labelledby="enroll-title">
+  <div
+    class="modal-backdrop"
+    onclick={onClose}
+    role="dialog"
+    aria-modal="true"
+    aria-labelledby="enroll-title"
+  >
     <div class="modal" onclick={(e) => e.stopPropagation()}>
+
       <!-- Header -->
       <header class="modal-header">
         <div class="header-left">
@@ -385,7 +427,9 @@
           <div class="center-state error-state">
             <div class="error-ring">
               <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#ef4444" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-                <circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/>
+                <circle cx="12" cy="12" r="10"/>
+                <line x1="15" y1="9" x2="9" y2="15"/>
+                <line x1="9"  y1="9" x2="15" y2="15"/>
               </svg>
             </div>
             <p class="state-text error-text">{headline}</p>
@@ -403,7 +447,10 @@
                 <path d="M3 20a9 9 0 0 1 18 0"/>
               </svg>
             </div>
-            <p class="intro-text">We'll verify you're a real person by asking you to perform <strong>3 simple gestures</strong> in front of your camera.</p>
+            <p class="intro-text">
+              We'll verify you're a real person by asking you to perform
+              <strong>3 simple gestures</strong> in front of your camera.
+            </p>
             <div class="intro-steps">
               <div class="step"><span class="step-num">1</span> Allow camera access</div>
               <div class="step"><span class="step-num">2</span> Follow each gesture</div>
@@ -426,13 +473,26 @@
             <div class="gesture-hint">
               <span class="gesture-icon">
                 {#if selected[gestureIndex]?.icon === 'mouth'}
-                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 2a5 5 0 1 0 0 10A5 5 0 0 0 12 2z"/><path d="M8 14s1.5 2 4 2 4-2 4-2"/><path d="M9 18h6"/></svg>
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+                    <path d="M12 2a5 5 0 1 0 0 10A5 5 0 0 0 12 2z"/>
+                    <path d="M8 14s1.5 2 4 2 4-2 4-2"/>
+                    <path d="M9 18h6"/>
+                  </svg>
                 {:else if selected[gestureIndex]?.icon === 'left'}
-                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 2a5 5 0 1 0 0 10A5 5 0 0 0 12 2z"/><path d="M15 14l-3 3-3-3"/></svg>
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+                    <path d="M12 2a5 5 0 1 0 0 10A5 5 0 0 0 12 2z"/>
+                    <path d="M15 14l-3 3-3-3"/>
+                  </svg>
                 {:else if selected[gestureIndex]?.icon === 'right'}
-                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 2a5 5 0 1 0 0 10A5 5 0 0 0 12 2z"/><path d="M9 14l3 3 3-3"/></svg>
-                {:else}
-                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 2a5 5 0 1 0 0 10A5 5 0 0 0 12 2z"/><path d="M12 14v6"/><path d="M9 17l3-3 3 3"/></svg>
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+                    <path d="M12 2a5 5 0 1 0 0 10A5 5 0 0 0 12 2z"/>
+                    <path d="M9 14l3 3 3-3"/>
+                  </svg>
+                {:else if selected[gestureIndex]?.icon === 'blink'}
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+                    <path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7z"/>
+                    <circle cx="12" cy="12" r="3"/>
+                  </svg>
                 {/if}
               </span>
               <p class="subline gesture-label" aria-live="polite">{currentGestureLabel}</p>
@@ -451,6 +511,7 @@
           <p class="subline">{subline}</p>
         {/if}
       </div>
+
     </div>
   </div>
 {/if}
@@ -482,6 +543,7 @@
     flex-direction: column;
   }
 
+  /* ── Header ──────────────────────────────────────────────────────────────── */
   .modal-header {
     display: flex;
     align-items: center;
@@ -533,6 +595,7 @@
     color: #fff;
   }
 
+  /* ── Camera ──────────────────────────────────────────────────────────────── */
   .cam-wrap {
     position: relative;
     width: 100%;
@@ -558,6 +621,7 @@
     pointer-events: none;
   }
 
+  /* ── Center states ───────────────────────────────────────────────────────── */
   .center-state {
     position: absolute;
     inset: 0;
@@ -571,7 +635,7 @@
   }
 
   .success-state { background: rgba(10, 13, 15, 0.9); }
-  .error-state { background: rgba(10, 13, 15, 0.9); }
+  .error-state   { background: rgba(10, 13, 15, 0.9); }
 
   .success-ring {
     width: 64px;
@@ -597,15 +661,11 @@
     animation: scale-in 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
   }
 
-  .state-text {
-    font-size: 0.875rem;
-    color: rgba(255, 255, 255, 0.5);
-    margin: 0;
-  }
+  .state-text       { font-size: 0.875rem; color: rgba(255, 255, 255, 0.5); margin: 0; }
+  .success-text     { color: #00c9a7; font-weight: 600; }
+  .error-text       { color: #ef4444; font-weight: 600; }
 
-  .success-text { color: #00c9a7; font-weight: 600; }
-  .error-text { color: #ef4444; font-weight: 600; }
-
+  /* ── Bottom panel ────────────────────────────────────────────────────────── */
   .bottom {
     padding: 1.25rem;
     display: flex;
@@ -624,10 +684,9 @@
     min-height: 1.3em;
   }
 
-  .subline.hold { color: #00c9a7; }
-  .subline.error-sub { color: #ef4444; }
+  .subline.error-sub   { color: #ef4444; }
   .subline.success-sub { color: #00c9a7; }
-  .gesture-label { font-size: 0.9rem; font-weight: 600; color: #fff; }
+  .gesture-label       { font-size: 0.9rem; font-weight: 600; color: #fff; }
 
   .cta {
     width: 100%;
@@ -644,16 +703,10 @@
     box-shadow: 0 4px 16px rgba(21, 128, 61, 0.3);
   }
 
-  .cta:hover {
-    transform: translateY(-1px);
-    box-shadow: 0 6px 20px rgba(21, 128, 61, 0.4);
-  }
+  .cta:hover  { transform: translateY(-1px); box-shadow: 0 6px 20px rgba(21, 128, 61, 0.4); }
+  .cta:active { transform: scale(0.98) translateY(0); }
 
-  .cta:active {
-    transform: scale(0.98) translateY(0);
-  }
-
-  /* Intro content */
+  /* ── Intro ───────────────────────────────────────────────────────────────── */
   .intro-content {
     display: flex;
     flex-direction: column;
@@ -715,7 +768,7 @@
     flex-shrink: 0;
   }
 
-  /* Gesture panel */
+  /* ── Gesture panel ───────────────────────────────────────────────────────── */
   .gesture-panel {
     display: flex;
     flex-direction: column;
@@ -771,6 +824,7 @@
     transition: width 0.1s linear;
   }
 
+  /* ── Spinner ─────────────────────────────────────────────────────────────── */
   .spinner {
     width: 36px;
     height: 36px;
@@ -782,20 +836,22 @@
 
   .spinner.teal { border-top-color: #00c9a7; }
 
-  @keyframes spin { to { transform: rotate(360deg); } }
-  @keyframes fade-in { from { opacity: 0; } to { opacity: 1; } }
+  /* ── Keyframes ───────────────────────────────────────────────────────────── */
+  @keyframes spin     { to { transform: rotate(360deg); } }
+  @keyframes fade-in  { from { opacity: 0; } to { opacity: 1; } }
   @keyframes scale-in {
     from { opacity: 0; transform: scale(0.9); }
-    to { opacity: 1; transform: scale(1); }
+    to   { opacity: 1; transform: scale(1);   }
   }
   @keyframes slide-up {
     from { opacity: 0; transform: translateY(16px); }
-    to { opacity: 1; transform: translateY(0); }
+    to   { opacity: 1; transform: translateY(0);    }
   }
 
+  /* ── Mobile ──────────────────────────────────────────────────────────────── */
   @media (max-width: 480px) {
     .modal-backdrop { padding: 0.5rem; }
-    .modal { max-width: 100%; border-radius: 1rem; }
-    .bottom { padding: 1rem; }
+    .modal          { max-width: 100%; border-radius: 1rem; }
+    .bottom         { padding: 1rem; }
   }
 </style>

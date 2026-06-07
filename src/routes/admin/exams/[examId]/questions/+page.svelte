@@ -664,12 +664,12 @@
         </div>
       </div>
 
-      {#if totalMarks !== data.exam.totalMarks && data.exam.questions.length > 0}
-        <div class="marks-warn">
-          <AlertCircle size={14} />
-          Question marks total ({totalMarks}) doesn't match exam total marks ({data.exam.totalMarks}). Update either the questions or the exam settings.
-        </div>
-      {/if}
+     {#if data.exam.questionsToPresent === 0 && totalMarks !== data.exam.totalMarks && data.exam.questions.length > 0}
+  <div class="marks-warn">
+    <AlertCircle size={14} />
+    Question marks total ({totalMarks}) doesn't match exam total marks ({data.exam.totalMarks}). Update either the questions or the exam settings.
+  </div>
+{/if}
 
       <!-- Question list -->
       {#if data.exam.questions.length === 0}

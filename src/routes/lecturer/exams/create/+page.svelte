@@ -14,8 +14,6 @@
   const LEVELS = [100, 200, 300, 400, 500, 600] as const;
   let selectedLevels = $state<Set<number>>(new Set());
   let allLevels = $derived(selectedLevels.size === LEVELS.length);
-  let questionsToPresent = $state(0);
-
 
   function toggleLevel(level: number) {
     const next = new Set(selectedLevels);
@@ -177,7 +175,6 @@
   {/if}
 
   <form method="POST" id="exam-form" class="exam-grid">
-
     <!-- ══ COLUMN 1: Basic + Scope ═══════════════════════════════════════════ -->
     <div class="col">
 
@@ -601,7 +598,6 @@
               </p>
             </div>
           </div>
-          </div>
 
           <!-- ── Questions to present ─────────────────────────────────────── -->
           <div class="qtp-wrap">
@@ -747,9 +743,7 @@
         <a href="/lecturer" class="btn ghost">Cancel</a>
         <button type="submit" class="btn primary">Create Exam &amp; Add Questions →</button>
       </div>
-
-    </div>
-
+  </div>
   </form>
 </div>
 

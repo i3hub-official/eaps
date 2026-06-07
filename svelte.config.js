@@ -17,7 +17,7 @@ onwarn: (warning, handler) => {
     'svelte_component_deprecated',
     'non_reactive_update',
     'a11y_autofocus',
-    'a11y_label_has_associated_control',
+    'a11y_label_has_associated_control', 'a11y_invalid_attribute',
   ]);
   if (suppress.has(warning.code)) return;
   handler(warning);

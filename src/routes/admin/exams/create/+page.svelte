@@ -7,7 +7,7 @@
     ClipboardList, BookOpen, Clock, Settings2, Users, GraduationCap,
     Building2, AlertCircle, Plus, Loader2, X, ChevronLeft, ChevronDown,
     Search, Calendar, Check, ShieldAlert, FileText, Timer, BarChart3,
-    Info, Sparkles, Eye
+    Info, Sparkles, Eye,Layers,
   } from 'lucide-svelte';
 
   let { data, form }: { data: PageData; form: ActionData } = $props();
@@ -18,6 +18,7 @@
   let selectedLecturer = $state(data.emulateLecturer?.id ?? '');
   let lecturerOpen = $state(false);
   let lecturerSearch = $state('');
+  let questionsToPresent = $state(0);
 
   const filteredLecturers = $derived(
     data.lecturers.filter(l =>
@@ -716,7 +717,7 @@
                 <span class="score-unit">pts</span>
               </div>
             </div>
-            <div class="score-field">
+           <div class="score-field">
               <label for="maxViolations">
                 <ShieldAlert size={13} strokeWidth={2} /> Max Violations
               </label>
@@ -724,6 +725,29 @@
                 <input id="maxViolations" name="maxViolations" type="number" value="5" min="1" max="20" />
                 <span class="score-unit">×</span>
               </div>
+            </div>
+            <!-- NEW -->
+            <div class="score-field" style="grid-column: 1 / -1;">
+              <label for="questionsToPresent">
+                <Layers size={13} strokeWidth={2} /> Questions to Present
+              </label>
+              <div class="score-input-wrap">
+                <input
+                  id="questionsToPresent"
+                  name="questionsToPresent"
+                  type="number"
+                  bind:value={questionsToPresent}
+                  min="0"
+                  max="999"
+                  placeholder="0"
+                />
+                <span class="score-unit">qs</span>
+              </div>
+              <p class="field-hint" style="margin-top: 0.25rem; font-size: 0.72rem; color: var(--color-muted);">
+                {questionsToPresent > 0
+                  ? `Each student receives ${questionsToPresent} question${questionsToPresent !== 1 ? 's' : ''} drawn from the full pool.`
+                  : 'Set to 0 to present all questions in the pool.'}
+              </p>
             </div>
           </div>
         </div>
@@ -829,6 +853,12 @@
           <div class="sum-row">
             <span>End</span>
             <span class="sum-val">{endDate ? fmtDisplay(endDate, endTime) : '—'}</span>
+          </div>
+          <div class="sum-row">
+            <span>Pool size</span>
+            <span class="sum-val">
+              {questionsToPresent > 0 ? questionsToPresent + ' / pool' : 'All questions'}
+            </span>
           </div>
         </div>
       </div>

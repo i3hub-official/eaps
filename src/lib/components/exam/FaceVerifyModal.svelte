@@ -39,16 +39,19 @@
   function animateScan() {
     scanY += scanDir * 0.012;
     if (scanY >= 1) { scanY = 1; scanDir = -1; }
-    if (scanY <= 0) { scanY = 0; scanDir = 1; }
+    if (scanY <= 0) { scanY = 0; scanDir =  1; }
     scanRaf = requestAnimationFrame(animateScan);
   }
 
-  // ── canvas overlay ──────────────────────────────────────────────────────────
+  // ── canvas overlay (vertical oval) ─────────────────────────────────────────
   function drawOverlay(detected: boolean, multiple: boolean = false, progress: number = 0) {
     if (!ctx || !canvas) return;
     const w = canvas.width, h = canvas.height;
     const cx = w / 2, cy = h / 2;
-    const rx = w * 0.34, ry = h * 0.42;
+
+    // vertical oval: rx narrower than ry
+    const rx = w * 0.28;
+    const ry = h * 0.44;
 
     ctx.clearRect(0, 0, w, h);
 
@@ -75,24 +78,29 @@
     ctx.stroke();
 
     // corner brackets
-    const bLen = 22, bW = 2.5;
+    const bLen = 20, bW = 2.5;
     const positions = [
-      { x: cx - rx, y: cy - ry, d: [1, 1] },
-      { x: cx + rx, y: cy - ry, d: [-1, 1] },
-      { x: cx - rx, y: cy + ry, d: [1, -1] },
-      { x: cx + rx, y: cy + ry, d: [-1, -1] },
+      { x: cx - rx, y: cy - ry, d: [1,  1] as [number, number] },
+      { x: cx + rx, y: cy - ry, d: [-1, 1] as [number, number] },
+      { x: cx - rx, y: cy + ry, d: [1, -1] as [number, number] },
+      { x: cx + rx, y: cy + ry, d: [-1,-1] as [number, number] },
     ];
     ctx.strokeStyle = multiple ? '#ef4444' : detected ? '#00c9a7' : 'rgba(0,201,167,0.6)';
     ctx.lineWidth = bW;
     ctx.lineCap = 'round';
     for (const { x, y, d } of positions) {
-      ctx.beginPath(); ctx.moveTo(x + d[0] * bLen, y); ctx.lineTo(x, y); ctx.lineTo(x, y + d[1] * bLen); ctx.stroke();
+      ctx.beginPath();
+      ctx.moveTo(x + d[0] * bLen, y);
+      ctx.lineTo(x, y);
+      ctx.lineTo(x, y + d[1] * bLen);
+      ctx.stroke();
     }
 
     // progress ring when face detected
     if (detected && progress > 0 && !multiple) {
       ctx.save();
-      ctx.beginPath(); ctx.ellipse(cx, cy, rx + 10, ry + 10, 0, -Math.PI / 2, -Math.PI / 2 + (progress * Math.PI * 2));
+      ctx.beginPath();
+      ctx.ellipse(cx, cy, rx + 10, ry + 10, 0, -Math.PI / 2, -Math.PI / 2 + progress * Math.PI * 2);
       ctx.strokeStyle = 'rgba(0,201,167,0.5)';
       ctx.lineWidth = 3;
       ctx.lineCap = 'round';
@@ -100,17 +108,27 @@
       ctx.restore();
     }
 
-    // scan line
+    // scan line clipped to oval
     ctx.save();
     ctx.beginPath(); ctx.ellipse(cx, cy, rx - 1, ry - 1, 0, 0, Math.PI * 2); ctx.clip();
     const sy = cy - ry + scanY * ry * 2;
     const grad = ctx.createLinearGradient(0, sy - 12, 0, sy + 12);
-    grad.addColorStop(0, 'rgba(0,201,167,0)');
+    grad.addColorStop(0,   'rgba(0,201,167,0)');
     grad.addColorStop(0.5, 'rgba(0,201,167,0.55)');
-    grad.addColorStop(1, 'rgba(0,201,167,0)');
+    grad.addColorStop(1,   'rgba(0,201,167,0)');
     ctx.fillStyle = grad;
     ctx.fillRect(cx - rx, sy - 12, rx * 2, 24);
     ctx.restore();
+
+    // multiple faces warning text
+    if (multiple) {
+      ctx.save();
+      ctx.fillStyle = '#ef4444';
+      ctx.font = 'bold 14px system-ui';
+      ctx.textAlign = 'center';
+      ctx.fillText('⚠ Multiple faces detected', cx, cy + ry + 28);
+      ctx.restore();
+    }
   }
 
   // ── detection loop ──────────────────────────────────────────────────────────
@@ -164,16 +182,16 @@
 
   // ── verify against server ───────────────────────────────────────────────────
   async function verify(descriptor: number[]) {
-    status = 'processing';
+    status   = 'processing';
     headline = 'Verifying…';
-    subline = 'Matching your face…';
+    subline  = 'Matching your face…';
     stopCamera();
 
     try {
       const res = await fetch('/api/face/verify', {
-        method: 'POST',
+        method:  'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ descriptor }),
+        body:    JSON.stringify({ descriptor }),
       });
 
       if (!res.ok) {
@@ -182,21 +200,21 @@
       }
 
       const data = await res.json();
-      status = 'success';
+      status   = 'success';
       headline = 'Verified!';
-      subline = data.warning ?? 'Identity confirmed. Entering exam…';
+      subline  = data.warning ?? 'Identity confirmed. Entering exam…';
       setTimeout(() => onVerified(), 1200);
     } catch (e: any) {
-      status = 'error';
-      headline = 'Verification failed';
+      status       = 'error';
+      headline     = 'Verification failed';
       errorMessage = e.message ?? 'Please try again';
-      subline = errorMessage;
+      subline      = errorMessage;
     }
   }
 
   function stopCamera() {
-    if (raf) cancelAnimationFrame(raf);
-    if (scanRaf) cancelAnimationFrame(scanRaf);
+    if (raf)       cancelAnimationFrame(raf);
+    if (scanRaf)   cancelAnimationFrame(scanRaf);
     if (holdTimer) clearTimeout(holdTimer);
     stream?.getTracks().forEach(t => t.stop());
     stream = null;
@@ -227,25 +245,25 @@
       }
 
       stream = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: 'user', width: { ideal: 640 }, height: { ideal: 480 } }
+        video: { facingMode: 'user', width: { ideal: 640 }, height: { ideal: 480 } },
       });
       video.srcObject = stream;
       await video.play();
-      canvas.width = video.videoWidth || 640;
+      canvas.width  = video.videoWidth  || 640;
       canvas.height = video.videoHeight || 480;
       ctx = canvas.getContext('2d');
 
-      status = 'scanning';
+      status   = 'scanning';
       headline = 'Verify your identity';
-      subline = 'Position your face in the frame';
+      subline  = 'Position your face in the frame';
 
       animateScan();
       raf = requestAnimationFrame(loop);
     } catch (e: any) {
-      status = 'error';
-      headline = 'Camera error';
-      errorMessage = e.message?.includes('denied') 
-        ? 'Allow camera access and retry' 
+      status       = 'error';
+      headline     = 'Camera error';
+      errorMessage = e.message?.includes('denied')
+        ? 'Allow camera access and retry'
         : 'Failed to load camera';
       subline = errorMessage;
     }
@@ -254,14 +272,14 @@
   onMount(() => {});
   onDestroy(stopCamera);
 
-  // Start when modal opens
+  // Start / teardown when modal opens/closes
   $effect(() => {
     if (open && status === 'intro') {
       startVerification();
     }
     if (!open) {
       stopCamera();
-      status = 'intro';
+      status       = 'intro';
       holdProgress = 0;
       faceDetected = false;
       errorMessage = '';
@@ -270,8 +288,15 @@
 </script>
 
 {#if open}
-  <div class="modal-backdrop" onclick={onClose} role="dialog" aria-modal="true" aria-labelledby="verify-title">
+  <div
+    class="modal-backdrop"
+    onclick={onClose}
+    role="dialog"
+    aria-modal="true"
+    aria-labelledby="verify-title"
+  >
     <div class="modal" onclick={(e) => e.stopPropagation()}>
+
       <!-- Header -->
       <header class="modal-header">
         <h2 id="verify-title">{headline}</h2>
@@ -316,7 +341,9 @@
           <div class="center-state error-state">
             <div class="error-ring">
               <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#ef4444" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-                <circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/>
+                <circle cx="12" cy="12" r="10"/>
+                <line x1="15" y1="9" x2="9" y2="15"/>
+                <line x1="9"  y1="9" x2="15" y2="15"/>
               </svg>
             </div>
             <p class="state-text error-text">{headline}</p>
@@ -342,9 +369,11 @@
         {#if status === 'intro'}
           <p class="subline">Click below to start face verification</p>
           <button class="cta" onclick={startVerification}>Start Verification</button>
+
         {:else if status === 'error'}
           <p class="subline error-sub">{subline}</p>
           <button class="cta" onclick={retry}>Try Again</button>
+
         {:else if status === 'scanning'}
           <div class="scan-indicator">
             <div class="scan-dots">
@@ -354,12 +383,15 @@
             </div>
             <p class="subline" class:hold={faceDetected}>{subline}</p>
           </div>
+
         {:else if status === 'success'}
           <p class="subline success-sub">{subline}</p>
+
         {:else}
           <p class="subline">{subline}</p>
         {/if}
       </div>
+
     </div>
   </div>
 {/if}
@@ -391,6 +423,7 @@
     flex-direction: column;
   }
 
+  /* ── Header ──────────────────────────────────────────────────────────────── */
   .modal-header {
     display: flex;
     align-items: center;
@@ -425,6 +458,7 @@
     color: #fff;
   }
 
+  /* ── Camera ──────────────────────────────────────────────────────────────── */
   .cam-wrap {
     position: relative;
     width: 100%;
@@ -450,6 +484,7 @@
     pointer-events: none;
   }
 
+  /* ── Center states ───────────────────────────────────────────────────────── */
   .center-state {
     position: absolute;
     inset: 0;
@@ -463,7 +498,7 @@
   }
 
   .success-state { background: rgba(10, 13, 15, 0.9); }
-  .error-state { background: rgba(10, 13, 15, 0.9); }
+  .error-state   { background: rgba(10, 13, 15, 0.9); }
 
   .success-ring {
     width: 64px;
@@ -489,15 +524,11 @@
     animation: scale-in 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
   }
 
-  .state-text {
-    font-size: 0.875rem;
-    color: rgba(255, 255, 255, 0.5);
-    margin: 0;
-  }
-
+  .state-text   { font-size: 0.875rem; color: rgba(255, 255, 255, 0.5); margin: 0; }
   .success-text { color: #00c9a7; font-weight: 600; }
-  .error-text { color: #ef4444; font-weight: 600; }
+  .error-text   { color: #ef4444; font-weight: 600; }
 
+  /* ── Face badge ──────────────────────────────────────────────────────────── */
   .face-badge {
     position: absolute;
     top: 0.75rem;
@@ -548,6 +579,7 @@
     box-shadow: 0 0 4px rgba(239, 68, 68, 0.5);
   }
 
+  /* ── Bottom panel ────────────────────────────────────────────────────────── */
   .bottom {
     padding: 1.25rem;
     display: flex;
@@ -565,8 +597,8 @@
     min-height: 1.3em;
   }
 
-  .subline.hold { color: #00c9a7; }
-  .subline.error-sub { color: #ef4444; }
+  .subline.hold        { color: #00c9a7; }
+  .subline.error-sub   { color: #ef4444; }
   .subline.success-sub { color: #00c9a7; }
 
   .cta {
@@ -584,15 +616,10 @@
     box-shadow: 0 4px 16px rgba(21, 128, 61, 0.3);
   }
 
-  .cta:hover {
-    transform: translateY(-1px);
-    box-shadow: 0 6px 20px rgba(21, 128, 61, 0.4);
-  }
+  .cta:hover  { transform: translateY(-1px); box-shadow: 0 6px 20px rgba(21, 128, 61, 0.4); }
+  .cta:active { transform: scale(0.98) translateY(0); }
 
-  .cta:active {
-    transform: scale(0.98) translateY(0);
-  }
-
+  /* ── Scan indicator ──────────────────────────────────────────────────────── */
   .scan-indicator {
     display: flex;
     flex-direction: column;
@@ -601,10 +628,7 @@
     width: 100%;
   }
 
-  .scan-dots {
-    display: flex;
-    gap: 6px;
-  }
+  .scan-dots { display: flex; gap: 6px; }
 
   .s-dot {
     width: 6px;
@@ -620,6 +644,7 @@
     transform: scale(1.2);
   }
 
+  /* ── Spinner ─────────────────────────────────────────────────────────────── */
   .spinner {
     width: 36px;
     height: 36px;
@@ -631,15 +656,23 @@
 
   .spinner.teal { border-top-color: #00c9a7; }
 
-  @keyframes spin { to { transform: rotate(360deg); } }
+  /* ── Keyframes ───────────────────────────────────────────────────────────── */
+  @keyframes spin    { to { transform: rotate(360deg); } }
   @keyframes fade-in { from { opacity: 0; } to { opacity: 1; } }
   @keyframes scale-in {
     from { opacity: 0; transform: scale(0.9); }
-    to { opacity: 1; transform: scale(1); }
+    to   { opacity: 1; transform: scale(1);   }
   }
   @keyframes shake {
-    0%, 100% { transform: translateX(0); }
-    25% { transform: translateX(-3px); }
-    75% { transform: translateX(3px); }
+    0%, 100% { transform: translateX(0);  }
+    25%      { transform: translateX(-3px); }
+    75%      { transform: translateX(3px);  }
+  }
+
+  /* ── Mobile ──────────────────────────────────────────────────────────────── */
+  @media (max-width: 480px) {
+    .modal-backdrop { padding: 0.5rem; }
+    .modal          { max-width: 100%; border-radius: 1rem; }
+    .bottom         { padding: 1rem; }
   }
 </style>

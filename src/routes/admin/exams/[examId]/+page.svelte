@@ -168,6 +168,8 @@
           <span class="ig-label">Late Entry</span><span>{exam?.allowLateEntry ? `Yes (${exam?.lateEntryMinutes ?? 0}m)` : 'No'}</span>
           <span class="ig-label">Randomize Q</span><span>{exam?.randomizeQuestions ? 'Yes' : 'No'}</span>
           <span class="ig-label">Randomize Opts</span><span>{exam?.randomizeOptions ? 'Yes' : 'No'}</span>
+          <span class="ig-label">Questions Shown</span>
+<span>{exam?.questionsToPresent > 0 ? `${exam.questionsToPresent} of ${exam?._count?.questions ?? 0}` : 'All'}</span>
           <span class="ig-label">Show Results</span><span>{exam?.showResultAfter ? 'Immediately' : 'After review'}</span>
           <span class="ig-label">Target Levels</span><span>{exam?.levels?.length ? exam.levels.join(', ') : 'All'}</span>
         </div>

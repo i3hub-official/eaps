@@ -9,6 +9,7 @@ export const load: PageServerLoad = async ({ locals, url }) => {
 
   const emulateLecturerId = url.searchParams.get('emulate');
 
+
   // Run independent queries that don't depend on each other
   const courses = await prisma.course.findMany({
     orderBy: { code: 'asc' },
@@ -72,6 +73,7 @@ export const actions: Actions = {
     const totalMarks = getNum('totalMarks', 100);
     const passMark = getNum('passMark', 40);
     const maxViolations = getNum('maxViolations', 5);
+    const questionsToPresent = getNum('questionsToPresent', 0); 
     const scheduledStart = get('scheduledStart') || null;
     const scheduledEnd = get('scheduledEnd') || null;
     const instructions = get('instructions') || null;

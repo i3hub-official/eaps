@@ -62,18 +62,27 @@ export async function createExam(input: {
   randomizeOptions?: boolean;
   showResultAfter?: boolean;
   maxViolations?: number;
+  questionsToPresent?: number;  // ← added
   session: string;
   semester: number;
-  // ── Scope ──────────────────────────────────────────────
-  levels?: number[];      // [] = no restriction (all levels)
-  department?: string | null; // null = no restriction
+  levels?: number[];            // level.level values (e.g. 100, 200) — [] = no restriction
+  department?: string | null;
 }) {
-  const { levels, department, ...rest } = input;
+  const { levels, department, questionsToPresent, ...rest } = input;
+
+  // levels is a many-to-many through ExamLevel joined on level.level (the Int field).
+  // We must use connect syntax, not a plain array.
+  const levelConnect =
+    levels && levels.length > 0
+      ? { connect: levels.map((l) => ({ level: l })) }  // level is the @unique Int field
+      : undefined;
+
   return prisma.exam.create({
     data: {
       ...rest,
-      levels:     levels     ?? [],
-      department: department ?? null,
+      department:          department          ?? null,
+      questionsToPresent:  questionsToPresent  ?? 0,
+      ...(levelConnect ? { levels: levelConnect } : {}),
     },
   });
 }
@@ -93,11 +102,27 @@ export async function updateExam(id: string, input: Partial<{
   randomizeOptions: boolean;
   showResultAfter: boolean;
   maxViolations: number;
-  // ── Scope ──────────────────────────────────────────────
+  questionsToPresent: number;   // ← added
   levels: number[];
   department: string | null;
 }>) {
-  return prisma.exam.update({ where: { id }, data: input });
+  const { levels, ...rest } = input;
+
+  const levelConnect =
+    levels !== undefined
+      ? {
+          // Replace the full set: disconnect all then reconnect
+          set: levels.map((l) => ({ level: l })),
+        }
+      : undefined;
+
+  return prisma.exam.update({
+    where: { id },
+    data: {
+      ...rest,
+      ...(levelConnect ? { levels: levelConnect } : {}),
+    },
+  });
 }
 
 export async function setExamStatus(id: string, status: ExamStatus) {
@@ -135,28 +160,17 @@ export async function getExamInvigilators(examId: string) {
 
 // ─── Scope helpers ────────────────────────────────────────────────────────────
 
-/**
- * Returns true if the student is eligible to sit the exam based on
- * the exam's level and department scope.
- *
- * Rules:
- *   • levels  = []   → no level restriction (all levels allowed)
- *   • levels  = [100, 300] → only those levels
- *   • department = null  → no department restriction
- *   • department = "Computer Science, Mathematics" → comma-separated list
- */
 export function isStudentEligible(
-  exam: { levels: number[]; department: string | null },
-  student: { level: number | null; department: { name: string } | null },
+  exam: { levels: { level: number }[]; department: string | null },
+  student: { level: { level: number } | null; department: { name: string } | null },
 ): { eligible: boolean; reason?: string } {
-  // Level check
+  // Level check — exam.levels is now a Level[] relation, not number[]
   if (exam.levels.length > 0) {
-    if (student.level === null || !exam.levels.includes(student.level)) {
-      const allowed = exam.levels.map(l => `${l}L`).join(', ');
-      return {
-        eligible: false,
-        reason: `This exam is restricted to ${allowed} students.`,
-      };
+    const allowed = exam.levels.map((l) => l.level);
+    const studentLevel = student.level?.level ?? null;
+    if (studentLevel === null || !allowed.includes(studentLevel)) {
+      const label = allowed.map((l) => `${l}L`).join(', ');
+      return { eligible: false, reason: `This exam is restricted to ${label} students.` };
     }
   }
 
@@ -164,28 +178,23 @@ export function isStudentEligible(
   if (exam.department) {
     const allowed = exam.department
       .split(',')
-      .map(s => s.trim().toLowerCase())
+      .map((s) => s.trim().toLowerCase())
       .filter(Boolean);
     const studentDept = student.department?.name?.trim().toLowerCase() ?? '';
     if (!allowed.includes(studentDept)) {
-      return {
-        eligible: false,
-        reason: `This exam is restricted to: ${exam.department}.`,
-      };
+      return { eligible: false, reason: `This exam is restricted to: ${exam.department}.` };
     }
   }
 
   return { eligible: true };
 }
 
-// ─── Aliases (compatibility) ──────────────────────────────────────────────────
+// ─── Aliases ──────────────────────────────────────────────────────────────────
 
 export const getExamsForStudent = listExamsForStudent;
 
-export const getQuestionsByExam = (examId: string) => {
-  // re-exported from questions.ts via db.ts barrel;
-  // kept here because some routes import from exams.ts directly
-  return prisma.question.findMany({
+export const getQuestionsByExam = (examId: string) =>
+  prisma.question.findMany({
     where: { examId },
     include: {
       options: { orderBy: { orderIndex: 'asc' } },
@@ -193,4 +202,3 @@ export const getQuestionsByExam = (examId: string) => {
     },
     orderBy: [{ orderIndex: 'asc' }, { createdAt: 'asc' }],
   });
-};
