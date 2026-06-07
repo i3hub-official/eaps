@@ -175,7 +175,11 @@
     const academic = [];
     if (u.matricNumber) academic.push({ label: 'Matric Number', value: u.matricNumber, icon: Hash });
     if (u.jambRegNo) academic.push({ label: 'JAMB Reg. No', value: u.jambRegNo, icon: IdCard });
-    if (u.level) academic.push({ label: 'Level', value: `${u.level} Level`, icon: TrendingUp });
+if (u.level) academic.push({
+  label: 'Level',
+  value: `${u.level.level ?? u.level.name ?? '—'} Level`,
+  icon: TrendingUp,
+});
     if (u.session) academic.push({ label: 'Academic Session', value: u.session, icon: Calendar });
     if (u.department?.name) academic.push({ label: 'Department', value: u.department.name, icon: BookOpen });
     if (u.college?.name) academic.push({ label: 'College', value: u.college.name, icon: School });
@@ -548,7 +552,7 @@
             </span>
             {#if data.user.level}
               <span class="chip chip-blue">
-                <Layers size={10} /> {data.user.level} Level
+                <Layers size={10} /> {data.user.level?.level ?? data.user.level?.name ?? '—'} LEVEL
               </span>
             {/if}
             {#if data.user.enrolled}
