@@ -7,7 +7,7 @@ const config = {
   compilerOptions: {
     runes: ({ filename }) => (filename.split(/[/\\]/).includes('node_modules') ? undefined : true),
   },
- onwarn: (warning, handler) => {
+onwarn: (warning, handler) => {
   const suppress = new Set([
     'css_unused_selector',
     'state_referenced_locally',
@@ -16,9 +16,8 @@ const config = {
     'a11y_interactive_supports_focus',
     'svelte_component_deprecated',
     'non_reactive_update',
-	'a11y_autofocus',
-  'a11y_label',
-
+    'a11y_autofocus',
+    'a11y_label_has_associated_control',
   ]);
   if (suppress.has(warning.code)) return;
   handler(warning);

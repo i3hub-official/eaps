@@ -1,0 +1,3430 @@
+[
+  {
+    "type": "mcq",
+    "body": "What does CPU stand for?",
+    "topic": "Computer Science",
+    "marks": 1,
+    "options": [
+      {
+        "text": "Central Processing Unit",
+        "correct": true
+      },
+      {
+        "text": "Central Program Utility",
+        "correct": false
+      },
+      {
+        "text": "Computer Processing Unit",
+        "correct": false
+      },
+      {
+        "text": "Core Processing Unit",
+        "correct": false
+      }
+    ]
+  },
+  {
+    "type": "fitb",
+    "body": "The binary representation of the decimal number 10 is ___",
+    "topic": "Computer Science",
+    "marks": 1,
+    "answers": [
+      "1010"
+    ]
+  },
+  {
+    "type": "mcq",
+    "body": "Which of the following is NOT a programming language?",
+    "topic": "Computer Science",
+    "marks": 1,
+    "options": [
+      {
+        "text": "HTML",
+        "correct": false
+      },
+      {
+        "text": "Python",
+        "correct": false
+      },
+      {
+        "text": "Linux",
+        "correct": true
+      },
+      {
+        "text": "Java",
+        "correct": false
+      }
+    ]
+  },
+  {
+    "type": "fitb",
+    "body": "The shortcut key to copy selected text is Ctrl + ___",
+    "topic": "Computer Science",
+    "marks": 1,
+    "answers": [
+      "C",
+      "c"
+    ]
+  },
+  {
+    "type": "mcq",
+    "body": "Which data structure operates on the LIFO principle?",
+    "topic": "Computer Science",
+    "marks": 1,
+    "options": [
+      {
+        "text": "Queue",
+        "correct": false
+      },
+      {
+        "text": "Stack",
+        "correct": true
+      },
+      {
+        "text": "Array",
+        "correct": false
+      },
+      {
+        "text": "Tree",
+        "correct": false
+      }
+    ]
+  },
+  {
+    "type": "fitb",
+    "body": "The number of bits in a byte is ___",
+    "topic": "Computer Science",
+    "marks": 1,
+    "answers": [
+      "8"
+    ]
+  },
+  {
+    "type": "mcq",
+    "body": "What does RAM stand for?",
+    "topic": "Computer Science",
+    "marks": 1,
+    "options": [
+      {
+        "text": "Read Access Memory",
+        "correct": false
+      },
+      {
+        "text": "Random Access Memory",
+        "correct": true
+      },
+      {
+        "text": "Rapid Access Module",
+        "correct": false
+      },
+      {
+        "text": "Read And Memory",
+        "correct": false
+      }
+    ]
+  },
+  {
+    "type": "fitb",
+    "body": "In HTML, the tag used to create a hyperlink is <___>",
+    "topic": "Computer Science",
+    "marks": 1,
+    "answers": [
+      "a"
+    ]
+  },
+  {
+    "type": "mcq",
+    "body": "Which symbol is used for single-line comments in JavaScript?",
+    "topic": "Computer Science",
+    "marks": 1,
+    "options": [
+      {
+        "text": "#",
+        "correct": false
+      },
+      {
+        "text": "//",
+        "correct": true
+      },
+      {
+        "text": "--",
+        "correct": false
+      },
+      {
+        "text": "/* */",
+        "correct": false
+      }
+    ]
+  },
+  {
+    "type": "mcq",
+    "body": "What is the output of: console.log(typeof null) in JavaScript?",
+    "topic": "Computer Science",
+    "marks": 2,
+    "options": [
+      {
+        "text": "null",
+        "correct": false
+      },
+      {
+        "text": "undefined",
+        "correct": false
+      },
+      {
+        "text": "object",
+        "correct": true
+      },
+      {
+        "text": "boolean",
+        "correct": false
+      }
+    ]
+  },
+  {
+    "type": "mcq",
+    "body": "Which sorting algorithm has the best average-case time complexity?",
+    "topic": "Computer Science",
+    "marks": 2,
+    "options": [
+      {
+        "text": "Bubble Sort — O(n²)",
+        "correct": false
+      },
+      {
+        "text": "Merge Sort — O(n log n)",
+        "correct": true
+      },
+      {
+        "text": "Insertion Sort — O(n²)",
+        "correct": false
+      },
+      {
+        "text": "Selection Sort — O(n²)",
+        "correct": false
+      }
+    ]
+  },
+  {
+    "type": "fitb",
+    "body": "In Big-O notation, a linear search on an unsorted array of n elements is O(___)",
+    "topic": "Computer Science",
+    "marks": 2,
+    "answers": [
+      "n",
+      "O(n)"
+    ]
+  },
+  {
+    "type": "mcq",
+    "body": "Which HTTP method is typically used to update a resource partially?",
+    "topic": "Computer Science",
+    "marks": 2,
+    "options": [
+      {
+        "text": "PUT",
+        "correct": false
+      },
+      {
+        "text": "POST",
+        "correct": false
+      },
+      {
+        "text": "PATCH",
+        "correct": true
+      },
+      {
+        "text": "GET",
+        "correct": false
+      }
+    ]
+  },
+  {
+    "type": "fitb",
+    "body": "A database index is used to improve the ___ of data retrieval operations",
+    "topic": "Computer Science",
+    "marks": 2,
+    "answers": [
+      "speed",
+      "performance",
+      "efficiency"
+    ]
+  },
+  {
+    "type": "mcq",
+    "body": "In object-oriented programming, what is the concept of hiding internal implementation details?",
+    "topic": "Computer Science",
+    "marks": 2,
+    "options": [
+      {
+        "text": "Inheritance",
+        "correct": false
+      },
+      {
+        "text": "Polymorphism",
+        "correct": false
+      },
+      {
+        "text": "Encapsulation",
+        "correct": true
+      },
+      {
+        "text": "Abstraction",
+        "correct": false
+      }
+    ]
+  },
+  {
+    "type": "mcq",
+    "body": "What does SQL stand for?",
+    "topic": "Computer Science",
+    "marks": 1,
+    "options": [
+      {
+        "text": "Structured Query Language",
+        "correct": true
+      },
+      {
+        "text": "Simple Query Logic",
+        "correct": false
+      },
+      {
+        "text": "System Query Layer",
+        "correct": false
+      },
+      {
+        "text": "Standard Query Library",
+        "correct": false
+      }
+    ]
+  },
+  {
+    "type": "fitb",
+    "body": "The process of finding and fixing errors in code is called ___",
+    "topic": "Computer Science",
+    "marks": 1,
+    "answers": [
+      "debugging"
+    ]
+  },
+  {
+    "type": "mcq",
+    "body": "Which of the following is a NoSQL database?",
+    "topic": "Computer Science",
+    "marks": 2,
+    "options": [
+      {
+        "text": "MySQL",
+        "correct": false
+      },
+      {
+        "text": "PostgreSQL",
+        "correct": false
+      },
+      {
+        "text": "MongoDB",
+        "correct": true
+      },
+      {
+        "text": "SQLite",
+        "correct": false
+      }
+    ]
+  },
+  {
+    "type": "fitb",
+    "body": "In CSS, the property used to change text color is ___",
+    "topic": "Computer Science",
+    "marks": 1,
+    "answers": [
+      "color"
+    ]
+  },
+  {
+    "type": "mcq",
+    "body": "What is a deadlock in operating systems?",
+    "topic": "Computer Science",
+    "marks": 2,
+    "options": [
+      {
+        "text": "A type of CPU scheduling algorithm",
+        "correct": false
+      },
+      {
+        "text": "A situation where processes wait for each other indefinitely",
+        "correct": true
+      },
+      {
+        "text": "A memory overflow condition",
+        "correct": false
+      },
+      {
+        "text": "A network timeout error",
+        "correct": false
+      }
+    ]
+  },
+  {
+    "type": "mcq",
+    "body": "In the CAP theorem, what does 'P' stand for?",
+    "topic": "Computer Science",
+    "marks": 3,
+    "options": [
+      {
+        "text": "Performance",
+        "correct": false
+      },
+      {
+        "text": "Partition Tolerance",
+        "correct": true
+      },
+      {
+        "text": "Persistence",
+        "correct": false
+      },
+      {
+        "text": "Priority",
+        "correct": false
+      }
+    ]
+  },
+  {
+    "type": "fitb",
+    "body": "The time complexity of Dijkstra's algorithm with a min-heap is O(___ log V)",
+    "topic": "Computer Science",
+    "marks": 3,
+    "answers": [
+      "E",
+      "(E + V)"
+    ]
+  },
+  {
+    "type": "mcq",
+    "body": "Which design pattern ensures a class has only one instance?",
+    "topic": "Computer Science",
+    "marks": 2,
+    "options": [
+      {
+        "text": "Factory",
+        "correct": false
+      },
+      {
+        "text": "Observer",
+        "correct": false
+      },
+      {
+        "text": "Singleton",
+        "correct": true
+      },
+      {
+        "text": "Decorator",
+        "correct": false
+      }
+    ]
+  },
+  {
+    "type": "fitb",
+    "body": "In TCP/IP, the layer responsible for logical addressing is the ___ layer",
+    "topic": "Computer Science",
+    "marks": 2,
+    "answers": [
+      "Network",
+      "Internet"
+    ]
+  },
+  {
+    "type": "mcq",
+    "body": "What does ACID stand for in database transactions?",
+    "topic": "Computer Science",
+    "marks": 3,
+    "options": [
+      {
+        "text": "Atomicity, Consistency, Isolation, Durability",
+        "correct": true
+      },
+      {
+        "text": "Accuracy, Concurrency, Integrity, Data",
+        "correct": false
+      },
+      {
+        "text": "Atomicity, Concurrency, Isolation, Data",
+        "correct": false
+      },
+      {
+        "text": "Accuracy, Consistency, Integrity, Durability",
+        "correct": false
+      }
+    ]
+  },
+  {
+    "type": "mcq",
+    "body": "Which data structure is used in BFS graph traversal?",
+    "topic": "Computer Science",
+    "marks": 2,
+    "options": [
+      {
+        "text": "Stack",
+        "correct": false
+      },
+      {
+        "text": "Heap",
+        "correct": false
+      },
+      {
+        "text": "Queue",
+        "correct": true
+      },
+      {
+        "text": "Tree",
+        "correct": false
+      }
+    ]
+  },
+  {
+    "type": "fitb",
+    "body": "In asymmetric encryption, the key used to encrypt data is the ___ key",
+    "topic": "Computer Science",
+    "marks": 3,
+    "answers": [
+      "public"
+    ]
+  },
+  {
+    "type": "mcq",
+    "body": "What is a virtual function in C++?",
+    "topic": "Computer Science",
+    "marks": 3,
+    "options": [
+      {
+        "text": "A function that takes no arguments",
+        "correct": false
+      },
+      {
+        "text": "A function declared with the 'virtual' keyword enabling runtime polymorphism",
+        "correct": true
+      },
+      {
+        "text": "A function defined outside the class",
+        "correct": false
+      },
+      {
+        "text": "A function that returns a pointer",
+        "correct": false
+      }
+    ]
+  },
+  {
+    "type": "fitb",
+    "body": "A binary tree with n nodes has at most ceil(n/2) leaves, expressed as ⌈n/___⌉",
+    "topic": "Computer Science",
+    "marks": 3,
+    "answers": [
+      "2"
+    ]
+  },
+  {
+    "type": "mcq",
+    "body": "Which HTTP status code indicates a resource was not found?",
+    "topic": "Computer Science",
+    "marks": 1,
+    "options": [
+      {
+        "text": "200",
+        "correct": false
+      },
+      {
+        "text": "301",
+        "correct": false
+      },
+      {
+        "text": "404",
+        "correct": true
+      },
+      {
+        "text": "500",
+        "correct": false
+      }
+    ]
+  },
+  {
+    "type": "fitb",
+    "body": "The value of π (pi) to two decimal places is ___",
+    "topic": "Mathematics",
+    "marks": 1,
+    "answers": [
+      "3.14"
+    ]
+  },
+  {
+    "type": "mcq",
+    "body": "What is the square root of 144?",
+    "topic": "Mathematics",
+    "marks": 1,
+    "options": [
+      {
+        "text": "10",
+        "correct": false
+      },
+      {
+        "text": "12",
+        "correct": true
+      },
+      {
+        "text": "14",
+        "correct": false
+      },
+      {
+        "text": "16",
+        "correct": false
+      }
+    ]
+  },
+  {
+    "type": "fitb",
+    "body": "The sum of angles in a triangle is ___ degrees",
+    "topic": "Mathematics",
+    "marks": 1,
+    "answers": [
+      "180"
+    ]
+  },
+  {
+    "type": "mcq",
+    "body": "What is 25% of 200?",
+    "topic": "Mathematics",
+    "marks": 1,
+    "options": [
+      {
+        "text": "25",
+        "correct": false
+      },
+      {
+        "text": "40",
+        "correct": false
+      },
+      {
+        "text": "50",
+        "correct": true
+      },
+      {
+        "text": "75",
+        "correct": false
+      }
+    ]
+  },
+  {
+    "type": "fitb",
+    "body": "The formula for the area of a circle is A = π___²",
+    "topic": "Mathematics",
+    "marks": 1,
+    "answers": [
+      "r",
+      "radius"
+    ]
+  },
+  {
+    "type": "mcq",
+    "body": "Which of the following is a prime number?",
+    "topic": "Mathematics",
+    "marks": 1,
+    "options": [
+      {
+        "text": "9",
+        "correct": false
+      },
+      {
+        "text": "15",
+        "correct": false
+      },
+      {
+        "text": "17",
+        "correct": true
+      },
+      {
+        "text": "21",
+        "correct": false
+      }
+    ]
+  },
+  {
+    "type": "fitb",
+    "body": "The Pythagorean theorem states: a² + b² = ___",
+    "topic": "Mathematics",
+    "marks": 1,
+    "answers": [
+      "c²",
+      "c^2"
+    ]
+  },
+  {
+    "type": "mcq",
+    "body": "What is 2³ (2 to the power of 3)?",
+    "topic": "Mathematics",
+    "marks": 1,
+    "options": [
+      {
+        "text": "6",
+        "correct": false
+      },
+      {
+        "text": "8",
+        "correct": true
+      },
+      {
+        "text": "9",
+        "correct": false
+      },
+      {
+        "text": "12",
+        "correct": false
+      }
+    ]
+  },
+  {
+    "type": "mcq",
+    "body": "What is the derivative of sin(x)?",
+    "topic": "Mathematics",
+    "marks": 2,
+    "options": [
+      {
+        "text": "-sin(x)",
+        "correct": false
+      },
+      {
+        "text": "cos(x)",
+        "correct": true
+      },
+      {
+        "text": "-cos(x)",
+        "correct": false
+      },
+      {
+        "text": "tan(x)",
+        "correct": false
+      }
+    ]
+  },
+  {
+    "type": "fitb",
+    "body": "The integral of 2x dx is ___ + C",
+    "topic": "Mathematics",
+    "marks": 2,
+    "answers": [
+      "x²",
+      "x^2"
+    ]
+  },
+  {
+    "type": "mcq",
+    "body": "A matrix with equal numbers of rows and columns is called a ___ matrix.",
+    "topic": "Mathematics",
+    "marks": 2,
+    "options": [
+      {
+        "text": "Rectangular",
+        "correct": false
+      },
+      {
+        "text": "Square",
+        "correct": true
+      },
+      {
+        "text": "Identity",
+        "correct": false
+      },
+      {
+        "text": "Diagonal",
+        "correct": false
+      }
+    ]
+  },
+  {
+    "type": "fitb",
+    "body": "The standard deviation is the square root of the ___",
+    "topic": "Mathematics",
+    "marks": 2,
+    "answers": [
+      "variance"
+    ]
+  },
+  {
+    "type": "mcq",
+    "body": "What is the limit of (sin x)/x as x approaches 0?",
+    "topic": "Mathematics",
+    "marks": 3,
+    "options": [
+      {
+        "text": "0",
+        "correct": false
+      },
+      {
+        "text": "∞",
+        "correct": false
+      },
+      {
+        "text": "1",
+        "correct": true
+      },
+      {
+        "text": "undefined",
+        "correct": false
+      }
+    ]
+  },
+  {
+    "type": "fitb",
+    "body": "log₂(32) = ___",
+    "topic": "Mathematics",
+    "marks": 2,
+    "answers": [
+      "5"
+    ]
+  },
+  {
+    "type": "mcq",
+    "body": "Which of these is NOT a type of discontinuity?",
+    "topic": "Mathematics",
+    "marks": 2,
+    "options": [
+      {
+        "text": "Jump discontinuity",
+        "correct": false
+      },
+      {
+        "text": "Removable discontinuity",
+        "correct": false
+      },
+      {
+        "text": "Infinite discontinuity",
+        "correct": false
+      },
+      {
+        "text": "Parallel discontinuity",
+        "correct": true
+      }
+    ]
+  },
+  {
+    "type": "fitb",
+    "body": "The number of permutations of n distinct objects is ___",
+    "topic": "Mathematics",
+    "marks": 2,
+    "answers": [
+      "n!",
+      "n factorial"
+    ]
+  },
+  {
+    "type": "mcq",
+    "body": "Which theorem states that every polynomial of degree n ≥ 1 has at least one complex root?",
+    "topic": "Mathematics",
+    "marks": 3,
+    "options": [
+      {
+        "text": "Fermat's Last Theorem",
+        "correct": false
+      },
+      {
+        "text": "Fundamental Theorem of Algebra",
+        "correct": true
+      },
+      {
+        "text": "Cayley-Hamilton Theorem",
+        "correct": false
+      },
+      {
+        "text": "Rolle's Theorem",
+        "correct": false
+      }
+    ]
+  },
+  {
+    "type": "fitb",
+    "body": "Euler's identity: e^(iπ) + ___ = 0",
+    "topic": "Mathematics",
+    "marks": 3,
+    "answers": [
+      "1"
+    ]
+  },
+  {
+    "type": "mcq",
+    "body": "What is the eigenvalue equation for a matrix A with eigenvector v?",
+    "topic": "Mathematics",
+    "marks": 3,
+    "options": [
+      {
+        "text": "Av = v",
+        "correct": false
+      },
+      {
+        "text": "Av = λv",
+        "correct": true
+      },
+      {
+        "text": "A + v = λ",
+        "correct": false
+      },
+      {
+        "text": "det(A) = λv",
+        "correct": false
+      }
+    ]
+  },
+  {
+    "type": "mcq",
+    "body": "What is the determinant of a 2×2 matrix [[a,b],[c,d]]?",
+    "topic": "Mathematics",
+    "marks": 2,
+    "options": [
+      {
+        "text": "ab - cd",
+        "correct": false
+      },
+      {
+        "text": "ad - bc",
+        "correct": true
+      },
+      {
+        "text": "ac - bd",
+        "correct": false
+      },
+      {
+        "text": "ab + cd",
+        "correct": false
+      }
+    ]
+  },
+  {
+    "type": "fitb",
+    "body": "The number of diagonals in a polygon with n sides is n(n-3)/___",
+    "topic": "Mathematics",
+    "marks": 3,
+    "answers": [
+      "2"
+    ]
+  },
+  {
+    "type": "mcq",
+    "body": "Which of the following series converges?",
+    "topic": "Mathematics",
+    "marks": 3,
+    "options": [
+      {
+        "text": "1 + 2 + 3 + 4 + ...",
+        "correct": false
+      },
+      {
+        "text": "1 + 1/2 + 1/4 + 1/8 + ... (geometric, r=0.5)",
+        "correct": true
+      },
+      {
+        "text": "1 + 1 + 1 + 1 + ...",
+        "correct": false
+      },
+      {
+        "text": "1 + 2 + 4 + 8 + ...",
+        "correct": false
+      }
+    ]
+  },
+  {
+    "type": "fitb",
+    "body": "The derivative of ln(x) is ___",
+    "topic": "Mathematics",
+    "marks": 2,
+    "answers": [
+      "1/x"
+    ]
+  },
+  {
+    "type": "mcq",
+    "body": "A function f is even if:",
+    "topic": "Mathematics",
+    "marks": 2,
+    "options": [
+      {
+        "text": "f(-x) = -f(x)",
+        "correct": false
+      },
+      {
+        "text": "f(x) = f(-x)",
+        "correct": true
+      },
+      {
+        "text": "f(x+y) = f(x)·f(y)",
+        "correct": false
+      },
+      {
+        "text": "f'(x) = 0 for all x",
+        "correct": false
+      }
+    ]
+  },
+  {
+    "type": "mcq",
+    "body": "Which theorem in number theory states that aᵖ⁻¹ ≡ 1 (mod p) when p is prime and gcd(a,p)=1?",
+    "topic": "Mathematics",
+    "marks": 3,
+    "options": [
+      {
+        "text": "Euler's Theorem",
+        "correct": false
+      },
+      {
+        "text": "Fermat's Little Theorem",
+        "correct": true
+      },
+      {
+        "text": "Wilson's Theorem",
+        "correct": false
+      },
+      {
+        "text": "Chinese Remainder Theorem",
+        "correct": false
+      }
+    ]
+  },
+  {
+    "type": "mcq",
+    "body": "What is the powerhouse of the cell?",
+    "topic": "Biology",
+    "marks": 1,
+    "options": [
+      {
+        "text": "Nucleus",
+        "correct": false
+      },
+      {
+        "text": "Ribosome",
+        "correct": false
+      },
+      {
+        "text": "Mitochondria",
+        "correct": true
+      },
+      {
+        "text": "Golgi apparatus",
+        "correct": false
+      }
+    ]
+  },
+  {
+    "type": "fitb",
+    "body": "The process by which plants make food using sunlight is called ___",
+    "topic": "Biology",
+    "marks": 1,
+    "answers": [
+      "photosynthesis"
+    ]
+  },
+  {
+    "type": "mcq",
+    "body": "How many chambers does the human heart have?",
+    "topic": "Biology",
+    "marks": 1,
+    "options": [
+      {
+        "text": "2",
+        "correct": false
+      },
+      {
+        "text": "3",
+        "correct": false
+      },
+      {
+        "text": "4",
+        "correct": true
+      },
+      {
+        "text": "6",
+        "correct": false
+      }
+    ]
+  },
+  {
+    "type": "fitb",
+    "body": "DNA stands for Deoxyribonucleic ___",
+    "topic": "Biology",
+    "marks": 1,
+    "answers": [
+      "Acid"
+    ]
+  },
+  {
+    "type": "mcq",
+    "body": "Which organ produces insulin?",
+    "topic": "Biology",
+    "marks": 1,
+    "options": [
+      {
+        "text": "Liver",
+        "correct": false
+      },
+      {
+        "text": "Kidney",
+        "correct": false
+      },
+      {
+        "text": "Pancreas",
+        "correct": true
+      },
+      {
+        "text": "Thyroid",
+        "correct": false
+      }
+    ]
+  },
+  {
+    "type": "fitb",
+    "body": "The basic unit of life is the ___",
+    "topic": "Biology",
+    "marks": 1,
+    "answers": [
+      "cell"
+    ]
+  },
+  {
+    "type": "mcq",
+    "body": "Which blood type is considered the universal donor?",
+    "topic": "Biology",
+    "marks": 1,
+    "options": [
+      {
+        "text": "A+",
+        "correct": false
+      },
+      {
+        "text": "O-",
+        "correct": true
+      },
+      {
+        "text": "AB+",
+        "correct": false
+      },
+      {
+        "text": "B-",
+        "correct": false
+      }
+    ]
+  },
+  {
+    "type": "fitb",
+    "body": "The molecule that carries genetic information from DNA to the ribosome is ___",
+    "topic": "Biology",
+    "marks": 2,
+    "answers": [
+      "mRNA",
+      "messenger RNA"
+    ]
+  },
+  {
+    "type": "mcq",
+    "body": "What is osmosis?",
+    "topic": "Biology",
+    "marks": 2,
+    "options": [
+      {
+        "text": "Movement of solute from low to high concentration",
+        "correct": false
+      },
+      {
+        "text": "Movement of water from high to low water potential across a semipermeable membrane",
+        "correct": true
+      },
+      {
+        "text": "Active transport of ions against a gradient",
+        "correct": false
+      },
+      {
+        "text": "Diffusion of gases across a membrane",
+        "correct": false
+      }
+    ]
+  },
+  {
+    "type": "fitb",
+    "body": "The scientific name for humans is Homo ___",
+    "topic": "Biology",
+    "marks": 1,
+    "answers": [
+      "sapiens"
+    ]
+  },
+  {
+    "type": "mcq",
+    "body": "Which of the following is a function of white blood cells?",
+    "topic": "Biology",
+    "marks": 2,
+    "options": [
+      {
+        "text": "Carry oxygen",
+        "correct": false
+      },
+      {
+        "text": "Clot blood",
+        "correct": false
+      },
+      {
+        "text": "Fight infections",
+        "correct": true
+      },
+      {
+        "text": "Transport carbon dioxide",
+        "correct": false
+      }
+    ]
+  },
+  {
+    "type": "fitb",
+    "body": "The ___ is the site of protein synthesis in a cell",
+    "topic": "Biology",
+    "marks": 2,
+    "answers": [
+      "ribosome"
+    ]
+  },
+  {
+    "type": "mcq",
+    "body": "What type of cell division produces gametes (sex cells)?",
+    "topic": "Biology",
+    "marks": 2,
+    "options": [
+      {
+        "text": "Mitosis",
+        "correct": false
+      },
+      {
+        "text": "Meiosis",
+        "correct": true
+      },
+      {
+        "text": "Binary fission",
+        "correct": false
+      },
+      {
+        "text": "Budding",
+        "correct": false
+      }
+    ]
+  },
+  {
+    "type": "fitb",
+    "body": "The double helix structure of DNA was discovered by Watson and ___",
+    "topic": "Biology",
+    "marks": 2,
+    "answers": [
+      "Crick"
+    ]
+  },
+  {
+    "type": "mcq",
+    "body": "Which vitamin is produced by the skin when exposed to sunlight?",
+    "topic": "Biology",
+    "marks": 2,
+    "options": [
+      {
+        "text": "Vitamin A",
+        "correct": false
+      },
+      {
+        "text": "Vitamin B12",
+        "correct": false
+      },
+      {
+        "text": "Vitamin C",
+        "correct": false
+      },
+      {
+        "text": "Vitamin D",
+        "correct": true
+      }
+    ]
+  },
+  {
+    "type": "mcq",
+    "body": "The lac operon in E. coli is an example of which type of gene regulation?",
+    "topic": "Biology",
+    "marks": 3,
+    "options": [
+      {
+        "text": "Post-translational regulation",
+        "correct": false
+      },
+      {
+        "text": "Negative inducible regulation",
+        "correct": true
+      },
+      {
+        "text": "Positive constitutive regulation",
+        "correct": false
+      },
+      {
+        "text": "Epigenetic silencing",
+        "correct": false
+      }
+    ]
+  },
+  {
+    "type": "fitb",
+    "body": "The enzyme that unwinds the DNA double helix during replication is called ___",
+    "topic": "Biology",
+    "marks": 3,
+    "answers": [
+      "helicase"
+    ]
+  },
+  {
+    "type": "mcq",
+    "body": "What is apoptosis?",
+    "topic": "Biology",
+    "marks": 3,
+    "options": [
+      {
+        "text": "Cell division in response to injury",
+        "correct": false
+      },
+      {
+        "text": "Programmed cell death",
+        "correct": true
+      },
+      {
+        "text": "Uncontrolled cell growth",
+        "correct": false
+      },
+      {
+        "text": "Cell fusion during fertilization",
+        "correct": false
+      }
+    ]
+  },
+  {
+    "type": "fitb",
+    "body": "In the electron transport chain, the final electron acceptor is ___",
+    "topic": "Biology",
+    "marks": 3,
+    "answers": [
+      "oxygen",
+      "O2"
+    ]
+  },
+  {
+    "type": "mcq",
+    "body": "Which of the following is NOT a type of RNA?",
+    "topic": "Biology",
+    "marks": 2,
+    "options": [
+      {
+        "text": "mRNA",
+        "correct": false
+      },
+      {
+        "text": "tRNA",
+        "correct": false
+      },
+      {
+        "text": "rRNA",
+        "correct": false
+      },
+      {
+        "text": "dRNA",
+        "correct": true
+      }
+    ]
+  },
+  {
+    "type": "fitb",
+    "body": "The fluid mosaic model describes the structure of the cell ___",
+    "topic": "Biology",
+    "marks": 2,
+    "answers": [
+      "membrane"
+    ]
+  },
+  {
+    "type": "mcq",
+    "body": "What is the role of ATP in cellular processes?",
+    "topic": "Biology",
+    "marks": 2,
+    "options": [
+      {
+        "text": "It stores genetic information",
+        "correct": false
+      },
+      {
+        "text": "It serves as the primary energy currency of the cell",
+        "correct": true
+      },
+      {
+        "text": "It catalyzes chemical reactions",
+        "correct": false
+      },
+      {
+        "text": "It provides structural support to cell walls",
+        "correct": false
+      }
+    ]
+  },
+  {
+    "type": "fitb",
+    "body": "The four bases found in DNA are Adenine, Guanine, Cytosine, and ___",
+    "topic": "Biology",
+    "marks": 2,
+    "answers": [
+      "Thymine"
+    ]
+  },
+  {
+    "type": "mcq",
+    "body": "Hardy-Weinberg equilibrium requires which of the following?",
+    "topic": "Biology",
+    "marks": 3,
+    "options": [
+      {
+        "text": "High mutation rate",
+        "correct": false
+      },
+      {
+        "text": "Natural selection pressure",
+        "correct": false
+      },
+      {
+        "text": "Random mating and no selection",
+        "correct": true
+      },
+      {
+        "text": "Small population size",
+        "correct": false
+      }
+    ]
+  },
+  {
+    "type": "fitb",
+    "body": "Organisms that make their own food through photosynthesis are called ___",
+    "topic": "Biology",
+    "marks": 1,
+    "answers": [
+      "autotrophs",
+      "producers"
+    ]
+  },
+  {
+    "type": "mcq",
+    "body": "Which of the following is an autoimmune disease?",
+    "topic": "Biology",
+    "marks": 2,
+    "options": [
+      {
+        "text": "Diabetes Type 1",
+        "correct": true
+      },
+      {
+        "text": "Diabetes Type 2",
+        "correct": false
+      },
+      {
+        "text": "Influenza",
+        "correct": false
+      },
+      {
+        "text": "Malaria",
+        "correct": false
+      }
+    ]
+  },
+  {
+    "type": "fitb",
+    "body": "The human genome contains approximately ___ protein-coding genes",
+    "topic": "Biology",
+    "marks": 3,
+    "answers": [
+      "20000",
+      "20,000",
+      "~20000"
+    ]
+  },
+  {
+    "type": "mcq",
+    "body": "What is the SI unit of force?",
+    "topic": "Physics",
+    "marks": 1,
+    "options": [
+      {
+        "text": "Watt",
+        "correct": false
+      },
+      {
+        "text": "Joule",
+        "correct": false
+      },
+      {
+        "text": "Newton",
+        "correct": true
+      },
+      {
+        "text": "Pascal",
+        "correct": false
+      }
+    ]
+  },
+  {
+    "type": "fitb",
+    "body": "The speed of light in a vacuum is approximately ___ × 10⁸ m/s",
+    "topic": "Physics",
+    "marks": 1,
+    "answers": [
+      "3",
+      "3.0",
+      "2.998"
+    ]
+  },
+  {
+    "type": "mcq",
+    "body": "Newton's first law is also known as the law of ___",
+    "topic": "Physics",
+    "marks": 1,
+    "options": [
+      {
+        "text": "Acceleration",
+        "correct": false
+      },
+      {
+        "text": "Inertia",
+        "correct": true
+      },
+      {
+        "text": "Gravity",
+        "correct": false
+      },
+      {
+        "text": "Action and Reaction",
+        "correct": false
+      }
+    ]
+  },
+  {
+    "type": "fitb",
+    "body": "The formula for kinetic energy is KE = ½m___²",
+    "topic": "Physics",
+    "marks": 1,
+    "answers": [
+      "v",
+      "velocity"
+    ]
+  },
+  {
+    "type": "mcq",
+    "body": "What type of wave is sound?",
+    "topic": "Physics",
+    "marks": 1,
+    "options": [
+      {
+        "text": "Transverse wave",
+        "correct": false
+      },
+      {
+        "text": "Electromagnetic wave",
+        "correct": false
+      },
+      {
+        "text": "Longitudinal wave",
+        "correct": true
+      },
+      {
+        "text": "Surface wave",
+        "correct": false
+      }
+    ]
+  },
+  {
+    "type": "fitb",
+    "body": "The unit of electrical resistance is the ___",
+    "topic": "Physics",
+    "marks": 1,
+    "answers": [
+      "Ohm",
+      "ohm",
+      "Ω"
+    ]
+  },
+  {
+    "type": "mcq",
+    "body": "Which of the following describes Ohm's Law?",
+    "topic": "Physics",
+    "marks": 2,
+    "options": [
+      {
+        "text": "V = IR",
+        "correct": true
+      },
+      {
+        "text": "P = IV²",
+        "correct": false
+      },
+      {
+        "text": "F = ma",
+        "correct": false
+      },
+      {
+        "text": "E = mc²",
+        "correct": false
+      }
+    ]
+  },
+  {
+    "type": "fitb",
+    "body": "The acceleration due to gravity on Earth's surface is approximately ___ m/s²",
+    "topic": "Physics",
+    "marks": 1,
+    "answers": [
+      "9.8",
+      "9.81",
+      "10"
+    ]
+  },
+  {
+    "type": "mcq",
+    "body": "What is the Doppler effect?",
+    "topic": "Physics",
+    "marks": 2,
+    "options": [
+      {
+        "text": "Light bending around massive objects",
+        "correct": false
+      },
+      {
+        "text": "Change in observed frequency due to relative motion between source and observer",
+        "correct": true
+      },
+      {
+        "text": "Reflection of sound waves from a surface",
+        "correct": false
+      },
+      {
+        "text": "Interference of electromagnetic waves",
+        "correct": false
+      }
+    ]
+  },
+  {
+    "type": "fitb",
+    "body": "In a series circuit, the total resistance is the ___ of individual resistances",
+    "topic": "Physics",
+    "marks": 2,
+    "answers": [
+      "sum",
+      "addition"
+    ]
+  },
+  {
+    "type": "mcq",
+    "body": "The energy stored in a compressed spring is a form of:",
+    "topic": "Physics",
+    "marks": 2,
+    "options": [
+      {
+        "text": "Kinetic energy",
+        "correct": false
+      },
+      {
+        "text": "Thermal energy",
+        "correct": false
+      },
+      {
+        "text": "Elastic potential energy",
+        "correct": true
+      },
+      {
+        "text": "Chemical energy",
+        "correct": false
+      }
+    ]
+  },
+  {
+    "type": "fitb",
+    "body": "Snell's law relates the angles of incidence and ___ at an interface",
+    "topic": "Physics",
+    "marks": 2,
+    "answers": [
+      "refraction"
+    ]
+  },
+  {
+    "type": "mcq",
+    "body": "In quantum mechanics, what does the Heisenberg Uncertainty Principle state?",
+    "topic": "Physics",
+    "marks": 3,
+    "options": [
+      {
+        "text": "Energy is quantized in discrete packets",
+        "correct": false
+      },
+      {
+        "text": "The more precisely position is known, the less precisely momentum can be known",
+        "correct": true
+      },
+      {
+        "text": "Light can behave as both wave and particle",
+        "correct": false
+      },
+      {
+        "text": "Every action has an equal and opposite reaction",
+        "correct": false
+      }
+    ]
+  },
+  {
+    "type": "fitb",
+    "body": "Einstein's mass-energy equivalence formula is E = ___",
+    "topic": "Physics",
+    "marks": 2,
+    "answers": [
+      "mc²",
+      "mc^2"
+    ]
+  },
+  {
+    "type": "mcq",
+    "body": "Which phenomenon confirms that light has momentum?",
+    "topic": "Physics",
+    "marks": 3,
+    "options": [
+      {
+        "text": "Photoelectric effect",
+        "correct": false
+      },
+      {
+        "text": "Radiation pressure / Compton scattering",
+        "correct": true
+      },
+      {
+        "text": "Diffraction",
+        "correct": false
+      },
+      {
+        "text": "Polarization",
+        "correct": false
+      }
+    ]
+  },
+  {
+    "type": "fitb",
+    "body": "The Planck constant h has SI units of ___",
+    "topic": "Physics",
+    "marks": 3,
+    "answers": [
+      "J·s",
+      "joule-second",
+      "Js"
+    ]
+  },
+  {
+    "type": "mcq",
+    "body": "What is the SI unit of pressure?",
+    "topic": "Physics",
+    "marks": 1,
+    "options": [
+      {
+        "text": "Newton",
+        "correct": false
+      },
+      {
+        "text": "Pascal",
+        "correct": true
+      },
+      {
+        "text": "Joule",
+        "correct": false
+      },
+      {
+        "text": "Bar",
+        "correct": false
+      }
+    ]
+  },
+  {
+    "type": "fitb",
+    "body": "The ___ of a wave is the number of complete cycles per second, measured in Hertz",
+    "topic": "Physics",
+    "marks": 2,
+    "answers": [
+      "frequency"
+    ]
+  },
+  {
+    "type": "mcq",
+    "body": "What is the chemical formula for water?",
+    "topic": "Chemistry",
+    "marks": 1,
+    "options": [
+      {
+        "text": "HO",
+        "correct": false
+      },
+      {
+        "text": "H₂O",
+        "correct": true
+      },
+      {
+        "text": "H₂O₂",
+        "correct": false
+      },
+      {
+        "text": "OH₂",
+        "correct": false
+      }
+    ]
+  },
+  {
+    "type": "fitb",
+    "body": "The atomic number of carbon is ___",
+    "topic": "Chemistry",
+    "marks": 1,
+    "answers": [
+      "6"
+    ]
+  },
+  {
+    "type": "mcq",
+    "body": "Which of the following is an example of a physical change?",
+    "topic": "Chemistry",
+    "marks": 1,
+    "options": [
+      {
+        "text": "Burning wood",
+        "correct": false
+      },
+      {
+        "text": "Rusting iron",
+        "correct": false
+      },
+      {
+        "text": "Melting ice",
+        "correct": true
+      },
+      {
+        "text": "Baking bread",
+        "correct": false
+      }
+    ]
+  },
+  {
+    "type": "fitb",
+    "body": "The periodic table is arranged in order of increasing atomic ___",
+    "topic": "Chemistry",
+    "marks": 1,
+    "answers": [
+      "number"
+    ]
+  },
+  {
+    "type": "mcq",
+    "body": "What is the pH of a neutral solution at 25°C?",
+    "topic": "Chemistry",
+    "marks": 1,
+    "options": [
+      {
+        "text": "0",
+        "correct": false
+      },
+      {
+        "text": "7",
+        "correct": true
+      },
+      {
+        "text": "14",
+        "correct": false
+      },
+      {
+        "text": "1",
+        "correct": false
+      }
+    ]
+  },
+  {
+    "type": "fitb",
+    "body": "A reaction that releases heat is called ___",
+    "topic": "Chemistry",
+    "marks": 2,
+    "answers": [
+      "exothermic"
+    ]
+  },
+  {
+    "type": "mcq",
+    "body": "What type of bond results from sharing electrons between atoms?",
+    "topic": "Chemistry",
+    "marks": 2,
+    "options": [
+      {
+        "text": "Ionic bond",
+        "correct": false
+      },
+      {
+        "text": "Covalent bond",
+        "correct": true
+      },
+      {
+        "text": "Metallic bond",
+        "correct": false
+      },
+      {
+        "text": "Hydrogen bond",
+        "correct": false
+      }
+    ]
+  },
+  {
+    "type": "fitb",
+    "body": "Avogadro's number is approximately 6.022 × 10___",
+    "topic": "Chemistry",
+    "marks": 2,
+    "answers": [
+      "23",
+      "²³"
+    ]
+  },
+  {
+    "type": "mcq",
+    "body": "Which gas law states that at constant temperature, pressure and volume are inversely proportional?",
+    "topic": "Chemistry",
+    "marks": 2,
+    "options": [
+      {
+        "text": "Charles's Law",
+        "correct": false
+      },
+      {
+        "text": "Avogadro's Law",
+        "correct": false
+      },
+      {
+        "text": "Boyle's Law",
+        "correct": true
+      },
+      {
+        "text": "Gay-Lussac's Law",
+        "correct": false
+      }
+    ]
+  },
+  {
+    "type": "fitb",
+    "body": "The process of an atom losing an electron is called ___",
+    "topic": "Chemistry",
+    "marks": 2,
+    "answers": [
+      "oxidation"
+    ]
+  },
+  {
+    "type": "mcq",
+    "body": "Which principle states that no two electrons in an atom can have the same set of four quantum numbers?",
+    "topic": "Chemistry",
+    "marks": 3,
+    "options": [
+      {
+        "text": "Hund's Rule",
+        "correct": false
+      },
+      {
+        "text": "Aufbau Principle",
+        "correct": false
+      },
+      {
+        "text": "Pauli Exclusion Principle",
+        "correct": true
+      },
+      {
+        "text": "Heisenberg Principle",
+        "correct": false
+      }
+    ]
+  },
+  {
+    "type": "fitb",
+    "body": "Le Chatelier's principle states that a system in equilibrium will shift to ___ a stress applied to it",
+    "topic": "Chemistry",
+    "marks": 3,
+    "answers": [
+      "counteract",
+      "oppose",
+      "relieve"
+    ]
+  },
+  {
+    "type": "mcq",
+    "body": "What is the hybridization of carbon in benzene?",
+    "topic": "Chemistry",
+    "marks": 3,
+    "options": [
+      {
+        "text": "sp³",
+        "correct": false
+      },
+      {
+        "text": "sp",
+        "correct": false
+      },
+      {
+        "text": "sp²",
+        "correct": true
+      },
+      {
+        "text": "sp³d",
+        "correct": false
+      }
+    ]
+  },
+  {
+    "type": "fitb",
+    "body": "The pH range for acids is 0 to ___",
+    "topic": "Chemistry",
+    "marks": 1,
+    "answers": [
+      "7"
+    ]
+  },
+  {
+    "type": "fitb",
+    "body": "The boiling point of water at standard atmospheric pressure is ___ °C",
+    "topic": "Chemistry",
+    "marks": 1,
+    "answers": [
+      "100"
+    ]
+  },
+  {
+    "type": "fitb",
+    "body": "The freezing point of water at standard pressure is ___ °C",
+    "topic": "Chemistry",
+    "marks": 1,
+    "answers": [
+      "0"
+    ]
+  },
+  {
+    "type": "fitb",
+    "body": "An alkane with 2 carbon atoms is called ___",
+    "topic": "Chemistry",
+    "marks": 2,
+    "answers": [
+      "ethane"
+    ]
+  },
+  {
+    "type": "fitb",
+    "body": "The chemical formula for table salt is ___",
+    "topic": "Chemistry",
+    "marks": 1,
+    "answers": [
+      "NaCl"
+    ]
+  },
+  {
+    "type": "mcq",
+    "body": "What is the capital city of Nigeria?",
+    "topic": "Geography",
+    "marks": 1,
+    "options": [
+      {
+        "text": "Lagos",
+        "correct": false
+      },
+      {
+        "text": "Kano",
+        "correct": false
+      },
+      {
+        "text": "Abuja",
+        "correct": true
+      },
+      {
+        "text": "Ibadan",
+        "correct": false
+      }
+    ]
+  },
+  {
+    "type": "fitb",
+    "body": "The longest river in the world is the ___",
+    "topic": "Geography",
+    "marks": 1,
+    "answers": [
+      "Nile",
+      "Nile River"
+    ]
+  },
+  {
+    "type": "mcq",
+    "body": "Which continent is the largest by area?",
+    "topic": "Geography",
+    "marks": 1,
+    "options": [
+      {
+        "text": "Africa",
+        "correct": false
+      },
+      {
+        "text": "North America",
+        "correct": false
+      },
+      {
+        "text": "Asia",
+        "correct": true
+      },
+      {
+        "text": "Europe",
+        "correct": false
+      }
+    ]
+  },
+  {
+    "type": "fitb",
+    "body": "The imaginary line at 0° longitude is called the ___ Meridian",
+    "topic": "Geography",
+    "marks": 1,
+    "answers": [
+      "Prime",
+      "Greenwich"
+    ]
+  },
+  {
+    "type": "mcq",
+    "body": "What ocean is the largest in the world?",
+    "topic": "Geography",
+    "marks": 1,
+    "options": [
+      {
+        "text": "Atlantic",
+        "correct": false
+      },
+      {
+        "text": "Indian",
+        "correct": false
+      },
+      {
+        "text": "Pacific",
+        "correct": true
+      },
+      {
+        "text": "Arctic",
+        "correct": false
+      }
+    ]
+  },
+  {
+    "type": "fitb",
+    "body": "The Great Barrier Reef is located off the coast of ___",
+    "topic": "Geography",
+    "marks": 1,
+    "answers": [
+      "Australia"
+    ]
+  },
+  {
+    "type": "mcq",
+    "body": "Which of the following is an example of a convergent plate boundary feature?",
+    "topic": "Geography",
+    "marks": 2,
+    "options": [
+      {
+        "text": "Mid-Atlantic Ridge",
+        "correct": false
+      },
+      {
+        "text": "East African Rift Valley",
+        "correct": false
+      },
+      {
+        "text": "Himalayan Mountains",
+        "correct": true
+      },
+      {
+        "text": "San Andreas Fault",
+        "correct": false
+      }
+    ]
+  },
+  {
+    "type": "fitb",
+    "body": "The ___ is the layer of the Earth's atmosphere that contains the ozone layer",
+    "topic": "Geography",
+    "marks": 2,
+    "answers": [
+      "stratosphere"
+    ]
+  },
+  {
+    "type": "mcq",
+    "body": "Which African country has the highest population?",
+    "topic": "Geography",
+    "marks": 2,
+    "options": [
+      {
+        "text": "South Africa",
+        "correct": false
+      },
+      {
+        "text": "Ethiopia",
+        "correct": false
+      },
+      {
+        "text": "Egypt",
+        "correct": false
+      },
+      {
+        "text": "Nigeria",
+        "correct": true
+      }
+    ]
+  },
+  {
+    "type": "fitb",
+    "body": "Lines of latitude are also called ___",
+    "topic": "Geography",
+    "marks": 2,
+    "answers": [
+      "parallels"
+    ]
+  },
+  {
+    "type": "mcq",
+    "body": "Which country is the largest by land area?",
+    "topic": "Geography",
+    "marks": 1,
+    "options": [
+      {
+        "text": "Canada",
+        "correct": false
+      },
+      {
+        "text": "China",
+        "correct": false
+      },
+      {
+        "text": "Russia",
+        "correct": true
+      },
+      {
+        "text": "United States",
+        "correct": false
+      }
+    ]
+  },
+  {
+    "type": "fitb",
+    "body": "The layer of Earth beneath the crust is called the ___",
+    "topic": "Geography",
+    "marks": 1,
+    "answers": [
+      "mantle"
+    ]
+  },
+  {
+    "type": "mcq",
+    "body": "Which of the following is a conjunction?",
+    "topic": "English Language",
+    "marks": 1,
+    "options": [
+      {
+        "text": "quickly",
+        "correct": false
+      },
+      {
+        "text": "beautiful",
+        "correct": false
+      },
+      {
+        "text": "although",
+        "correct": true
+      },
+      {
+        "text": "river",
+        "correct": false
+      }
+    ]
+  },
+  {
+    "type": "fitb",
+    "body": "The plural of 'mouse' is ___",
+    "topic": "English Language",
+    "marks": 1,
+    "answers": [
+      "mice"
+    ]
+  },
+  {
+    "type": "mcq",
+    "body": "What literary device is used in: 'The wind whispered through the trees'?",
+    "topic": "English Language",
+    "marks": 1,
+    "options": [
+      {
+        "text": "Simile",
+        "correct": false
+      },
+      {
+        "text": "Personification",
+        "correct": true
+      },
+      {
+        "text": "Metaphor",
+        "correct": false
+      },
+      {
+        "text": "Hyperbole",
+        "correct": false
+      }
+    ]
+  },
+  {
+    "type": "fitb",
+    "body": "The opposite of 'benevolent' is ___",
+    "topic": "English Language",
+    "marks": 1,
+    "answers": [
+      "malevolent"
+    ]
+  },
+  {
+    "type": "mcq",
+    "body": "Which sentence is in passive voice?",
+    "topic": "English Language",
+    "marks": 2,
+    "options": [
+      {
+        "text": "The cat ate the fish.",
+        "correct": false
+      },
+      {
+        "text": "She completed the assignment.",
+        "correct": false
+      },
+      {
+        "text": "The assignment was completed by her.",
+        "correct": true
+      },
+      {
+        "text": "He runs every morning.",
+        "correct": false
+      }
+    ]
+  },
+  {
+    "type": "fitb",
+    "body": "A word that sounds the same as another but has a different meaning is called a ___",
+    "topic": "English Language",
+    "marks": 2,
+    "answers": [
+      "homophone"
+    ]
+  },
+  {
+    "type": "mcq",
+    "body": "In which Shakespearean play does the character Iago appear?",
+    "topic": "English Language",
+    "marks": 2,
+    "options": [
+      {
+        "text": "Hamlet",
+        "correct": false
+      },
+      {
+        "text": "Othello",
+        "correct": true
+      },
+      {
+        "text": "Macbeth",
+        "correct": false
+      },
+      {
+        "text": "King Lear",
+        "correct": false
+      }
+    ]
+  },
+  {
+    "type": "fitb",
+    "body": "The literary term for the main turning point of a story is the ___",
+    "topic": "English Language",
+    "marks": 2,
+    "answers": [
+      "climax"
+    ]
+  },
+  {
+    "type": "mcq",
+    "body": "What is a 'synecdoche'?",
+    "topic": "English Language",
+    "marks": 3,
+    "options": [
+      {
+        "text": "Using a mild expression instead of a harsh one",
+        "correct": false
+      },
+      {
+        "text": "Referring to a whole by one of its parts or vice versa",
+        "correct": true
+      },
+      {
+        "text": "Exaggerating for emphasis",
+        "correct": false
+      },
+      {
+        "text": "Attributing human traits to non-human things",
+        "correct": false
+      }
+    ]
+  },
+  {
+    "type": "fitb",
+    "body": "The narrative technique where a story is told from the perspective of 'I' is called ___ person narration",
+    "topic": "English Language",
+    "marks": 2,
+    "answers": [
+      "first"
+    ]
+  },
+  {
+    "type": "mcq",
+    "body": "In grammar, a word that modifies a noun is called a(n):",
+    "topic": "English Language",
+    "marks": 1,
+    "options": [
+      {
+        "text": "Adverb",
+        "correct": false
+      },
+      {
+        "text": "Adjective",
+        "correct": true
+      },
+      {
+        "text": "Preposition",
+        "correct": false
+      },
+      {
+        "text": "Conjunction",
+        "correct": false
+      }
+    ]
+  },
+  {
+    "type": "fitb",
+    "body": "In literature, a story within a story is called a ___ narrative",
+    "topic": "English Language",
+    "marks": 3,
+    "answers": [
+      "frame",
+      "embedded",
+      "nested"
+    ]
+  },
+  {
+    "type": "mcq",
+    "body": "What does GDP stand for?",
+    "topic": "Economics",
+    "marks": 1,
+    "options": [
+      {
+        "text": "Gross Domestic Product",
+        "correct": true
+      },
+      {
+        "text": "General Development Plan",
+        "correct": false
+      },
+      {
+        "text": "Gross Development Programme",
+        "correct": false
+      },
+      {
+        "text": "General Domestic Price",
+        "correct": false
+      }
+    ]
+  },
+  {
+    "type": "fitb",
+    "body": "The law of ___ states that as price increases, quantity demanded decreases",
+    "topic": "Economics",
+    "marks": 1,
+    "answers": [
+      "demand"
+    ]
+  },
+  {
+    "type": "mcq",
+    "body": "Which of the following is a factor of production?",
+    "topic": "Economics",
+    "marks": 1,
+    "options": [
+      {
+        "text": "Profit",
+        "correct": false
+      },
+      {
+        "text": "Capital",
+        "correct": true
+      },
+      {
+        "text": "Revenue",
+        "correct": false
+      },
+      {
+        "text": "Tax",
+        "correct": false
+      }
+    ]
+  },
+  {
+    "type": "fitb",
+    "body": "Inflation is a sustained increase in the general ___ level",
+    "topic": "Economics",
+    "marks": 1,
+    "answers": [
+      "price"
+    ]
+  },
+  {
+    "type": "mcq",
+    "body": "When a country can produce a good at a lower opportunity cost than another, it has a:",
+    "topic": "Economics",
+    "marks": 2,
+    "options": [
+      {
+        "text": "Absolute advantage",
+        "correct": false
+      },
+      {
+        "text": "Comparative advantage",
+        "correct": true
+      },
+      {
+        "text": "Trade surplus",
+        "correct": false
+      },
+      {
+        "text": "Monopoly",
+        "correct": false
+      }
+    ]
+  },
+  {
+    "type": "fitb",
+    "body": "The market structure with only one seller is called a ___",
+    "topic": "Economics",
+    "marks": 2,
+    "answers": [
+      "monopoly"
+    ]
+  },
+  {
+    "type": "mcq",
+    "body": "Which type of unemployment results from workers being between jobs?",
+    "topic": "Economics",
+    "marks": 2,
+    "options": [
+      {
+        "text": "Structural unemployment",
+        "correct": false
+      },
+      {
+        "text": "Cyclical unemployment",
+        "correct": false
+      },
+      {
+        "text": "Frictional unemployment",
+        "correct": true
+      },
+      {
+        "text": "Seasonal unemployment",
+        "correct": false
+      }
+    ]
+  },
+  {
+    "type": "fitb",
+    "body": "The ___ curve shows the relationship between tax rates and government revenue",
+    "topic": "Economics",
+    "marks": 3,
+    "answers": [
+      "Laffer"
+    ]
+  },
+  {
+    "type": "mcq",
+    "body": "In Keynesian economics, during a recession, the government should:",
+    "topic": "Economics",
+    "marks": 3,
+    "options": [
+      {
+        "text": "Increase taxes and reduce spending",
+        "correct": false
+      },
+      {
+        "text": "Increase spending and reduce taxes to stimulate demand",
+        "correct": true
+      },
+      {
+        "text": "Let the market self-correct without intervention",
+        "correct": false
+      },
+      {
+        "text": "Raise interest rates to attract investment",
+        "correct": false
+      }
+    ]
+  },
+  {
+    "type": "mcq",
+    "body": "Price elasticity of demand > 1 indicates:",
+    "topic": "Economics",
+    "marks": 3,
+    "options": [
+      {
+        "text": "Inelastic demand",
+        "correct": false
+      },
+      {
+        "text": "Elastic demand",
+        "correct": true
+      },
+      {
+        "text": "Unitary elasticity",
+        "correct": false
+      },
+      {
+        "text": "Perfectly inelastic demand",
+        "correct": false
+      }
+    ]
+  },
+  {
+    "type": "fitb",
+    "body": "Opportunity cost is the value of the next best ___ foregone",
+    "topic": "Economics",
+    "marks": 2,
+    "answers": [
+      "alternative",
+      "option"
+    ]
+  },
+  {
+    "type": "mcq",
+    "body": "In economics, when demand increases and supply stays constant, price will:",
+    "topic": "Economics",
+    "marks": 2,
+    "options": [
+      {
+        "text": "Decrease",
+        "correct": false
+      },
+      {
+        "text": "Stay the same",
+        "correct": false
+      },
+      {
+        "text": "Increase",
+        "correct": true
+      },
+      {
+        "text": "Become perfectly elastic",
+        "correct": false
+      }
+    ]
+  },
+  {
+    "type": "mcq",
+    "body": "In which year did Nigeria gain independence?",
+    "topic": "History",
+    "marks": 1,
+    "options": [
+      {
+        "text": "1957",
+        "correct": false
+      },
+      {
+        "text": "1960",
+        "correct": true
+      },
+      {
+        "text": "1963",
+        "correct": false
+      },
+      {
+        "text": "1970",
+        "correct": false
+      }
+    ]
+  },
+  {
+    "type": "fitb",
+    "body": "The first President of the United States was George ___",
+    "topic": "History",
+    "marks": 1,
+    "answers": [
+      "Washington"
+    ]
+  },
+  {
+    "type": "mcq",
+    "body": "Which empire built the Colosseum in Rome?",
+    "topic": "History",
+    "marks": 1,
+    "options": [
+      {
+        "text": "Greek Empire",
+        "correct": false
+      },
+      {
+        "text": "Ottoman Empire",
+        "correct": false
+      },
+      {
+        "text": "Roman Empire",
+        "correct": true
+      },
+      {
+        "text": "Byzantine Empire",
+        "correct": false
+      }
+    ]
+  },
+  {
+    "type": "fitb",
+    "body": "World War II ended in the year ___",
+    "topic": "History",
+    "marks": 1,
+    "answers": [
+      "1945"
+    ]
+  },
+  {
+    "type": "mcq",
+    "body": "Who was the first person to walk on the moon?",
+    "topic": "History",
+    "marks": 1,
+    "options": [
+      {
+        "text": "Yuri Gagarin",
+        "correct": false
+      },
+      {
+        "text": "Buzz Aldrin",
+        "correct": false
+      },
+      {
+        "text": "Neil Armstrong",
+        "correct": true
+      },
+      {
+        "text": "John Glenn",
+        "correct": false
+      }
+    ]
+  },
+  {
+    "type": "mcq",
+    "body": "The Berlin Wall fell in which year?",
+    "topic": "History",
+    "marks": 2,
+    "options": [
+      {
+        "text": "1985",
+        "correct": false
+      },
+      {
+        "text": "1989",
+        "correct": true
+      },
+      {
+        "text": "1991",
+        "correct": false
+      },
+      {
+        "text": "1993",
+        "correct": false
+      }
+    ]
+  },
+  {
+    "type": "fitb",
+    "body": "The ___ Revolution of 1917 overthrew the Russian Tsar",
+    "topic": "History",
+    "marks": 2,
+    "answers": [
+      "Bolshevik",
+      "Russian",
+      "October"
+    ]
+  },
+  {
+    "type": "mcq",
+    "body": "Which African leader spent 27 years in prison before becoming president of South Africa?",
+    "topic": "History",
+    "marks": 2,
+    "options": [
+      {
+        "text": "Kwame Nkrumah",
+        "correct": false
+      },
+      {
+        "text": "Jomo Kenyatta",
+        "correct": false
+      },
+      {
+        "text": "Nelson Mandela",
+        "correct": true
+      },
+      {
+        "text": "Robert Mugabe",
+        "correct": false
+      }
+    ]
+  },
+  {
+    "type": "fitb",
+    "body": "The Magna Carta was signed in the year ___",
+    "topic": "History",
+    "marks": 2,
+    "answers": [
+      "1215"
+    ]
+  },
+  {
+    "type": "mcq",
+    "body": "Which Nigerian writer won the Nobel Prize for Literature in 1986?",
+    "topic": "History",
+    "marks": 2,
+    "options": [
+      {
+        "text": "Chinua Achebe",
+        "correct": false
+      },
+      {
+        "text": "Ben Okri",
+        "correct": false
+      },
+      {
+        "text": "Wole Soyinka",
+        "correct": true
+      },
+      {
+        "text": "Chimamanda Adichie",
+        "correct": false
+      }
+    ]
+  },
+  {
+    "type": "fitb",
+    "body": "The Treaty of Versailles ending World War I was signed in ___",
+    "topic": "History",
+    "marks": 2,
+    "answers": [
+      "1919"
+    ]
+  },
+  {
+    "type": "mcq",
+    "body": "How many sides does a hexagon have?",
+    "topic": "General Knowledge",
+    "marks": 1,
+    "options": [
+      {
+        "text": "5",
+        "correct": false
+      },
+      {
+        "text": "6",
+        "correct": true
+      },
+      {
+        "text": "7",
+        "correct": false
+      },
+      {
+        "text": "8",
+        "correct": false
+      }
+    ]
+  },
+  {
+    "type": "fitb",
+    "body": "The chemical symbol for gold is ___",
+    "topic": "General Knowledge",
+    "marks": 1,
+    "answers": [
+      "Au"
+    ]
+  },
+  {
+    "type": "mcq",
+    "body": "Which planet is closest to the Sun?",
+    "topic": "General Knowledge",
+    "marks": 1,
+    "options": [
+      {
+        "text": "Venus",
+        "correct": false
+      },
+      {
+        "text": "Earth",
+        "correct": false
+      },
+      {
+        "text": "Mercury",
+        "correct": true
+      },
+      {
+        "text": "Mars",
+        "correct": false
+      }
+    ]
+  },
+  {
+    "type": "fitb",
+    "body": "The largest organ in the human body is the ___",
+    "topic": "General Knowledge",
+    "marks": 1,
+    "answers": [
+      "skin"
+    ]
+  },
+  {
+    "type": "mcq",
+    "body": "What is the hardest natural substance on Earth?",
+    "topic": "General Knowledge",
+    "marks": 1,
+    "options": [
+      {
+        "text": "Gold",
+        "correct": false
+      },
+      {
+        "text": "Iron",
+        "correct": false
+      },
+      {
+        "text": "Diamond",
+        "correct": true
+      },
+      {
+        "text": "Quartz",
+        "correct": false
+      }
+    ]
+  },
+  {
+    "type": "fitb",
+    "body": "The currency of Japan is the ___",
+    "topic": "General Knowledge",
+    "marks": 1,
+    "answers": [
+      "Yen",
+      "yen"
+    ]
+  },
+  {
+    "type": "mcq",
+    "body": "How many bones are in the adult human body?",
+    "topic": "General Knowledge",
+    "marks": 2,
+    "options": [
+      {
+        "text": "186",
+        "correct": false
+      },
+      {
+        "text": "206",
+        "correct": true
+      },
+      {
+        "text": "226",
+        "correct": false
+      },
+      {
+        "text": "256",
+        "correct": false
+      }
+    ]
+  },
+  {
+    "type": "fitb",
+    "body": "The Great Wall of China was primarily built during the ___ Dynasty",
+    "topic": "General Knowledge",
+    "marks": 2,
+    "answers": [
+      "Ming"
+    ]
+  },
+  {
+    "type": "mcq",
+    "body": "Which gas do plants absorb during photosynthesis?",
+    "topic": "General Knowledge",
+    "marks": 1,
+    "options": [
+      {
+        "text": "Oxygen",
+        "correct": false
+      },
+      {
+        "text": "Nitrogen",
+        "correct": false
+      },
+      {
+        "text": "Carbon dioxide",
+        "correct": true
+      },
+      {
+        "text": "Hydrogen",
+        "correct": false
+      }
+    ]
+  },
+  {
+    "type": "fitb",
+    "body": "The internet protocol used to assign IP addresses automatically is ___",
+    "topic": "General Knowledge",
+    "marks": 2,
+    "answers": [
+      "DHCP"
+    ]
+  },
+  {
+    "type": "fitb",
+    "body": "The ___ is the branch of philosophy concerned with knowledge and belief",
+    "topic": "General Knowledge",
+    "marks": 3,
+    "answers": [
+      "epistemology"
+    ]
+  },
+  {
+    "type": "mcq",
+    "body": "Which of the following is an example of a renewable energy source?",
+    "topic": "General Knowledge",
+    "marks": 1,
+    "options": [
+      {
+        "text": "Coal",
+        "correct": false
+      },
+      {
+        "text": "Natural gas",
+        "correct": false
+      },
+      {
+        "text": "Solar energy",
+        "correct": true
+      },
+      {
+        "text": "Nuclear fission",
+        "correct": false
+      }
+    ]
+  },
+  {
+    "type": "mcq",
+    "body": "In JavaScript, what does the 'use strict' directive do?",
+    "topic": "Computer Science",
+    "marks": 2,
+    "options": [
+      {
+        "text": "Enables all ES6+ features",
+        "correct": false
+      },
+      {
+        "text": "Enforces stricter parsing and error handling",
+        "correct": true
+      },
+      {
+        "text": "Disables asynchronous code",
+        "correct": false
+      },
+      {
+        "text": "Forces type checking at runtime",
+        "correct": false
+      }
+    ]
+  },
+  {
+    "type": "fitb",
+    "body": "The CSS property to make an element invisible but still occupy space is opacity: ___",
+    "topic": "Computer Science",
+    "marks": 2,
+    "answers": [
+      "0"
+    ]
+  },
+  {
+    "type": "mcq",
+    "body": "What is the purpose of a foreign key in a relational database?",
+    "topic": "Computer Science",
+    "marks": 2,
+    "options": [
+      {
+        "text": "To uniquely identify each row in a table",
+        "correct": false
+      },
+      {
+        "text": "To enforce referential integrity between tables",
+        "correct": true
+      },
+      {
+        "text": "To speed up query execution",
+        "correct": false
+      },
+      {
+        "text": "To store binary data",
+        "correct": false
+      }
+    ]
+  },
+  {
+    "type": "fitb",
+    "body": "In version control, the command to stage all changed files in Git is: git ___ .",
+    "topic": "Computer Science",
+    "marks": 2,
+    "answers": [
+      "add"
+    ]
+  },
+  {
+    "type": "mcq",
+    "body": "What does CORS stand for?",
+    "topic": "Computer Science",
+    "marks": 2,
+    "options": [
+      {
+        "text": "Cross-Origin Resource Sharing",
+        "correct": true
+      },
+      {
+        "text": "Client Object Request Service",
+        "correct": false
+      },
+      {
+        "text": "Cross-Origin Request System",
+        "correct": false
+      },
+      {
+        "text": "Content Origin Resource Service",
+        "correct": false
+      }
+    ]
+  },
+  {
+    "type": "fitb",
+    "body": "A function that calls itself is called a ___ function",
+    "topic": "Computer Science",
+    "marks": 2,
+    "answers": [
+      "recursive"
+    ]
+  },
+  {
+    "type": "mcq",
+    "body": "Which of the following is a reactive frontend framework?",
+    "topic": "Computer Science",
+    "marks": 1,
+    "options": [
+      {
+        "text": "Django",
+        "correct": false
+      },
+      {
+        "text": "Express",
+        "correct": false
+      },
+      {
+        "text": "Svelte",
+        "correct": true
+      },
+      {
+        "text": "Laravel",
+        "correct": false
+      }
+    ]
+  },
+  {
+    "type": "fitb",
+    "body": "In REST APIs, the status code for 'Created' is ___",
+    "topic": "Computer Science",
+    "marks": 2,
+    "answers": [
+      "201"
+    ]
+  },
+  {
+    "type": "mcq",
+    "body": "Which hashing algorithm produces a 256-bit output?",
+    "topic": "Computer Science",
+    "marks": 3,
+    "options": [
+      {
+        "text": "MD5",
+        "correct": false
+      },
+      {
+        "text": "SHA-1",
+        "correct": false
+      },
+      {
+        "text": "SHA-256",
+        "correct": true
+      },
+      {
+        "text": "bcrypt",
+        "correct": false
+      }
+    ]
+  },
+  {
+    "type": "mcq",
+    "body": "In WebSockets, which event fires when a connection is established?",
+    "topic": "Computer Science",
+    "marks": 2,
+    "options": [
+      {
+        "text": "message",
+        "correct": false
+      },
+      {
+        "text": "connect",
+        "correct": false
+      },
+      {
+        "text": "open",
+        "correct": true
+      },
+      {
+        "text": "start",
+        "correct": false
+      }
+    ]
+  },
+  {
+    "type": "fitb",
+    "body": "In Node.js, the global object equivalent to 'window' in the browser is ___",
+    "topic": "Computer Science",
+    "marks": 2,
+    "answers": [
+      "global"
+    ]
+  },
+  {
+    "type": "mcq",
+    "body": "Which of the following is NOT a JavaScript Promise state?",
+    "topic": "Computer Science",
+    "marks": 2,
+    "options": [
+      {
+        "text": "Pending",
+        "correct": false
+      },
+      {
+        "text": "Fulfilled",
+        "correct": false
+      },
+      {
+        "text": "Rejected",
+        "correct": false
+      },
+      {
+        "text": "Suspended",
+        "correct": true
+      }
+    ]
+  },
+  {
+    "type": "fitb",
+    "body": "In CSS Flexbox, to center items horizontally, you use justify-content: ___",
+    "topic": "Computer Science",
+    "marks": 2,
+    "answers": [
+      "center"
+    ]
+  },
+  {
+    "type": "mcq",
+    "body": "Which algorithm is used in HTTPS for symmetric session key exchange?",
+    "topic": "Computer Science",
+    "marks": 3,
+    "options": [
+      {
+        "text": "RSA directly for all data",
+        "correct": false
+      },
+      {
+        "text": "Diffie-Hellman or ECDH for key exchange, then AES for data",
+        "correct": true
+      },
+      {
+        "text": "MD5 for session tokens",
+        "correct": false
+      },
+      {
+        "text": "Base64 encoding",
+        "correct": false
+      }
+    ]
+  },
+  {
+    "type": "mcq",
+    "body": "What is the term for software that is maliciously designed to damage or disrupt a system?",
+    "topic": "Computer Science",
+    "marks": 1,
+    "options": [
+      {
+        "text": "Firmware",
+        "correct": false
+      },
+      {
+        "text": "Middleware",
+        "correct": false
+      },
+      {
+        "text": "Malware",
+        "correct": true
+      },
+      {
+        "text": "Freeware",
+        "correct": false
+      }
+    ]
+  },
+  {
+    "type": "fitb",
+    "body": "The study of heredity and genetic variation is called ___",
+    "topic": "Biology",
+    "marks": 1,
+    "answers": [
+      "genetics"
+    ]
+  },
+  {
+    "type": "mcq",
+    "body": "Which data type in programming stores True or False values?",
+    "topic": "Computer Science",
+    "marks": 1,
+    "options": [
+      {
+        "text": "Integer",
+        "correct": false
+      },
+      {
+        "text": "String",
+        "correct": false
+      },
+      {
+        "text": "Boolean",
+        "correct": true
+      },
+      {
+        "text": "Float",
+        "correct": false
+      }
+    ]
+  },
+  {
+    "type": "fitb",
+    "body": "The square of the hypotenuse equals the sum of the squares of the other two ___ in a right triangle",
+    "topic": "Mathematics",
+    "marks": 1,
+    "answers": [
+      "sides"
+    ]
+  },
+  {
+    "type": "mcq",
+    "body": "Which of the following best describes polymorphism in OOP?",
+    "topic": "Computer Science",
+    "marks": 2,
+    "options": [
+      {
+        "text": "Objects of different classes cannot share method names",
+        "correct": false
+      },
+      {
+        "text": "A single interface can represent different underlying forms",
+        "correct": true
+      },
+      {
+        "text": "A class can only inherit from one parent",
+        "correct": false
+      },
+      {
+        "text": "All objects must have the same attributes",
+        "correct": false
+      }
+    ]
+  },
+  {
+    "type": "mcq",
+    "body": "Which of the following sorting algorithms is NOT a divide-and-conquer algorithm?",
+    "topic": "Computer Science",
+    "marks": 3,
+    "options": [
+      {
+        "text": "Merge Sort",
+        "correct": false
+      },
+      {
+        "text": "Quick Sort",
+        "correct": false
+      },
+      {
+        "text": "Bubble Sort",
+        "correct": true
+      },
+      {
+        "text": "Both Merge Sort and Quick Sort only",
+        "correct": false
+      }
+    ]
+  },
+  {
+    "type": "fitb",
+    "body": "In machine learning, the process of adjusting model weights using gradient descent is called ___",
+    "topic": "Computer Science",
+    "marks": 3,
+    "answers": [
+      "backpropagation",
+      "training"
+    ]
+  },
+  {
+    "type": "mcq",
+    "body": "Which of the following is an irrational number?",
+    "topic": "Mathematics",
+    "marks": 1,
+    "options": [
+      {
+        "text": "0.5",
+        "correct": false
+      },
+      {
+        "text": "√2",
+        "correct": true
+      },
+      {
+        "text": "3/4",
+        "correct": false
+      },
+      {
+        "text": "0.333...",
+        "correct": false
+      }
+    ]
+  },
+  {
+    "type": "fitb",
+    "body": "The process by which bacteria reproduce asexually is called binary ___",
+    "topic": "Biology",
+    "marks": 1,
+    "answers": [
+      "fission"
+    ]
+  }
+]
