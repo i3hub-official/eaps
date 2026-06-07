@@ -84,18 +84,35 @@
     <div class="dh-actions">
       <span class="exam-status-badge {statusColor(exam?.status ?? 'draft')}">{exam?.status ?? 'draft'}</span>
 
-      <form method="POST" action="?/updateStatus" use:enhance={() => { statusUpdating = true; return async ({ update }) => { await update(); statusUpdating = false; }; }}>
-        <div class="status-select-wrap">
-          <select name="status" onchange={handleStatusChange} disabled={statusUpdating}>
-            {#each ['draft','scheduled','active','completed','cancelled'] as s}
-              <option value={s} selected={exam?.status === s}>{s.charAt(0).toUpperCase() + s.slice(1)}</option>
-            {/each}
-          </select>
-          {#if statusUpdating}
-            <span class="status-spin"><Loader2 size={14} class="spin" /></span>
-          {/if}
-        </div>
-      </form>
+     <!-- Replace the status form section in dh-actions -->
+<form method="POST" action="?/updateStatus" use:enhance={() => { 
+  statusUpdating = true; 
+  return async ({ update }) => { await update(); statusUpdating = false; }; 
+}}>
+  <div class="status-form">
+    <select name="status" disabled={statusUpdating}>
+      {#each ['draft','scheduled','active','completed','cancelled'] as s}
+        <option value={s} selected={exam?.status === s}>
+          {s.charAt(0).toUpperCase() + s.slice(1)}
+        </option>
+      {/each}
+    </select>
+    
+    <button 
+      type="submit" 
+      class="btn-status" 
+      disabled={statusUpdating}
+    >
+      {#if statusUpdating}
+        <Loader2 size={14} class="spin" />
+        <span>Updating...</span>
+      {:else}
+        <CheckCircle size={14} />
+        <span>Update Status</span>
+      {/if}
+    </button>
+  </div>
+</form>
 
       <button class="btn-danger-outline" onclick={() => showDeleteConfirm = true}>
         <Trash2 size={14} /> Delete
@@ -734,4 +751,59 @@
       padding: .625rem .75rem;
     }
   }
+  .status-form {
+  display: flex;
+  align-items: center;
+  gap: .5rem;
+}
+
+.status-form select {
+  padding: .45rem .75rem;
+  background: var(--color-bg);
+  border: 1px solid var(--color-border);
+  border-radius: .5rem;
+  font-size: .8rem;
+  color: var(--color-text);
+  cursor: pointer;
+  font-family: inherit;
+  appearance: none;
+  -webkit-appearance: none;
+  transition: border-color .15s;
+}
+
+.status-form select:focus { 
+  outline: none; 
+  border-color: #3b82f6; 
+}
+
+.status-form select:disabled { 
+  opacity: .6; 
+  cursor: not-allowed; 
+}
+
+.btn-status {
+  display: flex;
+  align-items: center;
+  gap: .375rem;
+  padding: .45rem .875rem;
+  background: #3b82f6;
+  border: none;
+  border-radius: .5rem;
+  font-size: .8rem;
+  font-weight: 600;
+  color: white;
+  cursor: pointer;
+  font-family: inherit;
+  transition: all .15s;
+  white-space: nowrap;
+}
+
+.btn-status:hover:not(:disabled) { 
+  background: #2563eb; 
+}
+
+.btn-status:disabled { 
+  opacity: .6; 
+  cursor: not-allowed; 
+}
 </style>
