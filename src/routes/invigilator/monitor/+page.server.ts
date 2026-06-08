@@ -8,7 +8,7 @@ export const load: PageServerLoad = async ({ locals }) => {
 
   const exams = await prisma.exam.findMany({
     where: {
-      status: { in: ['active', 'scheduled'] },
+      status: { in: ['active', 'scheduled', 'completed'] },
       invigilators: {
         some: { invigilatorId: locals.user!.id },
       },
@@ -17,7 +17,10 @@ export const load: PageServerLoad = async ({ locals }) => {
       course: { select: { code: true, title: true } },
       _count: { select: { examSessions: true } },
     },
-    orderBy: { scheduledStart: 'asc' },
+    orderBy: [
+      { status: 'asc' }, // active first, then scheduled, then completed
+      { scheduledStart: 'desc' },
+    ],
   });
 
   return { exams };

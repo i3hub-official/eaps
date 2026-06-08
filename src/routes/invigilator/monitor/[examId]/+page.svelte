@@ -1,4 +1,3 @@
-<!-- src/routes/invigilator/monitor/[examId]/+page.svelte -->
 <script lang="ts">
   import { onMount, onDestroy } from 'svelte';
   import type { PageData } from './$types';
@@ -7,7 +6,7 @@
     AlertTriangle, ShieldAlert, RefreshCw, Filter,
     Play, Pause, Eye, GraduationCap, Building2,
     ArrowUpDown, ChevronDown, UserX, UserCheck,
-    Timer, BarChart3, TrendingUp, Award
+    Timer, BarChart3, TrendingUp, Award, Lock
   } from 'lucide-svelte';
   import { fly, slide } from 'svelte/transition';
 
@@ -24,12 +23,13 @@
   let ws: WebSocket | null = null;
   let wsConnected  = $state(false);
   let lastUpdated  = $state<Date>(new Date());
+  let isCompleted  = $state(exam.status === 'completed');
 
   // ── Derived filtering & sorting ───────────────────────────────────
-  const filtered = $derived(() => {
+  // $derived.by for functions, $derived for simple expressions
+  const filteredStudents = $derived.by(() => {
     let list = students;
 
-    // Search filter
     if (search.trim()) {
       const q = search.toLowerCase();
       list = list.filter(s =>
@@ -40,12 +40,10 @@
       );
     }
 
-    // Status filter
     if (statusFilter !== 'all') {
       list = list.filter(s => s.status === statusFilter);
     }
 
-    // Sorting
     list = [...list].sort((a, b) => {
       let cmp = 0;
       switch (sortBy) {
@@ -74,7 +72,7 @@
   });
 
   // ── Stats ─────────────────────────────────────────────────────────
-  const stats = $derived(() => {
+  const stats = $derived.by(() => {
     const total = students.length;
     const notStarted = students.filter(s => s.status === 'not_started').length;
     const inProgress = students.filter(s => s.status === 'in_progress').length;
@@ -82,7 +80,7 @@
     const flagged = students.filter(s => s.status === 'flagged').length;
     const tookExam = students.filter(s => s.status !== 'not_started').length;
     const didntTake = notStarted;
-    const avgScore = students.filter(s => s.percentage != null).reduce((sum, s) => sum + (s.percentage ?? 0), 0) / (submitted || 1);
+    const avgScore = students.filter(s => s.percentage != null).reduce((sum, s) => sum + (s.percentage ?? 0), 0) / Math.max(submitted, 1);
     const totalViolations = students.reduce((sum, s) => sum + (s.violationCount ?? 0), 0);
 
     return { total, notStarted, inProgress, submitted, flagged, tookExam, didntTake, avgScore, totalViolations };
@@ -103,6 +101,7 @@
 
   // ── WebSocket ─────────────────────────────────────────────────────
   function connectWs() {
+    if (isCompleted) return; // No WS for completed exams
     try {
       const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
       ws = new WebSocket(`${protocol}//${window.location.host}/ws`);
@@ -141,13 +140,14 @@
         } catch { /* malformed frame */ }
       };
 
-      ws.onclose = () => { wsConnected = false; setTimeout(connectWs, 3000); };
+      ws.onclose = () => { wsConnected = false; if (!isCompleted) setTimeout(connectWs, 3000); };
       ws.onerror = () => { wsConnected = false; };
     } catch { /* WebSocket unavailable */ }
   }
 
   // ── Invigilator actions ───────────────────────────────────────────
   async function pauseStudent(studentId: string) {
+    if (isCompleted) return;
     await fetch('/api/invigilator/session', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ studentId, examId: exam.id, action: 'pause' }),
@@ -156,6 +156,7 @@
   }
 
   async function resumeStudent(studentId: string) {
+    if (isCompleted) return;
     await fetch('/api/invigilator/session', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ studentId, examId: exam.id, action: 'resume' }),
@@ -164,6 +165,7 @@
   }
 
   async function forceSubmitStudent(studentId: string) {
+    if (isCompleted) return;
     if (!confirm('Force submit this student\'s exam? This cannot be undone.')) return;
     await fetch('/api/invigilator/session', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -193,7 +195,7 @@
     return new Date(d).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
   }
 
-  onMount(() => connectWs());
+  onMount(() => { if (!isCompleted) connectWs(); });
   onDestroy(() => ws?.close());
 </script>
 
@@ -210,10 +212,16 @@
         <p class="exam-meta">
           <span class="meta-item"><Building2 size={12} /> {exam.course?.title ?? '—'}</span>
           <span class="meta-item"><Clock size={12} /> {exam.durationMinutes} min</span>
-          <span class="ws-pill" class:connected={wsConnected}>
-            <span class="ws-dot"></span>
-            {wsConnected ? 'Live' : 'Reconnecting…'}
-          </span>
+          {#if isCompleted}
+            <span class="status-badge completed">
+              <Lock size={11} /> Completed
+            </span>
+          {:else}
+            <span class="ws-pill" class:connected={wsConnected}>
+              <span class="ws-dot"></span>
+              {wsConnected ? 'Live' : 'Reconnecting…'}
+            </span>
+          {/if}
         </p>
       </div>
     </div>
@@ -224,49 +232,49 @@
     <div class="kpi-card total">
       <div class="kpi-icon"><Users size={18} /></div>
       <div class="kpi-body">
-        <span class="kpi-val">{stats().total}</span>
+        <span class="kpi-val">{stats.total}</span>
         <span class="kpi-lbl">Total Registered</span>
       </div>
     </div>
     <div class="kpi-card active">
       <div class="kpi-icon"><Activity size={18} /></div>
       <div class="kpi-body">
-        <span class="kpi-val">{stats().inProgress}</span>
+        <span class="kpi-val">{stats.inProgress}</span>
         <span class="kpi-lbl">In Progress</span>
       </div>
     </div>
     <div class="kpi-card done">
       <div class="kpi-icon"><CheckCircle size={18} /></div>
       <div class="kpi-body">
-        <span class="kpi-val">{stats().submitted}</span>
+        <span class="kpi-val">{stats.submitted}</span>
         <span class="kpi-lbl">Submitted</span>
       </div>
     </div>
     <div class="kpi-card paused">
       <div class="kpi-icon"><AlertTriangle size={18} /></div>
       <div class="kpi-body">
-        <span class="kpi-val">{stats().flagged}</span>
+        <span class="kpi-val">{stats.flagged}</span>
         <span class="kpi-lbl">Paused</span>
       </div>
     </div>
     <div class="kpi-card not-started">
       <div class="kpi-icon"><Clock size={18} /></div>
       <div class="kpi-body">
-        <span class="kpi-val">{stats().notStarted}</span>
+        <span class="kpi-val">{stats.notStarted}</span>
         <span class="kpi-lbl">Not Started</span>
       </div>
     </div>
     <div class="kpi-card violations">
       <div class="kpi-icon"><ShieldAlert size={18} /></div>
       <div class="kpi-body">
-        <span class="kpi-val">{stats().totalViolations}</span>
+        <span class="kpi-val">{stats.totalViolations}</span>
         <span class="kpi-lbl">Violations</span>
       </div>
     </div>
     <div class="kpi-card avg">
       <div class="kpi-icon"><TrendingUp size={18} /></div>
       <div class="kpi-body">
-        <span class="kpi-val">{stats().avgScore.toFixed(1)}%</span>
+        <span class="kpi-val">{stats.avgScore.toFixed(1)}%</span>
         <span class="kpi-lbl">Avg Score</span>
       </div>
     </div>
@@ -295,41 +303,43 @@
         class:active={statusFilter === 'all'}
         onclick={() => statusFilter = 'all'}
       >
-        All <span class="chip-count">{stats().total}</span>
+        All <span class="chip-count">{stats.total}</span>
       </button>
       <button
         class="filter-chip"
         class:active={statusFilter === 'not_started'}
         onclick={() => statusFilter = 'not_started'}
       >
-        <Clock size={12} /> Not Started <span class="chip-count">{stats().notStarted}</span>
+        <Clock size={12} /> Not Started <span class="chip-count">{stats.notStarted}</span>
       </button>
       <button
         class="filter-chip"
         class:active={statusFilter === 'in_progress'}
         onclick={() => statusFilter = 'in_progress'}
       >
-        <Play size={12} /> In Progress <span class="chip-count">{stats().inProgress}</span>
+        <Play size={12} /> In Progress <span class="chip-count">{stats.inProgress}</span>
       </button>
       <button
         class="filter-chip"
         class:active={statusFilter === 'flagged'}
         onclick={() => statusFilter = 'flagged'}
       >
-        <Pause size={12} /> Paused <span class="chip-count">{stats().flagged}</span>
+        <Pause size={12} /> Paused <span class="chip-count">{stats.flagged}</span>
       </button>
       <button
         class="filter-chip"
         class:active={statusFilter === 'submitted'}
         onclick={() => statusFilter = 'submitted'}
       >
-        <CheckCircle size={12} /> Submitted <span class="chip-count">{stats().submitted}</span>
+        <CheckCircle size={12} /> Submitted <span class="chip-count">{stats.submitted}</span>
       </button>
     </div>
 
     <div class="toolbar-right">
-      <span class="result-count">{filtered().length} of {stats().total} students</span>
-      <span class="updated-at">Updated {formatTime(lastUpdated)}</span>
+      <span class="result-count">{filteredStudents.length} of {stats.total} students</span>
+      {#if !isCompleted}
+        <span class="updated-at">Updated {formatTime(lastUpdated)}</span>
+      {/if}
     </div>
   </div>
 
@@ -337,19 +347,19 @@
   <div class="summary-bar">
     <div class="summary-item">
       <UserCheck size={14} class="summary-icon ok" />
-      <span class="summary-val">{stats().tookExam}</span>
+      <span class="summary-val">{stats.tookExam}</span>
       <span class="summary-lbl">Took exam</span>
     </div>
     <div class="summary-divider"></div>
     <div class="summary-item">
       <UserX size={14} class="summary-icon bad" />
-      <span class="summary-val">{stats().didntTake}</span>
+      <span class="summary-val">{stats.didntTake}</span>
       <span class="summary-lbl">Did not take</span>
     </div>
     <div class="summary-divider"></div>
     <div class="summary-item">
       <Award size={14} class="summary-icon" />
-      <span class="summary-val">{stats().avgScore.toFixed(1)}%</span>
+      <span class="summary-val">{stats.avgScore.toFixed(1)}%</span>
       <span class="summary-lbl">Average</span>
     </div>
   </div>
@@ -381,7 +391,7 @@
         </tr>
       </thead>
       <tbody>
-        {#each filtered() as student (student.studentId)}
+        {#each filteredStudents as student (student.studentId)}
           {@const status = getStatusConfig(student.status)}
           {@const StatusIcon = status.icon}
           <tr class="student-row" class:selected={selectedStudent === student.studentId}>
@@ -448,7 +458,11 @@
             </td>
             <td class="td-actions">
               <div class="action-btns">
-                {#if student.status === 'in_progress'}
+                {#if isCompleted}
+                  <button class="action-btn view" onclick={() => selectedStudent = student.studentId} title="View Details">
+                    <Eye size={13} />
+                  </button>
+                {:else if student.status === 'in_progress'}
                   <button class="action-btn pause" onclick={() => pauseStudent(student.studentId)} title="Pause">
                     <Pause size={13} />
                   </button>
@@ -476,7 +490,7 @@
       </tbody>
     </table>
 
-    {#if filtered().length === 0}
+    {#if filteredStudents.length === 0}
       <div class="empty-state">
         <div class="empty-icon">
           <Search size={32} strokeWidth={1.2} />
@@ -551,6 +565,14 @@
   @keyframes ws-blink {
     0%,100% { opacity: 1; }
     50%      { opacity: 0.3; }
+  }
+
+  .status-badge.completed {
+    display: inline-flex; align-items: center; gap: 0.3rem;
+    font-size: 0.65rem; font-weight: 700;
+    padding: 0.12rem 0.5rem; border-radius: 999px;
+    background: rgba(100,116,139,0.08); color: #64748b;
+    border: 1px solid rgba(100,116,139,0.2);
   }
 
   /* ── KPI Cards ────────────────────────────────────────────────── */
