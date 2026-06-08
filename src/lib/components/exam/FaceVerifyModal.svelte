@@ -1,7 +1,7 @@
 <!-- src/lib/components/exam/FaceVerifyModal.svelte -->
-
 <script lang="ts">
   import { onMount, onDestroy } from 'svelte';
+  import { browser } from '$app/environment';
 
   interface Props {
     open: boolean;
@@ -17,54 +17,67 @@
   let ctx: CanvasRenderingContext2D | null = null;
   let stream: MediaStream | null = null;
   let raf: number | null = null;
-  let scanRaf: number | null = null;
 
   type Status = 'intro' | 'loading' | 'scanning' | 'processing' | 'success' | 'error';
   let status = $state<Status>('intro');
   let headline = $state('Verify your identity');
   let subline = $state('Position your face in the frame');
-  let scanY = $state(0);
-  let scanDir = 1;
   let faceDetected = $state(false);
   let faceCount = $state(0);
   let holdProgress = $state(0);
   let holdTimer: number | null = null;
   let errorMessage = $state('');
-
-  let faceapi: typeof import('@vladmandic/face-api') | null = null;
+  
+  let human: any = null;
+  let isInitializing = false;
 
   const HOLD_DURATION = 1500;
 
-  // ── scan line animation ─────────────────────────────────────────────────────
-  function animateScan() {
-    scanY += scanDir * 0.012;
-    if (scanY >= 1) { scanY = 1; scanDir = -1; }
-    if (scanY <= 0) { scanY = 0; scanDir =  1; }
-    scanRaf = requestAnimationFrame(animateScan);
+  // ── Face detection with Human ─────────────────────────────────────────────
+  async function detectFace() {
+    if (!human || !video || video.paused || !video.videoWidth) return null;
+    
+    try {
+      const result = await human.detect(video);
+      if (!result || !result.face || result.face.length === 0) return null;
+      
+      return result;
+    } catch (error) {
+      console.error('Detection error:', error);
+      return null;
+    }
   }
 
-  // ── canvas overlay (vertical oval) ─────────────────────────────────────────
+  // ── Get face descriptor (embedding) from Human ───────────────────────────
+  function getFaceDescriptor(face: any): number[] | null {
+    if (face.embedding && Array.isArray(face.embedding)) {
+      console.log('Verification embedding dimension:', face.embedding.length);
+      return face.embedding;
+    }
+    return null;
+  }
+
+  // ── canvas overlay (vertical oval - matching enrollment) ─────────────────
   function drawOverlay(detected: boolean, multiple: boolean = false, progress: number = 0) {
     if (!ctx || !canvas) return;
     const w = canvas.width, h = canvas.height;
     const cx = w / 2, cy = h / 2;
-
-    // vertical oval: rx narrower than ry
     const rx = w * 0.28;
     const ry = h * 0.44;
 
     ctx.clearRect(0, 0, w, h);
 
-    // darken outside
     ctx.save();
-    ctx.fillStyle = 'rgba(10,13,15,0.75)';
+    ctx.fillStyle = 'rgba(10,13,15,0.72)';
     ctx.fillRect(0, 0, w, h);
     ctx.globalCompositeOperation = 'destination-out';
-    ctx.beginPath(); ctx.ellipse(cx, cy, rx, ry, 0, 0, Math.PI * 2); ctx.fill();
+    ctx.beginPath(); 
+    ctx.ellipse(cx, cy, rx, ry, 0, 0, Math.PI * 2); 
+    ctx.fill();
     ctx.restore();
 
-    // oval stroke
-    ctx.beginPath(); ctx.ellipse(cx, cy, rx, ry, 0, 0, Math.PI * 2);
+    ctx.beginPath(); 
+    ctx.ellipse(cx, cy, rx, ry, 0, 0, Math.PI * 2);
     if (multiple) {
       ctx.strokeStyle = '#ef4444';
       ctx.lineWidth = 2.5;
@@ -72,18 +85,17 @@
       ctx.strokeStyle = '#00c9a7';
       ctx.lineWidth = 2.5;
     } else {
-      ctx.strokeStyle = 'rgba(255,255,255,0.15)';
+      ctx.strokeStyle = 'rgba(255,255,255,0.18)';
       ctx.lineWidth = 1.5;
     }
     ctx.stroke();
 
-    // corner brackets
     const bLen = 20, bW = 2.5;
     const positions = [
-      { x: cx - rx, y: cy - ry, d: [1,  1] as [number, number] },
+      { x: cx - rx, y: cy - ry, d: [1, 1] as [number, number] },
       { x: cx + rx, y: cy - ry, d: [-1, 1] as [number, number] },
       { x: cx - rx, y: cy + ry, d: [1, -1] as [number, number] },
-      { x: cx + rx, y: cy + ry, d: [-1,-1] as [number, number] },
+      { x: cx + rx, y: cy + ry, d: [-1, -1] as [number, number] },
     ];
     ctx.strokeStyle = multiple ? '#ef4444' : detected ? '#00c9a7' : 'rgba(0,201,167,0.6)';
     ctx.lineWidth = bW;
@@ -96,31 +108,22 @@
       ctx.stroke();
     }
 
-    // progress ring when face detected
     if (detected && progress > 0 && !multiple) {
       ctx.save();
       ctx.beginPath();
-      ctx.ellipse(cx, cy, rx + 10, ry + 10, 0, -Math.PI / 2, -Math.PI / 2 + progress * Math.PI * 2);
-      ctx.strokeStyle = 'rgba(0,201,167,0.5)';
+      ctx.ellipse(cx, cy, rx + 8, ry + 8, 0, -Math.PI / 2, -Math.PI / 2 + progress * Math.PI * 2);
+      ctx.strokeStyle = 'rgba(0,201,167,0.6)';
       ctx.lineWidth = 3;
       ctx.lineCap = 'round';
       ctx.stroke();
+      
+      ctx.font = 'bold 12px system-ui';
+      ctx.fillStyle = '#00c9a7';
+      ctx.textAlign = 'center';
+      ctx.fillText(`${Math.round(progress * 100)}%`, cx, cy + ry + 20);
       ctx.restore();
     }
 
-    // scan line clipped to oval
-    ctx.save();
-    ctx.beginPath(); ctx.ellipse(cx, cy, rx - 1, ry - 1, 0, 0, Math.PI * 2); ctx.clip();
-    const sy = cy - ry + scanY * ry * 2;
-    const grad = ctx.createLinearGradient(0, sy - 12, 0, sy + 12);
-    grad.addColorStop(0,   'rgba(0,201,167,0)');
-    grad.addColorStop(0.5, 'rgba(0,201,167,0.55)');
-    grad.addColorStop(1,   'rgba(0,201,167,0)');
-    ctx.fillStyle = grad;
-    ctx.fillRect(cx - rx, sy - 12, rx * 2, 24);
-    ctx.restore();
-
-    // multiple faces warning text
     if (multiple) {
       ctx.save();
       ctx.fillStyle = '#ef4444';
@@ -133,91 +136,127 @@
 
   // ── detection loop ──────────────────────────────────────────────────────────
   async function loop() {
-    if (status !== 'scanning' || !faceapi) return;
+    if (status !== 'scanning' || !human || !video) {
+      if (status === 'scanning') {
+        raf = requestAnimationFrame(loop);
+      }
+      return;
+    }
 
     try {
-      const detections = await faceapi
-        .detectAllFaces(video, new faceapi.TinyFaceDetectorOptions({ inputSize: 320 }))
-        .withFaceDescriptors();
-
-      faceCount = detections.length;
-
-      if (faceCount === 0) {
+      const result = await detectFace();
+      
+      if (!result || !result.face || result.face.length === 0) {
         drawOverlay(false);
         faceDetected = false;
         holdProgress = 0;
-        if (holdTimer) { clearTimeout(holdTimer); holdTimer = null; }
+        if (holdTimer) { 
+          clearTimeout(holdTimer); 
+          holdTimer = null; 
+        }
         subline = 'Position your face in the oval';
         raf = requestAnimationFrame(loop);
         return;
       }
 
+      faceCount = result.face.length;
+
       if (faceCount > 1) {
         drawOverlay(false, true);
         faceDetected = false;
         holdProgress = 0;
-        if (holdTimer) { clearTimeout(holdTimer); holdTimer = null; }
+        if (holdTimer) { 
+          clearTimeout(holdTimer); 
+          holdTimer = null; 
+        }
         subline = 'Only one person allowed';
         raf = requestAnimationFrame(loop);
         return;
       }
 
-      const det = detections[0];
+      const face = result.face[0];
+      const descriptor = getFaceDescriptor(face);
+      
+      if (!descriptor) {
+        raf = requestAnimationFrame(loop);
+        return;
+      }
+      
       faceDetected = true;
-
+      
       if (!holdTimer) {
         holdTimer = window.setTimeout(() => {
-          verify(Array.from(det.descriptor));
+          verify(descriptor);
         }, HOLD_DURATION);
       }
-      holdProgress = Math.min(holdProgress + 0.04, 1);
+      
+      holdProgress = Math.min(holdProgress + 0.025, 1);
+      subline = 'Verifying identity...';
 
       drawOverlay(true, false, holdProgress);
-      subline = 'Hold steady…';
       raf = requestAnimationFrame(loop);
-    } catch {
+    } catch (error) {
+      console.error('Detection error:', error);
       raf = requestAnimationFrame(loop);
     }
   }
 
   // ── verify against server ───────────────────────────────────────────────────
   async function verify(descriptor: number[]) {
-    status   = 'processing';
+    status = 'processing';
     headline = 'Verifying…';
-    subline  = 'Matching your face…';
+    subline = 'Matching your face…';
     stopCamera();
+
+    console.log('Verification descriptor length:', descriptor.length);
 
     try {
       const res = await fetch('/api/face/verify', {
-        method:  'POST',
+        method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body:    JSON.stringify({ descriptor }),
+        body: JSON.stringify({ 
+          descriptor,
+          examId,
+          timestamp: Date.now()
+        }),
       });
 
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({ message: 'Verification failed' }));
-        throw new Error(err.message ?? 'Verification failed');
-      }
-
       const data = await res.json();
-      status   = 'success';
+      
+      if (!res.ok || !data.success) {
+        throw new Error(data.message || 'Verification failed');
+      }
+      
+      status = 'success';
       headline = 'Verified!';
-      subline  = data.warning ?? 'Identity confirmed. Entering exam…';
+      subline = data.warning ?? `Identity confirmed. Match: ${Math.round(data.similarity * 100)}%`;
       setTimeout(() => onVerified(), 1200);
     } catch (e: any) {
-      status       = 'error';
-      headline     = 'Verification failed';
+      console.error('Verification error:', e);
+      status = 'error';
+      headline = 'Verification failed';
       errorMessage = e.message ?? 'Please try again';
-      subline      = errorMessage;
+      subline = errorMessage;
     }
   }
 
   function stopCamera() {
-    if (raf)       cancelAnimationFrame(raf);
-    if (scanRaf)   cancelAnimationFrame(scanRaf);
-    if (holdTimer) clearTimeout(holdTimer);
-    stream?.getTracks().forEach(t => t.stop());
-    stream = null;
+    if (raf) {
+      cancelAnimationFrame(raf);
+      raf = null;
+    }
+    if (holdTimer) {
+      clearTimeout(holdTimer);
+      holdTimer = null;
+    }
+    if (stream) {
+      stream.getTracks().forEach(t => {
+        if (t.readyState === 'live') {
+          t.stop();
+        }
+      });
+      stream = null;
+    }
   }
 
   function startVerification() {
@@ -229,60 +268,119 @@
     holdProgress = 0;
     faceDetected = false;
     errorMessage = '';
+    if (holdTimer) {
+      clearTimeout(holdTimer);
+      holdTimer = null;
+    }
     status = 'loading';
     init();
   }
 
   async function init() {
+    if (!browser) return;
+    if (isInitializing) return;
+    
     try {
-      if (!faceapi) {
-        faceapi = await import('@vladmandic/face-api');
-        await Promise.all([
-          faceapi.nets.tinyFaceDetector.loadFromUri('/models'),
-          faceapi.nets.faceLandmark68TinyNet.loadFromUri('/models'),
-          faceapi.nets.faceRecognitionNet.loadFromUri('/models'),
-        ]);
+      if (!human) {
+        isInitializing = true;
+        console.log('Initializing Human for verification...');
+        
+        const HumanModule = await import('@vladmandic/human');
+        human = new HumanModule.default({
+          backend: 'webgl',
+          modelBasePath: '/models/human',
+          face: {
+            enabled: true,
+            detector: { 
+              maxDetected: 1,
+              return: true
+            },
+            description: { enabled: true },
+            landmarks: { enabled: false },
+            emotion: { enabled: false }
+          }
+        });
+        
+        await human.load();
+        console.log('Human models loaded successfully');
+        isInitializing = false;
       }
 
       stream = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: 'user', width: { ideal: 640 }, height: { ideal: 480 } },
+        video: { 
+          facingMode: 'user', 
+          width: { ideal: 640 }, 
+          height: { ideal: 480 },
+          frameRate: { ideal: 30 }
+        },
       });
-      video.srcObject = stream;
-      await video.play();
-      canvas.width  = video.videoWidth  || 640;
-      canvas.height = video.videoHeight || 480;
-      ctx = canvas.getContext('2d');
+      
+      if (video) {
+        video.srcObject = stream;
+        await video.play();
+        
+        await new Promise<void>((resolve) => {
+          const checkVideo = () => {
+            if (video.videoWidth && video.videoHeight) {
+              resolve();
+            } else {
+              setTimeout(checkVideo, 100);
+            }
+          };
+          checkVideo();
+        });
+        
+        canvas.width = video.videoWidth;
+        canvas.height = video.videoHeight;
+        ctx = canvas.getContext('2d');
 
-      status   = 'scanning';
-      headline = 'Verify your identity';
-      subline  = 'Position your face in the frame';
+        status = 'scanning';
+        headline = 'Verify your identity';
+        subline = 'Position your face in the frame';
+        holdProgress = 0;
 
-      animateScan();
-      raf = requestAnimationFrame(loop);
+        if (raf) cancelAnimationFrame(raf);
+        raf = requestAnimationFrame(loop);
+      }
     } catch (e: any) {
-      status       = 'error';
-      headline     = 'Camera error';
+      console.error('Camera initialization error:', e);
+      isInitializing = false;
+      status = 'error';
+      headline = 'Camera error';
       errorMessage = e.message?.includes('denied')
-        ? 'Allow camera access and retry'
-        : 'Failed to load camera';
+        ? 'Please allow camera access and try again'
+        : e.message?.includes('not found')
+        ? 'No camera found on this device'
+        : e.message?.includes('fetch')
+        ? 'Failed to load face detection models. Check network connection.'
+        : 'Failed to start camera. Please check permissions.';
       subline = errorMessage;
     }
   }
 
-  onMount(() => {});
+  onMount(() => {
+    return () => {
+      stopCamera();
+    };
+  });
+  
   onDestroy(stopCamera);
 
-  // Start / teardown when modal opens/closes
   $effect(() => {
     if (open && status === 'intro') {
       startVerification();
     }
     if (!open) {
       stopCamera();
-      status       = 'intro';
+      status = 'intro';
       holdProgress = 0;
       faceDetected = false;
+      faceCount = 0;
       errorMessage = '';
+      if (raf) {
+        cancelAnimationFrame(raf);
+        raf = null;
+      }
     }
   });
 </script>
@@ -343,7 +441,7 @@
               <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#ef4444" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
                 <circle cx="12" cy="12" r="10"/>
                 <line x1="15" y1="9" x2="9" y2="15"/>
-                <line x1="9"  y1="9" x2="15" y2="15"/>
+                <line x1="9" y1="9" x2="15" y2="15"/>
               </svg>
             </div>
             <p class="state-text error-text">{headline}</p>
@@ -382,6 +480,11 @@
               <div class="s-dot" class:active={holdProgress >= 1}></div>
             </div>
             <p class="subline" class:hold={faceDetected}>{subline}</p>
+            {#if holdProgress > 0}
+              <div class="hold-bar">
+                <div class="hold-fill" style="width: {holdProgress * 100}%"></div>
+              </div>
+            {/if}
           </div>
 
         {:else if status === 'success'}
@@ -423,7 +526,6 @@
     flex-direction: column;
   }
 
-  /* ── Header ──────────────────────────────────────────────────────────────── */
   .modal-header {
     display: flex;
     align-items: center;
@@ -458,7 +560,6 @@
     color: #fff;
   }
 
-  /* ── Camera ──────────────────────────────────────────────────────────────── */
   .cam-wrap {
     position: relative;
     width: 100%;
@@ -484,7 +585,6 @@
     pointer-events: none;
   }
 
-  /* ── Center states ───────────────────────────────────────────────────────── */
   .center-state {
     position: absolute;
     inset: 0;
@@ -498,7 +598,7 @@
   }
 
   .success-state { background: rgba(10, 13, 15, 0.9); }
-  .error-state   { background: rgba(10, 13, 15, 0.9); }
+  .error-state { background: rgba(10, 13, 15, 0.9); }
 
   .success-ring {
     width: 64px;
@@ -524,11 +624,10 @@
     animation: scale-in 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
   }
 
-  .state-text   { font-size: 0.875rem; color: rgba(255, 255, 255, 0.5); margin: 0; }
+  .state-text { font-size: 0.875rem; color: rgba(255, 255, 255, 0.5); margin: 0; }
   .success-text { color: #00c9a7; font-weight: 600; }
-  .error-text   { color: #ef4444; font-weight: 600; }
+  .error-text { color: #ef4444; font-weight: 600; }
 
-  /* ── Face badge ──────────────────────────────────────────────────────────── */
   .face-badge {
     position: absolute;
     top: 0.75rem;
@@ -579,7 +678,6 @@
     box-shadow: 0 0 4px rgba(239, 68, 68, 0.5);
   }
 
-  /* ── Bottom panel ────────────────────────────────────────────────────────── */
   .bottom {
     padding: 1.25rem;
     display: flex;
@@ -597,8 +695,8 @@
     min-height: 1.3em;
   }
 
-  .subline.hold        { color: #00c9a7; }
-  .subline.error-sub   { color: #ef4444; }
+  .subline.hold { color: #00c9a7; }
+  .subline.error-sub { color: #ef4444; }
   .subline.success-sub { color: #00c9a7; }
 
   .cta {
@@ -616,10 +714,9 @@
     box-shadow: 0 4px 16px rgba(21, 128, 61, 0.3);
   }
 
-  .cta:hover  { transform: translateY(-1px); box-shadow: 0 6px 20px rgba(21, 128, 61, 0.4); }
+  .cta:hover { transform: translateY(-1px); box-shadow: 0 6px 20px rgba(21, 128, 61, 0.4); }
   .cta:active { transform: scale(0.98) translateY(0); }
 
-  /* ── Scan indicator ──────────────────────────────────────────────────────── */
   .scan-indicator {
     display: flex;
     flex-direction: column;
@@ -644,7 +741,23 @@
     transform: scale(1.2);
   }
 
-  /* ── Spinner ─────────────────────────────────────────────────────────────── */
+  .hold-bar {
+    width: 100%;
+    max-width: 200px;
+    height: 3px;
+    background: rgba(255, 255, 255, 0.1);
+    border-radius: 999px;
+    overflow: hidden;
+    margin-top: 0.25rem;
+  }
+
+  .hold-fill {
+    height: 100%;
+    background: linear-gradient(90deg, #00c9a7, #00e5b9);
+    border-radius: 999px;
+    transition: width 0.1s linear;
+  }
+
   .spinner {
     width: 36px;
     height: 36px;
@@ -656,23 +769,21 @@
 
   .spinner.teal { border-top-color: #00c9a7; }
 
-  /* ── Keyframes ───────────────────────────────────────────────────────────── */
-  @keyframes spin    { to { transform: rotate(360deg); } }
+  @keyframes spin { to { transform: rotate(360deg); } }
   @keyframes fade-in { from { opacity: 0; } to { opacity: 1; } }
   @keyframes scale-in {
     from { opacity: 0; transform: scale(0.9); }
-    to   { opacity: 1; transform: scale(1);   }
+    to { opacity: 1; transform: scale(1); }
   }
   @keyframes shake {
-    0%, 100% { transform: translateX(0);  }
-    25%      { transform: translateX(-3px); }
-    75%      { transform: translateX(3px);  }
+    0%, 100% { transform: translateX(0); }
+    25% { transform: translateX(-3px); }
+    75% { transform: translateX(3px); }
   }
 
-  /* ── Mobile ──────────────────────────────────────────────────────────────── */
   @media (max-width: 480px) {
     .modal-backdrop { padding: 0.5rem; }
-    .modal          { max-width: 100%; border-radius: 1rem; }
-    .bottom         { padding: 1rem; }
+    .modal { max-width: 100%; border-radius: 1rem; }
+    .bottom { padding: 1rem; }
   }
 </style>

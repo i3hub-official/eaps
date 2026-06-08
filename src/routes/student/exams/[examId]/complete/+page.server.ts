@@ -1,54 +1,64 @@
+// src/routes/student/exams/[examId]/complete/+page.server.ts
 import type { PageServerLoad } from './$types';
 import { requireStudent } from '$lib/server/auth/guards.js';
-import { requireFaceVerified } from '$lib/server/auth/face-guard.js';
-import { prisma } from '$lib/server/db/prisma.js';
+import { prisma } from '$lib/server/db/index.js';
 import { error } from '@sveltejs/kit';
 
 export const load: PageServerLoad = async ({ params, locals }) => {
-  const user = await requireStudent(locals.user);
+  const user = requireStudent(locals.user);
   const examId = params.examId;
-
-  // Face verification guard
-  await requireFaceVerified(user.id, examId);
 
   const exam = await prisma.exam.findUnique({
     where: { id: examId },
-    include: {
-      course: true,
-      questions: {
-        include: { options: true, fitbAnswers: true },
-        orderBy: { orderIndex: 'asc' },
-      },
+    select: {
+      id: true,
+      title: true,
+      course: { select: { code: true, title: true } },
+      durationMinutes: true,
+      totalMarks: true,
+      passMark: true,
     },
   });
 
   if (!exam) throw error(404, 'Exam not found');
-  if (exam.status !== 'active') throw error(403, 'Exam is not currently active');
 
-  // Get or create session
-  let session = await prisma.examSession.findUnique({
+  // Require existing session — do NOT create one on the completion page
+  const session = await prisma.examSession.findUnique({
     where: { examId_studentId: { examId, studentId: user.id } },
   });
 
   if (!session) {
-    session = await prisma.examSession.create({
-      data: {
-        examId,
-        studentId: user.id,
-        status: 'in_progress',
-        startedAt: new Date(),
-        timeRemainingSecs: exam.durationMinutes * 60,
-        ipAddress: locals.ipAddress,
-      },
-    });
+    throw error(404, 'No exam session found');
   }
 
-  if (session.status === 'submitted' || session.status === 'force_submitted') {
-    throw error(403, 'You have already submitted this exam');
+  if (session.status !== 'submitted' && session.status !== 'force_submitted') {
+    throw error(403, 'Exam not yet submitted');
   }
 
-  // Randomize if needed (only on first start)
-  // ... existing randomization logic ...
+  // Load the result if available
+  const result = await prisma.examResult.findUnique({
+    where: { sessionId: session.id },
+  });
 
-  return { exam, session, user };
+  return {
+    exam,
+    session: {
+      id: session.id,
+      status: session.status,
+      submittedAt: session.submittedAt,
+      score: session.score,
+      isGraded: session.isGraded,
+      violationCount: session.violationCount,
+    },
+    result: result ? {
+      score: result.score,
+      percentage: result.percentage,
+      passed: result.passed,
+      grade: result.grade,
+      correct: result.correct,
+      answered: result.answered,
+      totalQuestions: result.totalQuestions,
+      timeTakenSecs: result.timeTakenSecs,
+    } : null,
+  };
 };

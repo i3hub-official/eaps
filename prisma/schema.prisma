@@ -268,7 +268,7 @@ model FaceDescriptor {
   descriptor Json // 128-element float array — e.g. [0.123, -0.456, ...]
   enrolledAt DateTime @default(now()) @map("enrolled_at") @db.Timestamptz()
   updatedAt  DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz()
-
+  embedding_dimension Int     @default(512) @map("embedding_dimension")
   student User @relation(fields: [studentId], references: [id], onDelete: Cascade)
 
   @@map("face_descriptors")
@@ -341,12 +341,13 @@ model AuthSession {
 // ─── Courses ──────────────────────────────────────────────────────────────────
 
 model Course {
-  id           String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+ id           String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   departmentId String   @map("department_id") @db.Uuid
   code         String   @unique
   title        String
   creditUnits  Int      @default(2) @map("credit_units") @db.SmallInt
   level        Int?     @db.SmallInt
+  semester     Int?     @db.SmallInt  // ← ADD THIS: 1 or 2
   createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz()
 
   department    Department           @relation(fields: [departmentId], references: [id])

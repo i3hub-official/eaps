@@ -9,14 +9,19 @@ import { prisma } from './index.js';
 
 // ─── Save / update ────────────────────────────────────────────────────────────
 
-export async function saveFaceDescriptor(
-  studentId: string,
-  descriptor: number[]
-): Promise<void> {
-  await prisma.faceDescriptor.upsert({
-    where:  { studentId },
-    update: { descriptor, updatedAt: new Date() },
-    create: { studentId, descriptor },
+export async function saveFaceDescriptor(studentId: string, descriptor: number[], dimension: number) {
+  return prisma.faceDescriptor.upsert({
+    where: { studentId },
+    update: {
+      descriptor,
+      embeddingDimension: dimension,
+      updatedAt: new Date(),
+    },
+    create: {
+      studentId,
+      descriptor,
+      embeddingDimension: dimension,
+    },
   });
 }
 
@@ -37,19 +42,17 @@ export async function getFaceDescriptor(studentId: string): Promise<number[] | n
 }
 
 export async function getFaceDescriptorWithMeta(studentId: string) {
-  const row = await prisma.faceDescriptor.findUnique({
-    where:  { studentId },
-    select: { descriptor: true, enrolledAt: true, updatedAt: true },
+  const result = await prisma.faceDescriptor.findUnique({
+    where: { studentId },
   });
-
-  if (!row) return null;
-
+  
+  if (!result) return null;
+  
   return {
-    descriptor: Array.isArray(row.descriptor)
-      ? (row.descriptor as number[])
-      : JSON.parse(row.descriptor as string),
-    enrolledAt: row.enrolledAt,
-    updatedAt:  row.updatedAt,
+    descriptor: result.descriptor as number[],
+    dimension: result.embeddingDimension,
+    enrolledAt: result.createdAt,
+    updatedAt: result.updatedAt,
   };
 }
 

@@ -2,12 +2,14 @@
 <script lang="ts">
   import type { PageData, ActionData } from './$types';
   import { enhance } from '$app/forms';
+  import { goto } from '$app/navigation';
+  import { page } from '$app/stores';
   import {
     BookOpen, Plus, Trash2, CheckCircle2, AlertCircle,
     Clock, GraduationCap, Building2, Hash, Loader2,
     RefreshCw, ArrowRightLeft, AlertTriangle, Info,
     Search, X, ChevronDown, ChevronRight, Filter,
-    LayoutGrid, List, School, Layers,
+    LayoutGrid, List, School, Layers, CalendarDays,
   } from 'lucide-svelte';
   import { fly, slide } from 'svelte/transition';
 
@@ -17,6 +19,15 @@
   let activeTab     = $state<Tab>('registered');
   let registeringId = $state<string | null>(null);
   let droppingId    = $state<string | null>(null);
+
+  // Semester selection state (from URL or default to 1)
+  const currentSemester = $derived(data.stats.currentSemester);
+
+  function switchSemester(sem: 1 | 2) {
+    const url = new URL($page.url);
+    url.searchParams.set('semester', String(sem));
+    goto(url.toString(), { replaceState: true, invalidateAll: true });
+  }
 
   // Search/filter state
   let normalSearch    = $state('');
@@ -204,7 +215,20 @@
       <div class="page-icon"><BookOpen size={20} /></div>
       <div>
         <h1>Course Registration</h1>
-        <p class="meta">{data.stats.currentSession} · Sem {data.stats.currentSemester} · {data.stats.studentLevel} Level · {data.student.collegeName}</p>
+        <p class="meta">{data.stats.currentSession} · {data.stats.studentLevel} Level · {data.student.collegeName}</p>
+      </div>
+    </div>
+
+    <!-- Semester Selector -->
+    <div class="semester-picker">
+      <span class="sem-label"><CalendarDays size={13} /> Semester</span>
+      <div class="sem-toggle">
+        <button class="sem-btn" class:active={currentSemester === 1} onclick={() => switchSemester(1)}>
+          First
+        </button>
+        <button class="sem-btn" class:active={currentSemester === 2} onclick={() => switchSemester(2)}>
+          Second
+        </button>
       </div>
     </div>
 
@@ -281,7 +305,7 @@
       {#if data.registrations.length === 0}
         <div class="empty">
           <div class="empty-icon"><BookOpen size={28} /></div>
-          <h3>No courses registered yet</h3>
+          <h3>No courses registered yet for Semester {currentSemester}</h3>
           <p>Use the Normal, Carry-over, or Borrowed tabs to register courses.</p>
         </div>
       {:else}
@@ -342,7 +366,7 @@
                         </span>
                       </div>
                     </div>
-                    <form method="POST" action="?/drop" use:enhance={() => {
+                    <form method="POST" action="?/drop&semester={currentSemester}" use:enhance={() => {
                       droppingId = reg.id;
                       return async ({ update }) => { droppingId = null; update(); };
                     }}>
@@ -368,7 +392,7 @@
     <div class="panel" in:fly={{ y: 8, duration: 180 }}>
       <div class="panel-info">
         <Info size={14} />
-        <span>Courses from <strong>{data.student.collegeName}</strong> at your current level ({data.stats.studentLevel} Level).</span>
+        <span>Courses from <strong>{data.student.collegeName}</strong> at your current level ({data.stats.studentLevel} Level) — <strong>Semester {currentSemester}</strong>.</span>
       </div>
 
       <div class="toolbar">
@@ -397,8 +421,8 @@
       {#if data.available.normal.length === 0}
         <div class="empty">
           <div class="empty-icon"><CheckCircle2 size={28} /></div>
-          <h3>All normal courses registered!</h3>
-          <p>You've registered all available courses at your level.</p>
+          <h3>No normal courses for Semester {currentSemester}</h3>
+          <p>Switch to the other semester or all courses may already be registered.</p>
         </div>
       {:else if normalFiltered().length === 0}
         <div class="empty small">
@@ -424,7 +448,7 @@
                   <p class="cc-title">{course.title}</p>
                   <p class="cc-meta"><Building2 size={11} /> {course.department.name}</p>
                   <p class="cc-enroll"><Info size={11} /> {course._count.registrations} enrolled</p>
-                  <form method="POST" action="?/register" use:enhance={() => {
+                  <form method="POST" action="?/register&semester={currentSemester}" use:enhance={() => {
                     setRegistering(course.id);
                     return async ({ update }) => { setRegistering(null); update(); };
                   }}>
@@ -454,7 +478,7 @@
               <p class="cc-title">{course.title}</p>
               <p class="cc-meta"><Building2 size={11} /> {course.department.name}</p>
               <p class="cc-enroll"><Info size={11} /> {course._count.registrations} enrolled</p>
-              <form method="POST" action="?/register" use:enhance={() => {
+              <form method="POST" action="?/register&semester={currentSemester}" use:enhance={() => {
                 setRegistering(course.id);
                 return async ({ update }) => { setRegistering(null); update(); };
               }}>
@@ -492,7 +516,7 @@
         <div class="panel-info amber">
           <RefreshCw size={14} />
           <span>
-            Courses from <strong>{data.student.collegeName}</strong> below your level.
+            Courses from <strong>{data.student.collegeName}</strong> below your level — <strong>Semester {currentSemester}</strong>.
             <strong>{data.stats.carryOverCount}/{data.stats.maxCarryOver}</strong> slots used.
           </span>
         </div>
@@ -529,8 +553,8 @@
         {#if data.available.carryOver.length === 0}
           <div class="empty">
             <div class="empty-icon"><CheckCircle2 size={28} /></div>
-            <h3>No carry-over courses available</h3>
-            <p>No courses below your level remain unregistered.</p>
+            <h3>No carry-over courses for Semester {currentSemester}</h3>
+            <p>No courses below your level remain unregistered for this semester.</p>
           </div>
         {:else if carryFiltered().length === 0}
           <div class="empty small"><Search size={24} /><p>No courses match.</p></div>
@@ -556,7 +580,7 @@
                     <p class="cc-title">{course.title}</p>
                     <p class="cc-meta"><Building2 size={11} /> {course.department.name}</p>
                     <p class="cc-enroll"><Info size={11} /> {course._count.registrations} enrolled</p>
-                    <form method="POST" action="?/register" use:enhance={() => {
+                    <form method="POST" action="?/register&semester={currentSemester}" use:enhance={() => {
                       setRegistering(course.id);
                       return async ({ update }) => { setRegistering(null); update(); };
                     }}>
@@ -589,7 +613,7 @@
                 <p class="cc-title">{course.title}</p>
                 <p class="cc-meta"><Building2 size={11} /> {course.department.name}</p>
                 <p class="cc-enroll"><Info size={11} /> {course._count.registrations} enrolled</p>
-                <form method="POST" action="?/register" use:enhance={() => {
+                <form method="POST" action="?/register&semester={currentSemester}" use:enhance={() => {
                   setRegistering(course.id);
                   return async ({ update }) => { setRegistering(null); update(); };
                 }}>
@@ -622,7 +646,7 @@
         <div class="panel-info purple">
           <ArrowRightLeft size={14} />
           <span>
-            Courses from <strong>outside {data.student.collegeName}</strong> at your level.
+            Courses from <strong>outside {data.student.collegeName}</strong> at your level — <strong>Semester {currentSemester}</strong>.
             <strong>{data.stats.borrowedCount}/{data.stats.maxBorrowed}</strong> slots used.
           </span>
         </div>
@@ -639,8 +663,8 @@
         {#if data.available.borrowed.length === 0}
           <div class="empty">
             <div class="empty-icon"><ArrowRightLeft size={28} /></div>
-            <h3>No borrowed courses available</h3>
-            <p>No courses from other colleges match your level.</p>
+            <h3>No borrowed courses for Semester {currentSemester}</h3>
+            <p>No courses from other colleges match your level for this semester.</p>
           </div>
         {:else if borrowFiltered().length === 0}
           <div class="empty small"><Search size={24} /><p>No courses match.</p></div>
@@ -667,7 +691,7 @@
                       {/if}
                     </div>
                     <p class="cc-enroll"><Info size={11} /> {course._count.registrations} enrolled</p>
-                    <form method="POST" action="?/register" use:enhance={() => {
+                    <form method="POST" action="?/register&semester={currentSemester}" use:enhance={() => {
                       setRegistering(course.id);
                       return async ({ update }) => { setRegistering(null); update(); };
                     }}>
@@ -695,7 +719,7 @@
       <div class="panel-info blue">
         <LayoutGrid size={14} />
         <span>
-          Browse all courses up to <strong>{data.stats.studentLevel} Level</strong>.
+          Browse all courses up to <strong>{data.stats.studentLevel} Level</strong> — <strong>Semester {currentSemester}</strong>.
           Registration type is inferred automatically.
         </span>
       </div>
@@ -738,7 +762,7 @@
       {#if data.available.browseAll.length === 0}
         <div class="empty">
           <div class="empty-icon"><BookOpen size={28} /></div>
-          <h3>No courses available</h3>
+          <h3>No courses available for Semester {currentSemester}</h3>
         </div>
       {:else if browseFiltered().length === 0}
         <div class="empty small"><Search size={24} /><p>No courses match your filters.</p></div>
@@ -767,7 +791,7 @@
                   <CheckCircle2 size={13} /> Registered
                 </div>
               {:else}
-                <form method="POST" action="?/register" use:enhance={() => {
+                <form method="POST" action="?/register&semester={currentSemester}" use:enhance={() => {
                   setRegistering(course.id);
                   return async ({ update }) => { setRegistering(null); update(); };
                 }}>
@@ -809,7 +833,7 @@
                 {#if isRegistered(course.id)}
                   <span class="br-badge ok"><CheckCircle2 size={12} /> Registered</span>
                 {:else}
-                  <form method="POST" action="?/register" use:enhance={() => {
+                  <form method="POST" action="?/register&semester={currentSemester}" use:enhance={() => {
                     setRegistering(course.id);
                     return async ({ update }) => { setRegistering(null); update(); };
                   }}>
@@ -855,6 +879,34 @@
   }
   h1 { font-size: 1.4rem; font-weight: 800; color: var(--color-text); margin: 0; letter-spacing: -0.02em; }
   .meta { font-size: 0.78rem; color: var(--color-muted); margin: 0.15rem 0 0; }
+
+  /* Semester Picker */
+  .semester-picker {
+    display: flex; flex-direction: column; align-items: center; gap: 0.35rem;
+    background: var(--color-surface); border: 1px solid var(--color-border);
+    border-radius: 0.875rem; padding: 0.625rem 1rem;
+  }
+  .sem-label {
+    font-size: 0.65rem; font-weight: 700; color: var(--color-muted);
+    text-transform: uppercase; letter-spacing: 0.06em;
+    display: flex; align-items: center; gap: 0.3rem;
+  }
+  .sem-toggle {
+    display: flex; gap: 0.15rem;
+    background: var(--color-bg); border-radius: 0.5rem;
+    padding: 0.2rem;
+  }
+  .sem-btn {
+    padding: 0.4rem 1rem; border-radius: 0.4rem; border: none;
+    background: none; color: var(--color-muted);
+    font-size: 0.8rem; font-weight: 700; cursor: pointer;
+    transition: all 0.15s; font-family: inherit;
+  }
+  .sem-btn:hover { color: var(--color-text); }
+  .sem-btn.active {
+    background: var(--color-text); color: var(--color-surface);
+    box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+  }
 
   .credit-gauge {
     background: var(--color-surface); border: 1px solid var(--color-border);

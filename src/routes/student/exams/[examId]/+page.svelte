@@ -1,4 +1,4 @@
-<!-- src/routes/(student)/exam/[examId]/+page.svelte -->
+<!-- src/routes/student/exams/[examId]/+page.svelte -->
 <script lang="ts">
   import { onMount, onDestroy } from 'svelte';
   import { goto } from '$app/navigation';
@@ -24,27 +24,11 @@
   let submitting = $state(false);
   let paused     = $state(session.status === 'flagged');
 
-  // ── Nav order: answered questions stay put, unanswered reshuffle ──────────
-  //
-  // We maintain a stable display list where:
-  //   - Answered questions keep their current position (locked in place)
-  //   - Unanswered questions reshuffle among themselves every SHUFFLE_INTERVAL ms
-  //
-  // `navOrder` is an array of question IDs in display order.
-  // `currentIndex` tracks position in navOrder, not in the raw `questions` array.
+  const SHUFFLE_INTERVAL = 30_000;
 
-  const SHUFFLE_INTERVAL = 30_000; // reshuffle unanswered every 30s
-
-  // Initialise nav order from the server-ordered questions
   let navOrder = $state<string[]>(questions.map((q: any) => q.id));
-
-  // Map id → question for fast lookup
   const qMap = new Map(questions.map((q: any) => [q.id, q]));
-
-  // The questions in current nav display order
   const navQuestions = $derived(navOrder.map(id => qMap.get(id)!));
-
-  // Current question based on nav position
   const currentQ = $derived(navQuestions[currentIndex]);
 
   const answered      = $derived(Object.keys(answers).length);
@@ -52,8 +36,6 @@
 
   function shuffleUnanswered() {
     const answeredIds   = new Set(Object.keys(answers));
-
-    // Split into answered (with their positions) and unanswered (with their positions)
     const answeredSlots:   { pos: number; id: string }[] = [];
     const unansweredSlots: { pos: number; id: string }[] = [];
 
@@ -62,22 +44,17 @@
       else unansweredSlots.push({ pos, id });
     });
 
-    // Don't shuffle if nothing to shuffle
     if (unansweredSlots.length < 2) return;
 
-    // Fisher-Yates on unanswered IDs only
     const ids = unansweredSlots.map(s => s.id);
     for (let i = ids.length - 1; i > 0; i--) {
       const j = Math.floor(Math.random() * (i + 1));
       [ids[i], ids[j]] = [ids[j], ids[i]];
     }
 
-    // Rebuild navOrder: answered stay at their original positions,
-    // unanswered get the shuffled IDs in those same slot positions
     const next = [...navOrder];
     unansweredSlots.forEach(({ pos }, i) => { next[pos] = ids[i]; });
 
-    // Keep currentIndex pointing at the same question even after reshuffle
     const currentId = navOrder[currentIndex];
     navOrder = next;
     currentIndex = navOrder.indexOf(currentId);
@@ -92,8 +69,6 @@
   function stopShuffleTimer() {
     if (shuffleTimer) { clearInterval(shuffleTimer); shuffleTimer = null; }
   }
-
-  // ─────────────────────────────────────────────────────────────────────────
 
   let ws: WebSocket | null = null;
 
@@ -147,7 +122,8 @@
     const json = await res.json();
     violation = { count: json.violation_count, max: exam.maxViolations, action: json.action, flagType };
     if (json.action === 'exam_paused')    { paused = true; stopShuffleTimer(); }
-    if (json.action === 'auto_submitted') goto(`/exam/${exam.id}/complete`);
+    // FIXED: goto path updated to /student/exams/...
+    if (json.action === 'auto_submitted') goto(`/student/exams/${exam.id}/complete`);
   }
 
   async function handleSubmit(_type = 'submitted') {
@@ -158,7 +134,8 @@
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ session_id: session.id }),
     });
-    goto(`/exam/${exam.id}/complete`);
+    // FIXED: goto path updated to /student/exams/...
+    goto(`/student/exams/${exam.id}/complete`);
   }
 
   function confirmSubmit() {
@@ -228,7 +205,6 @@
     </header>
 
     <div class="body">
-      <!-- Nav uses navQuestions (reshuffled order), not raw questions -->
       <nav class="q-nav" aria-label="Question navigator">
         {#each navQuestions as q, i}
           <button
@@ -286,7 +262,6 @@
   .q-dot  { width: 2.5rem; height: 2.5rem; border-radius: 0.5rem; border: 2px solid var(--color-border); background: var(--color-bg); color: var(--color-text); font-size: 0.8rem; font-weight: 600; cursor: pointer; display: flex; align-items: center; justify-content: center; transition: background 0.2s, border-color 0.2s, transform 0.15s; }
   .q-dot.answered { background: var(--color-primary-subtle); border-color: var(--color-primary); color: var(--color-primary); }
   .q-dot.active   { background: var(--color-primary); border-color: var(--color-primary); color: #fff; }
-  /* Subtle pop when a dot moves to a new slot after reshuffle */
   .q-dot:not(.answered):not(.active) { animation: dot-settle 0.25s ease; }
   @keyframes dot-settle {
     0%   { transform: scale(0.88); opacity: 0.6; }
@@ -296,7 +271,7 @@
   .nav-btns { display: flex; justify-content: space-between; padding-top: 1rem; border-top: 1px solid var(--color-border); margin-top: auto; }
   .nav-btns button { padding: 0.6rem 1.25rem; border: 1px solid var(--color-border); border-radius: 0.5rem; background: var(--color-surface); color: var(--color-text); font-size: 0.9rem; font-weight: 500; cursor: pointer; }
   .nav-btns button:disabled { opacity: 0.4; cursor: not-allowed; }
-  .overlay-block { position: fixed; inset: 0; z-index: 9998; background: rgba(0,0,0,0.8); display: flex; align-items: center; justify-content: justify; }
+  .overlay-block { position: fixed; inset: 0; z-index: 9998; background: rgba(0,0,0,0.8); display: flex; align-items: center; justify-content: center; }
   .overlay-card  { background: var(--color-surface); border-radius: 1rem; padding: 2.5rem; text-align: center; display: flex; flex-direction: column; align-items: center; gap: 1rem; }
   .overlay-card span { font-size: 3rem; }
   .overlay-card h2   { font-size: 1.3rem; font-weight: 700; margin: 0; }

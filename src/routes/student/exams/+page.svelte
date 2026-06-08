@@ -42,13 +42,11 @@
 <div class="page">
   <div class="content">
 
-    <!-- Header -->
     <div class="page-header">
       <h1>My Exams</h1>
       <p class="sub">{exams.length} exam{exams.length !== 1 ? 's' : ''} assigned</p>
     </div>
 
-    <!-- Active / Live -->
     {#if active.length > 0}
       <section>
         <div class="sec-head">
@@ -78,7 +76,8 @@
               {#if exam.scheduledEnd}
                 <p class="card-date">Ends {fmtRelative(exam.scheduledEnd)}</p>
               {/if}
-              <a href={`/student/exams/${exam.sessionId}`} class="card-btn card-btn--enter">
+              <!-- FIXED: use exam.id not exam.sessionId -->
+              <a href={`/student/exams/${exam.id}`} class="card-btn card-btn--enter">
                 Resume Exam
                 <ArrowRight size={14} />
               </a>
@@ -88,7 +87,6 @@
       </section>
     {/if}
 
-    <!-- Upcoming -->
     {#if upcoming.length > 0}
       <section>
         <div class="sec-head">
@@ -119,7 +117,6 @@
       </section>
     {/if}
 
-    <!-- Past / Results -->
     {#if past.length > 0 || results.length > 0}
       <section>
         <div class="sec-head">
@@ -127,7 +124,6 @@
           <h2>History & Results</h2>
         </div>
 
-        <!-- Result rows -->
         {#if results.length > 0}
           <div class="results-table">
             <div class="results-head">
@@ -155,7 +151,6 @@
           </div>
         {/if}
 
-        <!-- Past exam cards -->
         {#if past.length > 0}
           <div class="card-grid" style="margin-top: 1rem">
             {#each past as exam}
@@ -187,7 +182,6 @@
       </section>
     {/if}
 
-    <!-- Empty -->
     {#if exams.length === 0}
       <div class="empty">
         <FileText size={40} opacity={0.25} />
@@ -395,7 +389,6 @@
     gap: .25rem;
   }
 
-  /* Results table */
   .results-table {
     background: var(--color-surface);
     border: 1px solid var(--color-border);
@@ -448,7 +441,6 @@
   :global(.dark) .pass-tag.pass { background: rgba(34,197,94,.15); color: #4ade80; }
   :global(.dark) .pass-tag.fail { background: rgba(220,38,38,.15); color: #f87171; }
 
-  /* Empty */
   .empty {
     display: flex;
     flex-direction: column;

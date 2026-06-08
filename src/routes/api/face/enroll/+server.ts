@@ -19,10 +19,18 @@ export const POST: RequestHandler = async ({ request, locals }) => {
       );
     }
 
-    const { descriptor, photo } = await request.json();
+    const { descriptor, photo, embedding_dimension } = await request.json();
 
+    // Human embeddings are typically 512 or 1024 dimensions, not 128
     if (!Array.isArray(descriptor) || descriptor.length === 0) {
       error(400, 'Invalid descriptor — must be a non-empty float array');
+    }
+
+    console.log('Received descriptor of dimension:', descriptor.length);
+    
+    // Accept any reasonable embedding dimension (128, 512, 1024, etc.)
+    if (descriptor.length < 64 || descriptor.length > 2048) {
+      error(400, `Invalid descriptor dimension: ${descriptor.length}. Expected between 64-2048.`);
     }
 
     const isValid = descriptor.every(v => typeof v === 'number' && !isNaN(v) && isFinite(v));
@@ -30,8 +38,8 @@ export const POST: RequestHandler = async ({ request, locals }) => {
       error(400, 'Invalid descriptor — all values must be valid finite numbers');
     }
 
-    // Save face descriptor
-    await saveFaceDescriptor(studentId, descriptor);
+    // Save face descriptor with dimension info
+    await saveFaceDescriptor(studentId, descriptor, descriptor.length);
 
     // Save compressed photo to user profile if provided
     if (photo && typeof photo === 'string' && photo.startsWith('data:')) {
@@ -41,7 +49,7 @@ export const POST: RequestHandler = async ({ request, locals }) => {
       });
     }
 
-    return json({ ok: true, message: 'Face enrolled successfully' });
+    return json({ ok: true, message: 'Face enrolled successfully', dimension: descriptor.length });
 
   } catch (err) {
     console.error('Face enrollment error:', err);

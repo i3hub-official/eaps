@@ -313,11 +313,11 @@
   async function init() {
     try {
       if (!faceapi) {
-        faceapi = await import('@vladmandic/face-api');
+        faceapi = await import('@vladmandic/human');
         await Promise.all([
-          faceapi.nets.tinyFaceDetector.loadFromUri('/models'),
-          faceapi.nets.faceLandmark68TinyNet.loadFromUri('/models'),
-          faceapi.nets.faceRecognitionNet.loadFromUri('/models'),
+          faceapi.nets.tinyFaceDetector.loadFromUri('/models/human'),
+          faceapi.nets.faceLandmark68TinyNet.loadFromUri('/models/human'),
+          faceapi.nets.faceRecognitionNet.loadFromUri('/models/human'),
         ]);
       }
 

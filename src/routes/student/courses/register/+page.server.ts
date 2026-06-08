@@ -8,16 +8,28 @@ const MAX_CREDITS    = 24;
 const MAX_CARRY_OVER = 6;
 const MAX_BORROWED   = 6;
 
-/**
- * Extract semester from course code.
- * Format: [level_digit][semester_digit][...rest]
- * e.g. 111 -> level 100, sem 1 | 124 -> level 100, sem 2
- */
-function getSemesterFromCode(code: string): number | null {
-  const match = code.match(/^(\d)(\d)/);
-  if (!match) return null;
-  const sem = parseInt(match[2], 10);
-  return sem === 1 || sem === 2 ? sem : null;
+// ── Helper: infer semester from course code ───────────────────────────────
+// Code pattern: [level digit][semester digit][anything]
+// e.g., COS211 → digits "211" → level=200, sem=1
+//       MTH124 → digits "124" → level=100, sem=2
+function inferSemesterFromCode(code: string): number | null {
+  const digits = code.replace(/\D/g, ''); // strip letters
+  if (digits.length < 2) return null;
+  const semDigit = parseInt(digits[1], 10);
+  return semDigit === 1 || semDigit === 2 ? semDigit : null;
+}
+
+// ── Helper: filter courses by semester (in-memory) ────────────────────────
+function filterBySemester(courses: any[], currentSemester: 1 | 2): any[] {
+  return courses.filter(c => {
+    // Explicit semester match → include
+    if (c.semester === currentSemester) return true;
+    // Explicit different semester → exclude
+    if (c.semester !== null && c.semester !== undefined) return false;
+    // Null semester: infer from code, include if matches or can't infer
+    const inferred = inferSemesterFromCode(c.code);
+    return inferred === null || inferred === currentSemester;
+  });
 }
 
 export const load: PageServerLoad = async ({ locals, url }) => {
@@ -37,12 +49,12 @@ export const load: PageServerLoad = async ({ locals, url }) => {
     throw error(400, 'Student profile incomplete. Please update your department and level.');
   }
 
-  const currentSession = user.session ?? '2024/2025';
-  const studentLevel   = student.level.level;
+  const currentSession  = user.session ?? '2024/2025';
+  const studentLevel    = student.level.level;
 
-  // ── Semester selection: from URL param or default to 1 ───────────────────
+  // ── Semester: from URL param, or default to 1 ──────────────────────────
   const urlSemester = url.searchParams.get('semester');
-  const selectedSemester = urlSemester === '2' ? 2 : 1;
+  const currentSemester: 1 | 2 = urlSemester === '2' ? 2 : 1;
 
   // CRITICAL FIX: Fallback to department's college if user.collegeId is null
   const collegeId = student.collegeId ?? student.department?.collegeId ?? null;
@@ -51,9 +63,9 @@ export const load: PageServerLoad = async ({ locals, url }) => {
     throw error(400, 'Student college not assigned. Please update your profile.');
   }
 
-  // ── Current registrations for the selected semester ───────────────────────
+  // ── Current registrations (for selected semester) ──────────────────────
   const currentRegistrations = await prisma.courseRegistration.findMany({
-    where:   { studentId, session: currentSession, semester: selectedSemester },
+    where:   { studentId, session: currentSession, semester: currentSemester },
     include: {
       course: {
         include: {
@@ -74,8 +86,12 @@ export const load: PageServerLoad = async ({ locals, url }) => {
     ? { id: { notIn: registeredCourseIds } }
     : {};
 
-  // ── NORMAL: same college, exact level, matching semester from code ─────────
-  const allNormalCourses = await prisma.course.findMany({
+  // ── Prisma helper: only exclude already-registered, no semester filter ───
+  // We filter by semester in-memory because course codes have letter prefixes
+  // and Prisma can't do regex/SUBSTRING filtering easily.
+
+  // ── NORMAL: same college, exact level ───────────────────────────────────
+  const normalCoursesRaw = await prisma.course.findMany({
     where: {
       department: { collegeId },
       level: studentLevel,
@@ -87,10 +103,9 @@ export const load: PageServerLoad = async ({ locals, url }) => {
     },
     orderBy: [{ department: { code: 'asc' } }, { code: 'asc' }],
   });
-  const normalCourses = allNormalCourses.filter(c => getSemesterFromCode(c.code) === selectedSemester);
 
-  // ── CARRY-OVER: same college, level < studentLevel, matching semester ─────
-  const allCarryOverCourses = studentLevel >= 200
+  // ── CARRY-OVER: same college, level < studentLevel ──────────────────────
+  const carryOverCoursesRaw = studentLevel >= 200
     ? await prisma.course.findMany({
         where: {
           department: { collegeId },
@@ -104,10 +119,9 @@ export const load: PageServerLoad = async ({ locals, url }) => {
         orderBy: [{ level: 'asc' }, { department: { code: 'asc' } }, { code: 'asc' }],
       })
     : [];
-  const carryOverCourses = allCarryOverCourses.filter(c => getSemesterFromCode(c.code) === selectedSemester);
 
-  // ── BORROWED: outside college, exact level, matching semester ─────────────
-  const allBorrowedCourses = await prisma.course.findMany({
+  // ── BORROWED: outside college, exact level ────────────────────────────
+  const borrowedCoursesRaw = await prisma.course.findMany({
     where: {
       department: { collegeId: { not: collegeId } },
       level: studentLevel,
@@ -124,10 +138,9 @@ export const load: PageServerLoad = async ({ locals, url }) => {
     },
     orderBy: [{ department: { college: { name: 'asc' } } }, { department: { code: 'asc' } }, { code: 'asc' }],
   });
-  const borrowedCourses = allBorrowedCourses.filter(c => getSemesterFromCode(c.code) === selectedSemester);
 
-  // ── BROWSE ALL: all courses ≤ studentLevel, matching semester ───────────────
-  const allBrowseCourses = await prisma.course.findMany({
+  // ── BROWSE ALL: all courses ≤ studentLevel ──────────────────────────────
+  const browseAllCoursesRaw = await prisma.course.findMany({
     where: {
       level: { lte: studentLevel },
       ...excludeFilter,
@@ -143,7 +156,12 @@ export const load: PageServerLoad = async ({ locals, url }) => {
     },
     orderBy: [{ level: 'asc' }, { department: { college: { name: 'asc' } } }, { department: { code: 'asc' } }, { code: 'asc' }],
   });
-  const browseAllCourses = allBrowseCourses.filter(c => getSemesterFromCode(c.code) === selectedSemester);
+
+  // ── Apply semester filtering in-memory ──────────────────────────────────
+  const normalCourses    = filterBySemester(normalCoursesRaw, currentSemester);
+  const carryOverCourses = filterBySemester(carryOverCoursesRaw, currentSemester);
+  const borrowedCourses  = filterBySemester(borrowedCoursesRaw, currentSemester);
+  const browseAllCourses = filterBySemester(browseAllCoursesRaw, currentSemester);
 
   return {
     registrations: currentRegistrations,
@@ -169,7 +187,7 @@ export const load: PageServerLoad = async ({ locals, url }) => {
       maxCarryOver:     MAX_CARRY_OVER,
       maxBorrowed:      MAX_BORROWED,
       currentSession,
-      currentSemester:  selectedSemester,  // now reflects selected, not derived
+      currentSemester,
       studentLevel,
     },
   };
@@ -187,6 +205,10 @@ export const actions: Actions = {
 
     if (!courseId) return fail(400, { message: 'Course ID is required' });
 
+    // ── Read semester from URL (form action query param) ───────────────────
+    const urlSemester = url.searchParams.get('semester');
+    const currentSemester: 1 | 2 = urlSemester === '2' ? 2 : 1;
+
     const student = await prisma.user.findUnique({
       where:  { id: studentId },
       select: { departmentId: true, levelId: true, level: true, collegeId: true },
@@ -196,12 +218,8 @@ export const actions: Actions = {
       return fail(400, { message: 'Student profile incomplete' });
     }
 
-    const studentLevel   = student.level.level;
-    const currentSession = user.session ?? '2025/2026';
-
-    // ── Semester from URL query (same as load) or default 1 ─────────────────
-    const urlSemester = url.searchParams.get('semester');
-    const currentSemester = urlSemester === '2' ? 2 : 1;
+    const studentLevel    = student.level.level;
+    const currentSession  = user.session ?? '2025/2026';
 
     // CRITICAL FIX: Also fix in actions - fallback to department's college
     const collegeId = student.collegeId ?? await prisma.department.findUnique({
@@ -221,20 +239,20 @@ export const actions: Actions = {
     if (!course) return fail(404, { message: 'Course not found' });
     if (course.level == null) return fail(400, { message: 'Course level is not specified' });
 
-    // Validate semester matches from course code
-    const courseSemester = getSemesterFromCode(course.code);
-    if (courseSemester !== null && courseSemester !== currentSemester) {
-      return fail(400, { 
-        message: `Course ${course.code} is a Semester ${courseSemester} course. Please switch to Semester ${courseSemester} to register it.` 
-      });
-    }
-
     // Hard block: cannot register above your level
     if (course.level > studentLevel) {
       return fail(400, { message: 'You cannot register courses above your current level' });
     }
 
-    // Duplicate check
+    // ── Semester validation against course code ────────────────────────────
+    const inferredSemester = inferSemesterFromCode(course.code);
+    if (inferredSemester !== null && inferredSemester !== currentSemester) {
+      return fail(400, {
+        message: `Course ${course.code} is a Semester ${inferredSemester} course. Switch to Semester ${inferredSemester} to register it.`,
+      });
+    }
+
+    // Duplicate check (includes semester)
     const alreadyRegistered = await prisma.courseRegistration.findFirst({
       where: { studentId, courseId, session: currentSession, semester: currentSemester },
     });
@@ -306,7 +324,7 @@ export const actions: Actions = {
     return { success: true, message: `Registered ${course.code} as ${label} course` };
   },
 
-  drop: async ({ request, locals, url }) => {
+  drop: async ({ request, locals }) => {
     const user      = requireStudent(locals.user);
     const studentId = user.id;
     const fd        = await request.formData();
@@ -314,12 +332,8 @@ export const actions: Actions = {
 
     if (!registrationId) return fail(400, { message: 'Registration ID required' });
 
-    const urlSemester = url.searchParams.get('semester');
-    const currentSemester = urlSemester === '2' ? 2 : 1;
-    const currentSession = user.session ?? '2025/2026';
-
     const reg = await prisma.courseRegistration.findFirst({
-      where:   { id: registrationId, studentId, session: currentSession, semester: currentSemester },
+      where:   { id: registrationId, studentId },
       include: { course: { select: { id: true, code: true, title: true } } },
     });
 

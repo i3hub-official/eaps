@@ -1,6 +1,7 @@
-<!-- // src/lib/components/face/FaceEnrollmentModal.svelte -->
+<!-- src/lib/components/face/FaceEnrollmentModal.svelte -->
 <script lang="ts">
   import { onMount, onDestroy } from 'svelte';
+  import { browser } from '$app/environment';
 
   interface Props {
     open: boolean;
@@ -28,6 +29,11 @@
   let holdTimer: number | null = null;
   let holdProgress = $state(0);
   let errorMessage = $state('');
+  let embeddingDimension = $state<number | null>(null);
+
+  // Human detection state
+  let human: any = null;
+  let isModelLoading = false;
 
   // Smile detection state
   let smileHistory: boolean[] = [];
@@ -36,190 +42,195 @@
 
   // Nose circle detection state
   let nosePositions: { x: number; y: number }[] = [];
-  const NOSE_HISTORY_SIZE = 20;
-  let circleBaseline: { x: number; y: number } | null = null;
-
-  let faceapi: typeof import('@vladmandic/face-api') | null = null;
+  const NOSE_HISTORY_SIZE = 30;
+  let circleProgress = $state(0);
 
   const GESTURES = [
-    { id: 'open_mouth', label: 'Open your mouth',  icon: 'mouth' },
-    { id: 'turn_left',  label: 'Turn head left',   icon: 'left'  },
-    { id: 'turn_right', label: 'Turn head right',  icon: 'right' },
-    { id: 'smile',      label: 'Smile!',           icon: 'smile' },
+    { id: 'open_mouth', label: 'Open your mouth', icon: 'mouth' },
+    { id: 'turn_left', label: 'Turn head left', icon: 'left' },
+    { id: 'turn_right', label: 'Turn head right', icon: 'right' },
+    { id: 'smile', label: 'Smile!', icon: 'smile' },
     { id: 'nose_circle', label: 'Trace a circle with your nose', icon: 'circle' },
   ];
-  const CAPTURES_PER  = 3;
-  const TOTAL         = 3;
+  const CAPTURES_PER = 3;
+  const TOTAL = 3;
   const HOLD_DURATION = 1200;
 
   let selected: typeof GESTURES = [];
 
-  // ── Smile detection ─────────────────────────────────────────────────────────
-  function detectSmile(lm: any): boolean {
-    const p = lm.positions;
-    // Mouth corners: 48 (left), 54 (right)
-    // Mouth top: 51, bottom: 57
-    // Lip top: 62, bottom: 66 (inner mouth)
-    const mouthLeft = p[48], mouthRight = p[54];
-    const mouthTop = p[51], mouthBottom = p[57];
-    const lipTop = p[62], lipBottom = p[66];
+  // ── Face detection with Human ─────────────────────────────────────────────
+  async function detectFace() {
+    if (!human || !video || video.paused || !video.videoWidth) return null;
+    
+    try {
+      const result = await human.detect(video);
+      if (!result || !result.face || result.face.length === 0) return null;
+      return result;
+    } catch (error) {
+      console.error('Detection error:', error);
+      return null;
+    }
+  }
 
-    if (!mouthLeft || !mouthRight || !mouthTop || !mouthBottom) return false;
-
-    const width = Math.abs(mouthRight.x - mouthLeft.x);
-    const height = Math.abs(mouthBottom.y - mouthTop.y);
-    const lipHeight = lipTop && lipBottom ? Math.abs(lipBottom.y - lipTop.y) : height;
-
-    if (width <= 0) return false;
-
-    // Smile: mouth is wide and relatively flat
-    // Also check that lips are apart (mouth slightly open or teeth showing)
-    const aspectRatio = height / width;
-    const lipRatio = lipHeight / width;
-
-    // Wide smile: width > 35px (scaled roughly), flat aspect, some lip separation
-    const isWide = width > 30;
-    const isFlat = aspectRatio < 0.45;
-    const hasSeparation = lipRatio > 0.08;
-
-    // Require sustained smile
-    const isSmiling = isWide && isFlat && hasSeparation;
-
-    smileHistory.push(isSmiling);
-    if (smileHistory.length > SMILE_HISTORY_SIZE) smileHistory.shift();
-
-    // Confirm only if majority of recent frames show smile
-    if (smileHistory.length >= 5) {
-      const trueCount = smileHistory.filter(Boolean).length;
-      const ratio = trueCount / smileHistory.length;
-      if (ratio >= 0.6 && !smileConfirmed) {
-        smileConfirmed = true;
-        return true;
+  // ── Smile detection using Human's emotion detection ──────────────────────
+  function detectSmile(face: any): boolean {
+    if (face.expressions) {
+      const smileScore = face.expressions.happy || 0;
+      const isSmiling = smileScore > 0.6;
+      
+      smileHistory.push(isSmiling);
+      if (smileHistory.length > SMILE_HISTORY_SIZE) smileHistory.shift();
+      
+      if (smileHistory.length >= 5) {
+        const trueCount = smileHistory.filter(Boolean).length;
+        const ratio = trueCount / smileHistory.length;
+        
+        if (ratio >= 0.6 && !smileConfirmed) {
+          smileConfirmed = true;
+          return true;
+        }
       }
     }
-
     return false;
   }
 
-  // ── Nose circle detection ─────────────────────────────────────────────────
-  function detectNoseCircle(lm: any): boolean {
-    const nose = lm.positions[30];
+  // ── Nose circle detection using face landmarks ───────────────────────────
+  function detectNoseCircle(face: any): boolean {
+    if (!face.landmarks || !face.landmarks.length) return false;
+    
+    const nose = face.landmarks[0];
     if (!nose) return false;
-
+    
     nosePositions.push({ x: nose.x, y: nose.y });
     if (nosePositions.length > NOSE_HISTORY_SIZE) nosePositions.shift();
-
-    if (nosePositions.length < 12) return false;
-
-    // Set baseline from first position
-    if (!circleBaseline) {
-      circleBaseline = { ...nosePositions[0] };
-      return false;
+    
+    if (nosePositions.length < 20) return false;
+    
+    let minX = Infinity, maxX = -Infinity;
+    let minY = Infinity, maxY = -Infinity;
+    
+    for (const pos of nosePositions) {
+      minX = Math.min(minX, pos.x);
+      maxX = Math.max(maxX, pos.x);
+      minY = Math.min(minY, pos.y);
+      maxY = Math.max(maxY, pos.y);
     }
-
-    // Calculate centroid
-    let cx = 0, cy = 0;
-    for (const pt of nosePositions) {
-      cx += pt.x;
-      cy += pt.y;
-    }
-    cx /= nosePositions.length;
-    cy /= nosePositions.length;
-
-    // Calculate average radius
-    let avgR = 0;
-    for (const pt of nosePositions) {
-      avgR += Math.sqrt((pt.x - cx) ** 2 + (pt.y - cy) ** 2);
-    }
-    avgR /= nosePositions.length;
-
-    // Too small or too large = not a circle
-    if (avgR < 8 || avgR > 60) {
-      circleBaseline = null;
-      nosePositions = [];
-      return false;
-    }
-
-    // Check points are distributed around full circle (not just a line)
-    let angleSum = 0;
+    
+    const width = maxX - minX;
+    const height = maxY - minY;
+    const movementRange = Math.max(width, height);
+    
+    if (movementRange < 40) return false;
+    
+    const aspectRatio = Math.min(width, height) / Math.max(width, height);
+    const isCircularMotion = aspectRatio > 0.7;
+    
     let directionChanges = 0;
-    let lastAngle = Math.atan2(
-      nosePositions[0].y - cy,
-      nosePositions[0].x - cx
-    );
-
-    for (let i = 1; i < nosePositions.length; i++) {
-      const angle = Math.atan2(
-        nosePositions[i].y - cy,
-        nosePositions[i].x - cx
-      );
-      let diff = angle - lastAngle;
-
-      // Normalize to [-PI, PI]
-      while (diff > Math.PI) diff -= 2 * Math.PI;
-      while (diff < -Math.PI) diff += 2 * Math.PI;
-
-      angleSum += Math.abs(diff);
-      if (diff * (lastAngle - Math.atan2(nosePositions[i-1]?.y - cy || 0, nosePositions[i-1]?.x - cx || 0)) < 0) {
-        directionChanges++;
+    let lastVector = { x: 0, y: 0 };
+    
+    for (let i = 2; i < nosePositions.length; i++) {
+      const vector = {
+        x: nosePositions[i].x - nosePositions[i-1].x,
+        y: nosePositions[i].y - nosePositions[i-1].y
+      };
+      
+      if (lastVector.x !== 0 || lastVector.y !== 0) {
+        const dot = lastVector.x * vector.x + lastVector.y * vector.y;
+        const mag1 = Math.sqrt(lastVector.x * lastVector.x + lastVector.y * lastVector.y);
+        const mag2 = Math.sqrt(vector.x * vector.x + vector.y * vector.y);
+        
+        if (mag1 > 0 && mag2 > 0) {
+          const cosAngle = dot / (mag1 * mag2);
+          if (cosAngle < 0.7) {
+            directionChanges++;
+          }
+        }
       }
-      lastAngle = angle;
+      
+      lastVector = vector;
     }
-
-    // Total rotation should be significant (at least ~1.5 radians = ~86 degrees)
-    // And should be mostly one direction (not back-and-forth)
-    const totalRotation = angleSum;
-    const isCircular = totalRotation > 2.5; // ~143 degrees minimum
-    const isConsistentDirection = directionChanges <= 3;
-
-    if (isCircular && isConsistentDirection) {
-      // Reset for next detection
-      circleBaseline = null;
+    
+    const completedCircle = isCircularMotion && directionChanges >= 6;
+    
+    if (!completedCircle && isCircularMotion) {
+      circleProgress = Math.min(circleProgress + 0.02, 0.95);
+    } else if (!completedCircle) {
+      circleProgress = Math.max(circleProgress - 0.01, 0);
+    }
+    
+    if (completedCircle) {
+      circleProgress = 0;
       nosePositions = [];
       return true;
     }
-
+    
     return false;
   }
 
+  // ── Open mouth detection using landmarks ─────────────────────────────────
+  function detectOpenMouth(face: any): boolean {
+    if (face.landmarks && face.landmarks.length >= 8) {
+      const mouthTop = face.landmarks[3];
+      const mouthBottom = face.landmarks[5];
+      
+      if (mouthTop && mouthBottom) {
+        const mouthOpening = Math.abs(mouthBottom.y - mouthTop.y);
+        const faceHeight = face.box.height;
+        
+        return mouthOpening / faceHeight > 0.08;
+      }
+    }
+    return false;
+  }
+
+  // ── Head turn detection using face angle ─────────────────────────────────
+  function detectHeadTurn(face: any, direction: 'left' | 'right'): boolean {
+    if (face.angle) {
+      const yaw = face.angle.yaw || 0;
+      
+      if (direction === 'left') {
+        return yaw < -20;
+      } else {
+        return yaw > 20;
+      }
+    }
+    return false;
+  }
+
+  // ── Get face descriptor (embedding) from Human ───────────────────────────
+  function getFaceDescriptor(face: any): number[] | null {
+    if (face.embedding && Array.isArray(face.embedding)) {
+      console.log('Face embedding dimension:', face.embedding.length);
+      embeddingDimension = face.embedding.length;
+      return face.embedding;
+    }
+    return null;
+  }
+
   // ── Gesture router ────────────────────────────────────────────────────────
-  function checkGesture(id: string, lm: any): boolean {
-    const p = lm.positions;
+  function checkGesture(id: string, face: any): boolean {
     switch (id) {
-      case 'open_mouth': {
-        const h  = Math.abs(p[62]?.y - p[66]?.y);
-        const fh = Math.abs(p[27]?.y - p[8]?.y);
-        return fh > 0 && h / fh > 0.08;
-      }
-      case 'turn_left': {
-        const n = p[30], l = p[36], r = p[45];
-        if (!n || !l || !r) return false;
-        const w = Math.abs(l.x - r.x);
-        return w > 0 && (n.x - l.x) / w < 0.32;
-      }
-      case 'turn_right': {
-        const n = p[30], l = p[36], r = p[45];
-        if (!n || !l || !r) return false;
-        const w = Math.abs(l.x - r.x);
-        return w > 0 && (n.x - l.x) / w > 0.68;
-      }
-      case 'smile': {
-        return detectSmile(lm);
-      }
-      case 'nose_circle': {
-        return detectNoseCircle(lm);
-      }
-      default: return false;
+      case 'open_mouth':
+        return detectOpenMouth(face);
+      case 'turn_left':
+        return detectHeadTurn(face, 'left');
+      case 'turn_right':
+        return detectHeadTurn(face, 'right');
+      case 'smile':
+        return detectSmile(face);
+      case 'nose_circle':
+        return detectNoseCircle(face);
+      default:
+        return false;
     }
   }
 
-  // ── Image capture & super compression ─────────────────────────────────────
+  // ── Image capture & compression ──────────────────────────────────────────
   async function captureAndCompress(): Promise<string | null> {
     if (!video || !video.videoWidth) return null;
 
-    // Create offscreen canvas at small size
     const captureCanvas = document.createElement('canvas');
-    const targetWidth = 160; // tiny for DB storage
+    const targetWidth = 160;
     const aspectRatio = video.videoHeight / video.videoWidth;
     const targetHeight = Math.round(targetWidth * aspectRatio);
 
@@ -229,40 +240,35 @@
     const c = captureCanvas.getContext('2d');
     if (!c) return null;
 
-    // Draw flipped video (mirror correction)
     c.translate(targetWidth, 0);
     c.scale(-1, 1);
     c.drawImage(video, 0, 0, targetWidth, targetHeight);
 
-    // Convert to WebP with aggressive quality reduction
-    // Fallback to JPEG if WebP not supported
     let blob: Blob | null = null;
     try {
       blob = await new Promise<Blob | null>((resolve) => {
         captureCanvas.toBlob(
           (b) => resolve(b),
           'image/webp',
-          0.15 // 15% quality — very compressed
+          0.15
         );
       });
     } catch {
       blob = null;
     }
 
-    // Fallback to JPEG
     if (!blob || blob.size > 15000) {
       blob = await new Promise<Blob | null>((resolve) => {
         captureCanvas.toBlob(
           (b) => resolve(b),
           'image/jpeg',
-          0.2 // 20% quality
+          0.2
         );
       });
     }
 
     if (!blob) return null;
 
-    // Convert to base64
     return new Promise((resolve) => {
       const reader = new FileReader();
       reader.onloadend = () => resolve(reader.result as string);
@@ -306,14 +312,14 @@
 
     const bLen = 20, bW = 2.5;
     const positions = [
-      { x: cx - rx, y: cy - ry, d: [1,  1] as [number,number] },
-      { x: cx + rx, y: cy - ry, d: [-1, 1] as [number,number] },
-      { x: cx - rx, y: cy + ry, d: [1, -1] as [number,number] },
-      { x: cx + rx, y: cy + ry, d: [-1,-1] as [number,number] },
+      { x: cx - rx, y: cy - ry, d: [1, 1] as [number, number] },
+      { x: cx + rx, y: cy - ry, d: [-1, 1] as [number, number] },
+      { x: cx - rx, y: cy + ry, d: [1, -1] as [number, number] },
+      { x: cx + rx, y: cy + ry, d: [-1, -1] as [number, number] },
     ];
     ctx.strokeStyle = multipleFaces ? '#ef4444' : hit ? '#00c9a7' : 'rgba(0,201,167,0.6)';
-    ctx.lineWidth   = bW;
-    ctx.lineCap     = 'round';
+    ctx.lineWidth = bW;
+    ctx.lineCap = 'round';
     for (const { x, y, d } of positions) {
       ctx.beginPath();
       ctx.moveTo(x + d[0] * bLen, y);
@@ -322,21 +328,37 @@
       ctx.stroke();
     }
 
-    if (hit && progress > 0 && !multipleFaces) {
+    if (hit && progress > 0 && !multipleFaces && selected[gestureIndex]?.id !== 'nose_circle') {
       ctx.save();
       ctx.beginPath();
       ctx.ellipse(cx, cy, rx + 8, ry + 8, 0, -Math.PI / 2, -Math.PI / 2 + progress * Math.PI * 2);
       ctx.strokeStyle = 'rgba(0,201,167,0.6)';
-      ctx.lineWidth   = 3;
-      ctx.lineCap     = 'round';
+      ctx.lineWidth = 3;
+      ctx.lineCap = 'round';
       ctx.stroke();
+      ctx.restore();
+    }
+
+    if (selected[gestureIndex]?.id === 'nose_circle' && circleProgress > 0 && !multipleFaces) {
+      ctx.save();
+      ctx.beginPath();
+      ctx.ellipse(cx, cy, rx + 12, ry + 12, 0, -Math.PI / 2, -Math.PI / 2 + circleProgress * Math.PI * 2);
+      ctx.strokeStyle = 'rgba(0,201,167,0.8)';
+      ctx.lineWidth = 4;
+      ctx.lineCap = 'round';
+      ctx.stroke();
+      
+      ctx.font = 'bold 12px system-ui';
+      ctx.fillStyle = '#00c9a7';
+      ctx.textAlign = 'center';
+      ctx.fillText(`${Math.round(circleProgress * 100)}%`, cx, cy + ry + 20);
       ctx.restore();
     }
 
     if (multipleFaces) {
       ctx.save();
       ctx.fillStyle = '#ef4444';
-      ctx.font      = 'bold 14px system-ui';
+      ctx.font = 'bold 14px system-ui';
       ctx.textAlign = 'center';
       ctx.fillText('⚠ Multiple faces detected', cx, cy + ry + 28);
       ctx.restore();
@@ -345,17 +367,12 @@
 
   // ── detection loop ────────────────────────────────────────────────────────
   async function loop() {
-    if (status !== 'gesture' || !faceapi) return;
+    if (status !== 'gesture' || !human || !video) return;
 
     try {
-      const detections = await faceapi
-        .detectAllFaces(video, new faceapi.TinyFaceDetectorOptions({ inputSize: 320 }))
-        .withFaceLandmarks(true)
-        .withFaceDescriptors();
-
-      const count = detections.length;
-
-      if (count === 0) {
+      const result = await detectFace();
+      
+      if (!result || !result.face || result.face.length === 0) {
         drawOverlay(false);
         subline = 'Position your face in the oval';
         gestureDetected = false;
@@ -365,7 +382,9 @@
         return;
       }
 
-      if (count > 1) {
+      const faceCount = result.face.length;
+      
+      if (faceCount > 1) {
         drawOverlay(false, true);
         subline = 'Only one person allowed';
         gestureDetected = false;
@@ -375,86 +394,133 @@
         return;
       }
 
-      const det = detections[0];
-      const g   = selected[gestureIndex];
-      const hit = checkGesture(g.id, det.landmarks);
+      const face = result.face[0];
+      const g = selected[gestureIndex];
+      const hit = checkGesture(g.id, face);
+      const descriptor = getFaceDescriptor(face);
 
-      if (hit && !gestureDetected) {
+      if (g.id === 'nose_circle') {
+        if (hit && !gestureDetected && descriptor) {
+          gestureDetected = true;
+          descriptors.push(descriptor);
+          captureCount++;
+          
+          if (captureCount >= CAPTURES_PER) {
+            gesturesDone = gestureIndex + 1;
+            if (gesturesDone >= selected.length) {
+              submit(); 
+              return;
+            }
+            gestureIndex++;
+            captureCount = 0;
+            gestureDetected = false;
+            subline = selected[gestureIndex].label;
+            circleProgress = 0;
+          } else {
+            subline = `Captured ${captureCount}/${CAPTURES_PER}`;
+            setTimeout(() => {
+              gestureDetected = false;
+            }, 500);
+          }
+        }
+        drawOverlay(hit, false, holdProgress);
+        raf = requestAnimationFrame(loop);
+        return;
+      }
+
+      if (hit && !gestureDetected && descriptor) {
         if (!holdTimer) {
           holdTimer = window.setTimeout(() => {
             gestureDetected = true;
-            descriptors.push(Array.from(det.descriptor));
+            descriptors.push(descriptor);
             captureCount++;
             holdProgress = 0;
-            holdTimer    = null;
+            holdTimer = null;
 
             if (captureCount >= CAPTURES_PER) {
               gesturesDone = gestureIndex + 1;
               if (gesturesDone >= selected.length) {
-                submit(); return;
+                submit(); 
+                return;
               }
               gestureIndex++;
-              captureCount    = 0;
+              captureCount = 0;
               gestureDetected = false;
               resetGestureState();
               subline = selected[gestureIndex].label;
             } else {
               subline = `Captured ${captureCount}/${CAPTURES_PER}`;
+              gestureDetected = false;
             }
           }, HOLD_DURATION);
         }
         holdProgress = Math.min(holdProgress + 0.05, 1);
       } else if (!hit) {
-        if (holdTimer) { clearTimeout(holdTimer); holdTimer = null; }
-        holdProgress    = 0;
+        if (holdTimer) { 
+          clearTimeout(holdTimer); 
+          holdTimer = null; 
+        }
+        holdProgress = 0;
         gestureDetected = false;
       }
 
       drawOverlay(hit, false, holdProgress);
       raf = requestAnimationFrame(loop);
-    } catch {
+    } catch (error) {
+      console.error('Detection error:', error);
       raf = requestAnimationFrame(loop);
     }
   }
 
-  // ── submit ───────────────────────────────────────────────────────────────
+  // ── submit enrollment ─────────────────────────────────────────────────────
   async function submit() {
-    status   = 'processing';
+    status = 'processing';
     headline = 'Processing…';
-    subline  = 'Saving your face data…';
+    subline = 'Saving your face data…';
     stopCamera();
 
-    // Capture and compress photo
     const photoDataUrl = await captureAndCompress();
 
-    const avg = descriptors[0].map((_, i) =>
-      descriptors.reduce((s, d) => s + d[i], 0) / descriptors.length
+    // Average all captured descriptors
+    const avgDescriptor = descriptors[0].map((_, i) =>
+      descriptors.reduce((sum, desc) => sum + desc[i], 0) / descriptors.length
     );
+
+    console.log('Submitting enrollment:');
+    console.log('- Descriptor length:', avgDescriptor.length);
+    console.log('- First 5 values:', avgDescriptor.slice(0, 5));
+    console.log('- Value range:', Math.min(...avgDescriptor), 'to', Math.max(...avgDescriptor));
 
     try {
       const res = await fetch('/api/face/enroll', {
-        method:  'POST',
+        method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body:    JSON.stringify({
-          descriptor: avg,
-          photo: photoDataUrl, // base64 data URL or null
+        body: JSON.stringify({
+          descriptor: avgDescriptor,
+          embedding_dimension: avgDescriptor.length,
+          photo: photoDataUrl,
         }),
       });
-      if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error ?? `${res.status}`);
-      status   = 'done';
+      
+      const data = await res.json();
+      
+      if (!res.ok) throw new Error(data.error ?? `${res.status}`);
+      
+      status = 'done';
       headline = 'Enrolled!';
-      subline  = 'Your face has been saved successfully';
+      subline = `Face saved successfully (${avgDescriptor.length}-dim embedding)`;
       setTimeout(() => onComplete(), 1800);
     } catch (e: any) {
-      status        = 'error';
-      headline      = 'Enrollment failed';
-      errorMessage  = e.message ?? 'Please try again';
-      subline       = errorMessage;
+      console.error('Enrollment error:', e);
+      status = 'error';
+      headline = 'Enrollment failed';
+      errorMessage = e.message ?? 'Please try again';
+      subline = errorMessage;
     }
   }
 
   function stopCamera() {
-    if (raf)       cancelAnimationFrame(raf);
+    if (raf) cancelAnimationFrame(raf);
     if (holdTimer) clearTimeout(holdTimer);
     stream?.getTracks().forEach(t => t.stop());
     stream = null;
@@ -464,16 +530,16 @@
     smileHistory = [];
     smileConfirmed = false;
     nosePositions = [];
-    circleBaseline = null;
+    circleProgress = 0;
   }
 
   function resetState() {
-    descriptors     = [];
-    captureCount    = 0;
-    gesturesDone    = 0;
+    descriptors = [];
+    captureCount = 0;
+    gesturesDone = 0;
     gestureDetected = false;
     resetGestureState();
-    holdProgress    = 0;
+    holdProgress = 0;
     if (holdTimer) { clearTimeout(holdTimer); holdTimer = null; }
   }
 
@@ -489,14 +555,32 @@
   }
 
   async function init() {
+    if (!browser) return;
+    
     try {
-      if (!faceapi) {
-        faceapi = await import('@vladmandic/face-api');
-        await Promise.all([
-          faceapi.nets.tinyFaceDetector.loadFromUri('/models'),
-          faceapi.nets.faceLandmark68TinyNet.loadFromUri('/models'),
-          faceapi.nets.faceRecognitionNet.loadFromUri('/models'),
-        ]);
+      if (!human && !isModelLoading) {
+        isModelLoading = true;
+        console.log('Initializing Human for enrollment...');
+        
+        const HumanModule = await import('@vladmandic/human');
+        human = new HumanModule.default({
+          backend: 'webgl',
+          modelBasePath: '/models/human',
+          face: {
+            enabled: true,
+            detector: { 
+              maxDetected: 1,
+              return: true
+            },
+            description: { enabled: true },
+            emotion: { enabled: true },
+            landmarks: { enabled: true }
+          }
+        });
+        
+        await human.load();
+        console.log('Human models loaded successfully');
+        isModelLoading = false;
       }
 
       stream = await navigator.mediaDevices.getUserMedia({
@@ -504,31 +588,52 @@
       });
       video.srcObject = stream;
       await video.play();
-      canvas.width  = video.videoWidth  || 640;
+      
+      await new Promise<void>((resolve) => {
+        const checkVideo = () => {
+          if (video.videoWidth && video.videoHeight) {
+            resolve();
+          } else {
+            setTimeout(checkVideo, 100);
+          }
+        };
+        checkVideo();
+      });
+      
+      canvas.width = video.videoWidth || 640;
       canvas.height = video.videoHeight || 480;
       ctx = canvas.getContext('2d');
 
-      selected     = [...GESTURES].sort(() => 0.5 - Math.random()).slice(0, TOTAL);
+      selected = [...GESTURES].sort(() => 0.5 - Math.random()).slice(0, TOTAL);
       gestureIndex = 0;
       gesturesDone = 0;
       captureCount = 0;
 
-      status   = 'gesture';
+      status = 'gesture';
       headline = 'Face Enrollment';
-      subline  = selected[0].label;
+      subline = selected[0].label;
 
+      if (raf) cancelAnimationFrame(raf);
       raf = requestAnimationFrame(loop);
     } catch (e: any) {
-      status       = 'error';
-      headline     = 'Camera error';
+      console.error('Initialization error:', e);
+      status = 'error';
+      headline = 'Camera error';
       errorMessage = e.message?.includes('denied')
         ? 'Allow camera access and retry'
+        : e.message?.includes('not found')
+        ? 'No camera found'
         : 'Failed to load — refresh and try again';
       subline = errorMessage;
     }
   }
 
-  onMount(() => {});
+  onMount(() => {
+    return () => {
+      stopCamera();
+    };
+  });
+  
   onDestroy(stopCamera);
 
   $effect(() => {
@@ -538,7 +643,7 @@
     if (!open) {
       stopCamera();
       resetState();
-      status       = 'intro';
+      status = 'intro';
       errorMessage = '';
       gestureIndex = 0;
     }
@@ -608,7 +713,7 @@
               <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#ef4444" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
                 <circle cx="12" cy="12" r="10"/>
                 <line x1="15" y1="9" x2="9" y2="15"/>
-                <line x1="9"  y1="9" x2="15" y2="15"/>
+                <line x1="9" y1="9" x2="15" y2="15"/>
               </svg>
             </div>
             <p class="state-text error-text">{headline}</p>
@@ -680,9 +785,9 @@
               </span>
               <p class="subline gesture-label" aria-live="polite">{currentGestureLabel}</p>
             </div>
-            {#if holdProgress > 0}
+            {#if holdProgress > 0 || circleProgress > 0}
               <div class="hold-bar">
-                <div class="hold-fill" style="width: {holdProgress * 100}%"></div>
+                <div class="hold-fill" style="width: {selected[gestureIndex]?.id === 'nose_circle' ? circleProgress * 100 : holdProgress * 100}%"></div>
               </div>
             {/if}
           </div>
@@ -815,7 +920,7 @@
   }
 
   .success-state { background: rgba(10, 13, 15, 0.9); }
-  .error-state   { background: rgba(10, 13, 15, 0.9); }
+  .error-state { background: rgba(10, 13, 15, 0.9); }
 
   .success-ring {
     width: 64px;
@@ -841,9 +946,9 @@
     animation: scale-in 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
   }
 
-  .state-text       { font-size: 0.875rem; color: rgba(255, 255, 255, 0.5); margin: 0; }
-  .success-text     { color: #00c9a7; font-weight: 600; }
-  .error-text       { color: #ef4444; font-weight: 600; }
+  .state-text { font-size: 0.875rem; color: rgba(255, 255, 255, 0.5); margin: 0; }
+  .success-text { color: #00c9a7; font-weight: 600; }
+  .error-text { color: #ef4444; font-weight: 600; }
 
   .bottom {
     padding: 1.25rem;
@@ -863,9 +968,9 @@
     min-height: 1.3em;
   }
 
-  .subline.error-sub   { color: #ef4444; }
+  .subline.error-sub { color: #ef4444; }
   .subline.success-sub { color: #00c9a7; }
-  .gesture-label       { font-size: 0.9rem; font-weight: 600; color: #fff; }
+  .gesture-label { font-size: 0.9rem; font-weight: 600; color: #fff; }
 
   .cta {
     width: 100%;
@@ -882,7 +987,7 @@
     box-shadow: 0 4px 16px rgba(21, 128, 61, 0.3);
   }
 
-  .cta:hover  { transform: translateY(-1px); box-shadow: 0 6px 20px rgba(21, 128, 61, 0.4); }
+  .cta:hover { transform: translateY(-1px); box-shadow: 0 6px 20px rgba(21, 128, 61, 0.4); }
   .cta:active { transform: scale(0.98) translateY(0); }
 
   .intro-content {
@@ -970,7 +1075,7 @@
   }
 
   .dot.active { width: 24px; background: #00c9a7; }
-  .dot.done   { background: rgba(0, 201, 167, 0.4); }
+  .dot.done { background: rgba(0, 201, 167, 0.4); }
 
   .gesture-hint {
     display: flex;
@@ -1012,20 +1117,20 @@
 
   .spinner.teal { border-top-color: #00c9a7; }
 
-  @keyframes spin     { to { transform: rotate(360deg); } }
-  @keyframes fade-in  { from { opacity: 0; } to { opacity: 1; } }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  @keyframes fade-in { from { opacity: 0; } to { opacity: 1; } }
   @keyframes scale-in {
     from { opacity: 0; transform: scale(0.9); }
-    to   { opacity: 1; transform: scale(1);   }
+    to { opacity: 1; transform: scale(1); }
   }
   @keyframes slide-up {
     from { opacity: 0; transform: translateY(16px); }
-    to   { opacity: 1; transform: translateY(0);    }
+    to { opacity: 1; transform: translateY(0); }
   }
 
   @media (max-width: 480px) {
     .modal-backdrop { padding: 0.5rem; }
-    .modal          { max-width: 100%; border-radius: 1rem; }
-    .bottom         { padding: 1rem; }
+    .modal { max-width: 100%; border-radius: 1rem; }
+    .bottom { padding: 1rem; }
   }
 </style>
