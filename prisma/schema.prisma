@@ -103,6 +103,13 @@ enum RegistrationType {
   borrowed
 }
 
+enum RegistrationStatus {
+  pending
+  approved
+  rejected
+  withdrawn
+}
+
 // ─── Institutional hierarchy ──────────────────────────────────────────────────
 
 model College {
@@ -360,13 +367,14 @@ model Course {
 }
 
 model CourseRegistration {
-  id               String           @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+id               String           @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   studentId        String           @map("student_id") @db.Uuid
   courseId         String           @map("course_id") @db.Uuid
   session          String
   levelId          Int?             @map("level_id")
   semester         Int              @db.SmallInt
   registrationType RegistrationType @default(normal) @map("registration_type")
+  status           RegistrationStatus @default(pending) @map("status") // Add this
   createdAt        DateTime         @default(now()) @map("created_at") @db.Timestamptz()
 
   student User   @relation(fields: [studentId], references: [id], onDelete: Cascade)
