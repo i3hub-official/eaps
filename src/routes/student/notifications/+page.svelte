@@ -1,103 +1,129 @@
 <!-- src/routes/student/notifications/+page.svelte -->
-<script lang="ts">
-  import { enhance } from '$app/forms';
+ <script lang="ts">
+  import {
+    Bell, CheckCheck, Trash2, CheckCircle2, AlertCircle,
+    Info, AlertTriangle, XCircle, Loader2, Inbox
+  } from 'lucide-svelte';
   import type { PageData } from './$types';
-  import { Bell, CheckCheck, Trash2, X } from 'lucide-svelte';
 
   let { data }: { data: PageData } = $props();
-  let notifications = $state(data.notifications);
-  let markingAll    = $state(false);
 
-  const unread = $derived(notifications.filter((n: any) => !n.isRead).length);
+  let notifications = $state(data.notifications);
+  let markingAll = $state(false);
+  let deleting = $state<string | null>(null);
+
+  const unreadCount = $derived(notifications.filter(n => !n.isRead).length);
+
+  async function markAllRead() {
+    if (markingAll || unreadCount === 0) return;
+    markingAll = true;
+    try {
+      const res = await fetch('/api/notifications/read-all', { method: 'POST' });
+      if (res.ok) notifications = notifications.map(n => ({ ...n, isRead: true }));
+    } catch { /* silent */ }
+    finally { markingAll = false; }
+  }
+
+  async function markOneRead(id: string) {
+    const notif = notifications.find(n => n.id === id);
+    if (!notif || notif.isRead) return;
+    notifications = notifications.map(n => n.id === id ? { ...n, isRead: true } : n);
+    try {
+      await fetch(`/api/notifications/${id}/read`, { method: 'POST' });
+    } catch {
+      notifications = notifications.map(n => n.id === id ? { ...n, isRead: false } : n);
+    }
+  }
+
+  async function deleteNotif(id: string) {
+    deleting = id;
+    try {
+      const res = await fetch(`/api/notifications/${id}`, { method: 'DELETE' });
+      if (res.ok) notifications = notifications.filter(n => n.id !== id);
+    } catch { /* silent */ }
+    finally { deleting = null; }
+  }
 
   function relativeTime(date: string) {
     const diff = Date.now() - new Date(date).getTime();
     const m = Math.floor(diff / 60000);
-    if (m < 1)  return 'Just now';
+    if (m < 1) return 'Just now';
     if (m < 60) return `${m}m ago`;
     const h = Math.floor(m / 60);
     if (h < 24) return `${h}h ago`;
     const d = Math.floor(h / 24);
-    return d < 30 ? `${d}d ago` : new Date(date).toLocaleDateString('en-GB');
+    if (d < 30) return `${d}d ago`;
+    return new Date(date).toLocaleDateString();
   }
 
-  function typeBadgeClass(type: string) {
-    return { info:'type-info', warning:'type-warning', alert:'type-alert', error:'type-error', critical:'type-critical' }[type] || 'type-info';
+  function typeIcon(title: string) {
+    const t = title.toLowerCase();
+    if (t.includes('error') || t.includes('fail')) return XCircle;
+    if (t.includes('warn') || t.includes('alert')) return AlertTriangle;
+    if (t.includes('success') || t.includes('pass')) return CheckCircle2;
+    return Info;
+  }
+
+  function typeColor(title: string) {
+    const t = title.toLowerCase();
+    if (t.includes('error') || t.includes('fail')) return '#dc2626';
+    if (t.includes('warn') || t.includes('alert')) return '#f59e0b';
+    if (t.includes('success') || t.includes('pass')) return 'var(--green-600)';
+    return 'var(--blue-500)';
   }
 </script>
 
-<svelte:head><title>Notifications — MOUAU eTest</title></svelte:head>
-
-<div class="page">
-  <header class="page-header">
-    <div>
-      <h1>Notifications</h1>
-      <p class="subtitle">{notifications.length} total · {unread} unread</p>
+<div class="notif-page">
+  <div class="page-header">
+    <div class="header-left">
+      <div class="header-icon"><Bell size={20} /></div>
+      <div>
+        <h1>Notifications</h1>
+        <p class="page-sub">{unreadCount} unread · {notifications.length} total</p>
+      </div>
     </div>
-    {#if unread > 0}
-      <form method="POST" action="?/markAllRead" use:enhance={() => {
-        markingAll = true;
-        return async ({ update }) => {
-          await update();
-          notifications = notifications.map((n: any) => ({ ...n, isRead: true }));
-          markingAll = false;
-        };
-      }}>
-        <button type="submit" class="btn-mark-all" disabled={markingAll}>
-          <CheckCheck size={14} />
-          {markingAll ? 'Marking…' : 'Mark all read'}
-        </button>
-      </form>
+    {#if unreadCount > 0}
+      <button class="mark-all-btn" onclick={markAllRead} disabled={markingAll}>
+        {#if markingAll}<Loader2 size={12} class="spin-icon" />{:else}<CheckCheck size={12} />{/if}
+        Mark all read
+      </button>
     {/if}
-  </header>
+  </div>
 
   {#if notifications.length === 0}
-    <div class="empty">
-      <Bell size={40} strokeWidth={1.2} />
-      <p class="empty-title">All caught up</p>
-      <p class="empty-sub">No notifications to show.</p>
+    <div class="empty-page">
+      <Inbox size={40} strokeWidth={1.2} />
+      <p class="empty-title">No notifications</p>
+      <p class="empty-sub">You're all caught up. New notifications will appear here.</p>
     </div>
   {:else}
-    <div class="notif-list">
+    <div class="notif-list-page">
       {#each notifications as n (n.id)}
-        <div class="notif-item" class:unread={!n.isRead}>
-          <div class="notif-dot-col">
-            {#if !n.isRead}<div class="notif-dot"></div>{/if}
+        {@const Icon = typeIcon(n.title)}
+        {@const color = typeColor(n.title)}
+        <div class="notif-row" class:unread={!n.isRead}>
+          <div class="notif-row-icon" style="color: {color}; background: {color}12;">
+            <Icon size={16} />
           </div>
-          <div class="notif-body">
-            <div class="notif-head-row">
-              <p class="notif-title">{n.title}</p>
-              {#if n.type}<span class="type-badge {typeBadgeClass(n.type)}">{n.type}</span>{/if}
+          <div class="notif-row-body" onclick={() => markOneRead(n.id)} role="button" tabindex="0">
+            <div class="notif-row-top">
+              <span class="notif-row-title">{n.title}</span>
+              <span class="notif-row-time">{relativeTime(n.createdAt)}</span>
             </div>
-            <p class="notif-msg">{n.message}</p>
-            <span class="notif-time">{relativeTime(n.createdAt)}</span>
+            <p class="notif-row-msg">{n.message}</p>
           </div>
-          <div class="notif-actions">
-            {#if !n.isRead}
-              <form method="POST" action="?/markRead" use:enhance={() => {
-                return async ({ update }) => {
-                  await update();
-                  notifications = notifications.map((x: any) => x.id === n.id ? { ...x, isRead: true } : x);
-                };
-              }}>
-                <input type="hidden" name="id" value={n.id} />
-                <button type="submit" class="action-btn" title="Mark read">
-                  <CheckCheck size={13} />
-                </button>
-              </form>
+          <button
+            class="notif-row-delete"
+            onclick={() => deleteNotif(n.id)}
+            disabled={deleting === n.id}
+            aria-label="Delete notification"
+          >
+            {#if deleting === n.id}
+              <Loader2 size={13} class="spin-icon" />
+            {:else}
+              <Trash2 size={13} />
             {/if}
-            <form method="POST" action="?/delete" use:enhance={() => {
-              return async ({ update }) => {
-                await update();
-                notifications = notifications.filter((x: any) => x.id !== n.id);
-              };
-            }}>
-              <input type="hidden" name="id" value={n.id} />
-              <button type="submit" class="action-btn delete" title="Delete">
-                <Trash2 size={13} />
-              </button>
-            </form>
-          </div>
+          </button>
         </div>
       {/each}
     </div>
@@ -105,44 +131,68 @@
 </div>
 
 <style>
-  .page { max-width: 700px; }
-  .page-header { display:flex; align-items:flex-start; justify-content:space-between; gap:1rem; margin-bottom:1.5rem; }
-  .page-header h1 { font-size:1.5rem; font-weight:700; color:var(--color-text); margin:0; }
-  .subtitle { color:var(--color-muted); font-size:0.875rem; margin-top:0.25rem; }
+  .notif-page { display: flex; flex-direction: column; gap: 1rem; }
+  .page-header {
+    display: flex; align-items: center; justify-content: space-between;
+    gap: 1rem; flex-wrap: wrap;
+  }
+  .header-left { display: flex; align-items: center; gap: 0.75rem; }
+  .header-icon {
+    width: 40px; height: 40px; border-radius: 0.625rem;
+    background: var(--green-soft); color: var(--green-600);
+    display: flex; align-items: center; justify-content: center; flex-shrink: 0;
+  }
+  .page-header h1 { font-size: 1.2rem; font-weight: 800; color: var(--color-text); margin: 0; }
+  .page-sub { font-size: 0.75rem; color: var(--color-muted); margin: 0.15rem 0 0; }
+  .mark-all-btn {
+    display: inline-flex; align-items: center; gap: 0.35rem;
+    padding: 0.45rem 0.875rem; border-radius: 0.45rem;
+    background: var(--green-soft); color: var(--green-700);
+    border: 1px solid rgba(34,197,94,0.2);
+    font-size: 0.78rem; font-weight: 700; cursor: pointer;
+    font-family: inherit; transition: all 0.15s;
+  }
+  .mark-all-btn:hover { background: var(--green-600); color: white; }
+  .mark-all-btn:disabled { opacity: 0.5; cursor: not-allowed; }
 
-  .btn-mark-all { display:flex; align-items:center; gap:0.375rem; padding:0.5rem 0.875rem; border:1px solid var(--color-border); border-radius:0.5rem; background:none; font-size:0.8rem; font-weight:600; color:var(--color-muted); cursor:pointer; transition:all 0.15s; white-space:nowrap; }
-  .btn-mark-all:hover { border-color:#16a34a; color:#16a34a; }
-  .btn-mark-all:disabled { opacity:0.5; cursor:not-allowed; }
+  .empty-page {
+    display: flex; flex-direction: column; align-items: center; gap: 0.625rem;
+    padding: 4rem 1rem; color: var(--color-muted); text-align: center;
+  }
+  .empty-title { font-size: 0.9rem; font-weight: 700; color: var(--color-text); margin: 0; }
+  .empty-sub { font-size: 0.78rem; margin: 0; }
 
-  .empty { display:flex; flex-direction:column; align-items:center; gap:0.75rem; padding:4rem 2rem; text-align:center; background:var(--color-surface); border:1px solid var(--color-border); border-radius:0.875rem; color:var(--color-muted); }
-  .empty-title { font-size:1rem; font-weight:700; color:var(--color-text); margin:0; }
-  .empty-sub { font-size:0.85rem; margin:0; }
+  .notif-list-page {
+    background: var(--color-surface); border: 1px solid var(--color-border);
+    border-radius: var(--radius-card); overflow: hidden;
+    display: flex; flex-direction: column;
+  }
+  .notif-row {
+    display: flex; align-items: flex-start; gap: 0.75rem;
+    padding: 1rem; border-bottom: 1px solid var(--color-border);
+    transition: background 0.1s;
+  }
+  .notif-row:last-child { border-bottom: none; }
+  .notif-row:hover { background: var(--color-bg); }
+  .notif-row.unread { background: rgba(34,197,94,0.03); }
+  .notif-row-icon {
+    width: 36px; height: 36px; border-radius: 0.5rem; flex-shrink: 0;
+    display: flex; align-items: center; justify-content: center;
+  }
+  .notif-row-body { flex: 1; min-width: 0; cursor: pointer; }
+  .notif-row-top { display: flex; align-items: center; justify-content: space-between; gap: 0.5rem; margin-bottom: 0.2rem; }
+  .notif-row-title { font-size: 0.82rem; font-weight: 700; color: var(--color-text); }
+  .notif-row-time { font-size: 0.68rem; color: var(--color-muted); white-space: nowrap; }
+  .notif-row-msg { font-size: 0.78rem; color: var(--color-muted); margin: 0; line-height: 1.4; }
+  .notif-row-delete {
+    width: 30px; height: 30px; border-radius: 0.35rem; flex-shrink: 0;
+    border: none; background: none; cursor: pointer;
+    color: var(--color-muted); display: flex; align-items: center; justify-content: center;
+    transition: all 0.15s; margin-top: 2px;
+  }
+  .notif-row-delete:hover { background: rgba(220,38,38,0.08); color: #dc2626; }
+  .notif-row-delete:disabled { opacity: 0.4; cursor: not-allowed; }
 
-  .notif-list { display:flex; flex-direction:column; gap:0; background:var(--color-surface); border:1px solid var(--color-border); border-radius:0.875rem; overflow:hidden; }
-
-  .notif-item { display:flex; align-items:flex-start; gap:0.75rem; padding:1rem 1.25rem; border-bottom:1px solid var(--color-border); transition:background 0.1s; }
-  .notif-item:last-child { border-bottom:none; }
-  .notif-item:hover { background:var(--color-bg); }
-  .notif-item.unread { background:rgba(34,197,94,0.03); }
-
-  .notif-dot-col { width:14px; flex-shrink:0; padding-top:6px; }
-  .notif-dot { width:7px; height:7px; border-radius:50%; background:#22c55e; }
-
-  .notif-body { flex:1; min-width:0; }
-  .notif-head-row { display:flex; align-items:center; gap:0.5rem; margin-bottom:0.25rem; flex-wrap:wrap; }
-  .notif-title { font-size:0.875rem; font-weight:600; color:var(--color-text); margin:0; }
-  .notif-msg { font-size:0.825rem; color:var(--color-muted); margin:0 0 0.375rem; line-height:1.5; }
-  .notif-time { font-size:0.72rem; color:var(--color-muted); }
-
-  .type-badge { font-size:0.62rem; font-weight:700; text-transform:uppercase; padding:0.1rem 0.4rem; border-radius:0.25rem; }
-  .type-info     { background:rgba(59,130,246,.1);  color:#1d4ed8; }
-  .type-warning  { background:rgba(245,158,11,.1);  color:#d97706; }
-  .type-alert    { background:rgba(249,115,22,.1);  color:#c2410c; }
-  .type-error    { background:rgba(239,68,68,.1);   color:#dc2626; }
-  .type-critical { background:rgba(220,38,38,.15);  color:#991b1b; }
-
-  .notif-actions { display:flex; gap:0.25rem; flex-shrink:0; }
-  .action-btn { width:28px; height:28px; border-radius:0.375rem; border:1px solid var(--color-border); background:none; cursor:pointer; color:var(--color-muted); display:flex; align-items:center; justify-content:center; transition:all 0.15s; }
-  .action-btn:hover { border-color:#16a34a; color:#16a34a; }
-  .action-btn.delete:hover { border-color:#dc2626; color:#dc2626; }
+  :global(.spin-icon) { animation: spin 0.8s linear infinite; }
+  @keyframes spin { to { transform: rotate(360deg); } }
 </style>

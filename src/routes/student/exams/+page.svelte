@@ -1,602 +1,284 @@
-<!-- src/routes/student/exams/+page.svelte -->
 <script lang="ts">
+  import {
+    ClipboardList, Clock, Calendar, ArrowRight, AlertCircle,
+    Play, CheckCircle2, XCircle, Timer, Zap, Filter
+  } from 'lucide-svelte';
   import type { PageData } from './$types';
-  import { Calendar, Clock, Award, AlertTriangle, CheckCircle2, XCircle, ArrowRight, FileText, TrendingUp, BookOpen, Repeat, UserPlus } from 'lucide-svelte';
 
   let { data }: { data: PageData } = $props();
-  const { exams, results, meta } = data;
 
-  const active   = exams.filter(e => e.status === 'active' || e.status === 'in_progress');
-  const upcoming = exams.filter(e => e.status === 'not_started' && e.scheduledStart && new Date(e.scheduledStart) > new Date());
-  const past     = exams.filter(e => e.status === 'submitted' || e.status === 'force_submitted' || e.status === 'flagged');
+  let filter = $state<'all' | 'upcoming' | 'active' | 'completed'>('all');
 
-  function fmtDate(d: Date | null) {
-    if (!d) return '—';
-    return new Date(d).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' });
+  const filtered = $derived(() => {
+    let list = data.exams;
+    if (filter === 'upcoming') list = list.filter(e => e.status === 'not_started' || e.status === 'scheduled');
+    if (filter === 'active') list = list.filter(e => e.status === 'active' || e.status === 'in_progress');
+    if (filter === 'completed') list = list.filter(e => e.status === 'submitted' || e.status === 'completed');
+    return list;
+  });
+
+  function statusConfig(status: string) {
+    switch (status) {
+      case 'active':
+      case 'in_progress':
+        return { label: 'In Progress', color: '#16a34a', bg: 'rgba(34,197,94,0.08)', icon: Play };
+      case 'submitted':
+      case 'completed':
+        return { label: 'Completed', color: '#3b82f6', bg: 'rgba(59,130,246,0.08)', icon: CheckCircle2 };
+      case 'not_started':
+      case 'scheduled':
+        return { label: 'Upcoming', color: '#f59e0b', bg: 'rgba(245,158,11,0.08)', icon: Calendar };
+      default:
+        return { label: status, color: 'var(--color-muted)', bg: 'var(--color-bg)', icon: Clock };
+    }
   }
 
-  function fmtRelative(d: Date | null) {
-    if (!d) return '';
+  function formatDate(d: Date | string | null) {
+    if (!d) return 'TBD';
+    return new Date(d).toLocaleDateString('en-GB', {
+      day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit'
+    });
+  }
+
+  function daysUntil(d: Date | string | null) {
+    if (!d) return null;
     const diff = new Date(d).getTime() - Date.now();
-    const mins = Math.floor(Math.abs(diff) / 60_000);
-    const hrs  = Math.floor(mins / 60);
-    const days = Math.floor(hrs / 24);
-    if (diff < 0) return 'ended';
-    if (mins < 60) return `in ${mins}m`;
-    if (hrs < 24)  return `in ${hrs}h`;
-    return `in ${days}d`;
+    const days = Math.ceil(diff / (1000 * 60 * 60 * 24));
+    return days > 0 ? days : 0;
   }
 
-  const STATUS_CONFIG: Record<string, { label: string; color: string; bg: string; icon: any }> = {
-    active:           { label: 'Live', color: '#16a34a', bg: '#f0fdf4', icon: CheckCircle2 },
-    in_progress:      { label: 'In Progress', color: '#2563eb', bg: '#eff6ff', icon: TrendingUp },
-    not_started:      { label: 'Upcoming', color: '#d97706', bg: '#fffbeb', icon: Calendar },
-    submitted:        { label: 'Submitted', color: '#6b7280', bg: '#f9fafb', icon: FileText },
-    force_submitted:  { label: 'Force Submitted', color: '#dc2626', bg: '#fef2f2', icon: AlertTriangle },
-    flagged:          { label: 'Flagged', color: '#dc2626', bg: '#fef2f2', icon: AlertTriangle },
-  };
-
-  const REG_TYPE_CONFIG: Record<string, { label: string; icon: any; color: string }> = {
-    normal:     { label: 'Normal',     icon: BookOpen,  color: '#16a34a' },
-    carry_over: { label: 'Carry Over', icon: Repeat,    color: '#d97706' },
-    borrowed:   { label: 'Borrowed',   icon: UserPlus,  color: '#7c3aed' },
-  };
+  function formatDuration(mins: number) {
+    if (mins < 60) return `${mins}m`;
+    const h = Math.floor(mins / 60);
+    const m = mins % 60;
+    return m > 0 ? `${h}h ${m}m` : `${h}h`;
+  }
 </script>
 
-<svelte:head><title>My Exams — MOUAU eTest</title></svelte:head>
-
-<div class="page">
-  <div class="content">
-
-    <!-- Header -->
-    <div class="page-header">
-      <div>
-        <h1>My Exams</h1>
-        <p class="sub">{exams.length} exam{exams.length !== 1 ? 's' : ''} • {meta.session} Semester {meta.semester}</p>
-      </div>
-      <a href="/student/courses/register" class="register-link">
-        <BookOpen size={14} />
-        Register Courses
-      </a>
+<div class="exams-page">
+  <div class="page-header">
+    <div>
+      <h1>My Exams</h1>
+      <p class="page-sub">{data.meta.session} · Semester {data.meta.semester}</p>
     </div>
-
-    <!-- Active / Live -->
-    {#if active.length > 0}
-      <section>
-        <div class="sec-head">
-          <span class="live-dot"></span>
-          <h2>Active Now</h2>
-          <span class="sec-count">{active.length}</span>
-        </div>
-        <div class="card-grid">
-          {#each active as exam}
-            {@const cfg = STATUS_CONFIG[exam.status] ?? STATUS_CONFIG.not_started}
-            {@const reg = REG_TYPE_CONFIG[exam.registrationType] ?? REG_TYPE_CONFIG.normal}
-            <div class="card card--live">
-              <div class="card-header">
-                <span class="code-tag">{exam.courseCode}</span>
-                <div class="badges">
-                  <span class="reg-badge" style="color:{reg.color};border-color:{reg.color}40">
-                    <svelte:component this={reg.icon} size={10} />
-                    {reg.label}
-                  </span>
-                  <span class="status-badge" style="color:{cfg.color};background:{cfg.bg}">
-                    <svelte:component this={cfg.icon} size={11} />
-                    {cfg.label}
-                  </span>
-                </div>
-              </div>
-              <h3>{exam.title}</h3>
-              <div class="card-meta">
-                <span><Clock size={12} /> {exam.durationMinutes} min</span>
-                <span class="meta-sep">·</span>
-                <span>{exam.totalMarks} marks</span>
-                <span class="meta-sep">·</span>
-                <span>Pass {exam.passMark}</span>
-              </div>
-              <!-- Show exam end time for active exams -->
-              {#if exam.scheduledEnd}
-                <p class="card-end">Ends {fmtDate(exam.scheduledEnd)}</p>
-              {/if}
-              <a href={`/student/exams/${exam.id}`} class="card-btn card-btn--enter">
-                {exam.sessionId ? 'Resume Exam' : 'Start Exam'}
-                <ArrowRight size={14} />
-              </a>
-            </div>
-          {/each}
-        </div>
-      </section>
-    {/if}
-
-    <!-- Upcoming -->
-    {#if upcoming.length > 0}
-      <section>
-        <div class="sec-head">
-          <Calendar size={13} />
-          <h2>Upcoming</h2>
-          <span class="sec-count">{upcoming.length}</span>
-        </div>
-        <div class="card-grid">
-          {#each upcoming as exam}
-            {@const reg = REG_TYPE_CONFIG[exam.registrationType] ?? REG_TYPE_CONFIG.normal}
-            <div class="card card--upcoming">
-              <div class="card-header">
-                <span class="code-tag">{exam.courseCode}</span>
-                <span class="reg-badge" style="color:{reg.color};border-color:{reg.color}40">
-                  <svelte:component this={reg.icon} size={10} />
-                  {reg.label}
-                </span>
-              </div>
-              <h3>{exam.title}</h3>
-              <div class="card-meta">
-                <span><Clock size={12} /> {exam.durationMinutes} min</span>
-                <span class="meta-sep">·</span>
-                <span>{exam.totalMarks} marks</span>
-              </div>
-              {#if exam.scheduledStart}
-                <p class="card-date">{fmtDate(exam.scheduledStart)}</p>
-              {/if}
-              <span class="card-btn card-btn--waiting">Not started</span>
-            </div>
-          {/each}
-        </div>
-      </section>
-    {/if}
-
-    <!-- Past / Results -->
-    {#if past.length > 0 || results.length > 0}
-      <section>
-        <div class="sec-head">
-          <Award size={13} />
-          <h2>History & Results</h2>
-        </div>
-
-        {#if results.length > 0}
-          <div class="results-table">
-            <div class="results-head">
-              <span>Course</span>
-              <span>Exam</span>
-              <span>Score</span>
-              <span>Grade</span>
-              <span>Status</span>
-            </div>
-            {#each results as r}
-              <div class="result-row">
-                <span class="r-course">{r.courseCode ?? '—'}</span>
-                <span class="r-title">{r.examTitle}</span>
-                <span class="r-score">{r.percentage ? `${Number(r.percentage).toFixed(1)}%` : '—'}</span>
-                <span class="r-grade">{r.grade ?? '—'}</span>
-                <span class="pass-tag" class:pass={r.passed} class:fail={!r.passed}>
-                  {#if r.passed}
-                    <CheckCircle2 size={10} /> Pass
-                  {:else}
-                    <XCircle size={10} /> Fail
-                  {/if}
-                </span>
-              </div>
-            {/each}
-          </div>
-        {/if}
-
-        {#if past.length > 0}
-          <div class="card-grid" style="margin-top: 1rem">
-            {#each past as exam}
-              {@const cfg = STATUS_CONFIG[exam.status] ?? STATUS_CONFIG.submitted}
-              {@const reg = REG_TYPE_CONFIG[exam.registrationType] ?? REG_TYPE_CONFIG.normal}
-              <div class="card card--past">
-                <div class="card-header">
-                  <span class="code-tag">{exam.courseCode}</span>
-                  <div class="badges">
-                    <span class="reg-badge" style="color:{reg.color};border-color:{reg.color}40">
-                      <svelte:component this={reg.icon} size={10} />
-                      {reg.label}
-                    </span>
-                    <span class="status-badge" style="color:{cfg.color};background:{cfg.bg}">
-                      <svelte:component this={cfg.icon} size={11} />
-                      {cfg.label}
-                    </span>
-                  </div>
-                </div>
-                <h3>{exam.title}</h3>
-                {#if exam.score !== null}
-                  <div class="past-score">
-                    <span class="past-score-val">{Number(exam.score).toFixed(1)}</span>
-                    <span class="past-score-total">/ {exam.totalMarks}</span>
-                  </div>
-                {/if}
-                {#if exam.violationCount > 0}
-                  <p class="violation-note">
-                    <AlertTriangle size={10} /> {exam.violationCount} violation{exam.violationCount > 1 ? 's' : ''}
-                  </p>
-                {/if}
-              </div>
-            {/each}
-          </div>
-        {/if}
-      </section>
-    {/if}
-
-    <!-- No registered courses -->
-    {#if exams.length === 0 && results.length === 0}
-      <div class="empty">
-        <BookOpen size={40} opacity={0.25} />
-        <p class="empty-title">No exams available</p>
-        <p class="empty-sub">
-          You haven't registered any courses for {meta.session} Semester {meta.semester}.
-          Register courses to see available exams.
-        </p>
-        <a href="/student/courses/register" class="empty-cta">
-          <BookOpen size={14} />
-          Register Courses
-        </a>
-      </div>
-    {/if}
-
   </div>
+
+  <!-- Filters -->
+  <div class="filter-tabs">
+    <button class="filter-tab" class:active={filter === 'all'} onclick={() => filter = 'all'}>All</button>
+    <button class="filter-tab" class:active={filter === 'upcoming'} onclick={() => filter = 'upcoming'}>Upcoming</button>
+    <button class="filter-tab" class:active={filter === 'active'} onclick={() => filter = 'active'}>Active</button>
+    <button class="filter-tab" class:active={filter === 'completed'} onclick={() => filter = 'completed'}>Completed</button>
+  </div>
+
+  <!-- Exam list -->
+  <div class="exam-list-page">
+    {#each filtered() as exam (exam.id)}
+      {@const cfg = statusConfig(exam.status)}
+      {@const Icon = cfg.icon}
+      <div class="exam-card">
+        <div class="exam-card-top">
+          <div class="exam-status-badge" style="background: {cfg.bg}; color: {cfg.color};">
+            <Icon size={12} /> {cfg.label}
+          </div>
+          {#if exam.registrationType !== 'normal'}
+            <span class="reg-type">{exam.registrationType.replace('_', ' ')}</span>
+          {/if}
+        </div>
+        <h3 class="exam-title">{exam.title}</h3>
+        <p class="exam-course">{exam.courseCode} — {exam.courseTitle}</p>
+        <div class="exam-meta">
+          <span><Clock size={11} /> {formatDuration(exam.durationMinutes)}</span>
+          <span><Calendar size={11} /> {formatDate(exam.scheduledStart)}</span>
+          <span>Pass: {exam.passMark}/{exam.totalMarks}</span>
+        </div>
+        {#if exam.scheduledStart}
+          {@const days = daysUntil(exam.scheduledStart)}
+          {#if days !== null && days <= 3 && days > 0 && exam.status !== 'submitted'}
+            <div class="exam-countdown-bar">
+              <Zap size={11} /> {days} day{days === 1 ? '' : 's'} until exam
+            </div>
+          {/if}
+        {/if}
+        <div class="exam-actions">
+          {#if exam.status === 'active' || exam.status === 'in_progress'}
+            <a href="/student/exam/{exam.sessionId ?? exam.id}" class="btn-start">
+              <Play size={13} /> Resume Exam
+            </a>
+          {:else if exam.status === 'submitted' || exam.status === 'completed'}
+            {#if exam.isGraded}
+              <div class="exam-result">
+                <span class="result-score" class:pass={exam.score !== null && exam.score >= exam.passMark}>
+                  {exam.score ?? 0}/{exam.totalMarks}
+                </span>
+                {#if exam.violationCount > 0}
+                  <span class="violation-badge"><AlertCircle size={10} /> {exam.violationCount}</span>
+                {/if}
+              </div>
+            {:else}
+              <span class="pending-grade">Grading…</span>
+            {/if}
+            <a href="/student/results" class="btn-ghost">View Result <ArrowRight size={11} /></a>
+          {:else}
+            <span class="btn-ghost disabled">Scheduled</span>
+          {/if}
+        </div>
+      </div>
+    {:else}
+      <div class="empty-exams">
+        <ClipboardList size={32} strokeWidth={1.5} />
+        <p>No exams found for this filter.</p>
+      </div>
+    {/each}
+  </div>
+
+  <!-- Results summary -->
+  {#if data.results.length > 0}
+    <div class="results-summary">
+      <div class="section-head">
+        <CheckCircle2 size={15} />
+        <h2>Recent Results</h2>
+        <a href="/student/results" class="section-link">View all <ArrowRight size={11} /></a>
+      </div>
+      <div class="results-mini">
+        {#each data.results.slice(0, 3) as result}
+          <div class="result-mini">
+            <span class="result-mini-grade" class:pass={result.passed}>{result.grade ?? '—'}</span>
+            <div class="result-mini-info">
+              <span class="result-mini-title">{result.examTitle}</span>
+              <span class="result-mini-code">{result.courseCode ?? '—'}</span>
+            </div>
+            <span class="result-mini-pct">{result.percentage ?? result.score ?? 0}%</span>
+          </div>
+        {/each}
+      </div>
+    </div>
+  {/if}
 </div>
 
 <style>
-  /* ── GREEN BRANDING VARIABLES ─────────────────────────────────────────── */
-  :global(:root) {
-    --green-50:  #f0fdf4;
-    --green-100: #dcfce7;
-    --green-200: #bbf7d0;
-    --green-300: #86efac;
-    --green-400: #4ade80;
-    --green-500: #22c55e;
-    --green-600: #16a34a;
-    --green-700: #15803d;
-    --green-800: #166534;
-    --green-900: #14532d;
-  }
+  .exams-page { display: flex; flex-direction: column; gap: 1.25rem; }
+  .page-header h1 { font-size: 1.25rem; font-weight: 800; color: var(--color-text); margin: 0; }
+  .page-sub { font-size: 0.78rem; color: var(--color-muted); margin: 0.25rem 0 0; }
 
-  .page {
-    min-height: 100vh;
-    background: var(--color-bg);
-    color: var(--color-text);
-    font-family: 'DM Sans', system-ui, sans-serif;
+  .filter-tabs { display: flex; gap: 0.25rem; flex-wrap: wrap; }
+  .filter-tab {
+    display: inline-flex; align-items: center; gap: 0.3rem;
+    padding: 0.4rem 0.75rem; border-radius: 0.4rem;
+    border: 1px solid var(--color-border); background: var(--color-surface);
+    font-size: 0.78rem; font-weight: 600; color: var(--color-muted);
+    cursor: pointer; font-family: inherit; transition: all 0.15s;
   }
+  .filter-tab:hover { border-color: var(--green-600); color: var(--green-600); }
+  .filter-tab.active { background: var(--green-600); color: white; border-color: var(--green-600); }
 
-  .content {
-    max-width: 960px;
-    margin: 0 auto;
-    padding: 2rem 1.5rem 4rem;
-    display: flex;
-    flex-direction: column;
-    gap: 2rem;
-  }
-
-  .page-header {
-    display: flex;
-    align-items: flex-start;
-    justify-content: space-between;
-    gap: 1rem;
-  }
-
-  .page-header h1 {
-    font-size: clamp(1.4rem, 3vw, 1.75rem);
-    font-weight: 800;
-    letter-spacing: -.03em;
-    line-height: 1.2;
-  }
-  .sub {
-    margin-top: .375rem;
-    font-size: .875rem;
-    color: var(--color-muted);
-  }
-
-  .register-link {
-    display: flex;
-    align-items: center;
-    gap: .375rem;
-    padding: .5rem .875rem;
-    background: linear-gradient(135deg, var(--green-700), var(--green-800));
-    color: #fff;
-    text-decoration: none;
-    border-radius: .5rem;
-    font-size: .8rem;
-    font-weight: 600;
-    transition: opacity .15s;
-    flex-shrink: 0;
-  }
-  .register-link:hover { opacity: .9; }
-
-  section { display: flex; flex-direction: column; gap: .875rem; }
-
-  .sec-head {
-    display: flex;
-    align-items: center;
-    gap: .5rem;
-  }
-  .sec-head h2 {
-    font-size: .72rem;
-    font-weight: 700;
-    text-transform: uppercase;
-    letter-spacing: .08em;
-    color: var(--color-muted);
-  }
-  .sec-count {
-    font-size: .65rem;
-    font-weight: 700;
-    padding: .1rem .45rem;
-    background: var(--color-border);
-    border-radius: 999px;
-    color: var(--color-muted);
-  }
-
-  .live-dot {
-    width: 7px; height: 7px; border-radius: 50%;
-    background: var(--green-500);
-    flex-shrink: 0;
-    animation: pulse-live 1.5s ease-in-out infinite;
-  }
-  @keyframes pulse-live {
-    0%   { box-shadow: 0 0 0 0 rgba(34,197,94,.5); }
-    70%  { box-shadow: 0 0 0 6px rgba(34,197,94,0); }
-    100% { box-shadow: 0 0 0 0 rgba(34,197,94,0); }
-  }
-
-  .card-grid {
+  .exam-list-page {
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(265px, 1fr));
-    gap: .875rem;
+    grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+    gap: 0.875rem;
   }
-
-  .card {
-    background: var(--color-surface);
-    border: 1px solid var(--color-border);
-    border-radius: .875rem;
-    padding: 1.25rem;
-    display: flex;
-    flex-direction: column;
-    gap: .75rem;
-    transition: box-shadow .15s;
+  .exam-card {
+    background: var(--color-surface); border: 1px solid var(--color-border);
+    border-radius: var(--radius-card); padding: 1rem;
+    display: flex; flex-direction: column; gap: 0.5rem;
+    transition: all 0.15s;
   }
-  .card:hover { box-shadow: 0 4px 16px rgba(0,0,0,.06); }
-
-  .card--live {
-    border-color: var(--green-500);
-    box-shadow: 0 0 0 3px rgba(34,197,94,.1);
+  .exam-card:hover { border-color: var(--green-600); box-shadow: 0 4px 12px rgba(0,0,0,0.04); }
+  .exam-card-top { display: flex; align-items: center; gap: 0.4rem; flex-wrap: wrap; }
+  .exam-status-badge {
+    display: inline-flex; align-items: center; gap: 0.3rem;
+    padding: 0.2rem 0.5rem; border-radius: 0.3rem;
+    font-size: 0.65rem; font-weight: 800; text-transform: uppercase;
   }
-  .card--upcoming { border-style: dashed; }
-  .card--past { opacity: 0.85; }
-
-  .card-header {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: .5rem;
-  }
-
-  .badges {
-    display: flex;
-    align-items: center;
-    gap: .375rem;
-  }
-
-  .code-tag {
-    font-size: .68rem;
-    font-weight: 700;
-    padding: .175rem .55rem;
-    background: var(--green-100);
-    color: var(--green-700);
-    border-radius: 999px;
-  }
-  :global(.dark) .code-tag {
-    background: rgba(34,197,94,.15);
-    color: var(--green-400);
-  }
-
-  .reg-badge {
-    font-size: .58rem;
-    font-weight: 700;
-    padding: .15rem .4rem;
-    border-radius: 999px;
-    border: 1px solid;
-    display: flex;
-    align-items: center;
-    gap: .25rem;
-    text-transform: uppercase;
-    letter-spacing: .04em;
-  }
-
-  .status-badge {
-    font-size: .6rem;
-    font-weight: 700;
-    padding: .2rem .5rem;
-    border-radius: 999px;
-    display: flex;
-    align-items: center;
-    gap: .25rem;
-  }
-
-  .time-tag {
-    font-size: .65rem;
-    font-weight: 600;
-    padding: .175rem .55rem;
-    background: var(--green-50);
-    color: var(--green-700);
-    border-radius: 999px;
-  }
-  :global(.dark) .time-tag {
-    background: rgba(34,197,94,.1);
-    color: var(--green-300);
-  }
-
-  h3 { font-size: .875rem; font-weight: 600; line-height: 1.45; }
-
-  .card-meta {
-    display: flex;
-    align-items: center;
-    gap: .375rem;
-    font-size: .75rem;
-    color: var(--color-muted);
-    flex-wrap: wrap;
-  }
-  .card-meta :global(svg) { flex-shrink: 0; }
-  .meta-sep { opacity: .4; }
-
-  .card-date {
-    font-size: .72rem;
+  .reg-type {
+    font-size: 0.6rem; font-weight: 700; text-transform: uppercase;
+    padding: 0.15rem 0.4rem; border-radius: 0.2rem;
+    background: var(--color-bg); border: 1px solid var(--color-border);
     color: var(--color-muted);
   }
+  .exam-title { font-size: 0.92rem; font-weight: 700; color: var(--color-text); margin: 0; line-height: 1.3; }
+  .exam-course { font-size: 0.75rem; color: var(--color-muted); margin: 0; }
+  .exam-meta { display: flex; flex-wrap: wrap; gap: 0.625rem; }
+  .exam-meta span {
+    display: inline-flex; align-items: center; gap: 0.25rem;
+    font-size: 0.7rem; color: var(--color-muted);
+    padding: 0.15rem 0.4rem; border-radius: 0.25rem; background: var(--color-bg);
+  }
+  .exam-countdown-bar {
+    display: flex; align-items: center; gap: 0.3rem;
+    padding: 0.35rem 0.625rem; border-radius: 0.35rem;
+    background: rgba(245,158,11,0.08); color: #92400e;
+    font-size: 0.72rem; font-weight: 700;
+  }
+  .exam-actions { display: flex; align-items: center; justify-content: space-between; gap: 0.625rem; margin-top: 0.25rem; }
+  .btn-start {
+    display: inline-flex; align-items: center; gap: 0.35rem;
+    padding: 0.5rem 0.875rem; border-radius: 0.45rem;
+    background: var(--green-600); color: white;
+    font-size: 0.78rem; font-weight: 700; text-decoration: none;
+    transition: background 0.15s;
+  }
+  .btn-start:hover { background: var(--green-700); }
+  .btn-ghost {
+    display: inline-flex; align-items: center; gap: 0.25rem;
+    padding: 0.4rem 0.625rem; border-radius: 0.4rem;
+    background: var(--color-bg); border: 1px solid var(--color-border);
+    color: var(--color-muted); font-size: 0.72rem; font-weight: 600;
+    text-decoration: none; transition: all 0.15s;
+  }
+  .btn-ghost:hover:not(.disabled) { border-color: var(--green-600); color: var(--green-600); }
+  .btn-ghost.disabled { cursor: default; opacity: 0.6; }
+  .exam-result { display: flex; align-items: center; gap: 0.4rem; }
+  .result-score { font-size: 0.85rem; font-weight: 800; color: var(--color-text); }
+  .result-score.pass { color: var(--green-600); }
+  .violation-badge {
+    display: inline-flex; align-items: center; gap: 0.15rem;
+    padding: 0.1rem 0.3rem; border-radius: 0.2rem;
+    background: rgba(220,38,38,0.08); color: #dc2626;
+    font-size: 0.6rem; font-weight: 700;
+  }
+  .pending-grade { font-size: 0.72rem; color: var(--color-muted); font-style: italic; }
+  .empty-exams {
+    grid-column: 1 / -1;
+    display: flex; flex-direction: column; align-items: center; gap: 0.5rem;
+    padding: 3rem 1rem; color: var(--color-muted); text-align: center;
+  }
+  .empty-exams p { margin: 0; font-size: 0.82rem; }
 
-  /* NEW: Exam end time for active exams */
-  .card-end {
-    font-size: .72rem;
-    color: var(--green-600);
-    font-weight: 600;
-    display: flex;
-    align-items: center;
-    gap: .25rem;
+  .results-summary {
+    background: var(--color-surface); border: 1px solid var(--color-border);
+    border-radius: var(--radius-card); overflow: hidden;
   }
-  .card-end::before {
-    content: '⏱';
+  .section-head {
+    display: flex; align-items: center; gap: 0.4rem;
+    padding: 0.875rem 1.125rem; border-bottom: 1px solid var(--color-border);
+    font-size: 0.85rem; font-weight: 700; color: var(--color-text);
   }
-  :global(.dark) .card-end {
-    color: var(--green-400);
+  .section-head h2 { margin: 0; font-size: inherit; font-weight: inherit; }
+  .section-link {
+    margin-left: auto;
+    display: inline-flex; align-items: center; gap: 0.25rem;
+    font-size: 0.72rem; font-weight: 600; color: var(--color-muted);
+    text-decoration: none; transition: color 0.12s;
   }
-
-  .card-btn {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    gap: .375rem;
-    padding: .625rem;
-    border-radius: .5rem;
-    font-size: .825rem;
-    font-weight: 600;
-    text-decoration: none;
-    margin-top: auto;
-    transition: all .15s;
-    border: none;
-    cursor: default;
-    font-family: inherit;
+  .section-link:hover { color: var(--green-600); }
+  .results-mini { display: flex; flex-direction: column; }
+  .result-mini {
+    display: flex; align-items: center; gap: 0.75rem;
+    padding: 0.75rem 1.125rem; border-bottom: 1px solid var(--color-border);
+    transition: background 0.1s;
   }
-  .card-btn--enter {
-    background: linear-gradient(135deg, var(--green-700) 0%, var(--green-800) 100%);
-    color: white;
-    cursor: pointer;
+  .result-mini:last-child { border-bottom: none; }
+  .result-mini:hover { background: var(--color-bg); }
+  .result-mini-grade {
+    width: 32px; height: 32px; border-radius: 50%; flex-shrink: 0;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 0.7rem; font-weight: 800; color: white;
+    background: var(--color-border); color: var(--color-muted);
   }
-  .card-btn--enter:hover {
-    transform: translateY(-1px);
-    box-shadow: 0 4px 14px rgba(21,128,61,.4);
-  }
-  .card-btn--waiting {
-    background: var(--color-border);
-    color: var(--color-muted);
-  }
-
-  .past-score {
-    display: flex;
-    align-items: baseline;
-    gap: .25rem;
-  }
-  .past-score-val {
-    font-size: 1.25rem;
-    font-weight: 800;
-    color: var(--color-text);
-  }
-  .past-score-total {
-    font-size: .75rem;
-    color: var(--color-muted);
-  }
-
-  .violation-note {
-    font-size: .72rem;
-    color: #dc2626;
-    display: flex;
-    align-items: center;
-    gap: .25rem;
-  }
-
-  /* Results table */
-  .results-table {
-    background: var(--color-surface);
-    border: 1px solid var(--color-border);
-    border-radius: .875rem;
-    overflow: hidden;
-  }
-  .results-head {
-    display: grid;
-    grid-template-columns: 72px 1fr 65px 44px 70px;
-    gap: 1rem;
-    padding: .6rem 1.25rem;
-    background: var(--color-bg);
-    border-bottom: 1px solid var(--color-border);
-    font-size: .62rem;
-    font-weight: 700;
-    text-transform: uppercase;
-    letter-spacing: .06em;
-    color: var(--color-muted);
-  }
-  .result-row {
-    display: grid;
-    grid-template-columns: 72px 1fr 65px 44px 70px;
-    gap: 1rem;
-    align-items: center;
-    padding: .875rem 1.25rem;
-    border-bottom: 1px solid var(--color-border);
-    transition: background .1s;
-  }
-  .result-row:last-child { border-bottom: none; }
-  .result-row:hover { background: var(--color-bg); }
-
-  .r-course { font-size: .68rem; font-weight: 700; color: var(--green-600); }
-  :global(.dark) .r-course { color: var(--green-400); }
-  .r-title  { font-size: .825rem; font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .r-score  { font-size: .875rem; font-weight: 700; font-variant-numeric: tabular-nums; }
-  .r-grade  { font-size: 1rem; font-weight: 800; }
-
-  .pass-tag {
-    font-size: .65rem;
-    font-weight: 600;
-    padding: .175rem .55rem;
-    border-radius: 999px;
-    text-align: center;
-    display: flex;
-    align-items: center;
-    gap: .25rem;
-  }
-  .pass-tag.pass { background: var(--green-100); color: var(--green-700); }
-  .pass-tag.fail { background: var(--green-50); color: var(--green-800); }
-  :global(.dark) .pass-tag.pass { background: rgba(34,197,94,.15); color: var(--green-400); }
-  :global(.dark) .pass-tag.fail { background: rgba(34,197,94,.1); color: var(--green-300); }
-
-  /* Empty */
-  .empty {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    gap: .875rem;
-    padding: 3rem 2rem;
-    text-align: center;
-    background: var(--color-surface);
-    border: 1px solid var(--color-border);
-    border-radius: .875rem;
-    color: var(--color-muted);
-  }
-  .empty-title { font-size: .925rem; font-weight: 600; }
-  .empty-sub   { font-size: .8rem; max-width: 320px; line-height: 1.65; }
-  .empty-cta {
-    display: flex;
-    align-items: center;
-    gap: .375rem;
-    padding: .625rem 1.25rem;
-    background: linear-gradient(135deg, var(--green-700), var(--green-800));
-    color: #fff;
-    text-decoration: none;
-    border-radius: .5rem;
-    font-size: .85rem;
-    font-weight: 600;
-    margin-top: .5rem;
-  }
-  .empty-cta:hover { opacity: .9; }
-
-  @media (max-width: 640px) {
-    .content  { padding: 1.25rem 1rem 3rem; }
-    .page-header { flex-direction: column; align-items: flex-start; }
-    .results-head,
-    .result-row { grid-template-columns: 56px 1fr 56px 36px 60px; gap: .5rem; padding: .75rem .875rem; }
-  }
+  .result-mini-grade.pass { background: var(--green-600); color: white; }
+  .result-mini-info { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+  .result-mini-title { font-size: 0.82rem; font-weight: 600; color: var(--color-text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .result-mini-code { font-size: 0.7rem; color: var(--color-muted); font-family: monospace; }
+  .result-mini-pct { font-size: 0.85rem; font-weight: 800; color: var(--color-text); flex-shrink: 0; }
 </style>

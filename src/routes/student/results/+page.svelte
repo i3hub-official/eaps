@@ -1,250 +1,303 @@
-<!-- src/routes/student/results/+page.svelte -->
-
 <script lang="ts">
-  import { BarChart2, CheckCircle, XCircle, Clock, BookOpen } from 'lucide-svelte';
+  import {
+    BarChart3, Award, TrendingUp, XCircle, CheckCircle2,
+    Clock, Calendar, AlertTriangle, ArrowRight, BookOpen,
+    FileText, Filter
+  } from 'lucide-svelte';
   import type { PageData } from './$types';
 
   let { data }: { data: PageData } = $props();
 
-  const passed = $derived(data.results.filter(r => r.passed).length);
-  const avg = $derived(
-    data.results.length
-      ? data.results.reduce((a, r) => a + Number(r.percentage ?? 0), 0) / data.results.length
-      : 0
-  );
+  let filter = $state<'all' | 'passed' | 'failed'>('all');
+  let search = $state('');
 
-  const GRADE_COLORS: Record<string, string> = {
-    A: '#16a34a', B: '#2563eb', C: '#d97706',
-    D: '#9333ea', E: '#dc2626', F: '#dc2626',
-  };
+  const filtered = $derived(() => {
+    let list = data.results;
+    if (filter === 'passed') list = list.filter(r => r.passed);
+    if (filter === 'failed') list = list.filter(r => !r.passed);
+    if (search.trim()) {
+      const q = search.toLowerCase();
+      list = list.filter(r =>
+        r.examTitle.toLowerCase().includes(q) ||
+        r.courseCode.toLowerCase().includes(q)
+      );
+    }
+    return list;
+  });
+
+  function gradeColor(g: string | null) {
+    if (!g) return 'var(--color-muted)';
+    if (['A', 'B'].includes(g)) return 'var(--green-600)';
+    if (['C', 'D'].includes(g)) return 'var(--blue-500)';
+    if (['E'].includes(g)) return '#f59e0b';
+    return '#dc2626';
+  }
 
   function formatDate(d: Date | string | null) {
     if (!d) return '—';
-    return new Date(d).toLocaleDateString('en-GB', {
-      day: 'numeric', month: 'short', year: 'numeric',
-    });
+    return new Date(d).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
   }
 
-  function formatDuration(secs: number | null) {
-    if (!secs) return '—';
-    const m = Math.floor(secs / 60);
-    const s = secs % 60;
-    return `${m}m ${s}s`;
+  function formatDuration(mins: number) {
+    if (mins < 60) return `${mins}m`;
+    const h = Math.floor(mins / 60);
+    const m = mins % 60;
+    return m > 0 ? `${h}h ${m}m` : `${h}h`;
   }
 </script>
 
-<svelte:head><title>My Results — MOUAU eTest</title></svelte:head>
-
-<div class="page">
+<div class="results-page">
   <div class="page-header">
-    <div class="header-icon"><BarChart2 size={20} /></div>
     <div>
       <h1>My Results</h1>
-      <p class="sub">{data.results.length} exam{data.results.length !== 1 ? 's' : ''} taken</p>
+      <p class="page-sub">View all your exam results and performance history</p>
     </div>
   </div>
 
-  {#if data.results.length === 0}
-    <div class="empty">
-      <BookOpen size={40} />
-      <p>No exam results yet.</p>
-      <span>Results will appear here once you complete an exam.</span>
+  <!-- Stats -->
+  <div class="stats-row">
+    <div class="stat-box">
+      <div class="stat-box-icon" style="background: var(--green-soft); color: var(--green-600);">
+        <BarChart3 size={18} />
+      </div>
+      <div>
+        <span class="stat-box-value">{data.stats.totalExams}</span>
+        <span class="stat-box-label">Total Exams</span>
+      </div>
     </div>
-  {:else}
-    <!-- Summary cards -->
-  <div class="summary-grid">
-  <div class="summary-card">
-    <span class="sv">{data.results.length}</span>
-    <span class="sl">Exams Taken</span>
+    <div class="stat-box">
+      <div class="stat-box-icon" style="background: var(--green-soft); color: var(--green-600);">
+        <CheckCircle2 size={18} />
+      </div>
+      <div>
+        <span class="stat-box-value">{data.stats.passedExams}</span>
+        <span class="stat-box-label">Passed</span>
+      </div>
+    </div>
+    <div class="stat-box">
+      <div class="stat-box-icon" style="background: rgba(220,38,38,0.08); color: #dc2626;">
+        <XCircle size={18} />
+      </div>
+      <div>
+        <span class="stat-box-value">{data.stats.failedExams}</span>
+        <span class="stat-box-label">Failed</span>
+      </div>
+    </div>
+    <div class="stat-box">
+      <div class="stat-box-icon" style="background: var(--blue-soft); color: var(--blue-500);">
+        <TrendingUp size={18} />
+      </div>
+      <div>
+        <span class="stat-box-value">{data.stats.avgPercentage}%</span>
+        <span class="stat-box-label">Average</span>
+      </div>
+    </div>
+    <div class="stat-box">
+      <div class="stat-box-icon" style="background: var(--teal-soft); color: var(--teal-500);">
+        <BookOpen size={18} />
+      </div>
+      <div>
+        <span class="stat-box-value">{data.stats.totalCreditUnits}</span>
+        <span class="stat-box-label">Credits Earned</span>
+      </div>
+    </div>
   </div>
-  <div class="summary-card green">
-    <span class="sv">{passed}</span>
-    <span class="sl">Passed</span>
-  </div>
-  <div class="summary-card red">
-    <span class="sv">{data.results.length - passed}</span>
-    <span class="sl">Failed</span>
-  </div>
-  <div class="summary-card">
-    <span class="sv">{avg.toFixed(1)}%</span>
-    <span class="sl">Avg Score</span>
-  </div>
-</div>
 
-    <!-- Results list -->
-    <div class="results-list">
-      {#each data.results as r}
-        <div class="result-card" class:pass={r.passed} class:fail={!r.passed}>
+  <!-- Filters -->
+  <div class="filter-bar">
+    <div class="filter-tabs">
+      <button class="filter-tab" class:active={filter === 'all'} onclick={() => filter = 'all'}>All</button>
+      <button class="filter-tab" class:active={filter === 'passed'} onclick={() => filter = 'passed'}>
+        <CheckCircle2 size={12} /> Passed
+      </button>
+      <button class="filter-tab" class:active={filter === 'failed'} onclick={() => filter = 'failed'}>
+        <XCircle size={12} /> Failed
+      </button>
+    </div>
+    <div class="search-box">
+      <Filter size={13} />
+      <input type="text" placeholder="Search by course or exam..." bind:value={search} />
+    </div>
+  </div>
 
-          <!-- Left accent -->
-          <div class="card-accent"></div>
-
-          <!-- Course + exam -->
-          <div class="card-main">
-            <div class="card-top">
-              <span class="course-code">{r.exam.course.code}</span>
-              <span class="exam-title">{r.exam.title}</span>
-            </div>
-            <div class="card-meta">
-              <span class="meta-item">
-                <Clock size={11} />
-                {formatDate(r.submittedAt)}
+  <!-- Results table -->
+  <div class="results-table-wrap">
+    <table class="results-table">
+      <thead>
+        <tr>
+          <th>Exam</th>
+          <th>Course</th>
+          <th>Score</th>
+          <th>Grade</th>
+          <th>Status</th>
+          <th>Date</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+        {#each filtered() as result (result.id)}
+          <tr>
+            <td>
+              <div class="cell-exam">
+                <span class="cell-title">{result.examTitle}</span>
+                <span class="cell-meta"><Clock size={11} /> {formatDuration(result.durationMinutes)}</span>
+              </div>
+            </td>
+            <td>
+              <span class="cell-course">{result.courseCode}</span>
+              <span class="cell-course-title">{result.courseTitle}</span>
+            </td>
+            <td>
+              <div class="cell-score">
+                <div class="score-bar">
+                  <div class="score-fill" style="width: {Math.min(result.percentage ?? 0, 100)}%; background: {gradeColor(result.grade)}"></div>
+                </div>
+                <span class="score-num">{result.score ?? 0}/{result.totalMarks}</span>
+              </div>
+            </td>
+            <td>
+              <span class="grade-badge" style="background: {gradeColor(result.grade)}20; color: {gradeColor(result.grade)}; border-color: {gradeColor(result.grade)}30;">
+                {result.grade ?? '—'}
               </span>
-              <span class="meta-item">
-                <Clock size={11} />
-                {formatDuration(r.timeTakenSecs)}
-              </span>
-              {#if r.violationCount > 0}
-                <span class="meta-item violation">
-                  ⚠ {r.violationCount} violation{r.violationCount !== 1 ? 's' : ''}
-                </span>
+            </td>
+            <td>
+              {#if result.passed}
+                <span class="status-badge pass"><CheckCircle2 size={11} /> Passed</span>
+              {:else}
+                <span class="status-badge fail"><XCircle size={11} /> Failed</span>
               {/if}
-            </div>
-          </div>
-
-          <!-- Stats -->
-          <div class="card-stats">
-            <div class="stat">
-              <span class="stat-val mono">{r.correct ?? 0}/{r.totalQuestions ?? 0}</span>
-              <span class="stat-label">Correct</span>
-            </div>
-            <div class="stat">
-              <span class="stat-val mono">{Number(r.percentage ?? 0).toFixed(1)}%</span>
-              <span class="stat-label">Score</span>
-            </div>
-            <div class="stat">
-              <span
-                class="grade-badge"
-                style="color:{GRADE_COLORS[r.grade ?? 'F']}"
-              >{r.grade ?? '—'}</span>
-              <span class="stat-label">Grade</span>
-            </div>
-          </div>
-
-          <!-- Pass/fail badge -->
-          <div class="card-status">
-            {#if r.passed}
-              <span class="status-badge pass">
-                <CheckCircle size={13} /> Pass
-              </span>
-            {:else}
-              <span class="status-badge fail">
-                <XCircle size={13} /> Fail
-              </span>
-            {/if}
-          </div>
-
-        </div>
-      {/each}
-    </div>
-  {/if}
+            </td>
+            <td>
+              <span class="cell-date">{formatDate(result.submittedAt)}</span>
+            </td>
+            <td>
+              <a href="/student/results/{result.id}" class="view-link"><ArrowRight size={14} /></a>
+            </td>
+          </tr>
+        {:else}
+          <tr>
+            <td colspan="7" class="empty-cell">
+              <div class="empty-table">
+                <FileText size={28} strokeWidth={1.5} />
+                <p>No results found.</p>
+              </div>
+            </td>
+          </tr>
+        {/each}
+      </tbody>
+    </table>
+  </div>
 </div>
 
 <style>
-  .page {
-    padding: 2rem; max-width: 860px; margin: 0 auto;
-    display: flex; flex-direction: column; gap: 1.5rem;
-  }
+  .results-page { display: flex; flex-direction: column; gap: 1.25rem; }
+  .page-header h1 { font-size: 1.25rem; font-weight: 800; color: var(--color-text); margin: 0; }
+  .page-sub { font-size: 0.78rem; color: var(--color-muted); margin: 0.25rem 0 0; }
 
-  .page-header { display: flex; align-items: center; gap: 0.875rem; }
-  .header-icon {
-    width: 40px; height: 40px; border-radius: 10px; flex-shrink: 0;
-    background: rgba(34,197,94,0.1); border: 1px solid rgba(34,197,94,0.2);
-    display: flex; align-items: center; justify-content: center;
-    color: #16a34a;
+  .stats-row {
+    display: grid;
+    grid-template-columns: repeat(5, 1fr);
+    gap: 0.75rem;
   }
-  [data-theme="dark"] .header-icon { color: #22c55e; }
-  h1  { font-size: 1.3rem; font-weight: 800; margin: 0; letter-spacing: -0.02em; color: var(--color-text); }
-  .sub { font-size: 0.78rem; color: var(--color-muted); margin: 0.1rem 0 0; }
-
-  /* Summary cards */
-  .summary-grid { display: flex; gap: 0.875rem; flex-wrap: wrap; }
-  .summary-card {
+  @media (max-width: 900px) {
+    .stats-row { grid-template-columns: repeat(3, 1fr); }
+  }
+  @media (max-width: 560px) {
+    .stats-row { grid-template-columns: repeat(2, 1fr); }
+  }
+  .stat-box {
+    display: flex; align-items: center; gap: 0.75rem;
+    padding: 0.875rem; border-radius: var(--radius-card);
     background: var(--color-surface); border: 1px solid var(--color-border);
-    border-radius: 0.75rem; padding: 0.875rem 1.25rem;
-    display: flex; flex-direction: column; align-items: center; gap: 0.2rem;
-    min-width: 100px;
   }
-  .summary-card.green .sv { color: #16a34a; }
-  .summary-card.red   .sv { color: #dc2626; }
-  [data-theme="dark"] .summary-card.green .sv { color: #22c55e; }
-  [data-theme="dark"] .summary-card.red   .sv { color: #f87171; }
-  .sv { font-size: 1.6rem; font-weight: 900; font-variant-numeric: tabular-nums; color: var(--color-text); }
-  .sl { font-size: 0.65rem; color: var(--color-muted); text-transform: uppercase; letter-spacing: 0.06em; font-weight: 700; }
-
-  /* Results list */
-  .results-list { display: flex; flex-direction: column; gap: 0.75rem; }
-
-  .result-card {
-    display: flex; align-items: center; gap: 1rem;
-    background: var(--color-surface); border: 1px solid var(--color-border);
-    border-radius: 0.875rem; overflow: hidden;
-    transition: box-shadow 0.15s;
+  .stat-box-icon {
+    width: 36px; height: 36px; border-radius: 0.5rem;
+    display: flex; align-items: center; justify-content: center; flex-shrink: 0;
   }
-  .result-card:hover { box-shadow: 0 4px 16px rgba(0,0,0,0.08); }
+  .stat-box-value { display: block; font-size: 1.1rem; font-weight: 800; color: var(--color-text); }
+  .stat-box-label { display: block; font-size: 0.68rem; color: var(--color-muted); }
 
-  .card-accent { width: 4px; align-self: stretch; flex-shrink: 0; background: var(--color-border); }
-  .result-card.pass .card-accent { background: #16a34a; }
-  .result-card.fail .card-accent { background: #dc2626; }
-
-  .card-main { flex: 1; min-width: 0; padding: 1rem 0; }
-  .card-top {
-    display: flex; align-items: baseline; gap: 0.6rem;
-    flex-wrap: wrap; margin-bottom: 0.35rem;
+  .filter-bar {
+    display: flex; align-items: center; justify-content: space-between;
+    gap: 1rem; flex-wrap: wrap;
   }
-  .course-code {
-    font-size: 0.7rem; font-weight: 800; color: #16a34a;
-    text-transform: uppercase; letter-spacing: 0.06em;
-    background: rgba(34,197,94,0.08); padding: 0.15rem 0.5rem;
-    border-radius: 999px; border: 1px solid rgba(34,197,94,0.2);
-    flex-shrink: 0;
-  }
-  [data-theme="dark"] .course-code { color: #22c55e; }
-  .exam-title {
-    font-size: 0.875rem; font-weight: 600; color: var(--color-text);
-    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
-  }
-
-  .card-meta { display: flex; align-items: center; gap: 0.875rem; flex-wrap: wrap; }
-  .meta-item {
-    display: flex; align-items: center; gap: 0.3rem;
-    font-size: 0.72rem; color: var(--color-muted);
-  }
-  .meta-item.violation { color: #d97706; font-weight: 600; }
-
-  .card-stats {
-    display: flex; gap: 1.25rem; flex-shrink: 0;
-    padding: 1rem;
-  }
-  .stat { display: flex; flex-direction: column; align-items: center; gap: 0.15rem; }
-  .stat-val { font-size: 1rem; font-weight: 800; color: var(--color-text); }
-  .stat-val.mono { font-variant-numeric: tabular-nums; }
-  .stat-label { font-size: 0.6rem; color: var(--color-muted); text-transform: uppercase; letter-spacing: 0.05em; font-weight: 700; }
-
-  .grade-badge { font-size: 1.1rem; font-weight: 900; }
-
-  .card-status { padding: 1rem 1rem 1rem 0; flex-shrink: 0; }
-  .status-badge {
+  .filter-tabs { display: flex; gap: 0.25rem; }
+  .filter-tab {
     display: inline-flex; align-items: center; gap: 0.3rem;
-    font-size: 0.72rem; font-weight: 700; padding: 0.3rem 0.7rem;
-    border-radius: 999px;
+    padding: 0.4rem 0.75rem; border-radius: 0.4rem;
+    border: 1px solid var(--color-border); background: var(--color-surface);
+    font-size: 0.78rem; font-weight: 600; color: var(--color-muted);
+    cursor: pointer; transition: all 0.15s; font-family: inherit;
   }
-  .status-badge.pass { background: #dcfce7; color: #16a34a; }
-  .status-badge.fail { background: #fee2e2; color: #dc2626; }
-  [data-theme="dark"] .status-badge.pass { background: rgba(22,163,74,0.15); color: #22c55e; }
-  [data-theme="dark"] .status-badge.fail { background: rgba(220,38,38,0.12); color: #fca5a5; }
-
-  /* Empty */
-  .empty {
-    text-align: center; padding: 4rem 2rem; color: var(--color-muted);
-    display: flex; flex-direction: column; align-items: center; gap: 0.5rem;
+  .filter-tab:hover { border-color: var(--green-600); color: var(--green-600); }
+  .filter-tab.active { background: var(--green-600); color: white; border-color: var(--green-600); }
+  .search-box {
+    display: flex; align-items: center; gap: 0.4rem;
+    padding: 0.4rem 0.625rem; border-radius: 0.4rem;
+    border: 1px solid var(--color-border); background: var(--color-surface);
+    min-width: 220px;
   }
-  .empty p { font-size: 1rem; font-weight: 600; color: var(--color-text); margin: 0.5rem 0 0; }
-  .empty span { font-size: 0.825rem; }
+  .search-box input {
+    border: none; background: none; outline: none;
+    font-size: 0.78rem; color: var(--color-text); width: 100%; font-family: inherit;
+  }
+  .search-box input::placeholder { color: var(--color-muted); }
 
-  @media (max-width: 600px) {
-    .card-stats { gap: 0.75rem; }
-    .stat-val { font-size: 0.875rem; }
-    .page { padding: 1rem; }
+  .results-table-wrap {
+    background: var(--color-surface); border: 1px solid var(--color-border);
+    border-radius: var(--radius-card); overflow: hidden;
+  }
+  .results-table { width: 100%; border-collapse: collapse; font-size: 0.8rem; }
+  .results-table thead th {
+    text-align: left; padding: 0.75rem 1rem;
+    font-size: 0.68rem; font-weight: 700; text-transform: uppercase;
+    letter-spacing: 0.04em; color: var(--color-muted);
+    background: var(--color-bg); border-bottom: 1px solid var(--color-border);
+    white-space: nowrap;
+  }
+  .results-table tbody tr { border-bottom: 1px solid var(--color-border); transition: background 0.1s; }
+  .results-table tbody tr:last-child { border-bottom: none; }
+  .results-table tbody tr:hover { background: var(--color-bg); }
+  .results-table td { padding: 0.875rem 1rem; vertical-align: middle; }
+
+  .cell-exam { display: flex; flex-direction: column; gap: 0.15rem; }
+  .cell-title { font-weight: 600; color: var(--color-text); white-space: nowrap; }
+  .cell-meta { font-size: 0.7rem; color: var(--color-muted); display: flex; align-items: center; gap: 0.25rem; }
+  .cell-course { display: block; font-weight: 700; color: var(--color-text); font-family: monospace; font-size: 0.78rem; }
+  .cell-course-title { display: block; font-size: 0.7rem; color: var(--color-muted); }
+  .cell-score { display: flex; flex-direction: column; gap: 0.25rem; min-width: 80px; }
+  .score-bar { height: 4px; border-radius: 2px; background: var(--color-border); overflow: hidden; }
+  .score-fill { height: 100%; border-radius: 2px; transition: width 0.3s ease; }
+  .score-num { font-size: 0.72rem; color: var(--color-muted); }
+  .grade-badge {
+    display: inline-flex; align-items: center;
+    padding: 0.2rem 0.5rem; border-radius: 0.3rem;
+    font-size: 0.72rem; font-weight: 800;
+    border: 1px solid;
+  }
+  .status-badge {
+    display: inline-flex; align-items: center; gap: 0.25rem;
+    padding: 0.25rem 0.5rem; border-radius: 0.3rem;
+    font-size: 0.72rem; font-weight: 700;
+  }
+  .status-badge.pass { background: var(--green-soft); color: var(--green-700); }
+  .status-badge.fail { background: rgba(220,38,38,0.08); color: #dc2626; }
+  .cell-date { font-size: 0.72rem; color: var(--color-muted); white-space: nowrap; }
+  .view-link {
+    width: 28px; height: 28px; border-radius: 0.4rem;
+    display: flex; align-items: center; justify-content: center;
+    color: var(--color-muted); text-decoration: none;
+    transition: all 0.15s;
+  }
+  .view-link:hover { background: var(--green-soft); color: var(--green-600); }
+  .empty-cell { padding: 2.5rem 1rem !important; }
+  .empty-table { display: flex; flex-direction: column; align-items: center; gap: 0.5rem; color: var(--color-muted); }
+  .empty-table p { margin: 0; font-size: 0.8rem; }
+
+  @media (max-width: 768px) {
+    .results-table thead { display: none; }
+    .results-table tbody tr { display: flex; flex-direction: column; gap: 0.5rem; padding: 1rem; }
+    .results-table td { padding: 0; }
+    .results-table td:last-child { align-self: flex-end; }
   }
 </style>
