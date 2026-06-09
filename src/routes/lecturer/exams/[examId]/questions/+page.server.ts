@@ -15,21 +15,17 @@ export const load: PageServerLoad = async ({ params, locals }) => {
 
   const questions = await getQuestionsForExam(exam.id);
 
-  // Load all invigilators
   const invigilators = await prisma.user.findMany({
     where: { role: 'invigilator', isActive: true },
     select: { id: true, fullName: true, staffId: true },
     orderBy: { fullName: 'asc' },
   });
 
-  // Load current assignments for this exam
   const assignments = await prisma.examInvigilator.findMany({
     where: { examId: params.examId },
     include: { invigilator: { select: { id: true, fullName: true, staffId: true } } },
   });
 
-  // Detect conflicts: invigilators already assigned to overlapping exams
-  // at same scheduled time window
   let conflicts: Record<string, string[]> = {};
   if (exam.scheduledStart && exam.scheduledEnd) {
     const conflictRows = await sql<{ invigilator_id: string; exam_title: string }>(
@@ -48,11 +44,48 @@ export const load: PageServerLoad = async ({ params, locals }) => {
     }
   }
 
-  // Existing question bodies for dedup on import
   const existingBodies = new Set(questions.map(q => q.body.trim().toLowerCase()));
 
   return { user, exam, questions, invigilators, assignments, conflicts, existingBodies: [...existingBodies] };
 };
+
+/**
+ * Create ExamSession records for all students registered for this course.
+ * Called after exam is activated. Upsert prevents duplicates.
+ */
+async function createSessionsForRegisteredStudents(examId: string) {
+  const exam = await prisma.exam.findUnique({
+    where: { id: examId },
+    select: { courseId: true, session: true, semester: true, durationMinutes: true },
+  });
+  if (!exam) return;
+
+  const registrations = await prisma.courseRegistration.findMany({
+    where: {
+      courseId: exam.courseId,
+      session: exam.session,
+      semester: exam.semester,
+    },
+    select: { studentId: true },
+  });
+
+  if (registrations.length === 0) return;
+
+  await prisma.$transaction(
+    registrations.map(reg =>
+      prisma.examSession.upsert({
+        where: { examId_studentId: { examId, studentId: reg.studentId } },
+        create: {
+          examId,
+          studentId: reg.studentId,
+          status: 'not_started',
+          timeRemainingSecs: exam.durationMinutes * 60,
+        },
+        update: {},
+      })
+    )
+  );
+}
 
 export const actions: Actions = {
   addMCQ: async ({ request, params, locals }) => {
@@ -136,7 +169,6 @@ export const actions: Actions = {
     if (!Array.isArray(incoming) || incoming.length === 0)
       return fail(400, { addError: 'No valid questions to import' });
 
-    // Load existing bodies for dedup
     const existing = await getQuestionsForExam(exam.id);
     const existingBodies = new Set(existing.map(q => q.body.trim().toLowerCase()));
 
@@ -145,8 +177,6 @@ export const actions: Actions = {
 
     for (const q of incoming) {
       if (!q.body || q.error) continue;
-
-      // Skip duplicate
       if (existingBodies.has(q.body.trim().toLowerCase())) { skipped++; continue; }
 
       try {
@@ -186,7 +216,6 @@ export const actions: Actions = {
     const invigilatorId = String(d.get('invigilator_id') ?? '').trim();
     if (!invigilatorId) return fail(400, { invigilatorError: 'Select an invigilator' });
 
-    // Conflict check
     if (exam.scheduledStart && exam.scheduledEnd) {
       const conflict = await sql<{ exam_title: string }>(
         `SELECT e.title AS exam_title
@@ -268,6 +297,10 @@ export const actions: Actions = {
       return fail(400, { activateError: 'Add at least one question before activating' });
 
     await prisma.exam.update({ where: { id: params.examId }, data: { status: 'active' } });
+    
+    // Auto-create exam sessions for all registered students
+    await createSessionsForRegisteredStudents(params.examId);
+
     return { activateSuccess: true };
   },
 };

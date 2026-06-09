@@ -43,9 +43,8 @@
     A: '#16a34a', B: '#2563eb', C: '#d97706', D: '#9333ea', E: '#dc2626', F: '#dc2626',
   };
 
-  // return all names of the user except the first one, which is often the surname in many cultures
-    const fullName    = user.fullName.trim().split(/\s+/).slice(0).join(' ') || user.fullName;
-    const matricNumber = user.matricNumber ?? '—';
+  const fullName    = user.fullName.trim().split(/\s+/).slice(0).join(' ') || user.fullName;
+  const matricNumber = user.matricNumber ?? '—';
   const liveExams  = exams.filter(e => e.status === 'active');
   const upcoming   = exams.filter(e => e.status === 'scheduled');
   const otherExams = exams.filter(e => e.status !== 'active' && e.status !== 'scheduled');
@@ -77,14 +76,13 @@
     toastType = 'success';
     toastMessage = 'Face enrollment completed! You can now verify to enter exams.';
     setTimeout(() => showToast = false, 5000);
-    // Refresh page data to update enrolled status
     window.location.reload();
   }
 
   function handleVerified() {
     showVerifyModal = false;
     if (pendingExamId) {
-      window.location.href = `/student/exam/${pendingExamId}`;
+      window.location.href = `/student/exams/${pendingExamId}`;
     }
     pendingExamId = null;
   }
@@ -107,7 +105,7 @@
 <svelte:head><title>Dashboard — MOUAU eTest</title></svelte:head>
 
 <!-- ═══════════════════════════════════════════════════════════════════════════ -->
-<!-- MODALS - Rendered at top level, no wrapper divs                             -->
+<!-- MODALS                                                                      -->
 <!-- ═══════════════════════════════════════════════════════════════════════════ -->
 
 <FaceEnrollmentModal 
@@ -124,7 +122,7 @@
 />
 
 <!-- ═══════════════════════════════════════════════════════════════════════════ -->
-<!-- TOAST - Fixed position, high z-index                                        -->
+<!-- TOAST                                                                       -->
 <!-- ═══════════════════════════════════════════════════════════════════════════ -->
 
 {#if showToast}
@@ -160,8 +158,7 @@
 {/if}
 
 <!-- ═══════════════════════════════════════════════════════════════════════════ -->
-<!-- MAIN CONTENT - Normal flow, no special handling needed                      -->
-<!-- The modal's internal backdrop covers this when open                       -->
+<!-- MAIN CONTENT                                                                -->
 <!-- ═══════════════════════════════════════════════════════════════════════════ -->
 
 <div class="page">
@@ -260,6 +257,10 @@
                 <span class="meta-sep">·</span>
                 <span>Pass {exam.passMark}</span>
               </div>
+              <!-- Show exam end time -->
+              {#if exam.scheduledEnd}
+                <p class="card-end">Ends {fmtDate(exam.scheduledEnd)}</p>
+              {/if}
               <button class="card-btn card-btn--enter" onclick={() => enterExam(exam.id)}>
                 Enter Exam
                 <svg viewBox="0 0 16 16" fill="none" width="14" height="14">
@@ -390,6 +391,30 @@
 <style>
   *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
+  /* ── GREEN BRANDING VARIABLES ─────────────────────────────────────────── */
+  :global(:root) {
+    --green-50:  #f0fdf4;
+    --green-100: #dcfce7;
+    --green-200: #bbf7d0;
+    --green-300: #86efac;
+    --green-400: #4ade80;
+    --green-500: #22c55e;
+    --green-600: #16a34a;
+    --green-700: #15803d;
+    --green-800: #166534;
+    --green-900: #14532d;
+    --crimson-50:  #fef2f2;
+    --crimson-100: #fee2e2;
+    --crimson-200: #fecaca;
+    --crimson-300: #fca5a5;
+    --crimson-400: #f87171;
+    --crimson-500: #ef4444;
+    --crimson-600: #dc2626;
+    --crimson-700: #b91c1c;
+    --crimson-800: #991b1b;
+    --crimson-900: #7f1d1d;
+  }
+
   /* ── Toast Container ──────────────────────────────────────────────────── */
   .toast-container {
     position: fixed;
@@ -398,11 +423,7 @@
     z-index: 10000;
     pointer-events: none;
   }
-
-  .toast-container > * {
-    pointer-events: auto;
-  }
-
+  .toast-container > * { pointer-events: auto; }
   @media (max-width: 640px) {
     .toast-container {
       top: auto;
@@ -425,33 +446,28 @@
     animation: toast-slide-in 0.3s ease;
     max-width: 380px;
   }
-
   @keyframes toast-slide-in {
     from { opacity: 0; transform: translateX(100%); }
     to { opacity: 1; transform: translateX(0); }
   }
-
-  .toast-success { border-left: 4px solid #16a34a; }
-  .toast-success .toast-icon { color: #16a34a; }
+  .toast-success { border-left: 4px solid var(--green-600); }
+  .toast-success .toast-icon { color: var(--green-600); }
   .toast-info { border-left: 4px solid #3b82f6; }
   .toast-info .toast-icon { color: #3b82f6; }
   .toast-warning { border-left: 4px solid #f59e0b; }
   .toast-warning .toast-icon { color: #f59e0b; }
-
   .toast-icon {
     flex-shrink: 0;
     display: flex;
     align-items: center;
     justify-content: center;
   }
-
   .toast-message {
     flex: 1;
     font-size: 0.875rem;
     line-height: 1.4;
     color: var(--color-text);
   }
-
   .toast-close {
     background: none;
     border: none;
@@ -464,7 +480,6 @@
     justify-content: center;
     transition: background 0.15s;
   }
-
   .toast-close:hover {
     background: var(--color-surface-hover);
     color: var(--color-text);
@@ -477,7 +492,6 @@
     color: var(--color-text);
     font-family: 'DM Sans', system-ui, sans-serif;
   }
-
   .content {
     max-width: 960px;
     margin: 0 auto;
@@ -494,27 +508,24 @@
     justify-content: space-between;
     gap: 1rem;
     flex-wrap: wrap;
-    text-size: clamp(0.9rem, 2vw, 1rem);
   }
-
   h1 {
     font-size: clamp(1.4rem, 3vw, 1.75rem);
     font-weight: 800;
     letter-spacing: -.03em;
     line-height: 1.2;
   }
-  .accent { color: #16a34a; }
-
+  .accent { color: var(--green-600); }
   .sub {
     margin-top: .375rem;
     font-size: .875rem;
     color: var(--color-muted);
   }
   .sub-urgent {
-    color: #dc2626;
+    color: var(--crimson-600);
     font-weight: 600;
   }
-  :global(.dark) .sub-urgent { color: #f87171; }
+  :global(.dark) .sub-urgent { color: var(--crimson-400); }
 
   /* Enroll alert */
   .enroll-alert {
@@ -522,8 +533,8 @@
     align-items: center;
     gap: .75rem;
     padding: .75rem 1rem;
-    background: #fefce8;
-    border: 1px solid #fde047;
+    background: var(--green-50);
+    border: 1px solid var(--green-300);
     border-radius: .75rem;
     text-decoration: none;
     transition: border-color .15s, box-shadow .15s, transform .15s;
@@ -534,16 +545,14 @@
     width: 100%;
   }
   .enroll-alert:hover {
-    border-color: #facc15;
-    box-shadow: 0 2px 8px rgba(234,179,8,.2);
+    border-color: var(--green-400);
+    box-shadow: 0 2px 8px rgba(34,197,94,.2);
     transform: translateY(-1px);
   }
-  .enroll-alert:active {
-    transform: translateY(0);
-  }
+  .enroll-alert:active { transform: translateY(0); }
   .enroll-alert-dot {
     width: 8px; height: 8px; border-radius: 50%;
-    background: #ca8a04; flex-shrink: 0;
+    background: var(--green-600); flex-shrink: 0;
     animation: pulse-dot 1.5s ease-in-out infinite;
   }
   @keyframes pulse-dot {
@@ -552,19 +561,19 @@
   }
   .enroll-alert strong {
     display: block;
-    font-size: .8rem; font-weight: 700; color: #78350f;
+    font-size: .8rem; font-weight: 700; color: var(--green-900);
   }
   .enroll-alert span {
-    font-size: .72rem; color: #92400e;
+    font-size: .72rem; color: var(--green-700);
   }
-  .enroll-arrow { color: #ca8a04; flex-shrink: 0; margin-left: auto; }
+  .enroll-arrow { color: var(--green-600); flex-shrink: 0; margin-left: auto; }
   :global(.dark) .enroll-alert {
-    background: rgba(234,179,8,.08);
-    border-color: rgba(234,179,8,.25);
+    background: rgba(34,197,94,.08);
+    border-color: rgba(34,197,94,.25);
   }
-  :global(.dark) .enroll-alert strong { color: #fde68a; }
-  :global(.dark) .enroll-alert span   { color: #fcd34d; }
-  :global(.dark) .enroll-arrow        { color: #fbbf24; }
+  :global(.dark) .enroll-alert strong { color: var(--green-200); }
+  :global(.dark) .enroll-alert span   { color: var(--green-300); }
+  :global(.dark) .enroll-arrow        { color: var(--green-400); }
 
   /* Enrolled badge */
   .enrolled-badge {
@@ -572,18 +581,18 @@
     align-items: center;
     gap: 6px;
     padding: .45rem .875rem;
-    background: #f0fdf4;
-    border: 1px solid #86efac;
+    background: var(--green-50);
+    border: 1px solid var(--green-300);
     border-radius: 999px;
     font-size: .75rem;
     font-weight: 600;
-    color: #16a34a;
+    color: var(--green-600);
     align-self: flex-start;
   }
   :global(.dark) .enrolled-badge {
     background: rgba(34,197,94,.1);
     border-color: rgba(34,197,94,.3);
-    color: #4ade80;
+    color: var(--green-400);
   }
 
   /* ── Stats ────────────────────────────────────────────────────────────── */
@@ -611,7 +620,7 @@
     line-height: 1;
     color: var(--color-text);
   }
-  .stat-live { color: #16a34a; }
+  .stat-live { color: var(--green-600); }
   .stat-l {
     font-size: .65rem;
     font-weight: 600;
@@ -629,7 +638,6 @@
 
   /* ── Section head ─────────────────────────────────────────────────────── */
   section { display: flex; flex-direction: column; gap: .875rem; }
-
   .sec-head {
     display: flex;
     align-items: center;
@@ -650,10 +658,9 @@
     border-radius: 999px;
     color: var(--color-muted);
   }
-
   .live-dot {
     width: 7px; height: 7px; border-radius: 50%;
-    background: #22c55e;
+    background: var(--green-500);
     flex-shrink: 0;
     animation: pulse-live 1.5s ease-in-out infinite;
   }
@@ -669,7 +676,6 @@
     grid-template-columns: repeat(auto-fill, minmax(265px, 1fr));
     gap: .875rem;
   }
-
   .card {
     background: var(--color-surface);
     border: 1px solid var(--color-border);
@@ -681,57 +687,57 @@
     transition: box-shadow .15s;
   }
   .card:hover { box-shadow: 0 4px 16px rgba(0,0,0,.06); }
-
   .card--live {
-    border-color: #22c55e;
+    border-color: var(--green-500);
     box-shadow: 0 0 0 3px rgba(34,197,94,.1);
   }
-  .card--upcoming {
-    border-style: dashed;
-  }
-
+  .card--upcoming { border-style: dashed; }
   .card-header {
     display: flex;
     align-items: center;
     justify-content: space-between;
   }
-
   .code-tag {
     font-size: .68rem;
     font-weight: 700;
     padding: .175rem .55rem;
-    background: rgba(34,197,94,.1);
-    color: #16a34a;
+    background: var(--green-100);
+    color: var(--green-700);
     border-radius: 999px;
   }
   .code-tag.sm { font-size: .62rem; padding: .15rem .45rem; }
-  :global(.dark) .code-tag { background: rgba(34,197,94,.15); color: #4ade80; }
-
+  :global(.dark) .code-tag {
+    background: rgba(34,197,94,.15);
+    color: var(--green-400);
+  }
   .live-tag {
     font-size: .6rem;
     font-weight: 700;
     letter-spacing: .08em;
     padding: .175rem .55rem;
-    background: #dcfce7;
-    color: #16a34a;
+    background: var(--green-100);
+    color: var(--green-700);
     border-radius: 999px;
     animation: blink 2s ease-in-out infinite;
   }
   @keyframes blink { 0%, 100% { opacity: 1; } 50% { opacity: .65; } }
-  :global(.dark) .live-tag { background: rgba(34,197,94,.2); color: #4ade80; }
-
+  :global(.dark) .live-tag {
+    background: rgba(34,197,94,.2);
+    color: var(--green-400);
+  }
   .time-tag {
     font-size: .65rem;
     font-weight: 600;
     padding: .175rem .55rem;
-    background: #dbeafe;
-    color: #1d4ed8;
+    background: var(--green-50);
+    color: var(--green-700);
     border-radius: 999px;
   }
-  :global(.dark) .time-tag { background: rgba(37,99,235,.2); color: #93c5fd; }
-
+  :global(.dark) .time-tag {
+    background: rgba(34,197,94,.1);
+    color: var(--green-300);
+  }
   h3 { font-size: .875rem; font-weight: 600; line-height: 1.45; }
-
   .card-meta {
     display: flex;
     align-items: center;
@@ -741,11 +747,23 @@
     flex-wrap: wrap;
   }
   .meta-sep { opacity: .4; }
-
   .card-date {
     font-size: .72rem;
     color: var(--color-muted);
   }
+  /* NEW: Exam end time display */
+  .card-end {
+    font-size: .72rem;
+    color: var(--green-600);
+    font-weight: 600;
+    display: flex;
+    align-items: center;
+    gap: .25rem;
+  }
+  .card-end::before {
+    content: '⏱';
+  }
+  :global(.dark) .card-end { color: var(--green-400); }
 
   /* Card buttons */
   .card-btn {
@@ -765,7 +783,7 @@
     font-family: inherit;
   }
   .card-btn--enter {
-    background: linear-gradient(135deg, #15803d 0%, #166534 100%);
+    background: linear-gradient(135deg, var(--green-700) 0%, var(--green-800) 100%);
     color: white;
     cursor: pointer;
   }
@@ -798,7 +816,6 @@
   }
   .list-row:last-child { border-bottom: none; }
   .list-row:hover { background: var(--color-bg); }
-
   .list-info { flex: 1; min-width: 0; }
   .list-title {
     display: block;
@@ -814,7 +831,6 @@
     color: var(--color-muted);
     margin-top: .15rem;
   }
-
   .status-tag {
     font-size: .65rem;
     font-weight: 600;
@@ -824,9 +840,12 @@
     flex-shrink: 0;
   }
   .status-completed { background: var(--color-border); color: var(--color-muted); }
-  .status-cancelled { background: #fee2e2; color: #dc2626; }
+  .status-cancelled { background: var(--green-50); color: var(--green-700); }
   .status-draft     { background: var(--color-border); color: var(--color-muted); }
-  :global(.dark) .status-cancelled { background: rgba(220,38,38,.15); color: #f87171; }
+  :global(.dark) .status-cancelled {
+    background: rgba(34,197,94,.15);
+    color: var(--green-400);
+  }
 
   /* ── Empty ────────────────────────────────────────────────────────────── */
   .empty {
@@ -875,13 +894,11 @@
   }
   .result-row:last-child { border-bottom: none; }
   .result-row:hover { background: var(--color-bg); }
-
-  .r-course { font-size: .68rem; font-weight: 700; color: #16a34a; }
-  :global(.dark) .r-course { color: #4ade80; }
+  .r-course { font-size: .68rem; font-weight: 700; color: var(--green-600); }
+  :global(.dark) .r-course { color: var(--green-400); }
   .r-title  { font-size: .825rem; font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .r-score  { font-size: .875rem; font-weight: 700; font-variant-numeric: tabular-nums; }
   .r-grade  { font-size: 1rem; font-weight: 800; }
-
   .pass-tag {
     font-size: .65rem;
     font-weight: 600;
@@ -889,10 +906,10 @@
     border-radius: 999px;
     text-align: center;
   }
-  .pass-tag.pass { background: #dcfce7; color: #16a34a; }
-  .pass-tag.fail { background: #fee2e2; color: #dc2626; }
-  :global(.dark) .pass-tag.pass { background: rgba(34,197,94,.15); color: #4ade80; }
-  :global(.dark) .pass-tag.fail { background: rgba(220,38,38,.15); color: #f87171; }
+  .pass-tag.pass { background: var(--green-100); color: var(--green-700); }
+  .pass-tag.fail { background: var(--green-50); color: var(--green-800); }
+  :global(.dark) .pass-tag.pass { background: rgba(34,197,94,.15); color: var(--green-400); }
+  :global(.dark) .pass-tag.fail { background: rgba(34,197,94,.1); color: var(--green-300); }
 
   /* ── Verify CTA ───────────────────────────────────────────────────────── */
   .verify-cta {
@@ -923,7 +940,7 @@
     background: rgba(34,197,94,.12);
     border: 1px solid rgba(34,197,94,.3);
     display: flex; align-items: center; justify-content: center;
-    color: #22c55e; flex-shrink: 0;
+    color: var(--green-500); flex-shrink: 0;
   }
   .verify-cta-copy { flex: 1; min-width: 200px; }
   .verify-cta-title {
@@ -941,7 +958,7 @@
     margin-left: auto;
     white-space: nowrap;
     padding: .75rem 1.5rem;
-    background: linear-gradient(135deg, #15803d 0%, #166534 100%);
+    background: linear-gradient(135deg, var(--green-700) 0%, var(--green-800) 100%);
     color: white;
     border-radius: .625rem;
     font-size: .875rem;

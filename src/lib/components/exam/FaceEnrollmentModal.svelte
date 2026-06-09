@@ -29,11 +29,12 @@
   let holdTimer: number | null = null;
   let holdProgress = $state(0);
   let errorMessage = $state('');
-  let embeddingDimension = $state<number | null>(null);
+  let loadingProgress = $state(0);
 
   // Human detection state
   let human: any = null;
   let isModelLoading = false;
+  let modelLoadingPromise: Promise<any> | null = null;
 
   // Smile detection state
   let smileHistory: boolean[] = [];
@@ -57,6 +58,38 @@
   const HOLD_DURATION = 1200;
 
   let selected: typeof GESTURES = [];
+
+  // ── Pre-load models in background ──────────────────────────────────────────
+  if (browser && !modelLoadingPromise) {
+    modelLoadingPromise = (async () => {
+      console.log('🚀 Pre-loading Human models in background for enrolment...');
+      const HumanModule = await import('@vladmandic/human');
+      const humanInstance = new HumanModule.default({
+        backend: 'webgl',
+        modelBasePath: '/models/human',
+        hand: { enabled: false },
+        body: { enabled: false },
+        object: { enabled: false },
+        gesture: { enabled: true },
+        segmentation: { enabled: false },
+        face: {
+          enabled: true,
+          detector: { maxDetected: 1, return: true },
+          description: { enabled: true },
+          emotion: { enabled: true },
+          landmarks: { enabled: true },
+          mesh: { enabled: false },
+          iris: { enabled: true },
+          antispoof: { enabled: true },
+          liveness: { enabled: true }
+        }
+      });
+      await humanInstance.load();
+      await humanInstance.warmup();
+      console.log('✅ Models pre-loaded and warmed up');
+      return humanInstance;
+    })();
+  }
 
   // ── Face detection with Human ─────────────────────────────────────────────
   async function detectFace() {
@@ -200,8 +233,6 @@
   // ── Get face descriptor (embedding) from Human ───────────────────────────
   function getFaceDescriptor(face: any): number[] | null {
     if (face.embedding && Array.isArray(face.embedding)) {
-      console.log('Face embedding dimension:', face.embedding.length);
-      embeddingDimension = face.embedding.length;
       return face.embedding;
     }
     return null;
@@ -366,8 +397,18 @@
   }
 
   // ── detection loop ────────────────────────────────────────────────────────
+  let lastDetectionTime = 0;
+  const DETECTION_INTERVAL = 100; // ms between detections for performance
+
   async function loop() {
     if (status !== 'gesture' || !human || !video) return;
+
+    const now = Date.now();
+    if (now - lastDetectionTime < DETECTION_INTERVAL) {
+      raf = requestAnimationFrame(loop);
+      return;
+    }
+    lastDetectionTime = now;
 
     try {
       const result = await detectFace();
@@ -481,15 +522,11 @@
 
     const photoDataUrl = await captureAndCompress();
 
-    // Average all captured descriptors
     const avgDescriptor = descriptors[0].map((_, i) =>
       descriptors.reduce((sum, desc) => sum + desc[i], 0) / descriptors.length
     );
 
-    console.log('Submitting enrollment:');
-    console.log('- Descriptor length:', avgDescriptor.length);
-    console.log('- First 5 values:', avgDescriptor.slice(0, 5));
-    console.log('- Value range:', Math.min(...avgDescriptor), 'to', Math.max(...avgDescriptor));
+    console.log('Submitting enrollment with descriptor length:', avgDescriptor.length);
 
     try {
       const res = await fetch('/api/face/enroll', {
@@ -558,46 +595,72 @@
     if (!browser) return;
     
     try {
-      if (!human && !isModelLoading) {
+      // Show loading progress
+      const progressInterval = setInterval(() => {
+        if (loadingProgress < 90) {
+          loadingProgress += 5;
+          subline = `Loading models: ${Math.round(loadingProgress)}%`;
+        }
+      }, 200);
+      
+      // Get pre-loaded human instance or wait for it
+      if (modelLoadingPromise && !human) {
+        console.log('📦 Using pre-loaded models...');
+        human = await modelLoadingPromise;
+        console.log('✅ Models ready instantly!');
+      } else if (!human && !isModelLoading) {
         isModelLoading = true;
-        console.log('Initializing Human for enrollment...');
+        console.log('Loading models (first time)...');
         
         const HumanModule = await import('@vladmandic/human');
         human = new HumanModule.default({
           backend: 'webgl',
           modelBasePath: '/models/human',
+          hand: { enabled: false },
+          body: { enabled: false },
+          object: { enabled: false },
+          gesture: { enabled: false },
+          segmentation: { enabled: false },
           face: {
             enabled: true,
-            detector: { 
-              maxDetected: 1,
-              return: true
-            },
+            detector: { maxDetected: 1, return: true },
             description: { enabled: true },
             emotion: { enabled: true },
-            landmarks: { enabled: true }
+            landmarks: { enabled: true },
+            mesh: { enabled: false },
+            iris: { enabled: false },
+            antispoof: { enabled: false },
+            liveness: { enabled: false }
           }
         });
         
         await human.load();
-        console.log('Human models loaded successfully');
+        await human.warmup();
+        console.log('Models loaded and warmed up');
         isModelLoading = false;
       }
+      
+      clearInterval(progressInterval);
+      loadingProgress = 100;
 
+      console.log('🎥 Starting camera...');
       stream = await navigator.mediaDevices.getUserMedia({
         video: { facingMode: 'user', width: { ideal: 640 }, height: { ideal: 480 } },
       });
       video.srcObject = stream;
-      await video.play();
       
+      // Use 'loadeddata' event for faster startup
       await new Promise<void>((resolve) => {
-        const checkVideo = () => {
+        const onLoaded = () => {
           if (video.videoWidth && video.videoHeight) {
+            video.removeEventListener('loadeddata', onLoaded);
             resolve();
-          } else {
-            setTimeout(checkVideo, 100);
           }
         };
-        checkVideo();
+        video.addEventListener('loadeddata', onLoaded);
+        if (video.readyState >= 2) {
+          onLoaded();
+        }
       });
       
       canvas.width = video.videoWidth || 640;
@@ -646,6 +709,7 @@
       status = 'intro';
       errorMessage = '';
       gestureIndex = 0;
+      loadingProgress = 0;
     }
   });
 
@@ -654,6 +718,7 @@
   );
 </script>
 
+<!-- Template remains the same as your original -->
 {#if open}
   <div
     class="modal-backdrop"
@@ -686,6 +751,12 @@
           <div class="center-state">
             <div class="spinner"></div>
             <p class="state-text">Starting camera…</p>
+            {#if loadingProgress > 0 && loadingProgress < 100}
+              <div class="progress-bar">
+                <div class="progress-fill" style="width: {loadingProgress}%"></div>
+              </div>
+              <p class="state-text">{Math.round(loadingProgress)}%</p>
+            {/if}
           </div>
         {/if}
 
@@ -949,6 +1020,21 @@
   .state-text { font-size: 0.875rem; color: rgba(255, 255, 255, 0.5); margin: 0; }
   .success-text { color: #00c9a7; font-weight: 600; }
   .error-text { color: #ef4444; font-weight: 600; }
+
+  .progress-bar {
+    width: 200px;
+    height: 4px;
+    background: rgba(255, 255, 255, 0.1);
+    border-radius: 2px;
+    overflow: hidden;
+  }
+
+  .progress-fill {
+    height: 100%;
+    background: linear-gradient(90deg, #00c9a7, #00e5b9);
+    border-radius: 2px;
+    transition: width 0.3s ease;
+  }
 
   .bottom {
     padding: 1.25rem;

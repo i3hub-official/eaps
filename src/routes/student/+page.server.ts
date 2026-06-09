@@ -6,13 +6,13 @@ import { getStudentResults } from '$lib/server/db/results.js';
 import { isFaceEnrolled } from '$lib/server/db/faces.js';
 
 export const load: PageServerLoad = async ({ locals }) => {
-  // Add await here - requireStudent returns a Promise
   const user = await requireStudent(locals.user);
 
   const [exams, results, enrolled] = await Promise.all([
     listExamsForStudent(user.id),
     getStudentResults(user.id),
-    isFaceEnrolled(String(user.id)), // Ensure ID is string
-  ]); 
+    isFaceEnrolled(String(user.id)),
+  ]);
+
   return { user, exams, results, enrolled };
 };

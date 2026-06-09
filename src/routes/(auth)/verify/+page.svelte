@@ -179,6 +179,23 @@
     ctx.fillStyle = grad;
     ctx.fillRect(cx-rx, sy-12, rx*2, 24);
     ctx.restore();
+
+    // Add security badge if liveness/antispoof is active
+  if (!securityPass && !multipleFaces) {
+    ctx.save();
+    ctx.fillStyle = '#ef4444';
+    ctx.font = 'bold 10px system-ui';
+    ctx.textAlign = 'center';
+    ctx.fillText('🔒 Security Check Failed', cx, cy - ry - 10);
+    ctx.restore();
+  } else if (securityPass && hit) {
+    ctx.save();
+    ctx.fillStyle = '#00c9a7';
+    ctx.font = 'bold 10px system-ui';
+    ctx.textAlign = 'center';
+    ctx.fillText('✓ Live Person Verified', cx, cy - ry - 10);
+    ctx.restore();
+  }
   }
 
   // ── liveness loop ───────────────────────────────────────────────────────────

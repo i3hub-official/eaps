@@ -1,10 +1,10 @@
 <!-- src/routes/student/exams/+page.svelte -->
 <script lang="ts">
   import type { PageData } from './$types';
-  import { Calendar, Clock, Award, AlertTriangle, CheckCircle2, XCircle, ArrowRight, FileText, TrendingUp } from 'lucide-svelte';
+  import { Calendar, Clock, Award, AlertTriangle, CheckCircle2, XCircle, ArrowRight, FileText, TrendingUp, BookOpen, Repeat, UserPlus } from 'lucide-svelte';
 
   let { data }: { data: PageData } = $props();
-  const { exams, results } = data;
+  const { exams, results, meta } = data;
 
   const active   = exams.filter(e => e.status === 'active' || e.status === 'in_progress');
   const upcoming = exams.filter(e => e.status === 'not_started' && e.scheduledStart && new Date(e.scheduledStart) > new Date());
@@ -35,6 +35,12 @@
     force_submitted:  { label: 'Force Submitted', color: '#dc2626', bg: '#fef2f2', icon: AlertTriangle },
     flagged:          { label: 'Flagged', color: '#dc2626', bg: '#fef2f2', icon: AlertTriangle },
   };
+
+  const REG_TYPE_CONFIG: Record<string, { label: string; icon: any; color: string }> = {
+    normal:     { label: 'Normal',     icon: BookOpen,  color: '#16a34a' },
+    carry_over: { label: 'Carry Over', icon: Repeat,    color: '#d97706' },
+    borrowed:   { label: 'Borrowed',   icon: UserPlus,  color: '#7c3aed' },
+  };
 </script>
 
 <svelte:head><title>My Exams — MOUAU eTest</title></svelte:head>
@@ -42,11 +48,19 @@
 <div class="page">
   <div class="content">
 
+    <!-- Header -->
     <div class="page-header">
-      <h1>My Exams</h1>
-      <p class="sub">{exams.length} exam{exams.length !== 1 ? 's' : ''} assigned</p>
+      <div>
+        <h1>My Exams</h1>
+        <p class="sub">{exams.length} exam{exams.length !== 1 ? 's' : ''} • {meta.session} Semester {meta.semester}</p>
+      </div>
+      <a href="/student/courses/register" class="register-link">
+        <BookOpen size={14} />
+        Register Courses
+      </a>
     </div>
 
+    <!-- Active / Live -->
     {#if active.length > 0}
       <section>
         <div class="sec-head">
@@ -57,13 +71,20 @@
         <div class="card-grid">
           {#each active as exam}
             {@const cfg = STATUS_CONFIG[exam.status] ?? STATUS_CONFIG.not_started}
+            {@const reg = REG_TYPE_CONFIG[exam.registrationType] ?? REG_TYPE_CONFIG.normal}
             <div class="card card--live">
               <div class="card-header">
                 <span class="code-tag">{exam.courseCode}</span>
-                <span class="status-badge" style="color:{cfg.color};background:{cfg.bg}">
-                  <svelte:component this={cfg.icon} size={11} />
-                  {cfg.label}
-                </span>
+                <div class="badges">
+                  <span class="reg-badge" style="color:{reg.color};border-color:{reg.color}40">
+                    <svelte:component this={reg.icon} size={10} />
+                    {reg.label}
+                  </span>
+                  <span class="status-badge" style="color:{cfg.color};background:{cfg.bg}">
+                    <svelte:component this={cfg.icon} size={11} />
+                    {cfg.label}
+                  </span>
+                </div>
               </div>
               <h3>{exam.title}</h3>
               <div class="card-meta">
@@ -73,12 +94,12 @@
                 <span class="meta-sep">·</span>
                 <span>Pass {exam.passMark}</span>
               </div>
+              <!-- Show exam end time for active exams -->
               {#if exam.scheduledEnd}
-                <p class="card-date">Ends {fmtRelative(exam.scheduledEnd)}</p>
+                <p class="card-end">Ends {fmtDate(exam.scheduledEnd)}</p>
               {/if}
-              <!-- FIXED: use exam.id not exam.sessionId -->
               <a href={`/student/exams/${exam.id}`} class="card-btn card-btn--enter">
-                Resume Exam
+                {exam.sessionId ? 'Resume Exam' : 'Start Exam'}
                 <ArrowRight size={14} />
               </a>
             </div>
@@ -87,6 +108,7 @@
       </section>
     {/if}
 
+    <!-- Upcoming -->
     {#if upcoming.length > 0}
       <section>
         <div class="sec-head">
@@ -96,10 +118,14 @@
         </div>
         <div class="card-grid">
           {#each upcoming as exam}
+            {@const reg = REG_TYPE_CONFIG[exam.registrationType] ?? REG_TYPE_CONFIG.normal}
             <div class="card card--upcoming">
               <div class="card-header">
                 <span class="code-tag">{exam.courseCode}</span>
-                <span class="time-tag">{fmtRelative(exam.scheduledStart)}</span>
+                <span class="reg-badge" style="color:{reg.color};border-color:{reg.color}40">
+                  <svelte:component this={reg.icon} size={10} />
+                  {reg.label}
+                </span>
               </div>
               <h3>{exam.title}</h3>
               <div class="card-meta">
@@ -117,6 +143,7 @@
       </section>
     {/if}
 
+    <!-- Past / Results -->
     {#if past.length > 0 || results.length > 0}
       <section>
         <div class="sec-head">
@@ -155,13 +182,20 @@
           <div class="card-grid" style="margin-top: 1rem">
             {#each past as exam}
               {@const cfg = STATUS_CONFIG[exam.status] ?? STATUS_CONFIG.submitted}
+              {@const reg = REG_TYPE_CONFIG[exam.registrationType] ?? REG_TYPE_CONFIG.normal}
               <div class="card card--past">
                 <div class="card-header">
                   <span class="code-tag">{exam.courseCode}</span>
-                  <span class="status-badge" style="color:{cfg.color};background:{cfg.bg}">
-                    <svelte:component this={cfg.icon} size={11} />
-                    {cfg.label}
-                  </span>
+                  <div class="badges">
+                    <span class="reg-badge" style="color:{reg.color};border-color:{reg.color}40">
+                      <svelte:component this={reg.icon} size={10} />
+                      {reg.label}
+                    </span>
+                    <span class="status-badge" style="color:{cfg.color};background:{cfg.bg}">
+                      <svelte:component this={cfg.icon} size={11} />
+                      {cfg.label}
+                    </span>
+                  </div>
                 </div>
                 <h3>{exam.title}</h3>
                 {#if exam.score !== null}
@@ -182,11 +216,19 @@
       </section>
     {/if}
 
-    {#if exams.length === 0}
+    <!-- No registered courses -->
+    {#if exams.length === 0 && results.length === 0}
       <div class="empty">
-        <FileText size={40} opacity={0.25} />
-        <p class="empty-title">No exams yet</p>
-        <p class="empty-sub">Assigned exams will appear here when scheduled by your lecturer.</p>
+        <BookOpen size={40} opacity={0.25} />
+        <p class="empty-title">No exams available</p>
+        <p class="empty-sub">
+          You haven't registered any courses for {meta.session} Semester {meta.semester}.
+          Register courses to see available exams.
+        </p>
+        <a href="/student/courses/register" class="empty-cta">
+          <BookOpen size={14} />
+          Register Courses
+        </a>
       </div>
     {/if}
 
@@ -194,6 +236,20 @@
 </div>
 
 <style>
+  /* ── GREEN BRANDING VARIABLES ─────────────────────────────────────────── */
+  :global(:root) {
+    --green-50:  #f0fdf4;
+    --green-100: #dcfce7;
+    --green-200: #bbf7d0;
+    --green-300: #86efac;
+    --green-400: #4ade80;
+    --green-500: #22c55e;
+    --green-600: #16a34a;
+    --green-700: #15803d;
+    --green-800: #166534;
+    --green-900: #14532d;
+  }
+
   .page {
     min-height: 100vh;
     background: var(--color-bg);
@@ -210,6 +266,13 @@
     gap: 2rem;
   }
 
+  .page-header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 1rem;
+  }
+
   .page-header h1 {
     font-size: clamp(1.4rem, 3vw, 1.75rem);
     font-weight: 800;
@@ -221,6 +284,22 @@
     font-size: .875rem;
     color: var(--color-muted);
   }
+
+  .register-link {
+    display: flex;
+    align-items: center;
+    gap: .375rem;
+    padding: .5rem .875rem;
+    background: linear-gradient(135deg, var(--green-700), var(--green-800));
+    color: #fff;
+    text-decoration: none;
+    border-radius: .5rem;
+    font-size: .8rem;
+    font-weight: 600;
+    transition: opacity .15s;
+    flex-shrink: 0;
+  }
+  .register-link:hover { opacity: .9; }
 
   section { display: flex; flex-direction: column; gap: .875rem; }
 
@@ -247,7 +326,7 @@
 
   .live-dot {
     width: 7px; height: 7px; border-radius: 50%;
-    background: #22c55e;
+    background: var(--green-500);
     flex-shrink: 0;
     animation: pulse-live 1.5s ease-in-out infinite;
   }
@@ -276,7 +355,7 @@
   .card:hover { box-shadow: 0 4px 16px rgba(0,0,0,.06); }
 
   .card--live {
-    border-color: #22c55e;
+    border-color: var(--green-500);
     box-shadow: 0 0 0 3px rgba(34,197,94,.1);
   }
   .card--upcoming { border-style: dashed; }
@@ -286,17 +365,40 @@
     display: flex;
     align-items: center;
     justify-content: space-between;
+    gap: .5rem;
+  }
+
+  .badges {
+    display: flex;
+    align-items: center;
+    gap: .375rem;
   }
 
   .code-tag {
     font-size: .68rem;
     font-weight: 700;
     padding: .175rem .55rem;
-    background: rgba(34,197,94,.1);
-    color: #16a34a;
+    background: var(--green-100);
+    color: var(--green-700);
     border-radius: 999px;
   }
-  :global(.dark) .code-tag { background: rgba(34,197,94,.15); color: #4ade80; }
+  :global(.dark) .code-tag {
+    background: rgba(34,197,94,.15);
+    color: var(--green-400);
+  }
+
+  .reg-badge {
+    font-size: .58rem;
+    font-weight: 700;
+    padding: .15rem .4rem;
+    border-radius: 999px;
+    border: 1px solid;
+    display: flex;
+    align-items: center;
+    gap: .25rem;
+    text-transform: uppercase;
+    letter-spacing: .04em;
+  }
 
   .status-badge {
     font-size: .6rem;
@@ -312,11 +414,14 @@
     font-size: .65rem;
     font-weight: 600;
     padding: .175rem .55rem;
-    background: #dbeafe;
-    color: #1d4ed8;
+    background: var(--green-50);
+    color: var(--green-700);
     border-radius: 999px;
   }
-  :global(.dark) .time-tag { background: rgba(37,99,235,.2); color: #93c5fd; }
+  :global(.dark) .time-tag {
+    background: rgba(34,197,94,.1);
+    color: var(--green-300);
+  }
 
   h3 { font-size: .875rem; font-weight: 600; line-height: 1.45; }
 
@@ -336,6 +441,22 @@
     color: var(--color-muted);
   }
 
+  /* NEW: Exam end time for active exams */
+  .card-end {
+    font-size: .72rem;
+    color: var(--green-600);
+    font-weight: 600;
+    display: flex;
+    align-items: center;
+    gap: .25rem;
+  }
+  .card-end::before {
+    content: '⏱';
+  }
+  :global(.dark) .card-end {
+    color: var(--green-400);
+  }
+
   .card-btn {
     display: flex;
     align-items: center;
@@ -353,7 +474,7 @@
     font-family: inherit;
   }
   .card-btn--enter {
-    background: linear-gradient(135deg, #15803d 0%, #166534 100%);
+    background: linear-gradient(135deg, var(--green-700) 0%, var(--green-800) 100%);
     color: white;
     cursor: pointer;
   }
@@ -389,6 +510,7 @@
     gap: .25rem;
   }
 
+  /* Results table */
   .results-table {
     background: var(--color-surface);
     border: 1px solid var(--color-border);
@@ -420,8 +542,8 @@
   .result-row:last-child { border-bottom: none; }
   .result-row:hover { background: var(--color-bg); }
 
-  .r-course { font-size: .68rem; font-weight: 700; color: #16a34a; }
-  :global(.dark) .r-course { color: #4ade80; }
+  .r-course { font-size: .68rem; font-weight: 700; color: var(--green-600); }
+  :global(.dark) .r-course { color: var(--green-400); }
   .r-title  { font-size: .825rem; font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .r-score  { font-size: .875rem; font-weight: 700; font-variant-numeric: tabular-nums; }
   .r-grade  { font-size: 1rem; font-weight: 800; }
@@ -436,16 +558,17 @@
     align-items: center;
     gap: .25rem;
   }
-  .pass-tag.pass { background: #dcfce7; color: #16a34a; }
-  .pass-tag.fail { background: #fee2e2; color: #dc2626; }
-  :global(.dark) .pass-tag.pass { background: rgba(34,197,94,.15); color: #4ade80; }
-  :global(.dark) .pass-tag.fail { background: rgba(220,38,38,.15); color: #f87171; }
+  .pass-tag.pass { background: var(--green-100); color: var(--green-700); }
+  .pass-tag.fail { background: var(--green-50); color: var(--green-800); }
+  :global(.dark) .pass-tag.pass { background: rgba(34,197,94,.15); color: var(--green-400); }
+  :global(.dark) .pass-tag.fail { background: rgba(34,197,94,.1); color: var(--green-300); }
 
+  /* Empty */
   .empty {
     display: flex;
     flex-direction: column;
     align-items: center;
-    gap: .75rem;
+    gap: .875rem;
     padding: 3rem 2rem;
     text-align: center;
     background: var(--color-surface);
@@ -454,10 +577,25 @@
     color: var(--color-muted);
   }
   .empty-title { font-size: .925rem; font-weight: 600; }
-  .empty-sub   { font-size: .8rem; max-width: 280px; line-height: 1.65; }
+  .empty-sub   { font-size: .8rem; max-width: 320px; line-height: 1.65; }
+  .empty-cta {
+    display: flex;
+    align-items: center;
+    gap: .375rem;
+    padding: .625rem 1.25rem;
+    background: linear-gradient(135deg, var(--green-700), var(--green-800));
+    color: #fff;
+    text-decoration: none;
+    border-radius: .5rem;
+    font-size: .85rem;
+    font-weight: 600;
+    margin-top: .5rem;
+  }
+  .empty-cta:hover { opacity: .9; }
 
   @media (max-width: 640px) {
     .content  { padding: 1.25rem 1rem 3rem; }
+    .page-header { flex-direction: column; align-items: flex-start; }
     .results-head,
     .result-row { grid-template-columns: 56px 1fr 56px 36px 60px; gap: .5rem; padding: .75rem .875rem; }
   }

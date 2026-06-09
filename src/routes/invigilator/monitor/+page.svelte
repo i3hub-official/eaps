@@ -4,21 +4,25 @@
   import { goto } from '$app/navigation';
   import {
     Monitor, Clock, Users, CheckCircle, AlertTriangle,
-    ArrowRight, Calendar, BookOpen, Activity
+    ArrowRight, Calendar, BookOpen, Activity, FileText
   } from 'lucide-svelte';
 
   let { data }: { data: PageData } = $props();
 
-  function openExam(examId: string) {
-    goto(`/invigilator/monitor/${examId}`);
+  function openExam(examId: string, status: string) {
+    if (status === 'completed') {
+      goto(`/invigilator/${examId}/summary`);
+    } else {
+      goto(`/invigilator/monitor/${examId}`);
+    }
   }
 
   function getStatusConfig(status: string) {
     switch (status) {
-      case 'active': return { color: '#16a34a', bg: 'rgba(22,163,74,0.08)', label: 'Active', icon: Activity };
-      case 'scheduled': return { color: '#2563eb', bg: 'rgba(37,99,235,0.08)', label: 'Scheduled', icon: Calendar };
-      case 'completed': return { color: '#64748b', bg: 'rgba(100,116,139,0.08)', label: 'Completed', icon: CheckCircle };
-      default: return { color: '#64748b', bg: 'rgba(100,116,139,0.08)', label: status, icon: Clock };
+      case 'active':    return { color: '#16a34a', bg: 'rgba(22,163,74,0.08)',   label: 'Active',    icon: Activity };
+      case 'scheduled': return { color: 'var(--iv-600)', bg: 'var(--iv-soft)',   label: 'Scheduled', icon: Calendar };
+      case 'completed': return { color: '#0ea5e9', bg: 'rgba(14,165,233,0.08)', label: 'Completed', icon: CheckCircle };
+      default:          return { color: 'var(--color-muted)', bg: 'var(--color-bg)', label: status, icon: Clock };
     }
   }
 
@@ -53,7 +57,7 @@
       {#each data.exams as exam}
         {@const status = getStatusConfig(exam.status)}
         {@const StatusIcon = status.icon}
-        <button class="exam-card" onclick={() => openExam(exam.id)}>
+        <button class="exam-card {exam.status === 'completed' ? 'exam-card--done' : ''}" onclick={() => openExam(exam.id, exam.status)}>
           <div class="card-top">
             <div class="course-badge">{exam.course?.code ?? '—'}</div>
             <span class="status-badge" style="color:{status.color};background:{status.bg}">
@@ -73,9 +77,15 @@
             <div class="stat-group">
               <span class="stat"><Users size={12} /> {exam._count.examSessions} students</span>
             </div>
-            <span class="enter-link">
-              Monitor <ArrowRight size={14} />
-            </span>
+            {#if exam.status === 'completed'}
+              <span class="enter-link enter-link--done">
+                View Summary <FileText size={14} />
+              </span>
+            {:else}
+              <span class="enter-link">
+                Monitor <ArrowRight size={14} />
+              </span>
+            {/if}
           </div>
         </button>
       {/each}
@@ -94,7 +104,7 @@
   }
   .header-icon {
     width: 44px; height: 44px; border-radius: 0.75rem; flex-shrink: 0;
-    background: linear-gradient(135deg, #4f46e5, #6366f1);
+    background: linear-gradient(135deg, var(--iv-400), var(--iv-600));
     display: flex; align-items: center; justify-content: center; color: white;
   }
   h1 { font-size: 1.4rem; font-weight: 800; color: var(--color-text); margin: 0; letter-spacing: -0.02em; }
@@ -118,9 +128,16 @@
     font-family: inherit;
   }
   .exam-card:hover {
-    border-color: #4f46e5;
-    box-shadow: 0 4px 12px rgba(79,70,229,0.08);
+    border-color: var(--iv-500);
+    box-shadow: 0 4px 12px rgba(249,115,22,0.08);
     transform: translateY(-2px);
+  }
+  .exam-card--done {
+    opacity: 0.75;
+  }
+  .exam-card--done:hover {
+    border-color: #0ea5e9;
+    box-shadow: 0 4px 12px rgba(14,165,233,0.08);
   }
 
   .card-top {
@@ -159,7 +176,10 @@
   }
   .enter-link {
     display: inline-flex; align-items: center; gap: 0.3rem;
-    font-size: 0.8rem; font-weight: 700; color: #4f46e5;
+    font-size: 0.8rem; font-weight: 700; color: var(--iv-600);
+  }
+  .enter-link--done {
+    color: #0ea5e9;
   }
 
   .empty {

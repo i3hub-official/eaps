@@ -26,6 +26,44 @@ export const load: PageServerLoad = async ({ params, locals }) => {
   return { user, exam, questionCount, invigilators, allInvigilators };
 };
 
+/**
+ * Create ExamSession records for all students registered for this course.
+ * Called after exam is activated. Upsert prevents duplicates.
+ */
+async function createSessionsForRegisteredStudents(examId: string) {
+  const exam = await prisma.exam.findUnique({
+    where: { id: examId },
+    select: { courseId: true, session: true, semester: true, durationMinutes: true },
+  });
+  if (!exam) return;
+
+  const registrations = await prisma.courseRegistration.findMany({
+    where: {
+      courseId: exam.courseId,
+      session: exam.session,
+      semester: exam.semester,
+    },
+    select: { studentId: true },
+  });
+
+  if (registrations.length === 0) return;
+
+  await prisma.$transaction(
+    registrations.map(reg =>
+      prisma.examSession.upsert({
+        where: { examId_studentId: { examId, studentId: reg.studentId } },
+        create: {
+          examId,
+          studentId: reg.studentId,
+          status: 'not_started',
+          timeRemainingSecs: exam.durationMinutes * 60,
+        },
+        update: {},
+      })
+    )
+  );
+}
+
 export const actions: Actions = {
   updateSettings: async ({ request, params, locals }) => {
     const user = requireLecturer(locals.user);
@@ -72,7 +110,15 @@ export const actions: Actions = {
     const exam = await getExamWithCourse(params.examId);
     if (!exam) error(404, 'Exam not found');
     requireOwnership(user, exam.createdBy);
+
+    const count = await getQuestionCount(exam.id);
+    if (count === 0) return fail(400, { activateError: 'Add at least one question before activating' });
+
     await setExamStatus(exam.id, 'active');
+    
+    // Auto-create exam sessions for all registered students
+    await createSessionsForRegisteredStudents(exam.id);
+
     return { activateSuccess: true };
   },
 

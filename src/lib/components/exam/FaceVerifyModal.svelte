@@ -27,11 +27,45 @@
   let holdProgress = $state(0);
   let holdTimer: number | null = null;
   let errorMessage = $state('');
+  let loadingProgress = $state(0);
   
   let human: any = null;
   let isInitializing = false;
+  let modelLoadingPromise: Promise<any> | null = null;
 
   const HOLD_DURATION = 1500;
+
+  // ── Pre-load models in background ──────────────────────────────────────────
+  if (browser && !modelLoadingPromise) {
+    modelLoadingPromise = (async () => {
+      console.log('🚀 Pre-loading Human models for verification...');
+      const HumanModule = await import('@vladmandic/human');
+      const humanInstance = new HumanModule.default({
+        backend: 'webgl',
+        modelBasePath: '/models/human',
+        hand: { enabled: false },
+        body: { enabled: false },
+        object: { enabled: false },
+        gesture: { enabled: true },
+        segmentation: { enabled: false },
+        face: {
+          enabled: true,
+          detector: { maxDetected: 1, return: true },
+          description: { enabled: true },
+          emotion: { enabled: true },
+          landmarks: { enabled: true },
+          mesh: { enabled: false },
+          iris: { enabled: true },
+          antispoof: { enabled: true },
+          liveness: { enabled: true }
+        }
+      });
+      await humanInstance.load();
+      await humanInstance.warmup();
+      console.log('✅ Models pre-loaded for verification');
+      return humanInstance;
+    })();
+  }
 
   // ── Face detection with Human ─────────────────────────────────────────────
   async function detectFace() {
@@ -40,7 +74,6 @@
     try {
       const result = await human.detect(video);
       if (!result || !result.face || result.face.length === 0) return null;
-      
       return result;
     } catch (error) {
       console.error('Detection error:', error);
@@ -58,7 +91,7 @@
   }
 
   // ── canvas overlay (vertical oval - matching enrollment) ─────────────────
-  function drawOverlay(detected: boolean, multiple: boolean = false, progress: number = 0) {
+  function drawOverlay(detected: boolean, multiple: boolean = false, progress: number = 0, securityPass: boolean = true) {
     if (!ctx || !canvas) return;
     const w = canvas.width, h = canvas.height;
     const cx = w / 2, cy = h / 2;
@@ -108,6 +141,23 @@
       ctx.stroke();
     }
 
+    // Security badge
+    if (!securityPass && !multiple) {
+      ctx.save();
+      ctx.fillStyle = '#ef4444';
+      ctx.font = 'bold 10px system-ui';
+      ctx.textAlign = 'center';
+      ctx.fillText('🔒 Security Check Failed', cx, cy - ry - 10);
+      ctx.restore();
+    } else if (securityPass && detected && progress > 0) {
+      ctx.save();
+      ctx.fillStyle = '#00c9a7';
+      ctx.font = 'bold 10px system-ui';
+      ctx.textAlign = 'center';
+      ctx.fillText('✓ Live Person Verified', cx, cy - ry - 10);
+      ctx.restore();
+    }
+
     if (detected && progress > 0 && !multiple) {
       ctx.save();
       ctx.beginPath();
@@ -134,7 +184,10 @@
     }
   }
 
-  // ── detection loop ──────────────────────────────────────────────────────────
+  // ── detection loop with liveness & antispoof ────────────────────────────────
+  let lastDetectionTime = 0;
+  const DETECTION_INTERVAL = 100;
+
   async function loop() {
     if (status !== 'scanning' || !human || !video) {
       if (status === 'scanning') {
@@ -142,6 +195,13 @@
       }
       return;
     }
+
+    const now = Date.now();
+    if (now - lastDetectionTime < DETECTION_INTERVAL) {
+      raf = requestAnimationFrame(loop);
+      return;
+    }
+    lastDetectionTime = now;
 
     try {
       const result = await detectFace();
@@ -175,6 +235,48 @@
       }
 
       const face = result.face[0];
+      
+      // ── Liveness & Antispoof Checks ────────────────────────────────────────
+      let isLive = true;
+      let isReal = true;
+      let securityMessage = '';
+      
+      // Check liveness
+      if (face.liveness && face.liveness.score !== undefined) {
+        const livenessScore = face.liveness.score;
+        isLive = livenessScore > 0.65;
+        if (!isLive) {
+          securityMessage = 'Real face required - no photos/videos allowed';
+          console.warn(`Verification liveness failed: ${livenessScore}`);
+        }
+      }
+      
+      // Check antispoof
+      if (face.antispoof && face.antispoof.score !== undefined) {
+        const antispoofScore = face.antispoof.score;
+        isReal = antispoofScore > 0.65;
+        if (!isReal) {
+          securityMessage = 'Fake face detected - verification blocked';
+          console.warn(`Verification antispoof failed: ${antispoofScore}`);
+        }
+      }
+      
+      const securityPass = isLive && isReal;
+      
+      // Reject if security checks fail
+      if (!securityPass) {
+        drawOverlay(false, false, 0, false);
+        faceDetected = false;
+        holdProgress = 0;
+        subline = securityMessage || 'Security check failed - real face required';
+        if (holdTimer) {
+          clearTimeout(holdTimer);
+          holdTimer = null;
+        }
+        raf = requestAnimationFrame(loop);
+        return;
+      }
+      
       const descriptor = getFaceDescriptor(face);
       
       if (!descriptor) {
@@ -193,7 +295,7 @@
       holdProgress = Math.min(holdProgress + 0.025, 1);
       subline = 'Verifying identity...';
 
-      drawOverlay(true, false, holdProgress);
+      drawOverlay(true, false, holdProgress, true);
       raf = requestAnimationFrame(loop);
     } catch (error) {
       console.error('Detection error:', error);
@@ -281,30 +383,54 @@
     if (isInitializing) return;
     
     try {
+      // Show loading progress
+      const progressInterval = setInterval(() => {
+        if (loadingProgress < 90) {
+          loadingProgress += 10;
+          subline = `Loading models: ${Math.round(loadingProgress)}%`;
+        }
+      }, 200);
+      
       if (!human) {
         isInitializing = true;
         console.log('Initializing Human for verification...');
         
-        const HumanModule = await import('@vladmandic/human');
-        human = new HumanModule.default({
-          backend: 'webgl',
-          modelBasePath: '/models/human',
-          face: {
-            enabled: true,
-            detector: { 
-              maxDetected: 1,
-              return: true
-            },
-            description: { enabled: true },
-            landmarks: { enabled: false },
-            emotion: { enabled: false }
-          }
-        });
+        // Use pre-loaded models if available
+        if (modelLoadingPromise) {
+          console.log('📦 Using pre-loaded models...');
+          human = await modelLoadingPromise;
+        } else {
+          const HumanModule = await import('@vladmandic/human');
+          human = new HumanModule.default({
+            backend: 'webgl',
+            modelBasePath: '/models/human',
+            hand: { enabled: false },
+            body: { enabled: false },
+            object: { enabled: false },
+            gesture: { enabled: false },
+            segmentation: { enabled: false },
+            face: {
+              enabled: true,
+              detector: { maxDetected: 1, return: true },
+              description: { enabled: true },
+              emotion: { enabled: false },
+              landmarks: { enabled: true },
+              mesh: { enabled: false },
+              iris: { enabled: false },
+              antispoof: { enabled: true },
+              liveness: { enabled: true }
+            }
+          });
+          await human.load();
+          await human.warmup();
+        }
         
-        await human.load();
         console.log('Human models loaded successfully');
         isInitializing = false;
       }
+      
+      clearInterval(progressInterval);
+      loadingProgress = 100;
 
       stream = await navigator.mediaDevices.getUserMedia({
         video: { 
@@ -317,17 +443,19 @@
       
       if (video) {
         video.srcObject = stream;
-        await video.play();
         
+        // Use 'loadeddata' event for faster startup
         await new Promise<void>((resolve) => {
-          const checkVideo = () => {
+          const onLoaded = () => {
             if (video.videoWidth && video.videoHeight) {
+              video.removeEventListener('loadeddata', onLoaded);
               resolve();
-            } else {
-              setTimeout(checkVideo, 100);
             }
           };
-          checkVideo();
+          video.addEventListener('loadeddata', onLoaded);
+          if (video.readyState >= 2) {
+            onLoaded();
+          }
         });
         
         canvas.width = video.videoWidth;
@@ -377,6 +505,7 @@
       faceDetected = false;
       faceCount = 0;
       errorMessage = '';
+      loadingProgress = 0;
       if (raf) {
         cancelAnimationFrame(raf);
         raf = null;
@@ -414,6 +543,12 @@
           <div class="center-state">
             <div class="spinner"></div>
             <p class="state-text">Starting camera…</p>
+            {#if loadingProgress > 0 && loadingProgress < 100}
+              <div class="progress-bar">
+                <div class="progress-fill" style="width: {loadingProgress}%"></div>
+              </div>
+              <p class="state-text">{Math.round(loadingProgress)}%</p>
+            {/if}
           </div>
         {/if}
 
@@ -628,6 +763,21 @@
   .success-text { color: #00c9a7; font-weight: 600; }
   .error-text { color: #ef4444; font-weight: 600; }
 
+  .progress-bar {
+    width: 200px;
+    height: 4px;
+    background: rgba(255, 255, 255, 0.1);
+    border-radius: 2px;
+    overflow: hidden;
+  }
+
+  .progress-fill {
+    height: 100%;
+    background: linear-gradient(90deg, #00c9a7, #00e5b9);
+    border-radius: 2px;
+    transition: width 0.3s ease;
+  }
+
   .face-badge {
     position: absolute;
     top: 0.75rem;
@@ -669,8 +819,8 @@
   }
 
   .badge-dot.green {
-    background: #00c9a7;
-    box-shadow: 0 0 4px rgba(0, 201, 167, 0.5);
+    background: #22c55e;
+    box-shadow: 0 0 4px rgba(34, 197, 94, 0.5);
   }
 
   .badge-dot.red {
