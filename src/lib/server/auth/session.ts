@@ -2,7 +2,6 @@
 import { randomBytes } from 'crypto';
 import { prisma } from '$lib/server/db/index.js';
 import type { Cookies } from '@sveltejs/kit';
-import type { User } from '@prisma/client';
 
 const SESSION_COOKIE = 'etest_session';
 const SESSION_TTL_DAYS = 7;
@@ -26,15 +25,33 @@ export async function createSession(
 
 // ─── Validate ─────────────────────────────────────────────────────────────────
 
-export async function validateSession(token: string): Promise<User | null> {
+// Use a type that includes the relations we need
+type UserWithRelations = Awaited<ReturnType<typeof prisma.user.findUnique<{
+  include: {
+    level: true;
+    department: true;
+    programme: true;
+    college: true;
+  };
+}>>>;
+
+export async function validateSession(token: string): Promise<UserWithRelations | null> {
   const session = await prisma.authSession.findUnique({
     where: { token },
-    include: { user: true },
+    include: {
+      user: {
+        include: {
+          level: true,
+          department: true,
+          programme: true,
+          college: true,
+        },
+      },
+    },
   });
 
   if (!session) return null;
   if (session.expiresAt < new Date()) {
-    // Expired — clean it up
     await prisma.authSession.delete({ where: { token } }).catch(() => {});
     return null;
   }
@@ -77,7 +94,7 @@ export async function deleteSession(token: string): Promise<void> {
   await destroySession(token);
 }
 
-// ─── Cleanup job (call on a schedule or at startup) ───────────────────────────
+// ─── Cleanup job ──────────────────────────────────────────────────────────────
 
 export async function purgeExpiredSessions(): Promise<number> {
   const { count } = await prisma.authSession.deleteMany({

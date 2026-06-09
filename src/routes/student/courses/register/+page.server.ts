@@ -1,11 +1,11 @@
-// src/routes/(student)/student/courses/register/+page.server.ts
+// src/routes/student/courses/register/+page.server.ts
 import type { PageServerLoad, Actions } from './$types';
 import { requireStudent } from '$lib/server/auth/guards.js';
 import { prisma } from '$lib/server/db/index.js';
-import { fail } from '@sveltejs/kit';
+import { fail, error } from '@sveltejs/kit';
 
 export const load: PageServerLoad = async ({ locals, url }) => {
-  const user = await requireStudent(locals.user);
+  const user = requireStudent(locals.user);
 
   const currentSession = user.session ?? deriveSessionFromDate();
   const currentSemester = deriveSemesterFromDate();
@@ -22,16 +22,18 @@ export const load: PageServerLoad = async ({ locals, url }) => {
 
   const registeredCourseIds = new Set(existingRegs.map(r => r.courseId));
 
+  // Build OR conditions dynamically — only include valid ones
+  const orConditions: any[] = [];
+  if (user.departmentId) orConditions.push({ departmentId: user.departmentId });
+  if (user.programmeId) orConditions.push({ programmeId: user.programmeId });
+  if (user.level?.level != null) orConditions.push({ level: user.level.level });
+
   // Available courses for registration
   const availableCourses = await prisma.course.findMany({
     where: {
       semester: currentSemester,
       NOT: { id: { in: Array.from(registeredCourseIds) } },
-      // Match student's department OR allow cross-dept (borrowed)
-      OR: [
-        { departmentId: user.departmentId ?? undefined },
-        { level: user.level?.level ?? undefined },
-      ],
+      ...(orConditions.length > 0 ? { OR: orConditions } : {}),
     },
     include: {
       department: { select: { name: true } },
@@ -77,7 +79,7 @@ export const load: PageServerLoad = async ({ locals, url }) => {
 
 export const actions: Actions = {
   register: async ({ request, locals }) => {
-    const user = await requireStudent(locals.user);
+    const user = requireStudent(locals.user);
     const form = await request.formData();
     const courseId = form.get('courseId')?.toString();
     const type = (form.get('type')?.toString() as 'normal' | 'carry_over' | 'borrowed') ?? 'normal';
@@ -100,12 +102,6 @@ export const actions: Actions = {
     });
     if (existing) return fail(400, { error: 'Already registered for this course' });
 
-    // Check credit limit
-    const currentCredits = await prisma.courseRegistration.aggregate({
-      where: { studentId: user.id, session: currentSession, semester: currentSemester },
-      _sum: { course: { select: { creditUnits: true } } }, // Prisma doesn't support this directly, workaround below
-    });
-
     // Get course to check credits
     const course = await prisma.course.findUnique({
       where: { id: courseId },
@@ -113,6 +109,7 @@ export const actions: Actions = {
     });
     if (!course) return fail(404, { error: 'Course not found' });
 
+    // Check credit limit
     const totalRegistered = await prisma.courseRegistration.findMany({
       where: { studentId: user.id, session: currentSession, semester: currentSemester },
       include: { course: { select: { creditUnits: true } } },
@@ -137,7 +134,7 @@ export const actions: Actions = {
   },
 
   drop: async ({ request, locals }) => {
-    const user = await requireStudent(locals.user);
+    const user = requireStudent(locals.user);
     const form = await request.formData();
     const registrationId = form.get('registrationId')?.toString();
 
