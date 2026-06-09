@@ -7,12 +7,12 @@
   import {
     LayoutDashboard, LogOut, Sun, Moon,
     Hash, Layers, GraduationCap, ShieldCheck,
-    ChevronRight, X, BarChart2, Bell, CheckCheck,
+    ChevronRight, X, BarChart3, Bell, CheckCheck,
     Loader2, BookOpen, Clock, Award, ClipboardList,
     Calendar, FileText, UserCircle, AlertTriangle,
     Phone, MapPin, Flag, VenusAndMars, Cake, Building2,
     Fingerprint, Eye, IdCard, School, Menu,
-    CheckCircle2, XCircle, Timer, TrendingUp
+    CheckCircle2, XCircle, Timer, TrendingUp, BookMarked
   } from 'lucide-svelte';
 
   let { data, children }: { data: LayoutData; children: import('svelte').Snippet } = $props();
@@ -42,24 +42,25 @@
     }
   });
 
-  // Close mobile drawer on navigation
-  $effect(() => {
-    if ($navigating) mobileOpen = false;
-  });
+  $effect(() => { if ($navigating) mobileOpen = false; });
 
-  // ── Navigation links ───────────────────────────────────────────
+  // ── Nav links ─────────────────────────────────────────────────
   const links = [
-    { href: '/student',                   label: 'Dashboard',           icon: LayoutDashboard, exact: true  },
-    { href: '/student/exams',             label: 'My Exams',            icon: ClipboardList,   exact: false },
-    { href: '/student/results',           label: 'My Results',          icon: BarChart2,       exact: false },
-    { href: '/student/courses/register',  label: 'Course Registration', icon: BookOpen,        exact: false },
+    { href: '/student',                  label: 'Dashboard',           icon: LayoutDashboard, exact: true  },
+    { href: '/student/exams',            label: 'My Exams',            icon: ClipboardList,   exact: false },
+    { href: '/student/results',          label: 'My Results',          icon: BarChart3,       exact: false },
+    { href: '/student/courses',          label: 'My Courses',          icon: BookMarked,      exact: false },
+    { href: '/student/courses/register', label: 'Course Registration', icon: BookOpen,        exact: false },
+    { href: '/student/notifications',    label: 'Notifications',       icon: Bell,            exact: false },
+    { href: '/student/profile',          label: 'Profile',             icon: UserCircle,      exact: false },
   ];
 
   const currentPath = $derived($page.url.pathname);
 
-  // Fixed: exact match for dashboard, prefix match for others
   function isActive(href: string, exact: boolean) {
     if (exact) return currentPath === href;
+    // Don't mark /student/courses as active when on /student/courses/register
+    if (href === '/student/courses' && currentPath.startsWith('/student/courses/register')) return false;
     return currentPath === href || currentPath.startsWith(href + '/');
   }
 
@@ -69,20 +70,20 @@
     if (parts.length === 0) return [];
     const crumbs: { label: string; href: string }[] = [{ label: 'Home', href: '/student' }];
     const map: Record<string, string> = {
-      results:  'My Results',
-      exams:    'My Exams',
-      courses:  'Courses',
-      register: 'Registration',
-      exam:     'Exam Session',
-      complete: 'Complete',
-      upcoming: 'Upcoming',
-      history:  'History',
+      results:      'My Results',
+      exams:        'My Exams',
+      courses:      'My Courses',
+      register:     'Registration',
+      notifications:'Notifications',
+      profile:      'Profile',
+      exam:         'Exam Session',
+      complete:     'Complete',
     };
     let built = '/student';
     for (const part of parts) {
       built += '/' + part;
       const label = /^[0-9a-f-]{36}$/i.test(part)
-        ? 'Exam Session'
+        ? 'Session'
         : (map[part] ?? part.charAt(0).toUpperCase() + part.slice(1));
       crumbs.push({ label, href: built });
     }
@@ -91,14 +92,14 @@
 
   // ── Initials ───────────────────────────────────────────────────
   const initials = $derived(() => {
-    const parts = data.user.fullName.trim().split(/\s+/);
+    const parts = data.user.fullName.trim().split(/\\s+/);
     return parts.length >= 2
       ? (parts[0][0] + parts[parts.length - 1][0]).toUpperCase()
       : parts[0].slice(0, 2).toUpperCase();
   });
 
   const displayName = $derived(() => {
-    const parts = data.user.fullName.trim().split(/\s+/);
+    const parts = data.user.fullName.trim().split(/\\s+/);
     return parts[0] ?? data.user.fullName;
   });
 
