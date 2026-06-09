@@ -9,33 +9,34 @@
     LayoutDashboard, ClipboardCheck, Monitor, Bell,
     User, Menu, X, Sun, Moon, LogOut, ChevronRight,
     LoaderCircle, ShieldCheck, CheckCheck, Activity,
-    FileText
+    FileText, Mail, Phone, Building2, BookOpen, Hash,
+    Calendar, ArrowRight
   } from 'lucide-svelte';
 
   let { data, children }: { data: LayoutData; children: import('svelte').Snippet } = $props();
 
   onMount(() => initTheme());
 
-  let theme            = $derived(getTheme());
-  let collapsed        = $state(false);
-  let sidebarOpen      = $state(false);
-  let navLoading       = $state<string | null>(null);
-  let showNotifications = $state(false);
-  let showSignoutModal = $state(false);
-  let isSigningOut     = $state(false);
-  let notifications    = $state<any[]>(data.notifications ?? []);
-  let markingAllRead   = $state(false);
+  let theme              = $derived(getTheme());
+  let collapsed          = $state(false);
+  let sidebarOpen        = $state(false);
+  let navLoading         = $state<string | null>(null);
+  let showNotifications  = $state(false);
+  let showSignoutModal   = $state(false);
+  let showProfileModal   = $state(false);   // ← new
+  let isSigningOut       = $state(false);
+  let notifications      = $state<any[]>(data.notifications ?? []);
+  let markingAllRead     = $state(false);
 
   const unreadCount      = $derived(notifications.filter((n: any) => !n.isRead).length);
   const liveSessionCount = $derived(data.stats?.liveSessions ?? 0);
 
-  // ── Nav items matching the actual file tree ──────────────────────
   const navItems = [
-    { href: '/invigilator',              label: 'Dashboard',    icon: LayoutDashboard },
-    { href: '/invigilator/assignments',  label: 'Assignments',  icon: ClipboardCheck  },
-    { href: '/invigilator/monitor',      label: 'Monitor',      icon: Monitor         },
-    { href: '/invigilator/notifications',label: 'Notifications',icon: Bell            },
-    { href: '/invigilator/profile',      label: 'Profile',      icon: User            },
+    { href: '/invigilator',               label: 'Dashboard',    icon: LayoutDashboard },
+    { href: '/invigilator/assignments',   label: 'Assignments',  icon: ClipboardCheck  },
+    { href: '/invigilator/monitor',       label: 'Monitor',      icon: Monitor         },
+    { href: '/invigilator/notifications', label: 'Notifications',icon: Bell            },
+    { href: '/invigilator/profile',       label: 'Profile',      icon: User            },
   ];
 
   const currentPath = $derived($page.url.pathname);
@@ -45,11 +46,8 @@
     if (!parts.length) return [];
     const crumbs: { label: string; href: string }[] = [{ label: 'Home', href: '/invigilator' }];
     const labelMap: Record<string, string> = {
-      assignments:   'Assignments',
-      monitor:       'Monitor',
-      notifications: 'Notifications',
-      profile:       'Profile',
-      summary:       'Summary',
+      assignments: 'Assignments', monitor: 'Monitor',
+      notifications: 'Notifications', profile: 'Profile', summary: 'Summary',
     };
     let built = '/invigilator';
     for (const part of parts) {
@@ -91,8 +89,7 @@
     try {
       await fetch('/api/notifications/read-all', { method: 'POST' });
       notifications = notifications.map((n: any) => ({ ...n, isRead: true }));
-    } catch { /* silent */ }
-    finally { markingAllRead = false; }
+    } catch { /* silent */ } finally { markingAllRead = false; }
   }
 
   async function markOneRead(id: string) {
@@ -121,12 +118,29 @@
     return `${Math.floor(h / 24)}d ago`;
   }
 
+  function fmt(d: Date | string | null) {
+    if (!d) return '—';
+    return new Date(d).toLocaleDateString('en-NG', { day: '2-digit', month: 'short', year: 'numeric' });
+  }
+
   const initials = $derived(
     (data.user?.fullName ?? 'I').trim().split(/\s+/).filter(Boolean)
       .reduce((acc: string, w: string, i: number, arr: string[]) =>
         i === 0 || i === arr.length - 1 ? acc + w[0] : acc, '')
       .toUpperCase().slice(0, 2)
   );
+
+  const displayName = $derived(data.user?.fullName?.split(' ')[0] ?? 'Invigilator');
+
+  // Bio fields to display in profile modal
+  const profileFields = $derived([
+    { icon: Mail,      label: 'Email',      value: data.user?.email ?? '—'                     },
+    { icon: Phone,     label: 'Phone',      value: data.user?.phone ?? 'Not set'               },
+    { icon: Hash,      label: 'Staff ID',   value: data.user?.staffId ?? '—'                   },
+    { icon: Building2, label: 'College',    value: data.user?.college?.name ?? '—'             },
+    { icon: BookOpen,  label: 'Department', value: data.user?.department?.name ?? '—'          },
+    { icon: Calendar,  label: 'Joined',     value: fmt(data.user?.createdAt ?? null)           },
+  ]);
 </script>
 
 <svelte:head><title>Invigilator — MOUAU eTest</title></svelte:head>
@@ -140,7 +154,7 @@
   <!-- ── Sign-out modal ─────────────────────────────────────────── -->
   {#if showSignoutModal}
     <div class="modal-backdrop" onclick={() => { if (!isSigningOut) showSignoutModal = false; }}>
-      <div class="modal" onclick={(e) => e.stopPropagation()}>
+      <div class="modal signout-modal" onclick={(e) => e.stopPropagation()}>
         <div class="modal-icon-wrap"><LogOut size={22} /></div>
         <h3>Sign Out</h3>
         <p>Are you sure you want to sign out?</p>
@@ -148,9 +162,64 @@
         <div class="modal-actions">
           <button class="btn-cancel" onclick={() => showSignoutModal = false} disabled={isSigningOut} type="button">Cancel</button>
           <button class="btn-signout" onclick={confirmSignout} disabled={isSigningOut} type="button">
-            {#if isSigningOut}<LoaderCircle size={14} class="spin-icon" /> Signing Out…{:else}<LogOut size={14} /> Sign Out{/if}
+            {#if isSigningOut}<LoaderCircle size={14} class="spin-icon" /> Signing out…{:else}<LogOut size={14} /> Sign out{/if}
           </button>
         </div>
+      </div>
+    </div>
+  {/if}
+
+  <!-- ── Profile summary modal ──────────────────────────────────── -->
+  {#if showProfileModal}
+    <div class="modal-backdrop" onclick={() => (showProfileModal = false)}>
+      <div class="modal profile-modal" onclick={(e) => e.stopPropagation()}>
+
+        <!-- Header -->
+        <div class="pm-head">
+          <div class="pm-avatar">{initials}</div>
+          <div class="pm-ident">
+            <h3>{data.user?.title ? `${data.user.title} ` : ''}{data.user?.fullName ?? 'Invigilator'}</h3>
+            <div class="pm-badges">
+              <span class="pm-badge pm-badge-role"><ShieldCheck size={11} /> Invigilator</span>
+              <span class="pm-badge pm-badge-active">Active</span>
+            </div>
+          </div>
+          <button class="pm-close" onclick={() => (showProfileModal = false)} type="button">
+            <X size={15} />
+          </button>
+        </div>
+
+        <!-- Fields grid -->
+        <div class="pm-fields">
+          {#each profileFields as f}
+            <div class="pm-field">
+              <div class="pm-field-icon"><f.icon size={13} /></div>
+              <div class="pm-field-body">
+                <span class="pm-field-label">{f.label}</span>
+                <span class="pm-field-value">{f.value}</span>
+              </div>
+            </div>
+          {/each}
+        </div>
+
+        <!-- Actions -->
+        <div class="pm-actions">
+          <a
+            href="/invigilator/profile"
+            class="pm-btn pm-btn-primary"
+            onclick={(e) => { showProfileModal = false; navigate('/invigilator/profile', e); }}
+          >
+            <User size={14} /> Edit Profile
+          </a>
+          <button
+            class="pm-btn pm-btn-danger"
+            type="button"
+            onclick={() => { showProfileModal = false; showSignoutModal = true; }}
+          >
+            <LogOut size={14} /> Sign out
+          </button>
+        </div>
+
       </div>
     </div>
   {/if}
@@ -175,7 +244,6 @@
       </button>
     </div>
 
-    <!-- Live sessions strip -->
     {#if !collapsed && liveSessionCount > 0}
       <div class="live-strip">
         <div class="live-dot"></div>
@@ -193,7 +261,7 @@
           onclick={(e) => navigate(item.href, e)}
           title={collapsed ? item.label : undefined}
         >
-          <div class="nav-icon">
+          <div class="nav-icon" class:active={isActive(item.href)}>
             {#if navLoading === item.href}
               <span class="nav-spinner"></span>
             {:else}
@@ -202,12 +270,9 @@
           </div>
           {#if !collapsed}<span class="nav-label">{item.label}</span>{/if}
 
-          <!-- Live badge on Monitor -->
           {#if !collapsed && item.href === '/invigilator/monitor' && liveSessionCount > 0}
             <span class="live-badge">{liveSessionCount}</span>
           {/if}
-
-          <!-- Unread badge on Notifications -->
           {#if !collapsed && item.href === '/invigilator/notifications' && unreadCount > 0}
             <span class="notif-count">{unreadCount > 99 ? '99+' : unreadCount}</span>
           {/if}
@@ -222,18 +287,24 @@
     {/if}
 
     <div class="sidebar-bottom">
-      <button class="icon-btn theme-btn" onclick={toggleTheme} type="button" aria-label="Toggle theme"
-              title={collapsed ? (theme === 'dark' ? 'Light mode' : 'Dark mode') : undefined}>
+      <button class="icon-btn theme-btn" onclick={toggleTheme} type="button"
+        title={collapsed ? (theme === 'dark' ? 'Light mode' : 'Dark mode') : undefined}>
         {#if theme === 'dark'}<Sun size={15} />{:else}<Moon size={15} />{/if}
         {#if !collapsed}<span>{theme === 'dark' ? 'Light Mode' : 'Dark Mode'}</span>{/if}
       </button>
 
-      <button class="avatar-btn" onclick={() => showSignoutModal = true} type="button"
-              aria-label="Account" title={collapsed ? data.user?.fullName : undefined}>
+      <!-- Avatar button → opens profile modal -->
+      <button
+        class="avatar-btn"
+        onclick={() => (showProfileModal = true)}
+        type="button"
+        aria-label="View profile"
+        title={collapsed ? data.user?.fullName : undefined}
+      >
         <div class="avatar"><span>{initials}</span></div>
         {#if !collapsed}
           <div class="avatar-info">
-            <span class="avatar-name">{data.user?.fullName?.split(' ')[0] ?? 'Invigilator'}</span>
+            <span class="avatar-name">{displayName}</span>
             <span class="avatar-role">Invigilator</span>
           </div>
           <ChevronRight size={12} class="avatar-chevron" />
@@ -241,7 +312,7 @@
       </button>
 
       <button class="icon-btn signout-btn" type="button" onclick={() => showSignoutModal = true}
-              aria-label="Sign out" title={collapsed ? 'Sign out' : undefined}>
+        title={collapsed ? 'Sign out' : undefined}>
         <LogOut size={15} />
         {#if !collapsed}<span>Sign Out</span>{/if}
       </button>
@@ -268,7 +339,7 @@
             {/each}
           </nav>
         {:else}
-          <span class="topbar-greeting">Welcome back, <strong>{data.user?.fullName?.split(' ')[0] ?? 'Invigilator'}</strong></span>
+          <span class="topbar-greeting">Welcome back, <strong>{displayName}</strong></span>
         {/if}
       </div>
 
@@ -284,11 +355,10 @@
           </div>
         {/if}
 
-        <!-- Notifications -->
         <div class="notif-wrap">
           <button class="topbar-btn notif-btn" class:has-unread={unreadCount > 0}
-                  onclick={() => showNotifications = !showNotifications}
-                  aria-label="Notifications" type="button">
+            onclick={() => showNotifications = !showNotifications}
+            aria-label="Notifications" type="button">
             <Bell size={16} />
             {#if unreadCount > 0}<span class="notif-badge">{unreadCount > 99 ? '99+' : unreadCount}</span>{/if}
           </button>
@@ -310,7 +380,7 @@
                 {:else}
                   {#each notifications.slice(0, 20) as n (n.id)}
                     <button class="notif-item" class:unread={!n.isRead}
-                            onclick={() => markOneRead(n.id)} type="button">
+                      onclick={() => markOneRead(n.id)} type="button">
                       <div class="notif-dot-col">{#if !n.isRead}<div class="notif-dot"></div>{/if}</div>
                       <div class="notif-body">
                         <p class="notif-item-title">{n.title}</p>
@@ -324,8 +394,8 @@
               {#if notifications.length > 0}
                 <div class="notif-foot">
                   <a href="/invigilator/notifications"
-                     onclick={(e) => { showNotifications = false; navigate('/invigilator/notifications', e); }}
-                     class="notif-all-link">View all notifications</a>
+                    onclick={(e) => { showNotifications = false; navigate('/invigilator/notifications', e); }}
+                    class="notif-all-link">View all notifications</a>
                 </div>
               {/if}
             </div>
@@ -347,7 +417,6 @@
 </div>
 
 <style>
-  /* ── Color tokens — AMBER/ORANGE (distinct from admin green & lecturer blue) ── */
   :root {
     --iv-400: #fb923c;
     --iv-500: #f97316;
@@ -373,7 +442,7 @@
   }
   .layout.collapsed { grid-template-columns: var(--sidebar-collapsed) 1fr; }
 
-  /* ── Sidebar ─────────────────────────────────────────────────────── */
+  /* ── Sidebar ─────────────────────────────────────────────────── */
   .sidebar {
     display: flex; flex-direction: column;
     background: var(--color-surface);
@@ -381,7 +450,6 @@
     height: 100vh; position: sticky; top: 0;
     overflow: hidden; z-index: 40;
   }
-
   @media (max-width: 1023px) {
     .sidebar {
       position: fixed; top: 0; left: 0; bottom: 0;
@@ -400,7 +468,6 @@
   }
   @media (max-width: 1023px) { .sidebar-overlay { display: block; animation: fade-in .2s ease; } }
 
-  /* Brand */
   .sidebar-top {
     display: flex; align-items: center; justify-content: space-between;
     padding: 1rem .75rem .875rem;
@@ -430,7 +497,6 @@
   .layout.collapsed .collapse-btn :global(svg) { transform: rotate(180deg); }
   @media (max-width: 1023px) { .collapse-btn { display: none; } }
 
-  /* Live strip */
   .live-strip {
     display: flex; align-items: center; gap: .5rem;
     margin: .5rem .75rem; padding: .45rem .75rem;
@@ -443,13 +509,7 @@
     background: var(--iv-500); flex-shrink: 0;
     animation: live-pulse 1.5s ease-in-out infinite;
   }
-  @keyframes live-pulse {
-    0%   { box-shadow: 0 0 0 0 rgba(249,115,22,.5); }
-    70%  { box-shadow: 0 0 0 6px rgba(249,115,22,0); }
-    100% { box-shadow: 0 0 0 0 rgba(249,115,22,0); }
-  }
 
-  /* Nav */
   .sidebar-nav {
     flex: 1; padding: .5rem .625rem;
     display: flex; flex-direction: column; gap: .15rem;
@@ -465,18 +525,26 @@
     color: var(--color-muted); white-space: nowrap; overflow: hidden;
     transition: color .15s, background .15s;
   }
-  .nav-link:hover { color: var(--color-text); background: var(--color-bg); }
+  .nav-link:hover  { color: var(--color-text); background: var(--color-bg); }
   .nav-link.active { color: var(--iv-700); font-weight: 700; background: var(--iv-soft); }
   :global(.dark) .nav-link.active { color: var(--iv-400); }
   .nav-link.loading { opacity: .6; pointer-events: none; }
 
+  /* nav icon: white on amber when active, muted otherwise */
   .nav-icon {
     width: 28px; height: 28px; border-radius: .45rem; flex-shrink: 0;
-    display: flex; align-items: center; justify-content: center; color: var(--color-muted);
+    display: flex; align-items: center; justify-content: center;
+    color: var(--color-muted); background: transparent; transition: all .15s;
   }
-  .nav-link.active .nav-icon { background: rgba(249,115,22,.12); color: var(--iv-600); }
-  .nav-label { flex: 1; }
+  .nav-icon.active {
+    background: var(--iv-600);
+    color: #fff;
+  }
+  .nav-link:hover .nav-icon:not(.active) {
+    background: var(--iv-soft); color: var(--iv-600);
+  }
 
+  .nav-label { flex: 1; }
   .active-pip {
     position: absolute; left: 0; top: 50%; transform: translateY(-50%);
     width: 3px; height: 60%; border-radius: 0 2px 2px 0; background: var(--iv-600);
@@ -489,24 +557,19 @@
     border-radius: 999px; line-height: 1.5;
     animation: badge-pulse 2s ease-in-out infinite;
   }
-  @keyframes badge-pulse { 0%,100%{opacity:1} 50%{opacity:.7} }
-
   .notif-count {
     background: #dc2626; color: white;
     font-size: .6rem; font-weight: 800; padding: .1rem .4rem;
     border-radius: 999px; line-height: 1.5;
   }
-
   .nav-spinner {
     width: 14px; height: 14px; border-radius: 50%;
     border: 2px solid var(--color-border); border-top-color: var(--iv-600);
     animation: spin .6s linear infinite;
   }
-
   .nav-loading-bar { height: 2px; background: var(--color-border); overflow: hidden; flex-shrink: 0; }
   .nav-loading-progress { height: 100%; width: 40%; background: var(--iv-600); animation: loading-slide 1s ease-in-out infinite; }
 
-  /* Footer */
   .sidebar-bottom {
     padding: .5rem .625rem .875rem;
     border-top: 1px solid var(--color-border);
@@ -529,7 +592,6 @@
     font-family: inherit; white-space: nowrap; overflow: hidden; transition: all .15s;
   }
   .avatar-btn:hover { border-color: var(--iv-600); background: var(--iv-soft); }
-
   .avatar {
     width: 28px; height: 28px; border-radius: 50%; flex-shrink: 0;
     background: linear-gradient(135deg, var(--iv-700), var(--iv-500));
@@ -540,7 +602,7 @@
   .avatar-name { font-size: .78rem; font-weight: 700; color: var(--color-text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .avatar-role { font-size: .57rem; font-weight: 700; color: var(--color-muted); text-transform: uppercase; letter-spacing: .05em; margin-top: 1px; }
 
-  /* ── Main ─────────────────────────────────────────────────────────── */
+  /* ── Main ─────────────────────────────────────────────────────── */
   .layout-main { display: flex; flex-direction: column; min-height: 100vh; min-width: 0; }
 
   .topbar {
@@ -592,7 +654,6 @@
   }
   .topbar-btn:hover { background: var(--color-surface-hover); }
   .notif-btn.has-unread { border-color: rgba(234,88,12,.4); color: var(--iv-600); }
-
   .notif-badge {
     position: absolute; top: -5px; right: -5px;
     background: #dc2626; color: white;
@@ -600,7 +661,6 @@
     border-radius: 999px; display: flex; align-items: center; justify-content: center;
     padding: 0 2px; border: 2px solid var(--color-surface);
   }
-
   .role-badge {
     display: flex; align-items: center; gap: .4rem;
     padding: .35rem .75rem; background: var(--iv-soft);
@@ -617,7 +677,6 @@
     box-shadow: 0 12px 40px rgba(0,0,0,.15); z-index: 200; overflow: hidden;
     animation: dd-in .18s cubic-bezier(.16,1,.3,1);
   }
-  @keyframes dd-in { from{opacity:0;transform:translateY(-6px) scale(.97)} to{opacity:1;transform:translateY(0) scale(1)} }
   .notif-head { display: flex; align-items: center; justify-content: space-between; padding: .75rem 1rem .5rem; border-bottom: 1px solid var(--color-border); }
   .notif-title { font-weight: 700; font-size: .82rem; color: var(--color-text); }
   .mark-all-btn { display: flex; align-items: center; gap: .3rem; background: none; border: none; color: var(--iv-600); font-size: .7rem; font-weight: 600; cursor: pointer; padding: .2rem .45rem; border-radius: .35rem; font-family: inherit; }
@@ -644,7 +703,7 @@
   .page-content { flex: 1; padding: 2rem 1.5rem; }
   @media (min-width: 1024px) { .page-content { padding: 2rem 2.5rem; } }
 
-  /* ── Sign-out modal ───────────────────────────────────────────────── */
+  /* ── Modals ──────────────────────────────────────────────────── */
   .modal-backdrop {
     position: fixed; inset: 0; z-index: 500;
     background: rgba(0,0,0,.5); backdrop-filter: blur(4px);
@@ -653,19 +712,24 @@
   }
   .modal {
     background: var(--color-surface); border: 1px solid var(--color-border);
-    border-radius: 1.25rem; width: 100%; max-width: 340px;
-    padding: 2rem 1.75rem 1.75rem;
+    border-radius: 1.25rem; width: 100%;
     box-shadow: 0 32px 80px rgba(0,0,0,.2);
-    display: flex; flex-direction: column; align-items: center; gap: .5rem;
-    text-align: center; animation: modal-up .25s cubic-bezier(.16,1,.3,1);
+    animation: modal-up .25s cubic-bezier(.16,1,.3,1);
+    overflow: hidden;
+  }
+
+  /* Sign-out modal */
+  .signout-modal {
+    max-width: 340px; padding: 2rem 1.75rem 1.75rem;
+    display: flex; flex-direction: column; align-items: center; gap: .5rem; text-align: center;
   }
   .modal-icon-wrap {
     width: 54px; height: 54px; border-radius: 50%; margin-bottom: .5rem;
     background: rgba(220,38,38,.08); border: 2px solid rgba(220,38,38,.2);
     display: flex; align-items: center; justify-content: center; color: #dc2626;
   }
-  .modal h3   { font-size: 1.1rem; font-weight: 800; color: var(--color-text); margin: .25rem 0 0; }
-  .modal p    { font-size: .82rem; color: var(--color-text); margin: 0; }
+  .signout-modal h3  { font-size: 1.1rem; font-weight: 800; color: var(--color-text); margin: .25rem 0 0; }
+  .signout-modal p   { font-size: .82rem; color: var(--color-text); margin: 0; }
   .modal-sub  { color: var(--color-muted) !important; margin-bottom: .75rem !important; line-height: 1.5; }
   .modal-actions { display: flex; gap: .6rem; width: 100%; margin-top: .5rem; }
   .btn-cancel {
@@ -684,8 +748,97 @@
   .btn-signout:hover { background: #b91c1c; }
   .btn-signout:disabled { opacity: .6; cursor: not-allowed; }
 
+  /* ── Profile modal ───────────────────────────────────────────── */
+  .profile-modal { max-width: 400px; }
+
+  .pm-head {
+    display: flex; align-items: center; gap: 1rem;
+    padding: 1.25rem 1.25rem 1rem;
+    border-bottom: 1px solid var(--color-border);
+  }
+  .pm-avatar {
+    width: 52px; height: 52px; border-radius: 50%; flex-shrink: 0;
+    background: linear-gradient(135deg, var(--iv-700), var(--iv-500));
+    display: flex; align-items: center; justify-content: center;
+    font-size: 1rem; font-weight: 800; color: #fff;
+  }
+  .pm-ident { flex: 1; min-width: 0; }
+  .pm-ident h3 {
+    font-size: .95rem; font-weight: 800; color: var(--color-text);
+    margin: 0 0 .4rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .pm-badges { display: flex; gap: .375rem; flex-wrap: wrap; }
+  .pm-badge {
+    display: inline-flex; align-items: center; gap: .3rem;
+    font-size: .62rem; font-weight: 700; padding: .2rem .55rem;
+    border-radius: 2rem;
+  }
+  .pm-badge-role   { background: var(--iv-soft); color: var(--iv-600); }
+  .pm-badge-active { background: rgba(22,163,74,.1); color: #16a34a; }
+  .pm-close {
+    width: 28px; height: 28px; border-radius: .45rem; flex-shrink: 0;
+    border: 1px solid var(--color-border); background: var(--color-bg);
+    cursor: pointer; color: var(--color-muted);
+    display: flex; align-items: center; justify-content: center; transition: all .15s;
+  }
+  .pm-close:hover { border-color: var(--iv-600); color: var(--iv-600); }
+
+  .pm-fields {
+    display: flex; flex-direction: column;
+    padding: .5rem 0;
+  }
+  .pm-field {
+    display: flex; align-items: center; gap: .875rem;
+    padding: .7rem 1.25rem;
+    border-bottom: 1px solid var(--color-border);
+    transition: background .1s;
+  }
+  .pm-field:last-child { border-bottom: none; }
+  .pm-field:hover { background: var(--color-bg); }
+  .pm-field-icon {
+    width: 28px; height: 28px; border-radius: .45rem; flex-shrink: 0;
+    background: var(--iv-soft);
+    display: flex; align-items: center; justify-content: center;
+    color: var(--iv-600);
+  }
+  .pm-field-body { display: flex; flex-direction: column; gap: .1rem; min-width: 0; }
+  .pm-field-label {
+    font-size: .62rem; font-weight: 700; text-transform: uppercase;
+    letter-spacing: .05em; color: var(--color-muted);
+  }
+  .pm-field-value {
+    font-size: .82rem; font-weight: 600; color: var(--color-text);
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+
+  .pm-actions {
+    display: flex; gap: .625rem;
+    padding: 1rem 1.25rem;
+    border-top: 1px solid var(--color-border);
+  }
+  .pm-btn {
+    flex: 1; display: flex; align-items: center; justify-content: center; gap: .4rem;
+    padding: .6rem 1rem; border-radius: var(--radius-btn);
+    font-size: .82rem; font-weight: 700; cursor: pointer;
+    font-family: inherit; text-decoration: none; border: none;
+    transition: all .15s;
+  }
+  .pm-btn-primary {
+    background: var(--iv-500); color: #fff;
+  }
+  .pm-btn-primary:hover { background: var(--iv-600); }
+  .pm-btn-danger {
+    background: rgba(220,38,38,.08); color: #dc2626;
+    border: 1px solid rgba(220,38,38,.2);
+  }
+  .pm-btn-danger:hover { background: rgba(220,38,38,.14); }
+
+  /* ── Keyframes ───────────────────────────────────────────────── */
   @keyframes spin          { to { transform: rotate(360deg); } }
   @keyframes fade-in       { from { opacity: 0; } to { opacity: 1; } }
   @keyframes loading-slide { 0% { transform: translateX(-100%); } 100% { transform: translateX(250%); } }
   @keyframes modal-up      { from { opacity: 0; transform: translateY(14px) scale(.97); } to { opacity: 1; transform: translateY(0) scale(1); } }
+  @keyframes dd-in         { from { opacity:0; transform:translateY(-6px) scale(.97) } to { opacity:1; transform:translateY(0) scale(1) } }
+  @keyframes live-pulse    { 0% { box-shadow: 0 0 0 0 rgba(249,115,22,.5); } 70% { box-shadow: 0 0 0 6px rgba(249,115,22,0); } 100% { box-shadow: 0 0 0 0 rgba(249,115,22,0); } }
+  @keyframes badge-pulse   { 0%,100%{opacity:1} 50%{opacity:.7} }
 </style>
