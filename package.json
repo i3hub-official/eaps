@@ -15,7 +15,7 @@
     "db:migrate": "prisma migrate dev && prisma generate",
     "db:generate": "prisma generate",
     "db:studio": "prisma studio",
-    "db:push": "prisma db push && prisma generate",
+    "push": "prisma db push && prisma generate",
     "db:fresh": "prisma db push && prisma generate && tsx prisma/seed.ts",
     "seed:all": "prisma migrate dev && tsx prisma/seed.ts",
     "initSchema": "prisma migrate reset --force && tsx prisma/apply-sql.ts && prisma db push && prisma generate",

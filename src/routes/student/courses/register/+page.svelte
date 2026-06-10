@@ -1,361 +1,264 @@
 <!-- src/routes/(student)/student/courses/register/+page.svelte -->
 <script lang="ts">
   import {
-    BookOpen, Plus, Trash2, CheckCircle2, AlertCircle,
+    BookOpen, Trash2, CheckCircle2, AlertCircle,
     GraduationCap, CreditCard, ArrowLeft, X,
-    Building2, RotateCcw, Globe, Lock, Hash,
-    ChevronRight
+    Building2, RotateCcw, Globe, Lock,
+    Send, RefreshCw, ShieldAlert,
+    ChevronDown, ChevronUp
   } from 'lucide-svelte';
   import type { PageData, ActionData } from './$types';
   import { enhance } from '$app/forms';
 
   let { data, form }: { data: PageData; form: ActionData } = $props();
 
-  // ── Optimistic local state ─────────────────────────────────────────────
-  type RegEntry = typeof data.existingRegistrations[number];
+  type RegEntry    = typeof data.existingRegistrations[number];
   type CourseEntry = typeof data.collegeCourses[number];
+  type RegType     = 'normal' | 'carry_over' | 'borrowed';
+  type Phase       = 'draft' | 'submitted' | 'locked';
 
+  // ── Reactive state from server ────────────────────────────────────────
   let regs        = $state<RegEntry[]>(data.existingRegistrations);
   let colCourses  = $state<CourseEntry[]>(data.collegeCourses);
   let coCourses   = $state<CourseEntry[]>(data.carryOverCourses);
   let borCourses  = $state<CourseEntry[]>(data.borrowedCourses);
-  let isLocked    = $state(data.meta.isLocked);
+  let phase       = $state<Phase>(data.meta.phase as Phase);
   let usedCredits = $state(data.meta.currentCredits);
 
-  // Sync if server re-runs load (e.g. after invalidation)
   $effect(() => {
     regs        = data.existingRegistrations;
     colCourses  = data.collegeCourses;
     coCourses   = data.carryOverCourses;
     borCourses  = data.borrowedCourses;
-    isLocked    = data.meta.isLocked;
+    phase       = data.meta.phase as Phase;
     usedCredits = data.meta.currentCredits;
   });
 
-  // ── Tab / search state ─────────────────────────────────────────────────
-  let activeTab  = $state<'college' | 'carryover' | 'borrowed'>('college');
-  let search     = $state('');
-  let selectedId = $state<string | null>(
-    data.collegeCourses.find(c => c.preselected)?.id ??
-    data.carryOverCourses.find(c => c.preselected)?.id ??
-    data.borrowedCourses.find(c => c.preselected)?.id ?? null,
-  );
-  let showDrawer  = $state(!!selectedId);
-  let dropping    = $state<string | null>(null);
-  let submitting  = $state(false);
+  // ── UI state ──────────────────────────────────────────────────────────
+  let activeTab      = $state<'college' | 'carryover' | 'borrowed'>('college');
+  let search         = $state('');
+  let dropping       = $state<string | null>(null);
+  let submitting     = $state(false);
+  let regsExpanded   = $state(true);
 
-  // ── Credit meter ──────────────────────────────────────────────────────
+  // Draft: courseIds the student has tapped to queue for adding
+  let pendingAddIds  = $state<Map<string, RegType>>(new Map()); // courseId → type
+
+  // Submitted: separate add/drop sets for the one-time update
+  let updateAddIds   = $state<Map<string, RegType>>(new Map());
+  let updateDropIds  = $state<Set<string>>(new Set());
+
+  // ── Helpers ───────────────────────────────────────────────────────────
   const maxCredits  = data.meta.maxCredits;
   const creditPct   = $derived(Math.min((usedCredits / maxCredits) * 100, 100));
   const creditColor = $derived(
     creditPct > 90 ? '#dc2626' : creditPct > 75 ? '#f59e0b' : 'var(--green-600)'
   );
-  const canAdd = (cu: number) => usedCredits + cu <= maxCredits;
 
-  // ── Tab source list ───────────────────────────────────────────────────
+  function typeFromTab(tab: typeof activeTab): RegType {
+    return tab === 'carryover' ? 'carry_over' : tab === 'borrowed' ? 'borrowed' : 'normal';
+  }
+
   const q = $derived(search.trim().toLowerCase());
   function filterList(list: CourseEntry[]) {
     if (!q) return list;
     return list.filter(c =>
       c.code.toLowerCase().includes(q) ||
       c.title.toLowerCase().includes(q) ||
-      c.department.toLowerCase().includes(q),
+      c.department.toLowerCase().includes(q)
     );
   }
-
   const visibleCourses = $derived(
     activeTab === 'college'   ? filterList(colCourses)  :
     activeTab === 'carryover' ? filterList(coCourses)   :
-                                filterList(borCourses),
+                                filterList(borCourses)
   );
 
-  const tabs = $derived([
-    { key: 'college'   as const, label: 'My College', icon: Building2, count: colCourses.length  },
-    { key: 'carryover' as const, label: 'Carry Over', icon: RotateCcw, count: coCourses.length, hidden: data.meta.studentLevel <= 100 },
-    { key: 'borrowed'  as const, label: 'Borrowed',   icon: Globe,     count: borCourses.length  },
-  ]);
-
-  // ── Pending course for drawer ─────────────────────────────────────────
   const allAvailable = $derived([...colCourses, ...coCourses, ...borCourses]);
-  const pendingCourse = $derived(allAvailable.find(c => c.id === selectedId) ?? null);
 
-  // Registration type driven by active tab — used in grid AND drawer.
-  // Cannot use {@const} outside {#if}/{#each}, so keep it as $derived.
-  const drawerType = $derived<'normal' | 'carry_over' | 'borrowed'>(
-    activeTab === 'carryover' ? 'carry_over' :
-    activeTab === 'borrowed'  ? 'borrowed'   : 'normal',
+  // Pending credits (draft: courses queued but not yet submitted)
+  const pendingCredits = $derived(
+    [...pendingAddIds.keys()].reduce((s, id) => {
+      const c = allAvailable.find(x => x.id === id);
+      return s + (c?.creditUnits ?? 0);
+    }, 0)
+  );
+  const projectedCredits = $derived(usedCredits + pendingCredits);
+  const canAdd = (cu: number) => projectedCredits + cu <= maxCredits;
+
+  // Update panel derived data
+  const updateAddCourses = $derived(allAvailable.filter(c => updateAddIds.has(c.id)));
+  const updateDropRegs   = $derived(regs.filter(r => updateDropIds.has(r.id)));
+  const netCreditChange  = $derived(
+    updateAddCourses.reduce((s, c) => s + c.creditUnits, 0) -
+    updateDropRegs.reduce((s, r) => s + r.creditUnits, 0)
   );
 
-  function openDrawer(id: string) {
-    selectedId = id;
-    showDrawer = true;
-    search     = '';
-  }
-  function closeDrawer() {
-    showDrawer = false;
-    selectedId = null;
-  }
-
-  // ── Optimistic register ───────────────────────────────────────────────
-  function optimisticAdd(course: CourseEntry, type: 'normal' | 'carry_over' | 'borrowed') {
-    const status = type === 'borrowed' ? 'approved' : type === 'normal' ? 'approved' : 'pending';
-    // Immediately add to registered list
-    regs = [...regs, {
-      id:               'optimistic-' + course.id,
-      courseId:         course.id,
-      courseCode:       course.code,
-      courseTitle:      course.title,
-      creditUnits:      course.creditUnits,
-      level:            course.level,
-      department:       course.department,
-      registrationType: type,
-      status,
-      registeredAt:     new Date(),
-    }];
-    usedCredits += course.creditUnits;
-    // Remove from available list
-    if (type === 'normal')      colCourses = colCourses.filter(c => c.id !== course.id);
-    if (type === 'carry_over')  coCourses  = coCourses.filter(c => c.id !== course.id);
-    if (type === 'borrowed')    borCourses = borCourses.filter(c => c.id !== course.id);
-    // Lock if normal+approved
-    if (type === 'normal') isLocked = true;
-  }
-
-  function revertAdd(course: CourseEntry, type: 'normal' | 'carry_over' | 'borrowed') {
-    regs = regs.filter(r => r.courseId !== course.id);
-    usedCredits -= course.creditUnits;
-    if (type === 'normal')      colCourses = [...colCourses, course].sort((a,b)=>a.code.localeCompare(b.code));
-    if (type === 'carry_over')  coCourses  = [...coCourses,  course].sort((a,b)=>a.code.localeCompare(b.code));
-    if (type === 'borrowed')    borCourses = [...borCourses, course].sort((a,b)=>a.code.localeCompare(b.code));
-    if (type === 'normal') isLocked = false;
-  }
-
-  // ── Helpers ───────────────────────────────────────────────────────────
-  function typeLabel(t: string) {
-    return t === 'carry_over' ? 'Carry Over' : t === 'borrowed' ? 'Borrowed' : 'Normal';
-  }
-  function typeColor(t: string) {
-    return t === 'carry_over' ? '#f59e0b' : t === 'borrowed' ? '#3b82f6' : 'var(--green-600)';
-  }
-  function statusBadge(s: string) {
-    switch (s) {
-      case 'approved': return { text: 'Approved', cls: 'badge-green' };
-      case 'pending':  return { text: 'Pending',  cls: 'badge-amber' };
-      case 'rejected': return { text: 'Rejected', cls: 'badge-red'   };
-      default:         return { text: s,           cls: 'badge-gray'  };
-    }
-  }
-
-  // Group registered courses by type for display
+  // Grouped regs
   const normalRegs    = $derived(regs.filter(r => r.registrationType === 'normal'));
   const carryOverRegs = $derived(regs.filter(r => r.registrationType === 'carry_over'));
   const borrowedRegs  = $derived(regs.filter(r => r.registrationType === 'borrowed'));
+
+  // ── Card tap handlers ─────────────────────────────────────────────────
+  function handleCardTap(course: CourseEntry) {
+    const type = typeFromTab(activeTab);
+
+    if (phase === 'draft') {
+      // Toggle in pending queue
+      const m = new Map(pendingAddIds);
+      if (m.has(course.id)) {
+        m.delete(course.id);
+      } else {
+        if (!canAdd(course.creditUnits)) return;
+        m.set(course.id, type);
+      }
+      pendingAddIds = m;
+    } else if (phase === 'submitted') {
+      // Toggle in update-add queue
+      const m = new Map(updateAddIds);
+      if (m.has(course.id)) {
+        m.delete(course.id);
+      } else {
+        m.set(course.id, type);
+      }
+      updateAddIds = m;
+    }
+  }
+
+  function toggleDropReg(regId: string) {
+    const s = new Set(updateDropIds);
+    s.has(regId) ? s.delete(regId) : s.add(regId);
+    updateDropIds = s;
+  }
+
+  // ── Optimistic add / revert ───────────────────────────────────────────
+  function optimisticAdd(course: CourseEntry, type: RegType) {
+    const status = type === 'carry_over' ? 'pending' : 'approved';
+    regs = [...regs, {
+      id: 'opt-' + course.id,
+      courseId: course.id,
+      courseCode: course.code, courseTitle: course.title,
+      creditUnits: course.creditUnits, level: course.level,
+      department: course.department,
+      registrationType: type, status,
+      registeredAt: new Date(),
+    }];
+    usedCredits += course.creditUnits;
+    if (type === 'normal')     colCourses = colCourses.filter(c => c.id !== course.id);
+    if (type === 'carry_over') coCourses  = coCourses.filter(c => c.id !== course.id);
+    if (type === 'borrowed')   borCourses = borCourses.filter(c => c.id !== course.id);
+  }
+  function revertAdd(course: CourseEntry, type: RegType) {
+    regs = regs.filter(r => r.courseId !== course.id);
+    usedCredits -= course.creditUnits;
+    if (type === 'normal')     colCourses = [...colCourses, course].sort((a,b) => a.code.localeCompare(b.code));
+    if (type === 'carry_over') coCourses  = [...coCourses,  course].sort((a,b) => a.code.localeCompare(b.code));
+    if (type === 'borrowed')   borCourses = [...borCourses, course].sort((a,b) => a.code.localeCompare(b.code));
+  }
+
+  // ── Label / color helpers ─────────────────────────────────────────────
+  function typeLabel(t: string)  { return t === 'carry_over' ? 'Carry-Over' : t === 'borrowed' ? 'Borrowed' : 'Normal'; }
+  function typeColor(t: string)  { return t === 'carry_over' ? '#f59e0b' : t === 'borrowed' ? '#6366f1' : 'var(--green-600)'; }
+  function typeBg(t: string)     { return t === 'carry_over' ? 'rgba(245,158,11,.12)' : t === 'borrowed' ? 'rgba(99,102,241,.1)' : 'var(--green-soft)'; }
+
+  function statusBadge(s: string) {
+    switch (s) {
+      case 'approved': return { text: 'Approved', color: 'var(--green-700)', bg: 'var(--green-soft)' };
+      case 'pending':  return { text: 'Pending',  color: '#d97706',          bg: 'rgba(245,158,11,.12)' };
+      case 'rejected': return { text: 'Rejected', color: '#dc2626',          bg: 'rgba(220,38,38,.1)' };
+      default:         return { text: s,           color: 'var(--color-muted)', bg: 'var(--color-bg)' };
+    }
+  }
+
+  const phaseInfo: Record<Phase, { label: string; color: string; bg: string }> = {
+    draft:     { label: 'Adding courses',                    color: 'var(--green-700)', bg: 'var(--green-soft)' },
+    submitted: { label: 'Submitted · 1 update remaining',   color: '#d97706',          bg: 'rgba(245,158,11,.1)' },
+    locked:    { label: 'Locked · Contact academic office', color: '#dc2626',          bg: 'rgba(220,38,38,.07)' },
+  };
+
+  const tabs = $derived([
+    { key: 'college'   as const, label: 'My College',  icon: Building2, count: colCourses.length,  color: 'var(--green-600)' },
+    { key: 'carryover' as const, label: 'Carry-Over',  icon: RotateCcw, count: coCourses.length,   color: '#f59e0b', hidden: data.meta.studentLevel <= 100 },
+    { key: 'borrowed'  as const, label: 'Borrowed',    icon: Globe,     count: borCourses.length,  color: '#6366f1' },
+  ]);
+
+  // Pending courses objects (for batch submit)
+  const pendingCourses = $derived(
+    [...pendingAddIds.entries()].map(([id, type]) => ({
+      course: allAvailable.find(c => c.id === id)!,
+      type,
+    })).filter(x => x.course)
+  );
+
+  // Is the update panel visible?
+  const showUpdatePanel = $derived(
+    phase === 'submitted' && (updateAddIds.size > 0 || updateDropIds.size > 0)
+  );
 </script>
 
 <div class="page">
 
-  <!-- ── Back + header ──────────────────────────────────────────────────── -->
-  <div class="page-header">
+  <!-- ── Top bar ────────────────────────────────────────────────────────── -->
+  <div class="topbar">
     <a href="/student/courses" class="back-link">
-      <ArrowLeft size={14} /> My Courses
+      <ArrowLeft size={13} /> Courses
     </a>
-    <div class="header-row">
-      <div>
-        <h1>Course Registration</h1>
-        <p class="page-sub">{data.meta.session} · Semester {data.meta.semester} · {data.meta.studentLevel} Level</p>
-      </div>
-      <!-- Credit pill -->
-      <div class="credit-pill" style="--cc:{creditColor}">
-        <CreditCard size={13} />
-        <span class="credit-used" style="color:{creditColor}">{usedCredits}</span>
-        <span class="credit-sep">/</span>
-        <span class="credit-max">{maxCredits} CU</span>
-      </div>
+
+    <div class="topbar-center">
+      <h1>Course Registration</h1>
+      <p class="page-sub">{data.meta.session} · Sem {data.meta.semester} · {data.meta.studentLevel}L</p>
     </div>
 
-    <!-- Progress bar always visible -->
-    <div class="credit-track">
-      <div class="credit-fill" style="width:{creditPct}%; background:{creditColor}"></div>
+    <div class="topbar-right">
+      <div class="credit-ring" style="--pct:{creditPct}; --clr:{creditColor}">
+        <svg width="40" height="40" viewBox="0 0 40 40">
+          <circle cx="20" cy="20" r="16" fill="none" stroke="var(--color-border)" stroke-width="3.5"/>
+          <circle
+            cx="20" cy="20" r="16" fill="none"
+            stroke={creditColor} stroke-width="3.5"
+            stroke-dasharray="{Math.min(creditPct, 100) * 1.005} 100.5"
+            stroke-dashoffset="25.125"
+            stroke-linecap="round"
+          />
+        </svg>
+        <div class="ring-label">
+          <span class="ring-used" style="color:{creditColor}">{usedCredits}</span>
+          <span class="ring-max">/{maxCredits}</span>
+        </div>
+      </div>
+
+      <div class="phase-tag" style="color:{phaseInfo[phase].color}; background:{phaseInfo[phase].bg}">
+        {#if phase === 'locked'}<Lock size={10}/>{:else if phase === 'submitted'}<ShieldAlert size={10}/>{:else}<RefreshCw size={10}/>{/if}
+        {phaseInfo[phase].label}
+      </div>
     </div>
-    {#if creditPct >= 100}
-      <p class="credit-warn"><AlertCircle size={12} /> Credit limit reached — drop a course to add more.</p>
-    {/if}
   </div>
 
-  <!-- ── Lock banner ────────────────────────────────────────────────────── -->
-  {#if isLocked}
-    <div class="lock-banner">
-      <Lock size={15} />
-      <div>
-        <strong>Registration locked.</strong>
-        Your course registration has been submitted. Contact your academic office if you need to make changes.
-      </div>
-    </div>
-  {/if}
-
-  <!-- ── Server error ───────────────────────────────────────────────────── -->
   {#if form?.error}
-    <div class="form-error-box">
-      <AlertCircle size={14} />
-      {form.error}
-    </div>
+    <div class="alert alert-error"><AlertCircle size={13}/> {form.error}</div>
   {/if}
 
-  <!-- ── Registered courses ─────────────────────────────────────────────── -->
-  {#if regs.length > 0}
-    <section class="reg-section">
-      <div class="section-head">
-        <CheckCircle2 size={14} />
-        <h2>Registered Courses</h2>
-        <span class="section-count">{regs.length} course{regs.length !== 1 ? 's' : ''}</span>
+  <!-- ── Phase banners ──────────────────────────────────────────────────── -->
+  {#if phase === 'submitted'}
+    <div class="alert alert-amber">
+      <ShieldAlert size={14}/>
+      <div>
+        <strong>Registration submitted.</strong>
+        Tap courses below to add or tick registered courses to remove. You have <strong>one update pass</strong> before your registration locks permanently.
       </div>
-
-      <!-- Normal -->
-      {#if normalRegs.length > 0}
-        <div class="reg-group">
-          <div class="reg-group-label" style="color: var(--green-600)">
-            <span class="type-dot" style="background: var(--green-600)"></span>
-            Normal Courses
-          </div>
-          {#each normalRegs as reg (reg.id)}
-            {@const sb = statusBadge(reg.status)}
-            <div class="reg-row">
-              <div class="reg-left">
-                <span class="reg-code">{reg.courseCode}</span>
-                <div class="reg-body">
-                  <span class="reg-title">{reg.courseTitle}</span>
-                  <span class="reg-dept">{reg.department}</span>
-                </div>
-              </div>
-              <div class="reg-right">
-                <span class="reg-cu">{reg.creditUnits} CU</span>
-                <span class="badge {sb.cls}">{sb.text}</span>
-                {#if !isLocked}
-                  <form method="POST" action="?/drop" use:enhance={() => {
-                    dropping = reg.id;
-                    const snapshot = [...regs];
-                    regs = regs.filter(r => r.id !== reg.id);
-                    usedCredits -= reg.creditUnits;
-                    return async ({ result, update }) => {
-                      dropping = null;
-                      if (result.type === 'failure') {
-                        regs = snapshot;
-                        usedCredits += reg.creditUnits;
-                      }
-                      await update({ reset: false });
-                    };
-                  }}>
-                    <input type="hidden" name="registrationId" value={reg.id} />
-                    <button class="drop-btn" disabled={dropping === reg.id} aria-label="Drop">
-                      <Trash2 size={12} />
-                    </button>
-                  </form>
-                {/if}
-              </div>
-            </div>
-          {/each}
-        </div>
-      {/if}
-
-      <!-- Carry-over -->
-      {#if carryOverRegs.length > 0}
-        <div class="reg-group">
-          <div class="reg-group-label" style="color: #f59e0b">
-            <span class="type-dot" style="background: #f59e0b"></span>
-            Carry-Over Courses
-          </div>
-          {#each carryOverRegs as reg (reg.id)}
-            {@const sb = statusBadge(reg.status)}
-            <div class="reg-row">
-              <div class="reg-left">
-                <span class="reg-code">{reg.courseCode}</span>
-                <div class="reg-body">
-                  <span class="reg-title">{reg.courseTitle}</span>
-                  <span class="reg-dept">{reg.department} · {reg.level} Level</span>
-                </div>
-              </div>
-              <div class="reg-right">
-                <span class="reg-cu">{reg.creditUnits} CU</span>
-                <span class="badge {sb.cls}">{sb.text}</span>
-                {#if !isLocked && reg.status !== 'approved'}
-                  <form method="POST" action="?/drop" use:enhance={() => {
-                    dropping = reg.id;
-                    const snapshot = [...regs];
-                    regs = regs.filter(r => r.id !== reg.id);
-                    usedCredits -= reg.creditUnits;
-                    return async ({ result, update }) => {
-                      dropping = null;
-                      if (result.type === 'failure') { regs = snapshot; usedCredits += reg.creditUnits; }
-                      await update({ reset: false });
-                    };
-                  }}>
-                    <input type="hidden" name="registrationId" value={reg.id} />
-                    <button class="drop-btn" disabled={dropping === reg.id} aria-label="Drop">
-                      <Trash2 size={12} />
-                    </button>
-                  </form>
-                {/if}
-              </div>
-            </div>
-          {/each}
-        </div>
-      {/if}
-
-      <!-- Borrowed -->
-      {#if borrowedRegs.length > 0}
-        <div class="reg-group">
-          <div class="reg-group-label" style="color: #3b82f6">
-            <span class="type-dot" style="background: #3b82f6"></span>
-            Borrowed Courses
-          </div>
-          {#each borrowedRegs as reg (reg.id)}
-            {@const sb = statusBadge(reg.status)}
-            <div class="reg-row">
-              <div class="reg-left">
-                <span class="reg-code">{reg.courseCode}</span>
-                <div class="reg-body">
-                  <span class="reg-title">{reg.courseTitle}</span>
-                  <span class="reg-dept">{reg.department}</span>
-                </div>
-              </div>
-              <div class="reg-right">
-                <span class="reg-cu">{reg.creditUnits} CU</span>
-                <span class="badge {sb.cls}">{sb.text}</span>
-                {#if !isLocked}
-                  <form method="POST" action="?/drop" use:enhance={() => {
-                    dropping = reg.id;
-                    const snapshot = [...regs];
-                    regs = regs.filter(r => r.id !== reg.id);
-                    usedCredits -= reg.creditUnits;
-                    return async ({ result, update }) => {
-                      dropping = null;
-                      if (result.type === 'failure') { regs = snapshot; usedCredits += reg.creditUnits; }
-                      await update({ reset: false });
-                    };
-                  }}>
-                    <input type="hidden" name="registrationId" value={reg.id} />
-                    <button class="drop-btn" disabled={dropping === reg.id} aria-label="Drop">
-                      <Trash2 size={12} />
-                    </button>
-                  </form>
-                {/if}
-              </div>
-            </div>
-          {/each}
-        </div>
-      {/if}
-
-    </section>
-  {:else}
-    <div class="reg-empty">
-      <Hash size={20} strokeWidth={1.5} />
-      <p>No courses registered yet. Pick from the list below.</p>
+    </div>
+  {:else if phase === 'locked'}
+    <div class="alert alert-red">
+      <Lock size={14}/>
+      <strong>Registration is locked.</strong> Contact your academic office for any further changes.
     </div>
   {/if}
 
-  <!-- ── Course discovery (hidden when locked) ──────────────────────────── -->
-  {#if !isLocked}
-    <section class="discover-section">
+  <!-- ═══════════════════════════════════════════════════════════════════
+       COURSE DISCOVERY — always on top
+  ════════════════════════════════════════════════════════════════════════ -->
+  {#if phase !== 'locked'}
+    <section class="discover">
 
       <!-- Tab bar -->
       <div class="tab-bar">
@@ -364,78 +267,103 @@
             <button
               class="tab-btn"
               class:active={activeTab === tab.key}
+              style="--tab-color:{tab.color}"
               onclick={() => { activeTab = tab.key; search = ''; }}
             >
-              <svelte:component this={tab.icon} size={13} />
+              <svelte:component this={tab.icon} size={12}/>
               {tab.label}
-              <span class="tab-count">{tab.count}</span>
+              <span class="tab-pill">{tab.count}</span>
             </button>
           {/if}
         {/each}
       </div>
 
-      <p class="tab-desc">
-        {#if activeTab === 'college'}
-          All departments within <strong>{data.meta.studentCollege ?? 'your college'}</strong> · {data.meta.studentLevel} Level
-        {:else if activeTab === 'carryover'}
-          Courses below your level from your college — registered as carry-over (pending approval).
-        {:else}
-          Same-level courses from other colleges — auto-approved on registration.
-        {/if}
-      </p>
-
       <!-- Search -->
-      <div class="tab-search">
+      <div class="search-wrap">
+        <BookOpen size={13} class="search-icon"/>
         <input
           type="text"
-          placeholder="Search by code, title or department…"
+          placeholder="Search code, title, department…"
           bind:value={search}
+          class="search-input"
         />
         {#if search}
-          <button class="clear-btn" onclick={() => (search = '')}>×</button>
+          <button class="search-clear" onclick={() => search = ''}>
+            <X size={11}/>
+          </button>
         {/if}
       </div>
 
-      <!-- Course cards -->
+      <!-- Tab hint -->
+      <p class="tab-hint">
+        {#if activeTab === 'college'}
+          <Building2 size={11}/> {data.meta.studentCollege ?? 'Your college'} · {data.meta.studentLevel}L courses
+        {:else if activeTab === 'carryover'}
+          <RotateCcw size={11}/> Lower-level carry-overs · pending approval
+        {:else}
+          <Globe size={11}/> Other-college courses · auto-approved
+        {/if}
+        {#if phase === 'draft' && pendingAddIds.size > 0}
+          <span class="hint-selected"> · {pendingAddIds.size} selected (+{pendingCredits} CU)</span>
+        {:else if phase === 'submitted'}
+          <span class="hint-submitted"> · Tap to queue for update</span>
+        {/if}
+      </p>
+
+      <!-- Course grid -->
       {#if visibleCourses.length === 0}
-        <div class="tab-empty">
-          <BookOpen size={26} strokeWidth={1.5} />
-          <p>
-            {search ? 'No courses match your search.' :
-             activeTab === 'carryover' ? 'No carry-over courses available.' :
-             'All available courses have been registered.'}
-          </p>
+        <div class="empty-state">
+          <BookOpen size={28} strokeWidth={1.4}/>
+          <p>{search ? 'No courses match your search.' : activeTab === 'carryover' ? 'No carry-over courses available.' : 'All available courses already registered.'}</p>
         </div>
       {:else}
         <div class="course-grid">
           {#each visibleCourses as course (course.id)}
-            {@const over = !canAdd(course.creditUnits)}
-            {@const type = activeTab === 'carryover' ? 'carry_over' : activeTab === 'borrowed' ? 'borrowed' : 'normal'}
+            {@const type = typeFromTab(activeTab)}
+            {@const over = !canAdd(course.creditUnits) && !pendingAddIds.has(course.id)}
+            {@const isDraftSelected = pendingAddIds.has(course.id)}
+            {@const isUpdateSelected = updateAddIds.has(course.id)}
+            {@const isSelected = phase === 'draft' ? isDraftSelected : isUpdateSelected}
+            {@const tColor = typeColor(type)}
+            {@const tBg = typeBg(type)}
+
             <button
               class="course-card"
-              class:over-limit={over}
-              class:is-selected={selectedId === course.id}
-              disabled={over}
-              onclick={() => openDrawer(course.id)}
+              class:selected={isSelected}
+              class:over-limit={over && !isSelected}
+              data-regtype={type}
+              disabled={over && !isSelected}
+              onclick={() => handleCardTap(course)}
+              style="--card-accent:{tColor}; --card-bg:{tBg};"
             >
-              <div class="card-header">
+              <div class="card-top">
                 <span class="card-code">{course.code}</span>
-                <span class="card-cu">{course.creditUnits} CU</span>
+                <span class="card-cu">{course.creditUnits}<span class="cu-label">CU</span></span>
               </div>
+
               <span class="card-title">{course.title}</span>
-              <div class="card-chips">
-                <span><GraduationCap size={10} /> {course.level}L</span>
-                <span><Building2 size={10} /> {course.department}</span>
+
+              <div class="card-meta">
+                <span class="meta-chip"><GraduationCap size={9}/> {course.level}L</span>
+                <span class="meta-chip"><Building2 size={9}/> {course.departmentCode}</span>
                 {#if activeTab === 'borrowed'}
-                  <span class="chip-college">{course.collegeAbbr}</span>
+                  <span class="meta-chip borrowed-chip">{course.collegeAbbr}</span>
                 {/if}
               </div>
-              <div class="card-cta">
+
+              <div class="card-footer" class:footer-selected={isSelected} style="--fc:{tColor}; --fb:{tBg}">
+                <span class="footer-type">
+                  <span class="type-dot" style="background:{tColor}"></span>
+                  {typeLabel(type)}
+                </span>
                 {#if over}
-                  <span class="cta-text muted">Limit reached</span>
+                  <span class="footer-limit">Limit reached</span>
+                {:else if isSelected}
+                  <span class="footer-sel" style="color:{tColor}">
+                    <CheckCircle2 size={10}/> Selected
+                  </span>
                 {:else}
-                  <span class="cta-text"><Plus size={12} /> Add</span>
-                  <ChevronRight size={13} />
+                  <span class="footer-add">Tap to add</span>
                 {/if}
               </div>
             </button>
@@ -445,377 +373,1145 @@
     </section>
   {/if}
 
-  <!-- ── Confirm drawer ─────────────────────────────────────────────────── -->
-  {#if showDrawer && pendingCourse}
-    <div
-      class="drawer-backdrop"
-      onclick={closeDrawer}
-      role="presentation"
-    ></div>
-
-    <div class="drawer">
-      <div class="drawer-head">
-        <div>
-          <p class="drawer-label">Confirm Registration</p>
-          <h3 class="drawer-code">{pendingCourse.code}</h3>
-          <p class="drawer-title">{pendingCourse.title}</p>
+  <!-- ═══════════════════════════════════════════════════════════════════
+       PENDING ADD TRAY — draft phase, courses queued but not submitted
+  ════════════════════════════════════════════════════════════════════════ -->
+  {#if phase === 'draft' && pendingCourses.length > 0}
+    <section class="pending-tray">
+      <div class="tray-head">
+        <div class="tray-title">
+          <CheckCircle2 size={13} style="color:var(--green-600)"/>
+          <span>Selected to register</span>
+          <span class="tray-count">{pendingCourses.length}</span>
         </div>
-        <button class="close-btn" onclick={closeDrawer} aria-label="Close">
-          <X size={14} />
+        <button class="tray-clear" onclick={() => pendingAddIds = new Map()}>
+          <X size={12}/> Clear all
         </button>
       </div>
 
-      <div class="drawer-chips">
-        <span><GraduationCap size={11} /> Level {pendingCourse.level}</span>
-        <span><Building2 size={11} /> {pendingCourse.department}</span>
-        <span><CreditCard size={11} /> {pendingCourse.creditUnits} Credit Units</span>
-        <span
-          class="type-chip-inline"
-          style="color:{typeColor(drawerType)}; background:{typeColor(drawerType)}15; border-color:{typeColor(drawerType)}40"
-        >
-          <span class="type-dot" style="background:{typeColor(drawerType)}"></span>
-          {typeLabel(drawerType)}
-          {#if drawerType !== 'normal'}<span class="chip-note">· pending approval</span>{/if}
-          {#if drawerType === 'borrowed'}<span class="chip-note">· auto-approved</span>{/if}
-        </span>
+      <div class="tray-list">
+        {#each pendingCourses as { course, type }}
+          <div class="tray-row" style="border-left-color:{typeColor(type)}">
+            <div class="tray-left">
+              <span class="tray-code">{course.code}</span>
+              <span class="tray-title">{course.title}</span>
+            </div>
+            <div class="tray-right">
+              <span class="tray-cu">{course.creditUnits} CU</span>
+              <span class="tray-type" style="color:{typeColor(type)}; background:{typeBg(type)}">{typeLabel(type)}</span>
+              <button
+                class="tray-remove"
+                onclick={() => {
+                  const m = new Map(pendingAddIds);
+                  m.delete(course.id);
+                  pendingAddIds = m;
+                }}
+              >
+                <X size={11}/>
+              </button>
+            </div>
+          </div>
+        {/each}
       </div>
+
+      <div class="tray-footer">
+        <div class="projected-credits">
+          <CreditCard size={12}/>
+          <span>After adding: <strong style="color:{projectedCredits > maxCredits ? '#dc2626' : 'var(--green-600)'}">{projectedCredits}</strong> / {maxCredits} CU</span>
+        </div>
+
+        <!-- Hidden batch-register form -->
+        <form
+          method="POST"
+          action="?/batchRegister"
+          use:enhance={() => {
+            submitting = true;
+            const snapshot = { regs: [...regs], col: [...colCourses], co: [...coCourses], bor: [...borCourses], credits: usedCredits };
+            // Optimistic
+            for (const { course, type } of pendingCourses) optimisticAdd(course, type);
+            pendingAddIds = new Map();
+            return async ({ result, update }) => {
+              submitting = false;
+              if (result.type === 'failure') {
+                // revert
+                regs = snapshot.regs; colCourses = snapshot.col;
+                coCourses = snapshot.co; borCourses = snapshot.bor;
+                usedCredits = snapshot.credits;
+              }
+              await update({ reset: false });
+            };
+          }}
+        >
+          {#each pendingCourses as { course, type }}
+            <input type="hidden" name="courseId" value={course.id}/>
+            <input type="hidden" name="type"     value={type}/>
+          {/each}
+          <button type="submit" class="btn-add-selected" disabled={submitting}>
+            <CheckCircle2 size={14}/>
+            {submitting ? 'Adding…' : `Add ${pendingCourses.length} course${pendingCourses.length !== 1 ? 's' : ''}`}
+          </button>
+        </form>
+      </div>
+    </section>
+  {/if}
+
+  <!-- ═══════════════════════════════════════════════════════════════════
+       REGISTERED COURSES + SUBMIT — below discovery
+  ════════════════════════════════════════════════════════════════════════ -->
+  <section class="reg-section">
+    <button
+      class="reg-section-head"
+      onclick={() => regsExpanded = !regsExpanded}
+    >
+      <CheckCircle2 size={13} style="color:var(--green-600)"/>
+      <h2>Registered Courses</h2>
+      <span class="reg-pill">{regs.length} · {usedCredits} CU</span>
+      {#if phase === 'submitted'}
+        <span class="tick-hint">Tick to remove</span>
+      {/if}
+      <span class="expand-icon">
+        {#if regsExpanded}<ChevronUp size={14}/>{:else}<ChevronDown size={14}/>{/if}
+      </span>
+    </button>
+
+    {#if regsExpanded}
+      {#if regs.length === 0}
+        <div class="reg-empty">
+          <BookOpen size={18} strokeWidth={1.5}/>
+          <p>No courses registered yet — select from the list above.</p>
+        </div>
+      {:else}
+        {#each [
+          { label: 'Normal',     color: 'var(--green-600)', list: normalRegs,    type: 'normal'     },
+          { label: 'Carry-Over', color: '#f59e0b',          list: carryOverRegs, type: 'carry_over' },
+          { label: 'Borrowed',   color: '#6366f1',          list: borrowedRegs,  type: 'borrowed'   },
+        ] as group (group.type)}
+          {#if group.list.length > 0}
+            <div class="reg-group">
+              <div class="group-label" style="color:{group.color}">
+                <span class="g-dot" style="background:{group.color}"></span>
+                {group.label}
+                <span class="g-count">{group.list.length}</span>
+              </div>
+
+              {#each group.list as reg (reg.id)}
+                {@const sb = statusBadge(reg.status)}
+                {@const isDropSelected = updateDropIds.has(reg.id)}
+
+                <div
+                  class="reg-row"
+                  class:row-drop-queued={isDropSelected}
+                  role={phase === 'submitted' ? 'button' : undefined}
+                  tabindex={phase === 'submitted' ? 0 : undefined}
+                  onclick={() => phase === 'submitted' && toggleDropReg(reg.id)}
+                  onkeydown={e => phase === 'submitted' && e.key === 'Enter' && toggleDropReg(reg.id)}
+                >
+                  <!-- Drop indicator — submitted phase -->
+                  {#if phase === 'submitted'}
+                    <span class="row-checkbox" class:row-cb-active={isDropSelected}>
+                      <span class="row-cb-inner"></span>
+                    </span>
+                  {/if}
+
+                  <div class="reg-info">
+                    <span class="reg-code" style="border-color:{group.color}40; color:{group.color}">{reg.courseCode}</span>
+                    <div class="reg-text">
+                      <span class="reg-title">{reg.courseTitle}</span>
+                      <span class="reg-dept">{reg.department}</span>
+                    </div>
+                  </div>
+
+                  <div class="reg-meta">
+                    <span class="reg-cu">{reg.creditUnits}<span style="opacity:.55; font-weight:400"> CU</span></span>
+                    <span class="status-badge" style="color:{sb.color}; background:{sb.bg}">{sb.text}</span>
+
+                    {#if phase === 'draft'}
+                      <form method="POST" action="?/drop" use:enhance={() => {
+                        dropping = reg.id;
+                        const snap = { regs: [...regs], credits: usedCredits };
+                        regs        = regs.filter(r => r.id !== reg.id);
+                        usedCredits -= reg.creditUnits;
+                        return async ({ result, update }) => {
+                          dropping = null;
+                          if (result.type === 'failure') { regs = snap.regs; usedCredits = snap.credits; }
+                          await update({ reset: false });
+                        };
+                      }}>
+                        <input type="hidden" name="registrationId" value={reg.id}/>
+                        <button class="drop-btn" disabled={dropping === reg.id} aria-label="Drop course">
+                          <Trash2 size={12}/>
+                        </button>
+                      </form>
+                    {/if}
+                  </div>
+                </div>
+              {/each}
+            </div>
+          {/if}
+        {/each}
+      {/if}
+
+      <!-- ── Submit button (draft + has regs) ─────────────────────────── -->
+      {#if phase === 'draft' && regs.length > 0}
+        <div class="submit-footer">
+          <form method="POST" action="?/submit" use:enhance={() => {
+            submitting = true;
+            return async ({ result, update }) => {
+              submitting = false;
+              if (result.type === 'success') phase = 'submitted';
+              await update({ reset: false });
+            };
+          }}>
+            <button type="submit" class="btn-submit" disabled={submitting}>
+              <Send size={14}/>
+              {submitting ? 'Submitting…' : 'Submit Registration'}
+            </button>
+          </form>
+          <p class="submit-note">After submitting you get <strong>one update</strong> before your registration is permanently locked.</p>
+        </div>
+      {/if}
+    {/if}
+  </section>
+
+  <!-- ═══════════════════════════════════════════════════════════════════
+       UPDATE PANEL — submitted phase, sticky at bottom
+  ════════════════════════════════════════════════════════════════════════ -->
+  {#if showUpdatePanel}
+    <div class="update-panel">
+      <div class="update-header">
+        <div>
+          <h3>One-Time Update</h3>
+          <p class="update-sub">
+            {updateDropIds.size} to remove · {updateAddIds.size} to add
+            {#if netCreditChange !== 0}· net {netCreditChange > 0 ? '+' : ''}{netCreditChange} CU{/if}
+          </p>
+        </div>
+        <button class="close-btn" onclick={() => { updateAddIds = new Map(); updateDropIds = new Set(); }}>
+          <X size={14}/>
+        </button>
+      </div>
+
+      <!-- Preview -->
+      {#if updateDropRegs.length > 0}
+        <div class="update-group">
+          <span class="update-group-label remove-label">Removing</span>
+          {#each updateDropRegs as r}
+            <div class="update-row remove-row">
+              <span class="reg-code" style="color:#dc2626; border-color:rgba(220,38,38,.3)">{r.courseCode}</span>
+              <span class="update-title">{r.courseTitle}</span>
+              <span class="reg-cu">{r.creditUnits} CU</span>
+            </div>
+          {/each}
+        </div>
+      {/if}
+
+      {#if updateAddCourses.length > 0}
+        <div class="update-group">
+          <span class="update-group-label add-label">Adding</span>
+          {#each updateAddCourses as c}
+            {@const type = updateAddIds.get(c.id)!}
+            <div class="update-row add-row">
+              <span class="reg-code" style="color:{typeColor(type)}; border-color:{typeColor(type)}40">{c.code}</span>
+              <span class="update-title">{c.title}</span>
+              <span class="reg-cu">{c.creditUnits} CU</span>
+            </div>
+          {/each}
+        </div>
+      {/if}
 
       <form
         method="POST"
-        action="?/register"
+        action="?/update"
         use:enhance={() => {
           submitting = true;
-          const course = pendingCourse!;
-          closeDrawer();
-          optimisticAdd(course, drawerType);
           return async ({ result, update }) => {
             submitting = false;
-            if (result.type === 'failure') {
-              revertAdd(course, drawerType);
+            if (result.type === 'success') {
+              phase = 'locked';
+              updateAddIds = new Map();
+              updateDropIds = new Set();
             }
             await update({ reset: false });
           };
         }}
       >
-        <input type="hidden" name="courseId" value={pendingCourse.id} />
-        <input type="hidden" name="type"     value={drawerType} />
-        <button type="submit" class="confirm-btn" disabled={submitting || !canAdd(pendingCourse.creditUnits)}>
-          <CheckCircle2 size={14} />
-          Register {pendingCourse.code}
+        {#each updateDropRegs as r}
+          <input type="hidden" name="dropId" value={r.id}/>
+        {/each}
+        {#each updateAddCourses as c}
+          <input type="hidden" name="addCourseId" value={c.id}/>
+          <input type="hidden" name="addType"     value={updateAddIds.get(c.id)}/>
+        {/each}
+
+        <button type="submit" class="btn-update" disabled={submitting}>
+          <RefreshCw size={14}/>
+          {submitting ? 'Applying…' : 'Apply Update & Lock Registration'}
         </button>
       </form>
+
+      <p class="update-warn">
+        <AlertCircle size={12}/>
+        This is your <strong>one and only</strong> update. After applying, only an admin can make changes.
+      </p>
     </div>
   {/if}
 
 </div>
 
+
 <style>
-  .page { display: flex; flex-direction: column; gap: 1rem; padding-bottom: 6rem; }
+  /* src/routes/(student)/student/courses/register/styles.css */
 
-  /* ── Header ───────────────────────────────────────────────────────────── */
-  .back-link {
-    display: inline-flex; align-items: center; gap: 0.3rem;
-    font-size: 0.75rem; color: var(--color-muted); text-decoration: none;
-    margin-bottom: 0.4rem; transition: color 0.15s;
-  }
-  .back-link:hover { color: var(--green-600); }
+/* ── Tokens ─────────────────────────────────────────────────── */
+:root {
+  /* Green variants */
+  --green-400: #4ade80;
+  --green-500: #22c55e;
+  --green-600: #16a34a;
+  --green-700: #15803d;
+  --green-soft: rgba(22,163,74,0.08);
+  --green-soft-b: rgba(22,163,74,0.14);
+  
+  /* Status colors */
+  --amber-500: #f59e0b;
+  --amber-soft: rgba(245,158,11,0.07);
+  --red-500: #dc2626;
+  --red-soft: rgba(220,38,38,0.06);
+  --blue-500: #3b82f6;
+  --blue-soft: rgba(59,130,246,0.08);
+  
+  /* Layout tokens */
+  --sw: 256px;    /* sidebar width */
+  --sc: 64px;     /* sidebar collapsed */
+  --th: 54px;     /* topbar height */
+}
 
-  .page-header { display: flex; flex-direction: column; gap: 0.35rem; }
+/* ── Page shell ───────────────────────────────────────────────────────── */
+.page {
+  display: flex;
+  flex-direction: column;
+  gap: 0.875rem;
+  padding-bottom: 7rem;
+  max-width: 860px;
+}
 
-  .header-row {
-    display: flex; align-items: flex-start;
-    justify-content: space-between; gap: 1rem;
-  }
-  .page-header h1 { font-size: 1.2rem; font-weight: 800; color: var(--color-text); margin: 0; }
-  .page-sub { font-size: 0.76rem; color: var(--color-muted); margin: 0.1rem 0 0; }
+/* ── Top bar ──────────────────────────────────────────────────────────── */
+.topbar {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+.back-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  font-size: 0.72rem;
+  color: var(--color-muted);
+  text-decoration: none;
+  padding: 0.3rem 0;
+  transition: color 0.15s;
+  flex-shrink: 0;
+  margin-top: 0.2rem;
+}
+.back-link:hover { color: var(--green-600); }
 
-  .credit-pill {
-    display: inline-flex; align-items: center; gap: 0.3rem;
-    padding: 0.4rem 0.75rem; border-radius: 999px;
-    border: 1px solid var(--color-border);
-    background: var(--color-surface); flex-shrink: 0;
-    color: var(--color-muted); font-size: 0.78rem;
-  }
-  .credit-used { font-weight: 800; font-size: 0.9rem; }
-  .credit-sep  { opacity: 0.4; }
-  .credit-max  { font-size: 0.72rem; }
+.topbar-center { flex: 1; min-width: 0; }
+.topbar-center h1 { margin: 0; font-size: 1.15rem; font-weight: 800; color: var(--color-text); }
+.page-sub { margin: 0.1rem 0 0; font-size: 0.72rem; color: var(--color-muted); }
 
-  .credit-track {
-    height: 4px; border-radius: 2px;
-    background: var(--color-border); overflow: hidden;
-  }
-  .credit-fill { height: 100%; border-radius: 2px; transition: width 0.35s ease; }
-  .credit-warn {
-    font-size: 0.71rem; color: #dc2626;
-    display: flex; align-items: center; gap: 0.3rem; margin: 0;
-  }
+.topbar-right {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  flex-shrink: 0;
+  flex-wrap: wrap;
+}
 
-  /* ── Lock banner ──────────────────────────────────────────────────────── */
-  .lock-banner {
-    display: flex; align-items: flex-start; gap: 0.625rem;
-    padding: 0.875rem 1rem; border-radius: 0.625rem;
-    background: rgba(245,158,11,.08); border: 1px solid rgba(245,158,11,.3);
-    font-size: 0.8rem; color: #92400e;
-  }
-  .lock-banner strong { display: block; margin-bottom: 0.1rem; }
+/* Credit ring */
+.credit-ring {
+  position: relative;
+  width: 40px;
+  height: 40px;
+  flex-shrink: 0;
+}
+.credit-ring svg { position: absolute; inset: 0; transform: rotate(-90deg); }
+.ring-label {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  line-height: 1;
+}
+.ring-used { font-size: 0.65rem; font-weight: 800; }
+.ring-max  { font-size: 0.42rem; color: var(--color-muted); }
 
-  /* ── Error box ────────────────────────────────────────────────────────── */
-  .form-error-box {
-    display: flex; align-items: center; gap: 0.5rem;
-    padding: 0.75rem 1rem; border-radius: 0.5rem;
-    background: rgba(220,38,38,.08); border: 1px solid rgba(220,38,38,.25);
-    font-size: 0.8rem; color: #dc2626;
-  }
+/* Phase tag */
+.phase-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  font-size: 0.63rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  padding: 0.25rem 0.6rem;
+  border-radius: 999px;
+  border: 1px solid;
+}
+.phase-tag.draft {
+  border-color: var(--green-500);
+  background: var(--green-soft);
+  color: var(--green-700);
+}
+.phase-tag.submitted {
+  border-color: var(--amber-500);
+  background: var(--amber-soft);
+  color: #92400e;
+}
+.phase-tag.locked {
+  border-color: var(--red-500);
+  background: var(--red-soft);
+  color: #991b1b;
+}
 
-  /* ── Registered section ───────────────────────────────────────────────── */
-  .reg-section {
-    background: var(--color-surface); border: 1px solid var(--color-border);
-    border-radius: var(--radius-card); overflow: hidden;
-  }
-  .section-head {
-    display: flex; align-items: center; gap: 0.4rem;
-    padding: 0.75rem 1rem; border-bottom: 1px solid var(--color-border);
-  }
-  .section-head h2 { margin: 0; font-size: 0.85rem; font-weight: 700; color: var(--color-text); flex: 1; }
-  .section-count {
-    font-size: 0.7rem; color: var(--color-muted); font-weight: 600;
-    background: var(--color-bg); border: 1px solid var(--color-border);
-    padding: 0.1rem 0.45rem; border-radius: 999px;
-  }
+/* ── Alerts ───────────────────────────────────────────────────────────── */
+.alert {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.6rem;
+  padding: 0.75rem 1rem;
+  border-radius: 0.6rem;
+  border: 1px solid;
+  font-size: 0.79rem;
+  line-height: 1.45;
+}
+.alert strong { font-weight: 700; }
+.alert-error  { background: var(--red-soft); border-color: rgba(220,38,38,.25); color: var(--red-500); }
+.alert-amber  { background: var(--amber-soft); border-color: rgba(245,158,11,.3); color: #92400e; }
+.alert-red    { background: var(--red-soft); border-color: rgba(220,38,38,.25); color: #991b1b; }
+.alert-success { background: var(--green-soft); border-color: rgba(34,197,94,.25); color: var(--green-700); }
 
-  .reg-group { display: flex; flex-direction: column; }
-  .reg-group + .reg-group { border-top: 1px solid var(--color-border); }
+/* ── Discover section ─────────────────────────────────────────────────── */
+.discover {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: 0.875rem;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
 
-  .reg-group-label {
-    display: flex; align-items: center; gap: 0.4rem;
-    font-size: 0.68rem; font-weight: 700; text-transform: uppercase;
-    letter-spacing: 0.04em; padding: 0.5rem 1rem;
-    background: var(--color-bg);
-  }
-  .type-dot { width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; }
+/* Tabs */
+.tab-bar {
+  display: flex;
+  border-bottom: 1px solid var(--color-border);
+  background: var(--color-bg);
+  overflow-x: auto;
+  scrollbar-width: none;
+  padding: 0 0.25rem;
+}
+.tab-bar::-webkit-scrollbar { display: none; }
+.tab-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  padding: 0.65rem 0.875rem;
+  border: none;
+  border-bottom: 2px solid transparent;
+  background: none;
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: var(--color-muted);
+  cursor: pointer;
+  font-family: inherit;
+  white-space: nowrap;
+  transition: color 0.15s, border-color 0.15s;
+  margin-bottom: -1px;
+}
+.tab-btn:hover { color: var(--color-text); }
+.tab-btn.active { color: var(--tab-color); border-bottom-color: var(--tab-color); }
+.tab-pill {
+  min-width: 18px;
+  height: 18px;
+  border-radius: 999px;
+  background: var(--color-border);
+  color: var(--color-muted);
+  font-size: 0.58rem;
+  font-weight: 700;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 3px;
+  transition: background 0.15s, color 0.15s;
+}
+.tab-btn.active .tab-pill {
+  background: color-mix(in srgb, var(--tab-color) 15%, transparent);
+  color: var(--tab-color);
+}
 
-  .reg-row {
-    display: flex; align-items: center; justify-content: space-between;
-    gap: 0.75rem; padding: 0.65rem 1rem;
-    border-bottom: 1px solid var(--color-border); transition: background 0.1s;
-  }
-  .reg-row:last-child { border-bottom: none; }
-  .reg-row:hover { background: var(--color-bg); }
+/* Search */
+.search-wrap {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin: 0.625rem 0.75rem 0;
+  padding: 0.4rem 0.625rem;
+  border-radius: 0.45rem;
+  background: var(--color-bg);
+  border: 1px solid var(--color-border);
+}
+.search-icon { color: var(--color-muted); flex-shrink: 0; }
+.search-input {
+  flex: 1;
+  border: none;
+  background: none;
+  outline: none;
+  font-size: 0.78rem;
+  color: var(--color-text);
+  font-family: inherit;
+}
+.search-input::placeholder { color: var(--color-muted); }
+.search-clear {
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  border: none;
+  background: var(--color-border);
+  color: var(--color-muted);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
 
-  .reg-left { display: flex; align-items: center; gap: 0.625rem; min-width: 0; flex: 1; }
-  .reg-code {
-    font-size: 0.72rem; font-weight: 800; color: var(--color-text);
-    font-family: monospace; white-space: nowrap;
-    background: var(--color-bg); border: 1px solid var(--color-border);
-    padding: 0.1rem 0.35rem; border-radius: 0.25rem;
-  }
-  .reg-body { display: flex; flex-direction: column; min-width: 0; }
-  .reg-title { font-size: 0.82rem; font-weight: 600; color: var(--color-text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  .reg-dept  { font-size: 0.67rem; color: var(--color-muted); margin-top: 0.05rem; }
+/* Tab hint */
+.tab-hint {
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+  font-size: 0.7rem;
+  color: var(--color-muted);
+  padding: 0.35rem 0.75rem 0;
+  margin: 0;
+}
+.hint-selected  { color: var(--green-600); font-weight: 700; }
+.hint-submitted { color: #d97706; font-weight: 600; }
 
-  .reg-right { display: flex; align-items: center; gap: 0.5rem; flex-shrink: 0; }
-  .reg-cu    { font-size: 0.7rem; font-weight: 700; color: var(--color-muted); }
+/* Empty */
+.empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 2.5rem 1rem;
+  color: var(--color-muted);
+  text-align: center;
+}
+.empty-state p { margin: 0; font-size: 0.78rem; }
 
-  .drop-btn {
-    width: 26px; height: 26px; border-radius: 0.3rem;
-    border: 1px solid var(--color-border); background: none;
-    color: var(--color-muted); cursor: pointer;
-    display: flex; align-items: center; justify-content: center; transition: all 0.15s;
-  }
-  .drop-btn:hover { background: rgba(220,38,38,.08); color: #dc2626; border-color: #dc2626; }
-  .drop-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+/* Course grid */
+.course-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(185px, 1fr));
+  gap: 0.5rem;
+  padding: 0.625rem 0.75rem 0.875rem;
+}
 
-  .reg-empty {
-    display: flex; align-items: center; gap: 0.625rem;
-    padding: 1rem; border-radius: var(--radius-card);
-    background: var(--color-surface); border: 1px solid var(--color-border);
-    font-size: 0.8rem; color: var(--color-muted);
-  }
+/* Course card */
+.course-card {
+  background: var(--color-bg);
+  border: 1.5px solid var(--color-border);
+  border-radius: 0.7rem;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  cursor: pointer;
+  text-align: left;
+  font-family: inherit;
+  transition: border-color 0.15s, box-shadow 0.15s, background 0.12s;
+  overflow: hidden;
+}
+.course-card:hover:not(:disabled):not(.selected) {
+  border-color: var(--card-accent);
+  box-shadow: 0 2px 10px rgba(0,0,0,0.07);
+}
+.course-card.selected {
+  border-color: var(--card-accent);
+  border-width: 2px;
+  background: color-mix(in srgb, var(--card-accent) 6%, var(--color-surface));
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--card-accent) 18%, transparent),
+                inset 0 0 0 0 transparent;
+}
+/* Normal-tab selected cards: explicit green */
+.course-card.selected[data-regtype="normal"] {
+  border-color: var(--green-600);
+  box-shadow: 0 0 0 3px rgba(34,197,94,.18);
+}
+.course-card.over-limit { opacity: 0.45; cursor: not-allowed; }
 
-  /* ── Discover section ─────────────────────────────────────────────────── */
-  .discover-section {
-    background: var(--color-surface); border: 1px solid var(--color-border);
-    border-radius: var(--radius-card); overflow: hidden;
-    display: flex; flex-direction: column;
-  }
+/* Card inner layout — everything inside has padding */
 
-  .tab-bar {
-    display: flex; border-bottom: 1px solid var(--color-border);
-    background: var(--color-bg); padding: 0 0.5rem;
-    overflow-x: auto; scrollbar-width: none;
-  }
-  .tab-bar::-webkit-scrollbar { display: none; }
+.card-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.7rem 0.75rem 0.25rem;
+}
+.card-code {
+  font-size: 0.72rem;
+  font-weight: 800;
+  color: var(--color-text);
+  font-family: monospace;
+  letter-spacing: 0.02em;
+}
+.card-cu {
+  font-size: 0.72rem;
+  font-weight: 800;
+  color: var(--card-accent);
+}
+.cu-label { font-size: 0.55rem; font-weight: 600; opacity: 0.7; margin-left: 1px; }
 
-  .tab-btn {
-    display: inline-flex; align-items: center; gap: 0.35rem;
-    padding: 0.65rem 0.875rem; border: none;
-    border-bottom: 2px solid transparent;
-    background: none; font-size: 0.78rem; font-weight: 600;
-    color: var(--color-muted); cursor: pointer; font-family: inherit;
-    white-space: nowrap; transition: color 0.15s, border-color 0.15s;
-    margin-bottom: -1px;
-  }
-  .tab-btn:hover  { color: var(--color-text); }
-  .tab-btn.active { color: var(--green-600); border-bottom-color: var(--green-600); }
+.card-title {
+  font-size: 0.76rem;
+  font-weight: 600;
+  color: var(--color-text);
+  line-height: 1.3;
+  padding: 0 0.75rem;
+}
 
-  .tab-count {
-    min-width: 18px; height: 18px; border-radius: 999px;
-    background: var(--color-border); color: var(--color-muted);
-    font-size: 0.6rem; font-weight: 700;
-    display: inline-flex; align-items: center; justify-content: center; padding: 0 4px;
-  }
-  .tab-btn.active .tab-count { background: var(--green-soft); color: var(--green-700); }
+.card-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.2rem;
+  padding: 0.3rem 0.75rem;
+}
+.meta-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.18rem;
+  font-size: 0.58rem;
+  color: var(--color-muted);
+  padding: 0.06rem 0.28rem;
+  border-radius: 0.18rem;
+  background: var(--color-surface);
+}
+.borrowed-chip { color: #6366f1 !important; background: rgba(99,102,241,.1) !important; font-weight: 700; }
 
-  .tab-desc {
-    font-size: 0.74rem; color: var(--color-muted);
-    padding: 0.625rem 1rem 0; margin: 0;
-  }
+/* Card footer / selection bar */
+.card-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.3rem;
+  font-size: 0.62rem;
+  font-weight: 700;
+  padding: 0.32rem 0.75rem;
+  margin-top: auto;
+  border-top: 1px solid var(--color-border);
+  background: var(--color-bg);
+  border-radius: 0 0 0.55rem 0.55rem;
+  transition: background 0.15s;
+}
+.card-footer.footer-selected {
+  background: color-mix(in srgb, var(--fc) 12%, transparent);
+  border-top-color: color-mix(in srgb, var(--fc) 30%, transparent);
+}
+.footer-type {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.28rem;
+  color: var(--card-accent);
+}
+.footer-add {
+  color: var(--color-muted);
+  font-weight: 500;
+  font-size: 0.6rem;
+}
+.footer-sel {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.2rem;
+  font-weight: 800;
+  font-size: 0.62rem;
+}
+.footer-limit {
+  color: var(--color-muted);
+  font-weight: 400;
+  font-size: 0.6rem;
+}
+.type-dot {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
 
-  .tab-search {
-    display: flex; align-items: center;
-    margin: 0.625rem 0.75rem;
-    padding: 0.4rem 0.625rem; border-radius: 0.45rem;
-    background: var(--color-bg); border: 1px solid var(--color-border);
-  }
-  .tab-search input {
-    flex: 1; border: none; background: none; outline: none;
-    font-size: 0.78rem; color: var(--color-text); font-family: inherit;
-  }
-  .tab-search input::placeholder { color: var(--color-muted); }
-  .clear-btn {
-    width: 16px; height: 16px; border-radius: 50%;
-    border: none; background: var(--color-border); color: var(--color-muted);
-    font-size: 0.65rem; cursor: pointer;
-    display: flex; align-items: center; justify-content: center;
-  }
+/* ── Pending tray ─────────────────────────────────────────────────────── */
+.pending-tray {
+  background: var(--color-surface);
+  border: 1.5px solid var(--green-600);
+  border-radius: 0.875rem;
+  overflow: hidden;
+}
+.tray-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.6rem 0.875rem;
+  border-bottom: 1px solid var(--color-border);
+  background: var(--green-soft);
+}
+.tray-title {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.79rem;
+  font-weight: 700;
+  color: var(--green-700);
+}
+.tray-count {
+  min-width: 18px;
+  height: 18px;
+  border-radius: 999px;
+  background: var(--green-600);
+  color: #fff;
+  font-size: 0.6rem;
+  font-weight: 800;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 4px;
+}
+.tray-clear {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  font-size: 0.68rem;
+  font-weight: 600;
+  color: var(--color-muted);
+  background: none;
+  border: 1px solid var(--color-border);
+  border-radius: 0.35rem;
+  padding: 0.2rem 0.5rem;
+  cursor: pointer;
+  font-family: inherit;
+  transition: color 0.15s, border-color 0.15s;
+}
+.tray-clear:hover { color: #dc2626; border-color: #dc2626; }
 
-  .tab-empty {
-    display: flex; flex-direction: column; align-items: center; gap: 0.5rem;
-    padding: 2.5rem 1rem; color: var(--color-muted); text-align: center;
-  }
-  .tab-empty p { margin: 0; font-size: 0.78rem; }
+.tray-list { display: flex; flex-direction: column; }
+.tray-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  padding: 0.5rem 0.875rem;
+  border-bottom: 1px solid var(--color-border);
+  border-left: 3px solid transparent;
+}
+.tray-row:last-child { border-bottom: none; }
+.tray-left { display: flex; align-items: center; gap: 0.5rem; min-width: 0; flex: 1; }
+.tray-code {
+  font-size: 0.68rem;
+  font-weight: 800;
+  font-family: monospace;
+  color: var(--color-text);
+  white-space: nowrap;
+}
+.tray-title {
+  font-size: 0.76rem;
+  font-weight: 500;
+  color: var(--color-text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.tray-right {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  flex-shrink: 0;
+}
+.tray-cu {
+  font-size: 0.65rem;
+  font-weight: 700;
+  color: var(--color-muted);
+}
+.tray-type {
+  font-size: 0.58rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  padding: 0.1rem 0.35rem;
+  border-radius: 0.2rem;
+}
+.tray-remove {
+  width: 22px;
+  height: 22px;
+  border-radius: 0.3rem;
+  border: 1px solid var(--color-border);
+  background: none;
+  color: var(--color-muted);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.15s;
+}
+.tray-remove:hover { color: #dc2626; border-color: #dc2626; background: rgba(220,38,38,.07); }
 
-  /* Course cards */
-  .course-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
-    gap: 0.5rem; padding: 0 0.75rem 0.75rem;
-  }
+.tray-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.75rem 0.875rem;
+  border-top: 1px solid var(--color-border);
+  flex-wrap: wrap;
+}
+.projected-credits {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 0.74rem;
+  color: var(--color-muted);
+}
 
-  .course-card {
-    background: var(--color-bg); border: 1px solid var(--color-border);
-    border-radius: 0.625rem; padding: 0.875rem;
-    display: flex; flex-direction: column; gap: 0.4rem;
-    cursor: pointer; text-align: left; font-family: inherit;
-    transition: border-color 0.15s, box-shadow 0.15s, background 0.15s;
-  }
-  .course-card:hover:not(:disabled) {
-    border-color: var(--green-600);
-    box-shadow: 0 2px 8px rgba(0,0,0,0.05);
-    background: var(--color-surface);
-  }
-  .course-card.is-selected {
-    border-color: var(--green-600);
-    background: var(--green-soft);
-  }
-  .course-card.over-limit { opacity: 0.5; cursor: not-allowed; }
+.btn-add-selected {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.55rem 1.1rem;
+  border-radius: 0.5rem;
+  border: none;
+  background: var(--green-600);
+  color: #fff;
+  font-size: 0.82rem;
+  font-weight: 700;
+  cursor: pointer;
+  font-family: inherit;
+  transition: background 0.15s;
+}
+.btn-add-selected:hover:not(:disabled) { background: var(--green-700); }
+.btn-add-selected:disabled { opacity: 0.5; cursor: not-allowed; }
 
-  .card-header { display: flex; align-items: center; justify-content: space-between; }
-  .card-code { font-size: 0.78rem; font-weight: 800; color: var(--color-text); font-family: monospace; }
-  .card-cu   { font-size: 0.65rem; font-weight: 700; color: var(--color-muted); }
-  .card-title { font-size: 0.8rem; font-weight: 600; color: var(--color-text); line-height: 1.3; }
+/* ── Registered section ───────────────────────────────────────────────── */
+.reg-section {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: 0.875rem;
+  overflow: hidden;
+}
 
-  .card-chips { display: flex; flex-wrap: wrap; gap: 0.3rem; }
-  .card-chips span {
-    display: inline-flex; align-items: center; gap: 0.2rem;
-    font-size: 0.62rem; color: var(--color-muted);
-    padding: 0.1rem 0.3rem; border-radius: 0.2rem;
-    background: var(--color-surface);
-  }
-  .chip-college { color: #3b82f6 !important; background: rgba(59,130,246,.1) !important; font-weight: 700; }
+.reg-section-head {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  width: 100%;
+  padding: 0.75rem 1rem;
+  background: none;
+  border: none;
+  border-bottom: 1px solid var(--color-border);
+  cursor: pointer;
+  font-family: inherit;
+  transition: background 0.12s;
+}
+.reg-section-head:hover { background: var(--color-bg); }
+.reg-section-head h2 {
+  margin: 0;
+  font-size: 0.85rem;
+  font-weight: 700;
+  color: var(--color-text);
+  flex: 1;
+  text-align: left;
+}
+.reg-pill {
+  font-size: 0.65rem;
+  font-weight: 700;
+  color: var(--color-muted);
+  background: var(--color-bg);
+  border: 1px solid var(--color-border);
+  padding: 0.1rem 0.45rem;
+  border-radius: 999px;
+}
+.tick-hint {
+  font-size: 0.65rem;
+  color: #d97706;
+  font-style: italic;
+}
+.expand-icon { color: var(--color-muted); line-height: 0; }
 
-  .card-cta {
-    display: flex; align-items: center; justify-content: space-between;
-    margin-top: 0.2rem; font-size: 0.72rem; font-weight: 700;
-    color: var(--green-600);
-  }
-  .cta-text { display: inline-flex; align-items: center; gap: 0.2rem; }
-  .cta-text.muted { color: var(--color-muted); font-weight: 400; }
+.reg-empty {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 1.25rem 1rem;
+  font-size: 0.79rem;
+  color: var(--color-muted);
+}
 
-  /* ── Drawer ───────────────────────────────────────────────────────────── */
-  .drawer-backdrop { display: none; }
+/* Reg groups */
+.reg-group { display: flex; flex-direction: column; }
+.reg-group + .reg-group { border-top: 1px solid var(--color-border); }
 
-  .drawer {
-    background: var(--color-surface); border: 1px solid var(--color-border);
-    border-radius: var(--radius-card); padding: 1.25rem;
-    display: flex; flex-direction: column; gap: 0.875rem;
-  }
+.group-label {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.63rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  padding: 0.4rem 1rem;
+  background: var(--color-bg);
+}
+.g-dot { width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0; }
+.g-count {
+  margin-left: auto;
+  font-size: 0.6rem;
+  background: var(--color-border);
+  color: var(--color-muted);
+  padding: 0.05rem 0.35rem;
+  border-radius: 999px;
+}
 
-  .drawer-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 0.5rem; }
-  .drawer-label { font-size: 0.68rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; color: var(--color-muted); margin: 0 0 0.2rem; }
-  .drawer-code  { font-size: 1rem; font-weight: 800; color: var(--color-text); margin: 0; font-family: monospace; }
-  .drawer-title { font-size: 0.82rem; color: var(--color-muted); margin: 0.2rem 0 0; }
+.reg-row {
+  display: flex;
+  align-items: center;
+  gap: 0.625rem;
+  padding: 0.6rem 1rem;
+  border-bottom: 1px solid var(--color-border);
+  transition: background 0.1s;
+}
+.reg-row:last-child { border-bottom: none; }
+.reg-row:hover { background: var(--color-bg); }
+.reg-row[role='button'] { cursor: pointer; }
+.row-drop-queued { background: rgba(220,38,38,.04) !important; }
 
-  .close-btn {
-    width: 26px; height: 26px; border-radius: 50%; flex-shrink: 0;
-    border: 1px solid var(--color-border); background: none;
-    color: var(--color-muted); cursor: pointer;
-    display: flex; align-items: center; justify-content: center; transition: all 0.15s;
-  }
-  .close-btn:hover { background: var(--color-bg); }
+.row-checkbox {
+  flex-shrink: 0;
+  width: 16px;
+  height: 16px;
+  border-radius: 0.25rem;
+  border: 1.5px solid var(--color-border);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: border-color 0.15s, background 0.15s;
+  background: var(--color-bg);
+}
+.row-checkbox.row-cb-active {
+  border-color: #dc2626;
+  background: rgba(220,38,38,.1);
+}
+.row-cb-inner {
+  width: 7px;
+  height: 7px;
+  border-radius: 0.12rem;
+  background: transparent;
+  transition: background 0.12s;
+}
+.row-cb-active .row-cb-inner { background: #dc2626; }
 
-  .drawer-chips { display: flex; flex-wrap: wrap; gap: 0.4rem; align-items: center; }
-  .drawer-chips span {
-    display: inline-flex; align-items: center; gap: 0.25rem;
-    font-size: 0.72rem; color: var(--color-muted);
-    padding: 0.2rem 0.5rem; border-radius: 0.3rem;
-    background: var(--color-bg); border: 1px solid var(--color-border);
-  }
-  .type-chip-inline {
-    font-weight: 700; border: 1px solid !important;
-  }
-  .chip-note { font-weight: 400; opacity: 0.75; font-size: 0.65rem; }
+.reg-info {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex: 1;
+  min-width: 0;
+}
+.reg-code {
+  font-size: 0.67rem;
+  font-weight: 800;
+  font-family: monospace;
+  white-space: nowrap;
+  padding: 0.1rem 0.3rem;
+  border-radius: 0.2rem;
+  border: 1px solid;
+  background: var(--color-bg);
+  flex-shrink: 0;
+}
+.reg-text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+.reg-title {
+  font-size: 0.79rem;
+  font-weight: 600;
+  color: var(--color-text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.reg-dept { font-size: 0.63rem; color: var(--color-muted); margin-top: 0.05rem; }
 
-  .confirm-btn {
-    width: 100%; padding: 0.7rem;
-    border-radius: 0.5rem; border: none;
-    background: var(--green-600); color: #fff;
-    font-size: 0.875rem; font-weight: 700; cursor: pointer;
-    font-family: inherit;
-    display: flex; align-items: center; justify-content: center; gap: 0.4rem;
-    transition: background 0.15s;
-  }
-  .confirm-btn:hover:not(:disabled) { background: var(--green-700); }
-  .confirm-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+.reg-meta {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  flex-shrink: 0;
+}
+.reg-cu {
+  font-size: 0.68rem;
+  font-weight: 700;
+  color: var(--color-muted);
+}
+.status-badge {
+  font-size: 0.57rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  padding: 0.1rem 0.32rem;
+  border-radius: 0.2rem;
+}
 
-  /* ── Badges ───────────────────────────────────────────────────────────── */
-  .badge {
-    display: inline-flex; padding: 0.1rem 0.35rem; border-radius: 0.2rem;
-    font-size: 0.6rem; font-weight: 800; text-transform: uppercase; white-space: nowrap;
-  }
-  .badge-green { background: var(--green-soft);        color: var(--green-700); }
-  .badge-amber { background: rgba(245,158,11,.12);     color: #d97706; }
-  .badge-red   { background: rgba(220,38,38,.1);       color: #dc2626; }
-  .badge-gray  { background: var(--color-bg);          color: var(--color-muted); border: 1px solid var(--color-border); }
+.drop-btn {
+  width: 24px;
+  height: 24px;
+  border-radius: 0.3rem;
+  border: 1px solid var(--color-border);
+  background: none;
+  color: var(--color-muted);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.15s;
+}
+.drop-btn:hover { background: rgba(220,38,38,.08); color: #dc2626; border-color: rgba(220,38,38,.4); }
+.drop-btn:disabled { opacity: 0.4; cursor: not-allowed; }
 
-  /* ── Mobile ───────────────────────────────────────────────────────────── */
-  @media (max-width: 640px) {
-    .page { padding-bottom: 0; }
-    .course-grid { grid-template-columns: 1fr 1fr; }
+/* Submit footer */
+.submit-footer {
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+  padding: 0.875rem 1rem;
+  border-top: 1px solid var(--color-border);
+}
+.btn-submit {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.65rem 1.25rem;
+  border-radius: 0.5rem;
+  border: 1.5px solid var(--green-600);
+  background: var(--green-soft);
+  color: var(--green-700);
+  font-size: 0.875rem;
+  font-weight: 700;
+  cursor: pointer;
+  font-family: inherit;
+  transition: background 0.15s, border-color 0.15s, color 0.15s;
+  align-self: flex-start;
+}
+.btn-submit:hover:not(:disabled) {
+  background: var(--green-600);
+  color: var(--green-600);
+}
+.btn-submit:disabled { opacity: 0.4; cursor: not-allowed; }
+.submit-note { font-size: 0.7rem; color: var(--color-muted); margin: 0; }
 
-    .drawer-backdrop {
-      display: block; position: fixed; inset: 0;
-      background: rgba(0,0,0,0.4); z-index: 50;
-    }
-    .drawer {
-      position: fixed; bottom: 0; left: 0; right: 0;
-      border-radius: 1.25rem 1.25rem 0 0; border-bottom: none;
-      z-index: 60; animation: slide-up 0.2s cubic-bezier(0.32,0.72,0,1);
-      max-height: 85vh; overflow-y: auto;
-    }
-    @keyframes slide-up {
-      from { transform: translateY(100%); }
-      to   { transform: translateY(0); }
-    }
-  }
+/* ── Update panel ─────────────────────────────────────────────────────── */
+.update-panel {
+  background: var(--color-surface);
+  border: 2px solid #f59e0b;
+  border-radius: 0.875rem;
+  padding: 1.25rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.875rem;
+}
+.update-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+.update-header h3 { margin: 0; font-size: 0.95rem; font-weight: 800; color: var(--color-text); }
+.update-sub { font-size: 0.73rem; color: var(--color-muted); margin: 0.15rem 0 0; }
+
+.update-group { display: flex; flex-direction: column; gap: 0.25rem; }
+.update-group-label {
+  font-size: 0.62rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  margin-bottom: 0.1rem;
+}
+.remove-label { color: #dc2626; }
+.add-label    { color: var(--green-600); }
+
+.update-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.4rem 0.625rem;
+  border-radius: 0.35rem;
+  font-size: 0.76rem;
+}
+.remove-row { background: rgba(220,38,38,.06); border: 1px solid rgba(220,38,38,.15); }
+.add-row    { background: rgba(34,197,94,.05);  border: 1px solid rgba(34,197,94,.2);  }
+.update-title { flex: 1; color: var(--color-text); font-weight: 500; }
+
+.close-btn {
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  border: 1px solid var(--color-border);
+  background: none;
+  color: var(--color-muted);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  transition: background 0.15s;
+}
+.close-btn:hover { background: var(--color-bg); }
+
+.btn-update {
+  width: 100%;
+  padding: 0.65rem;
+  border-radius: 0.5rem;
+  border: none;
+  background: #f59e0b;
+  color: #fff;
+  font-size: 0.875rem;
+  font-weight: 700;
+  cursor: pointer;
+  font-family: inherit;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.4rem;
+  transition: background 0.15s;
+}
+.btn-update:hover:not(:disabled) { background: #d97706; }
+.btn-update:disabled { opacity: 0.5; cursor: not-allowed; }
+
+.update-warn {
+  font-size: 0.71rem;
+  color: #92400e;
+  margin: 0;
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+}
+
+/* ── Mobile ───────────────────────────────────────────────────────────── */
+@media (max-width: 640px) {
+  .page { padding-bottom: 0; }
+  .course-grid { grid-template-columns: 1fr 1fr; }
+  .topbar { gap: 0.5rem; }
+  .topbar-center h1 { font-size: 1rem; }
+  .update-panel { position: sticky; bottom: 0; z-index: 40; }
+  .tray-footer { flex-direction: column; align-items: stretch; }
+  .btn-add-selected { width: 100%; justify-content: center; }
+}
 </style>

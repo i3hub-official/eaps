@@ -179,6 +179,7 @@ model User {
   // ── Contact ──────────────────────────────────────────────────────────────
   phone String?
   title String?
+  address String?
 
   // ── Academic identity ─────────────────────────────────────────────────────
   matricNumber String? @unique @map("matric_number")
