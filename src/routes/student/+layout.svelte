@@ -433,7 +433,25 @@
 
 <style>
 	/* ── Tokens ─────────────────────────────────────────────────── */
-	:root {
+/* ── Tokens ─────────────────────────────────────────────────── */
+:root {
+  /* Green variants */
+  --green-400: #4ade80;
+  --green-500: #22c55e;
+  --green-600: #16a34a;
+  --green-700: #15803d;
+  --green-soft: rgba(22,163,74,0.08);
+  --green-soft-b: rgba(22,163,74,0.14);
+  
+  /* Status colors */
+  --amber-500: #f59e0b;
+  --amber-soft: rgba(245,158,11,0.07);
+  --red-500: #dc2626;
+  --red-soft: rgba(220,38,38,0.06);
+  --blue-500: #3b82f6;
+  --blue-soft: rgba(59,130,246,0.08);
+  
+  /* Layout tokens */
 		--g4:  #4ade80;
 		--g5:  #22c55e;
 		--g6:  #16a34a;

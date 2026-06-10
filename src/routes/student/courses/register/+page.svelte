@@ -32,6 +32,10 @@
     borCourses  = data.borrowedCourses;
     phase       = data.meta.phase as Phase;
     usedCredits = data.meta.currentCredits;
+    // Clear pending selections when server data changes
+    pendingAddIds = new Map();
+    updateAddIds = new Map();
+    updateDropIds = new Set();
   });
 
   // ── UI state ──────────────────────────────────────────────────────────
@@ -50,10 +54,58 @@
 
   // ── Helpers ───────────────────────────────────────────────────────────
   const maxCredits  = data.meta.maxCredits;
-  const creditPct   = $derived(Math.min((usedCredits / maxCredits) * 100, 100));
+  
+  // REAL-TIME CREDIT CALCULATIONS
+  // Current registered credits
+  const currentCredits = $derived(usedCredits);
+  
+  // Pending credits (draft: courses queued but not yet added)
+  const pendingCredits = $derived(
+    [...pendingAddIds.keys()].reduce((s, id) => {
+      const c = allAvailable.find(x => x.id === id);
+      return s + (c?.creditUnits ?? 0);
+    }, 0)
+  );
+  
+  // Credits to remove (submitted phase)
+  const creditsToRemove = $derived(
+    [...updateDropIds].reduce((s, regId) => {
+      const reg = regs.find(r => r.id === regId);
+      return s + (reg?.creditUnits ?? 0);
+    }, 0)
+  );
+  
+  // Credits to add (submitted phase)
+  const creditsToAdd = $derived(
+    [...updateAddIds.keys()].reduce((s, courseId) => {
+      const c = allAvailable.find(x => x.id === courseId);
+      return s + (c?.creditUnits ?? 0);
+    }, 0)
+  );
+  
+  // Projected credits after draft additions
+  const projectedAfterAdd = $derived(currentCredits + pendingCredits);
+  
+  // Projected credits after submitted update
+  const projectedAfterUpdate = $derived(currentCredits - creditsToRemove + creditsToAdd);
+  
+  // Credit percentage for ring
+  const creditPct = $derived(Math.min((currentCredits / maxCredits) * 100, 100));
   const creditColor = $derived(
     creditPct > 90 ? '#dc2626' : creditPct > 75 ? '#f59e0b' : 'var(--green-600)'
   );
+  
+  // Can add a specific course (draft phase)
+  function canAddCourse(creditUnits: number, courseId: string): boolean {
+    if (pendingAddIds.has(courseId)) return true; // Already selected
+    return projectedAfterAdd + creditUnits <= maxCredits;
+  }
+  
+  // Can add in submitted phase
+  function canAddInUpdate(creditUnits: number, courseId: string): boolean {
+    if (updateAddIds.has(courseId)) return true;
+    return projectedAfterUpdate + creditUnits <= maxCredits;
+  }
 
   function typeFromTab(tab: typeof activeTab): RegType {
     return tab === 'carryover' ? 'carry_over' : tab === 'borrowed' ? 'borrowed' : 'normal';
@@ -76,23 +128,10 @@
 
   const allAvailable = $derived([...colCourses, ...coCourses, ...borCourses]);
 
-  // Pending credits (draft: courses queued but not yet submitted)
-  const pendingCredits = $derived(
-    [...pendingAddIds.keys()].reduce((s, id) => {
-      const c = allAvailable.find(x => x.id === id);
-      return s + (c?.creditUnits ?? 0);
-    }, 0)
-  );
-  const projectedCredits = $derived(usedCredits + pendingCredits);
-  const canAdd = (cu: number) => projectedCredits + cu <= maxCredits;
-
   // Update panel derived data
   const updateAddCourses = $derived(allAvailable.filter(c => updateAddIds.has(c.id)));
   const updateDropRegs   = $derived(regs.filter(r => updateDropIds.has(r.id)));
-  const netCreditChange  = $derived(
-    updateAddCourses.reduce((s, c) => s + c.creditUnits, 0) -
-    updateDropRegs.reduce((s, r) => s + r.creditUnits, 0)
-  );
+  const netCreditChange  = $derived(creditsToAdd - creditsToRemove);
 
   // Grouped regs
   const normalRegs    = $derived(regs.filter(r => r.registrationType === 'normal'));
@@ -104,21 +143,24 @@
     const type = typeFromTab(activeTab);
 
     if (phase === 'draft') {
-      // Toggle in pending queue
+      // Toggle in pending queue with real-time credit check
       const m = new Map(pendingAddIds);
       if (m.has(course.id)) {
         m.delete(course.id);
       } else {
-        if (!canAdd(course.creditUnits)) return;
+        // Check credit limit before adding
+        if (!canAddCourse(course.creditUnits, course.id)) return;
         m.set(course.id, type);
       }
       pendingAddIds = m;
     } else if (phase === 'submitted') {
-      // Toggle in update-add queue
+      // Toggle in update-add queue with real-time credit check
       const m = new Map(updateAddIds);
       if (m.has(course.id)) {
         m.delete(course.id);
       } else {
+        // Check credit limit after all pending changes
+        if (!canAddInUpdate(course.creditUnits, course.id)) return;
         m.set(course.id, type);
       }
       updateAddIds = m;
@@ -148,6 +190,7 @@
     if (type === 'carry_over') coCourses  = coCourses.filter(c => c.id !== course.id);
     if (type === 'borrowed')   borCourses = borCourses.filter(c => c.id !== course.id);
   }
+  
   function revertAdd(course: CourseEntry, type: RegType) {
     regs = regs.filter(r => r.courseId !== course.id);
     usedCredits -= course.creditUnits;
@@ -194,6 +237,15 @@
   const showUpdatePanel = $derived(
     phase === 'submitted' && (updateAddIds.size > 0 || updateDropIds.size > 0)
   );
+  
+  // Warning messages for credit limits
+  const creditWarning = $derived(
+    phase === 'draft' && projectedAfterAdd > maxCredits 
+      ? `Would exceed ${maxCredits} CU limit by ${projectedAfterAdd - maxCredits} CU`
+      : phase === 'submitted' && projectedAfterUpdate > maxCredits
+      ? `Would exceed ${maxCredits} CU limit by ${projectedAfterUpdate - maxCredits} CU`
+      : null
+  );
 </script>
 
 <div class="page">
@@ -222,7 +274,9 @@
           />
         </svg>
         <div class="ring-label">
-          <span class="ring-used" style="color:{creditColor}">{usedCredits}</span>
+          <span class="ring-used" style="color:{creditColor}">
+            {phase === 'draft' ? projectedAfterAdd : phase === 'submitted' ? projectedAfterUpdate : currentCredits}
+          </span>
           <span class="ring-max">/{maxCredits}</span>
         </div>
       </div>
@@ -236,6 +290,10 @@
 
   {#if form?.error}
     <div class="alert alert-error"><AlertCircle size={13}/> {form.error}</div>
+  {/if}
+  
+  {#if creditWarning}
+    <div class="alert alert-amber"><AlertCircle size={13}/> {creditWarning}</div>
   {/if}
 
   <!-- ── Phase banners ──────────────────────────────────────────────────── -->
@@ -294,7 +352,7 @@
         {/if}
       </div>
 
-      <!-- Tab hint -->
+      <!-- Tab hint with real-time credit info -->
       <p class="tab-hint">
         {#if activeTab === 'college'}
           <Building2 size={11}/> {data.meta.studentCollege ?? 'Your college'} · {data.meta.studentLevel}L courses
@@ -304,9 +362,13 @@
           <Globe size={11}/> Other-college courses · auto-approved
         {/if}
         {#if phase === 'draft' && pendingAddIds.size > 0}
-          <span class="hint-selected"> · {pendingAddIds.size} selected (+{pendingCredits} CU)</span>
+          <span class="hint-selected"> · {pendingAddIds.size} selected (+{pendingCredits} CU → {projectedAfterAdd}/{maxCredits} CU)</span>
+        {:else if phase === 'draft'}
+          <span class="hint-selected"> · {currentCredits}/{maxCredits} CU used</span>
+        {:else if phase === 'submitted' && (updateAddIds.size > 0 || updateDropIds.size > 0)}
+          <span class="hint-submitted"> · Net: {netCreditChange >= 0 ? '+' : ''}{netCreditChange} CU → {projectedAfterUpdate}/{maxCredits} CU</span>
         {:else if phase === 'submitted'}
-          <span class="hint-submitted"> · Tap to queue for update</span>
+          <span class="hint-submitted"> · {currentCredits}/{maxCredits} CU · Tap to queue for update</span>
         {/if}
       </p>
 
@@ -320,7 +382,10 @@
         <div class="course-grid">
           {#each visibleCourses as course (course.id)}
             {@const type = typeFromTab(activeTab)}
-            {@const over = !canAdd(course.creditUnits) && !pendingAddIds.has(course.id)}
+            {@const over = phase === 'draft' 
+              ? !canAddCourse(course.creditUnits, course.id) && !pendingAddIds.has(course.id)
+              : !canAddInUpdate(course.creditUnits, course.id) && !updateAddIds.has(course.id)
+            }
             {@const isDraftSelected = pendingAddIds.has(course.id)}
             {@const isUpdateSelected = updateAddIds.has(course.id)}
             {@const isSelected = phase === 'draft' ? isDraftSelected : isUpdateSelected}
@@ -417,7 +482,10 @@
       <div class="tray-footer">
         <div class="projected-credits">
           <CreditCard size={12}/>
-          <span>After adding: <strong style="color:{projectedCredits > maxCredits ? '#dc2626' : 'var(--green-600)'}">{projectedCredits}</strong> / {maxCredits} CU</span>
+          <span>After adding: <strong style="color:{projectedAfterAdd > maxCredits ? '#dc2626' : 'var(--green-600)'}">{projectedAfterAdd}</strong> / {maxCredits} CU</span>
+          {#if projectedAfterAdd > maxCredits}
+            <span style="color:#dc2626; font-size:0.7rem;">(Exceeds by {projectedAfterAdd - maxCredits} CU)</span>
+          {/if}
         </div>
 
         <!-- Hidden batch-register form -->
@@ -446,7 +514,7 @@
             <input type="hidden" name="courseId" value={course.id}/>
             <input type="hidden" name="type"     value={type}/>
           {/each}
-          <button type="submit" class="btn-add-selected" disabled={submitting}>
+          <button type="submit" class="btn-add-selected" disabled={submitting || projectedAfterAdd > maxCredits}>
             <CheckCircle2 size={14}/>
             {submitting ? 'Adding…' : `Add ${pendingCourses.length} course${pendingCourses.length !== 1 ? 's' : ''}`}
           </button>
@@ -465,7 +533,7 @@
     >
       <CheckCircle2 size={13} style="color:var(--green-600)"/>
       <h2>Registered Courses</h2>
-      <span class="reg-pill">{regs.length} · {usedCredits} CU</span>
+      <span class="reg-pill">{regs.length} · {currentCredits} CU</span>
       {#if phase === 'submitted'}
         <span class="tick-hint">Tick to remove</span>
       {/if}
@@ -582,8 +650,15 @@
         <div>
           <h3>One-Time Update</h3>
           <p class="update-sub">
-            {updateDropIds.size} to remove · {updateAddIds.size} to add
+            {updateDropIds.size} to remove ({creditsToRemove} CU) · {updateAddIds.size} to add ({creditsToAdd} CU)
             {#if netCreditChange !== 0}· net {netCreditChange > 0 ? '+' : ''}{netCreditChange} CU{/if}
+            <br/>
+            <strong style="color:{projectedAfterUpdate > maxCredits ? '#dc2626' : 'var(--green-600)'}">
+              New total: {projectedAfterUpdate} / {maxCredits} CU
+            </strong>
+            {#if projectedAfterUpdate > maxCredits}
+              <span style="color:#dc2626"> (Exceeds by {projectedAfterUpdate - maxCredits} CU)</span>
+            {/if}
           </p>
         </div>
         <button class="close-btn" onclick={() => { updateAddIds = new Map(); updateDropIds = new Set(); }}>
@@ -643,7 +718,7 @@
           <input type="hidden" name="addType"     value={updateAddIds.get(c.id)}/>
         {/each}
 
-        <button type="submit" class="btn-update" disabled={submitting}>
+        <button type="submit" class="btn-update" disabled={submitting || projectedAfterUpdate > maxCredits}>
           <RefreshCw size={14}/>
           {submitting ? 'Applying…' : 'Apply Update & Lock Registration'}
         </button>
@@ -658,33 +733,9 @@
 
 </div>
 
-
 <style>
   /* src/routes/(student)/student/courses/register/styles.css */
 
-/* ── Tokens ─────────────────────────────────────────────────── */
-:root {
-  /* Green variants */
-  --green-400: #4ade80;
-  --green-500: #22c55e;
-  --green-600: #16a34a;
-  --green-700: #15803d;
-  --green-soft: rgba(22,163,74,0.08);
-  --green-soft-b: rgba(22,163,74,0.14);
-  
-  /* Status colors */
-  --amber-500: #f59e0b;
-  --amber-soft: rgba(245,158,11,0.07);
-  --red-500: #dc2626;
-  --red-soft: rgba(220,38,38,0.06);
-  --blue-500: #3b82f6;
-  --blue-soft: rgba(59,130,246,0.08);
-  
-  /* Layout tokens */
-  --sw: 256px;    /* sidebar width */
-  --sc: 64px;     /* sidebar collapsed */
-  --th: 54px;     /* topbar height */
-}
 
 /* ── Page shell ───────────────────────────────────────────────────────── */
 .page {
