@@ -3,13 +3,13 @@
   import { enhance } from '$app/forms';
   import { fade, fly } from 'svelte/transition';
   import type { PageData, ActionData } from './$types';
-  import { 
-    Database, 
-    Loader2, 
-    CheckCircle2, 
-    AlertCircle, 
-    Trash2, 
-    Sprout, 
+  import {
+    Database,
+    Loader2,
+    CheckCircle2,
+    AlertCircle,
+    Trash2,
+    Sprout,
     GraduationCap,
     Building2,
     Users,
@@ -19,80 +19,114 @@
     ChevronRight,
     RotateCcw,
     ShieldCheck,
-    UserPlus
+    Bell,
+    Settings2,
   } from 'lucide-svelte';
 
-  let { data, form }: { data: PageData; form: ActionData } = $props();
+  let { data }: { data: PageData } = $props();
+  let form = $state<ActionData | null>(null);
   let seeding = $state(false);
   let resetting = $state(false);
-  
-  // Live progress state
+
   let progress = $state({ current: 0, total: 0, step: '', detail: '' });
   let logs = $state<string[]>([]);
   let showLogs = $state(false);
-  let eventSource: EventSource | null = $state(null);
+  
+  // Track real server progress
+  let eventSource: EventSource | null = null;
+  let seedResults = $state<string[]>([]);
 
+  // ─── Step definitions (aligned with server results.push order) ───────────
   const seedSteps = [
-    { key: 'levels', label: 'Levels', icon: GraduationCap, total: 8 },
-    { key: 'colleges', label: 'Colleges', icon: Building2, total: 12 },
-    { key: 'departments', label: 'Departments', icon: Building2, total: 68 },
-    { key: 'users', label: 'Staff', icon: Users, total: 10 },
-    { key: 'students', label: 'Students', icon: Users, total: 32 },
-    { key: 'courses', label: 'Courses', icon: BookOpen, total: 40 },
-    { key: 'registrations', label: 'Registrations', icon: FileCheck, total: 0 },
-    { key: 'exam', label: 'Exam Setup', icon: ShieldCheck, total: 1 },
-    { key: 'questions', label: 'Questions', icon: HelpCircle, total: 12 },
+    { key: 'levels',        label: 'Levels',         icon: GraduationCap, total: 8,    emoji: '📊' },
+    { key: 'colleges',      label: 'Colleges',       icon: Building2,     total: 12,   emoji: '🏛️' },
+    { key: 'departments',   label: 'Departments',    icon: Building2,     total: 57,   emoji: '🏢' },
+    { key: 'staff',         label: 'Staff',          icon: Users,         total: 62,   emoji: '👥' },
+    { key: 'students',      label: 'Students',       icon: Users,         total: 45,   emoji: '🎓' },
+    { key: 'courses',       label: 'Courses',        icon: BookOpen,      total: 370,  emoji: '📚' },
+    { key: 'registrations', label: 'Registrations',  icon: FileCheck,     total: null, emoji: '📋' },
+    { key: 'exam',          label: 'Exams',          icon: ShieldCheck,   total: 2,    emoji: '📝' },
+    { key: 'questions',     label: 'Questions',      icon: HelpCircle,    total: 28,   emoji: '❓' },
+    { key: 'notifications', label: 'Notifications',  icon: Bell,          total: null, emoji: '🔔' },
+    { key: 'preferences',   label: 'Preferences',    icon: Settings2,     total: null, emoji: '⚙️' },
   ];
 
-  function addLog(msg: string) {
+  function addLog(msg: string, isError = false) {
     const time = new Date().toLocaleTimeString('en-US', { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' });
     logs = [...logs, `[${time}] ${msg}`];
+    if (isError) {
+      console.error(msg);
+    }
   }
 
   function resetProgress() {
     progress = { current: 0, total: seedSteps.length, step: '', detail: '' };
     logs = [];
+    seedResults = [];
     showLogs = true;
+    form = null;
   }
 
-  function connectToStream() {
-    if (eventSource) {
-      eventSource.close();
-    }
-    
-    eventSource = new EventSource('/api/seed-stream');
-    
-    eventSource.onmessage = (event) => {
-      const data = JSON.parse(event.data);
-      if (data.step) {
-        progress.current = data.step;
-        progress.step = data.message;
-        if (data.detail) progress.detail = data.detail;
-        addLog(data.message);
-      }
-      if (data.complete) {
-        eventSource?.close();
-        seeding = false;
-      }
-      if (data.error) {
-        addLog(`❌ Error: ${data.error}`);
-        eventSource?.close();
-        seeding = false;
-      }
-    };
-    
-    eventSource.onerror = () => {
-      eventSource?.close();
-      seeding = false;
-    };
+  // Real SSE connection to get server progress
+function startSSE() {
+  if (eventSource) {
+    eventSource.close();
   }
+  
+  eventSource = new EventSource('/api/seed-progress');
+  let reconnectAttempts = 0;
+  
+  eventSource.onopen = () => {
+    addLog('✅ Connected to real-time progress stream');
+    reconnectAttempts = 0;
+  };
+  
+  eventSource.onmessage = (event) => {
+    const data = JSON.parse(event.data);
+    
+    if (data.type === 'progress') {
+      const stepIndex = seedSteps.findIndex(s => s.key === data.step);
+      if (stepIndex !== -1) {
+        progress.current = stepIndex + 1;
+        progress.step = data.message;
+        progress.detail = data.detail || '';
+      }
+      addLog(`${data.emoji || '📌'} ${data.message} ${data.detail ? `— ${data.detail}` : ''}`);
+    } 
+    else if (data.type === 'complete') {
+      progress.current = seedSteps.length;
+      addLog(`✨ ${data.message}`);
+      seeding = false;
+      eventSource?.close();
+      setTimeout(() => window.location.reload(), 1500);
+    }
+    else if (data.type === 'error') {
+      addLog(`❌ ${data.message}`, true);
+      seeding = false;
+      eventSource?.close();
+    }
+  };
+  
+  eventSource.onerror = () => {
+    if (reconnectAttempts < 3) {
+      reconnectAttempts++;
+      addLog(`⚠️ Connection lost, reconnecting... (attempt ${reconnectAttempts}/3)`, true);
+      setTimeout(() => startSSE(), 2000);
+    } else {
+      addLog('❌ Failed to maintain progress connection. Please refresh and try again.', true);
+      seeding = false;
+      eventSource?.close();
+    }
+  };
+}
 </script>
 
 <svelte:head><title>Database Seed — MOUAU eTest</title></svelte:head>
 
 <div class="page">
   <div class="card">
-    <!-- Header -->
+
+    <!-- ── Header ──────────────────────────────────────────────────────── -->
     <div class="header">
       <div class="icon-wrap">
         <Database size={28} strokeWidth={2} />
@@ -101,13 +135,13 @@
         <h1>Database Seed</h1>
         <p class="sub">
           {data.isFirstRun
-            ? 'No users found — safe to seed.'
+            ? 'No users found — safe to seed without admin login.'
             : 'Admin access required to re-seed or reset.'}
         </p>
       </div>
     </div>
 
-    <!-- Current counts -->
+    <!-- ── Current counts ──────────────────────────────────────────────── -->
     <div class="counts">
       {#each Object.entries(data.counts) as [key, val]}
         <div class="count-pill" class:has-data={val > 0}>
@@ -117,61 +151,63 @@
       {/each}
     </div>
 
-    <!-- Progress Section (only during seeding) -->
+    <!-- ── Real Progress section (while seeding) ───────────────────────── -->
     {#if seeding}
       <div class="progress-section" transition:fly={{ y: -10, duration: 200 }}>
-        <!-- Progress bar -->
+        
         <div class="progress-header">
-          <span class="progress-label">Seeding in progress…</span>
+          <span class="progress-label">🌱 Real-time seeding in progress...</span>
           <span class="progress-fraction">{progress.current}/{progress.total}</span>
         </div>
-        <div class="progress-track">
-          <div class="progress-fill" style="width: {(progress.current / progress.total) * 100}%"></div>
-        </div>
         
-        <!-- Current step -->
+        <div class="progress-track">
+          <div
+            class="progress-fill"
+            style="width: {Math.min((progress.current / progress.total) * 100, 100)}%"
+          ></div>
+        </div>
+
         {#if progress.step}
           <div class="current-step" transition:fade>
-            <Loader2 size={16} class="spin" />
+            <Loader2 size={15} class="spin" />
             <span>{progress.step}</span>
-            {#if progress.detail}
-              <span class="step-detail">— {progress.detail}</span>
-            {/if}
+            {#if progress.detail}<span class="step-detail">— {progress.detail}</span>{/if}
           </div>
         {/if}
 
-        <!-- Step indicators -->
+        <!-- Step chips showing real completion status -->
         <div class="step-grid">
           {#each seedSteps as step, i}
-            {@const Icon = step.icon}
             {@const isDone = i < progress.current}
             {@const isActive = i === progress.current}
             <div class="step-item" class:done={isDone} class:active={isActive}>
               <div class="step-dot">
                 {#if isDone}
-                  <CheckCircle2 size={14} />
+                  <CheckCircle2 size={13} />
                 {:else if isActive}
-                  <Loader2 size={14} class="spin" />
+                  <Loader2 size={13} class="spin" />
                 {:else}
-                  <Icon size={14} />
+                  <svelte:component this={step.icon} size={13} />
                 {/if}
               </div>
               <span class="step-name">{step.label}</span>
-              <span class="step-count">{step.total}</span>
+              {#if step.total !== null}
+                <span class="step-count">~{step.total}</span>
+              {/if}
             </div>
           {/each}
         </div>
 
-        <!-- Live logs toggle -->
+        <!-- Live real logs toggle -->
         <button class="log-toggle" onclick={() => showLogs = !showLogs}>
-          <ChevronRight size={14} class={showLogs ? 'rotated' : ''} />
-          {showLogs ? 'Hide' : 'Show'} live logs ({logs.length})
+          <ChevronRight size={13} class={showLogs ? 'rotated' : ''} />
+          {showLogs ? 'Hide' : 'Show'} live server logs ({logs.length})
         </button>
-        
+
         {#if showLogs}
           <div class="log-panel" transition:fade>
             {#if logs.length === 0}
-              <div class="log-line muted">Initializing seed process…</div>
+              <div class="log-line muted">Waiting for server response...</div>
             {:else}
               {#each logs as log}
                 <div class="log-line">{log}</div>
@@ -182,11 +218,11 @@
       </div>
     {/if}
 
-    <!-- Result -->
+    <!-- ── Result (from server response) ───────────────────────────────────────── -->
     {#if form?.success && form.results && !seeding}
       <div class="result success" transition:fly={{ y: 10, duration: 200 }}>
         <div class="result-header">
-          <CheckCircle2 size={20} />
+          <CheckCircle2 size={18} />
           <span>Seed complete!</span>
         </div>
         {#each form.results as line}
@@ -196,138 +232,156 @@
     {:else if form?.error && !seeding}
       <div class="result error" transition:fly={{ y: 10, duration: 200 }}>
         <div class="result-header">
-          <AlertCircle size={20} />
+          <AlertCircle size={18} />
           <span>Seed failed</span>
         </div>
         <p>{form.error}</p>
       </div>
     {/if}
 
-    <!-- Actions -->
+    <!-- ── Actions ─────────────────────────────────────────────────────── -->
     <div class="actions">
-      <form method="POST" action="?/seed" use:enhance={() => {
-        resetProgress();
-        seeding = true;
-        addLog('🌱 Starting seed process…');
-        
-        // Simulate progress updates with realistic timing
-        let currentStep = 0;
-        const totalSteps = seedSteps.length;
-        
-        const simulateStep = () => {
-          if (currentStep >= totalSteps || !seeding) return;
+
+      <!-- Seed Button with real progress tracking -->
+      <form
+        method="POST"
+        action="?/seed"
+        use:enhance={() => {
+          resetProgress();
+          seeding = true;
+          addLog('🌱 Starting REAL seed process on server...');
+          addLog('📡 Opening progress stream...');
           
-          const step = seedSteps[currentStep];
-          progress.current = currentStep;
-          progress.step = `Creating ${step.label.toLowerCase()}…`;
-          progress.detail = step.total > 0 ? `${step.total} items` : '';
-          addLog(`📦 ${step.label}: Creating...`);
+          // Start SSE to receive real server progress
+          startSSE();
           
-          currentStep++;
-          setTimeout(simulateStep, 800);
-        };
-        
-        // Start simulation after a short delay
-        setTimeout(simulateStep, 200);
-        
-        return async ({ update }) => { 
-          // Complete any remaining steps
-          while (currentStep < totalSteps) {
-            const step = seedSteps[currentStep];
-            progress.current = currentStep;
-            progress.step = `Creating ${step.label.toLowerCase()}…`;
-            progress.detail = step.total > 0 ? `${step.total} items` : '';
-            addLog(`📦 ${step.label}: Creating...`);
-            currentStep++;
-          }
-          progress.current = totalSteps;
-          progress.step = 'Finalizing seed…';
-          addLog('✨ Seed complete!');
-          await update(); 
-          seeding = false; 
-        };
-      }}>
+          return async ({ update }) => {
+            const result = await update();
+            // Don't stop seeding here - let SSE handle completion
+            return result;
+          };
+        }}
+      >
         <button class="btn-primary" disabled={seeding || resetting}>
           {#if seeding}
-            <Loader2 size={16} class="spin" />
-            Seeding…
+            <Loader2 size={15} class="spin" /> Seeding (real-time)...
           {:else}
-            <Sprout size={16} />
-            Seed Database
+            <Sprout size={15} /> Seed Database
           {/if}
         </button>
       </form>
 
-      {#if !data.isFirstRun}
-        <form method="POST" action="?/reset" use:enhance={() => {
-          if (!confirm('⚠️ WARNING: This will delete ALL data from the database! This action cannot be undone.\n\nAre you absolutely sure you want to reset?')) return () => {};
+      <!-- Reset Button - NOW ADDED ✅ -->
+      <form
+        method="POST"
+        action="?/reset"
+        use:enhance={() => {
+          if (!confirm(
+            `⚠️ DANGER: RESET ALL DATA
+
+This will PERMANENTLY DELETE:
+• All students (${data.counts.students || 0})
+• All staff (${data.counts.staff || 0})
+• All courses (${data.counts.courses || 0})
+• All registrations (${data.counts.registrations || 0})
+• All exam results
+• All questions
+• All notifications
+
+⚠️ This action CANNOT be undone!
+
+Are you absolutely sure?`
+          )) return () => {};
+          
           resetting = true;
-          addLog('🗑️ Resetting all data…');
-          return async ({ update }) => { 
-            await update(); 
+          addLog('🗑️ Initiating database reset...');
+          
+          return async ({ update }) => {
+            const result = await update();
             resetting = false;
-            addLog('✅ Reset complete.');
+            if (result?.data?.success) {
+              addLog('✅ Database reset complete. All data cleared.');
+              setTimeout(() => window.location.reload(), 1500);
+            } else {
+              addLog('❌ Reset failed: ' + (result?.data?.error || 'Unknown error'), true);
+            }
+            return result;
           };
-        }}>
-          <button class="btn-danger" disabled={seeding || resetting}>
-            {#if resetting}
-              <Loader2 size={16} class="spin" />
-              Resetting…
-            {:else}
-              <Trash2 size={16} />
-              Reset All Data
-            {/if}
-          </button>
-        </form>
-      {/if}
+        }}
+      >
+        <button class="btn-danger" disabled={seeding || resetting}>
+          {#if resetting}
+            <Loader2 size={15} class="spin" /> Resetting...
+          {:else}
+            <Trash2 size={15} /> Reset All Data
+          {/if}
+        </button>
+      </form>
     </div>
 
-    <!-- Last result quick refresh hint -->
+    <!-- Refresh hint after seed -->
     {#if form?.success && !seeding}
       <button class="refresh-hint" onclick={() => window.location.reload()}>
-        <RotateCcw size={14} />
+        <RotateCcw size={13} />
         Refresh to see updated counts
       </button>
     {/if}
 
-    <!-- Warning message -->
+    <!-- What gets seeded — summary table -->
+    {#if !seeding && !form}
+      <div class="seed-summary" transition:fade>
+        <p class="summary-title">What will be seeded (real data)</p>
+        <div class="summary-grid">
+          {#each seedSteps as step}
+            <div class="summary-row">
+              <svelte:component this={step.icon} size={13} />
+              <span class="summary-label">{step.label}</span>
+              <span class="summary-val">
+                {step.total !== null ? `~${step.total}` : 'auto'}
+              </span>
+            </div>
+          {/each}
+        </div>
+      </div>
+    {/if}
+
+    <!-- Warning -->
     <div class="warning-box">
-      <AlertCircle size={16} />
-      <span>⚠️ Important: Remove or protect this route before going to production.</span>
+      <AlertCircle size={15} />
+      <span>Remove or protect this route before going to production.</span>
     </div>
+
   </div>
 </div>
 
 <style>
-  @keyframes spin {
-    to { transform: rotate(360deg); }
-  }
-  :global(.spin) {
-    animation: spin 1s linear infinite;
+  @keyframes spin { to { transform: rotate(360deg); } }
+  :global(.spin) { animation: spin 1s linear infinite; }
+
+  /* ── Layout ──────────────────────────────────────────────────────────── */
+  .page {
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 2rem;
+    background: var(--color-bg);
   }
 
-  .page { 
-    min-height: 100vh; 
-    display: flex; 
-    align-items: center; 
-    justify-content: center; 
-    padding: 2rem; 
-    background: var(--color-bg); 
+  .card {
+    background: var(--color-surface);
+    border: 1px solid var(--color-border);
+    border-radius: 1.25rem;
+    padding: 2rem;
+    max-width: 600px;
+    width: 100%;
+    display: flex;
+    flex-direction: column;
+    gap: 1.25rem;
+    box-shadow: 0 4px 24px -4px rgb(0 0 0 / 0.12);
   }
 
-  .card { 
-    background: var(--color-surface); 
-    border: 1px solid var(--color-border); 
-    border-radius: 1.25rem; 
-    padding: 2rem; 
-    max-width: 580px; 
-    width: 100%; 
-    display: flex; 
-    flex-direction: column; 
-    gap: 1.25rem; 
-    box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1);
-  }
-
+  /* ── Header ──────────────────────────────────────────────────────────── */
   .header {
     display: flex;
     align-items: center;
@@ -335,6 +389,7 @@
   }
 
   .icon-wrap {
+    flex-shrink: 0;
     width: 52px;
     height: 52px;
     border-radius: 14px;
@@ -345,66 +400,67 @@
     justify-content: center;
   }
 
-  h1 { 
-    font-size: 1.5rem; 
-    font-weight: 700; 
-    margin: 0; 
+  h1 {
+    font-size: 1.4rem;
+    font-weight: 700;
+    margin: 0;
     color: var(--color-text);
   }
 
-  .sub { 
-    font-size: 0.875rem; 
-    color: var(--color-muted); 
-    margin: 0; 
-    margin-top: 0.15rem;
+  .sub {
+    font-size: 0.825rem;
+    color: var(--color-muted);
+    margin: 0.15rem 0 0;
   }
 
-  /* Counts */
-  .counts { 
-    display: flex; 
-    flex-wrap: wrap; 
-    gap: 0.5rem; 
+  /* ── Counts ──────────────────────────────────────────────────────────── */
+  .counts {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
   }
 
-  .count-pill { 
-    background: var(--color-bg); 
-    border: 1px solid var(--color-border); 
-    border-radius: 0.5rem; 
-    padding: 0.5rem 0.75rem; 
-    display: flex; 
-    flex-direction: column; 
-    align-items: center; 
-    min-width: 72px; 
-    transition: all 0.15s ease;
+  .count-pill {
+    background: var(--color-bg);
+    border: 1px solid var(--color-border);
+    border-radius: 0.5rem;
+    padding: 0.45rem 0.7rem;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    min-width: 68px;
+    transition: border-color 0.15s, background 0.15s;
   }
 
   .count-pill.has-data {
-    border-color: #3b82f6;
+    border-color: rgba(59, 130, 246, 0.5);
     background: rgba(59, 130, 246, 0.05);
+  }
+
+  .count-val {
+    font-size: 1.2rem;
+    font-weight: 700;
+    color: var(--color-text);
+    line-height: 1;
   }
 
   .count-pill.has-data .count-val {
     color: #3b82f6;
   }
 
-  .count-val { 
-    font-size: 1.25rem; 
-    font-weight: 700; 
-    color: var(--color-text);
+  .count-key {
+    font-size: 0.67rem;
+    color: var(--color-muted);
+    text-transform: capitalize;
+    margin-top: 0.1rem;
   }
 
-  .count-key { 
-    font-size: 0.7rem; 
-    color: var(--color-muted); 
-    text-transform: capitalize; 
-  }
-
-  /* Progress Section */
+  /* ── Progress section ────────────────────────────────────────────────── */
   .progress-section {
     background: var(--color-bg);
     border: 1px solid var(--color-border);
-    border-radius: 0.75rem;
-    padding: 1rem;
+    border-radius: 0.875rem;
+    padding: 1rem 1.1rem;
     display: flex;
     flex-direction: column;
     gap: 0.75rem;
@@ -413,12 +469,8 @@
   .progress-header {
     display: flex;
     justify-content: space-between;
-    align-items: center;
-    font-size: 0.8rem;
+    font-size: 0.78rem;
     font-weight: 600;
-  }
-
-  .progress-label {
     color: var(--color-text);
   }
 
@@ -428,7 +480,7 @@
   }
 
   .progress-track {
-    height: 6px;
+    height: 5px;
     background: var(--color-border);
     border-radius: 999px;
     overflow: hidden;
@@ -436,16 +488,16 @@
 
   .progress-fill {
     height: 100%;
-    background: #3b82f6;
+    background: linear-gradient(90deg, #3b82f6, #6366f1);
     border-radius: 999px;
-    transition: width 0.4s ease;
+    transition: width 0.45s cubic-bezier(0.4, 0, 0.2, 1);
   }
 
   .current-step {
     display: flex;
     align-items: center;
     gap: 0.5rem;
-    font-size: 0.8rem;
+    font-size: 0.78rem;
     font-weight: 600;
     color: #3b82f6;
   }
@@ -455,23 +507,24 @@
     color: var(--color-muted);
   }
 
-  /* Step Grid */
+  /* Step chips */
   .step-grid {
     display: grid;
     grid-template-columns: repeat(4, 1fr);
-    gap: 0.5rem;
+    gap: 0.4rem;
   }
 
   .step-item {
     display: flex;
     flex-direction: column;
     align-items: center;
-    gap: 0.25rem;
-    padding: 0.5rem 0.25rem;
+    gap: 0.2rem;
+    padding: 0.45rem 0.2rem;
     border-radius: 0.5rem;
-    font-size: 0.65rem;
+    font-size: 0.62rem;
     color: var(--color-muted);
     transition: all 0.2s ease;
+    border: 1px solid transparent;
   }
 
   .step-item.done {
@@ -479,14 +532,15 @@
   }
 
   .step-item.active {
-    background: rgba(59, 130, 246, 0.1);
+    background: rgba(59, 130, 246, 0.08);
+    border-color: rgba(59, 130, 246, 0.25);
     color: #3b82f6;
     font-weight: 600;
   }
 
   .step-dot {
-    width: 24px;
-    height: 24px;
+    width: 22px;
+    height: 22px;
     border-radius: 50%;
     display: flex;
     align-items: center;
@@ -496,95 +550,57 @@
     transition: all 0.2s ease;
   }
 
-  .step-item.done .step-dot {
-    background: #3b82f6;
-    color: white;
-  }
-
+  .step-item.done .step-dot,
   .step-item.active .step-dot {
     background: #3b82f6;
-    color: white;
+    color: #fff;
   }
 
-  .step-name {
-    text-align: center;
-    line-height: 1.3;
-  }
+  .step-name { text-align: center; line-height: 1.3; }
+  .step-count { font-size: 0.58rem; opacity: 0.65; }
 
-  .step-count {
-    font-size: 0.6rem;
-    opacity: 0.7;
-  }
-
-  /* Logs */
+  /* ── Logs ────────────────────────────────────────────────────────────── */
   .log-toggle {
     display: flex;
     align-items: center;
     gap: 0.35rem;
-    font-size: 0.75rem;
+    font-size: 0.73rem;
     color: var(--color-muted);
     background: none;
     border: none;
     cursor: pointer;
-    padding: 0.25rem 0;
+    padding: 0;
     font-weight: 500;
     transition: color 0.15s;
   }
 
-  .log-toggle:hover {
-    color: var(--color-text);
-  }
+  .log-toggle:hover { color: var(--color-text); }
 
-  .log-toggle :global(.rotated) {
-    transform: rotate(90deg);
-  }
+  :global(.rotated) { transform: rotate(90deg); }
 
   .log-panel {
-    max-height: 200px;
+    max-height: 180px;
     overflow-y: auto;
-    background: #0f172a;
+    background: #0d1117;
     border-radius: 0.5rem;
-    padding: 0.5rem 0.75rem;
-    font-family: 'SF Mono', Monaco, 'Cascadia Code', monospace;
-    font-size: 0.7rem;
-    line-height: 1.6;
+    padding: 0.6rem 0.8rem;
+    font-family: 'SF Mono', 'Cascadia Code', Monaco, monospace;
+    font-size: 0.69rem;
+    line-height: 1.65;
   }
 
-  .log-panel::-webkit-scrollbar {
-    width: 4px;
-  }
+  .log-panel::-webkit-scrollbar { width: 4px; }
+  .log-panel::-webkit-scrollbar-track { background: #161b22; border-radius: 2px; }
+  .log-panel::-webkit-scrollbar-thumb { background: #30363d; border-radius: 2px; }
 
-  .log-panel::-webkit-scrollbar-track {
-    background: #1e293b;
-    border-radius: 2px;
-  }
+  .log-line { color: #3fb950; }
+  .log-line.muted { color: #484f58; font-style: italic; }
 
-  .log-panel::-webkit-scrollbar-thumb {
-    background: #475569;
-    border-radius: 2px;
-  }
-
-  .log-line {
-    color: #22c55e;
-    font-family: monospace;
-  }
-
-  .log-line.muted {
-    color: #64748b;
-    font-style: italic;
-  }
-
-  /* Results */
-  .result { 
-    padding: 1rem; 
-    border-radius: 0.5rem; 
-    font-size: 0.85rem; 
-  }
-
-  .result p { 
-    margin: 0.25rem 0; 
-    padding-left: 1.5rem;
-    font-size: 0.8rem;
+  /* ── Result ──────────────────────────────────────────────────────────── */
+  .result {
+    padding: 0.9rem 1rem;
+    border-radius: 0.625rem;
+    font-size: 0.83rem;
   }
 
   .result-header {
@@ -595,129 +611,158 @@
     margin-bottom: 0.5rem;
   }
 
-  .result.success { 
-    background: #f0fdf4; 
-    color: #15803d; 
-    border: 1px solid #bbf7d0; 
+  .result p {
+    margin: 0.2rem 0;
+    padding-left: 1.5rem;
+    font-size: 0.78rem;
+    opacity: 0.9;
   }
 
-  .result.success .result-header {
+  .result.success {
+    background: #f0fdf4;
     color: #15803d;
+    border: 1px solid #bbf7d0;
   }
 
-  .result.error { 
-    background: #fef2f2; 
-    color: #dc2626; 
-    border: 1px solid #fecaca; 
-  }
-
-  .result.error .result-header {
+  .result.error {
+    background: #fef2f2;
     color: #dc2626;
+    border: 1px solid #fecaca;
   }
 
-  /* Actions */
-  .actions { 
-    display: flex; 
-    gap: 0.75rem; 
-    flex-wrap: wrap; 
+  /* ── Actions ─────────────────────────────────────────────────────────── */
+  .actions {
+    display: flex;
+    gap: 0.75rem;
+    flex-wrap: wrap;
   }
 
-  .btn-primary, 
+  .btn-primary,
   .btn-danger {
     display: inline-flex;
     align-items: center;
     gap: 0.5rem;
-    padding: 0.7rem 1.5rem; 
-    border: none; 
-    border-radius: 0.5rem; 
-    font-weight: 600; 
-    cursor: pointer; 
-    font-size: 0.9rem;
-    transition: all 0.2s ease;
+    padding: 0.65rem 1.4rem;
+    border: none;
+    border-radius: 0.5rem;
+    font-weight: 600;
+    font-size: 0.875rem;
+    cursor: pointer;
+    transition: background 0.15s, transform 0.15s, box-shadow 0.15s;
   }
 
-  .btn-primary { 
-    background: #3b82f6; 
-    color: #fff; 
-  }
-
+  .btn-primary { background: #3b82f6; color: #fff; }
   .btn-primary:hover:not(:disabled) {
     background: #2563eb;
     transform: translateY(-1px);
-    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+    box-shadow: 0 4px 12px -2px rgba(59, 130, 246, 0.4);
   }
 
-  .btn-danger { 
-    background: #dc2626; 
-    color: #fff; 
-  }
-
+  .btn-danger { background: #dc2626; color: #fff; }
   .btn-danger:hover:not(:disabled) {
     background: #b91c1c;
     transform: translateY(-1px);
-    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+    box-shadow: 0 4px 12px -2px rgba(220, 38, 38, 0.4);
   }
 
-  .btn-primary:disabled, 
-  .btn-danger:disabled { 
-    opacity: 0.6; 
-    cursor: not-allowed; 
+  .btn-primary:disabled,
+  .btn-danger:disabled {
+    opacity: 0.55;
+    cursor: not-allowed;
     transform: none;
     box-shadow: none;
   }
 
-  /* Refresh hint */
+  /* ── Refresh hint ────────────────────────────────────────────────────── */
   .refresh-hint {
     display: inline-flex;
     align-items: center;
     gap: 0.4rem;
-    font-size: 0.8rem;
+    font-size: 0.78rem;
     color: #3b82f6;
-    background: rgba(59, 130, 246, 0.1);
-    border: none;
+    background: rgba(59, 130, 246, 0.08);
+    border: 1px solid rgba(59, 130, 246, 0.2);
     border-radius: 0.5rem;
-    padding: 0.5rem 1rem;
+    padding: 0.45rem 0.9rem;
     cursor: pointer;
     font-weight: 500;
-    align-self: center;
-    transition: all 0.2s ease;
+    align-self: flex-start;
+    transition: background 0.15s, transform 0.15s;
   }
 
   .refresh-hint:hover {
-    background: rgba(59, 130, 246, 0.15);
+    background: rgba(59, 130, 246, 0.14);
     transform: translateY(-1px);
   }
 
-  /* Warning box */
+  /* ── Seed summary (pre-seed idle state) ──────────────────────────────── */
+  .seed-summary {
+    background: var(--color-bg);
+    border: 1px solid var(--color-border);
+    border-radius: 0.75rem;
+    padding: 0.875rem 1rem;
+  }
+
+  .summary-title {
+    font-size: 0.72rem;
+    font-weight: 600;
+    color: var(--color-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    margin: 0 0 0.6rem;
+  }
+
+  .summary-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 0.3rem 1.5rem;
+  }
+
+  .summary-row {
+    display: flex;
+    align-items: center;
+    gap: 0.45rem;
+    font-size: 0.775rem;
+    color: var(--color-text);
+  }
+
+  .summary-row :global(svg) {
+    color: var(--color-muted);
+    flex-shrink: 0;
+  }
+
+  .summary-label { flex: 1; }
+
+  .summary-val {
+    font-variant-numeric: tabular-nums;
+    font-weight: 600;
+    color: #3b82f6;
+    font-size: 0.73rem;
+  }
+
+  /* ── Warning ─────────────────────────────────────────────────────────── */
   .warning-box {
     display: flex;
     align-items: center;
     gap: 0.5rem;
-    padding: 0.75rem 1rem;
-    background: rgba(245, 158, 11, 0.1);
-    border: 1px solid rgba(245, 158, 11, 0.25);
+    padding: 0.65rem 0.9rem;
+    background: rgba(245, 158, 11, 0.08);
+    border: 1px solid rgba(245, 158, 11, 0.22);
     border-radius: 0.5rem;
-    font-size: 0.75rem;
-    color: #f59e0b;
+    font-size: 0.73rem;
+    color: #d97706;
   }
 
-  /* Responsive */
+  /* ── Responsive ──────────────────────────────────────────────────────── */
   @media (max-width: 640px) {
-    .page {
-      padding: 1rem;
-    }
-    .card {
-      padding: 1.25rem;
-    }
-    .step-grid {
-      grid-template-columns: repeat(2, 1fr);
-    }
-    .actions {
-      flex-direction: column;
-    }
-    .btn-primary, .btn-danger {
-      justify-content: center;
-      width: 100%;
-    }
+    .page { padding: 1rem; }
+    .card { padding: 1.25rem; border-radius: 1rem; }
+
+    .step-grid { grid-template-columns: repeat(3, 1fr); }
+    .summary-grid { grid-template-columns: 1fr; }
+
+    .actions { flex-direction: column; }
+    .btn-primary,
+    .btn-danger { justify-content: center; width: 100%; }
   }
 </style>

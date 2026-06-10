@@ -1,35 +1,28 @@
-// src/routes/student/+page.server.ts
+// src/routes/student/courses/+page.server.ts
 import type { PageServerLoad } from './$types';
 import { requireStudent } from '$lib/server/auth/guards.js';
 import { prisma } from '$lib/server/db/index.js';
 
 export const load: PageServerLoad = async ({ locals }) => {
-  const user = await requireStudent(locals.user);
+  const user = requireStudent(locals.user);
 
-  const currentSession = user.session ?? deriveSessionFromDate();
+  const currentSession  = user.session ?? deriveSessionFromDate();
   const currentSemester = deriveSemesterFromDate();
 
+  // ── Registered courses for this session/semester ──────────────────────
   const registrations = await prisma.courseRegistration.findMany({
     where: {
       studentId: user.id,
-      session: currentSession,
-      semester: currentSemester,
+      session:   currentSession,
+      semester:  currentSemester,
     },
     include: {
       course: {
         include: {
-          department: { select: { name: true } },
+          department: { select: { name: true, code: true } },
           exams: {
-            where: {
-              session: currentSession,
-              semester: currentSemester,
-            },
-            select: {
-              id: true,
-              title: true,
-              status: true,
-              scheduledStart: true,
-            },
+            where: { session: currentSession, semester: currentSemester },
+            select: { id: true, title: true, status: true, scheduledStart: true },
           },
         },
       },
@@ -38,63 +31,39 @@ export const load: PageServerLoad = async ({ locals }) => {
     orderBy: { createdAt: 'desc' },
   });
 
-  // Also fetch all available courses for the student's department/level
-  // (for registration reference)
-  const availableCourses = await prisma.course.findMany({
-    where: {
-      departmentId: user.departmentId ?? undefined,
-      level: user.level?.level ?? undefined,
-      semester: currentSemester,
-    },
-    include: {
-      department: { select: { name: true } },
-      _count: { select: { registrations: true } },
-    },
-    take: 20,
-  });
-
   return {
     registrations: registrations.map(r => ({
-      id: r.id,
-      courseId: r.courseId,
-      courseCode: r.course.code,
-      courseTitle: r.course.title,
-      creditUnits: r.course.creditUnits,
-      department: r.course.department?.name ?? '—',
-      semester: r.semester,
+      id:               r.id,
+      courseId:         r.courseId,
+      courseCode:       r.course.code,
+      courseTitle:      r.course.title,
+      creditUnits:      r.course.creditUnits,
+      department:       r.course.department?.name ?? '—',
+      semester:         r.semester,
       registrationType: r.registrationType,
-      level: r.level?.level ?? r.level?.name ?? '—',
+      status:           r.status,
+      level:            r.level?.level ?? '—',
       exams: r.course.exams.map(e => ({
-        id: e.id,
-        title: e.title,
-        status: e.status,
+        id:             e.id,
+        title:          e.title,
+        status:         e.status,
         scheduledStart: e.scheduledStart,
       })),
       registeredAt: r.createdAt,
     })),
-    availableCourses: availableCourses.map(c => ({
-      id: c.id,
-      code: c.code,
-      title: c.title,
-      creditUnits: c.creditUnits,
-      department: c.department?.name ?? '—',
-      level: c.level ?? '—',
-      semester: c.semester,
-      registrationCount: c._count.registrations,
-    })),
     meta: {
-      session: currentSession,
-      semester: currentSemester,
+      session:      currentSession,
+      semester:     currentSemester,
+      totalCredits: registrations.reduce((s, r) => s + r.course.creditUnits, 0),
     },
   };
 };
 
 function deriveSessionFromDate(): string {
-  const now = new Date();
-  const year = now.getFullYear();
+  const now   = new Date();
+  const year  = now.getFullYear();
   const month = now.getMonth() + 1;
-  if (month >= 10) return `${year}/${year + 1}`;
-  return `${year - 1}/${year}`;
+  return month >= 10 ? `${year}/${year + 1}` : `${year - 1}/${year}`;
 }
 
 function deriveSemesterFromDate(): number {
