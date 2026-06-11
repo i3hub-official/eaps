@@ -110,6 +110,14 @@ enum RegistrationStatus {
   withdrawn
 }
 
+enum Gender {
+  male
+  female
+  non_binary
+  prefer_not_to_say
+  required
+}
+
 // ─── Institutional hierarchy ──────────────────────────────────────────────────
 
 model College {
@@ -212,11 +220,15 @@ model User {
   isActive     Boolean  @default(true) @map("is_active")
   createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz()
   updatedAt    DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz()
+  emailVerified Boolean   @default(false) @map("emailverified)")
 
   // ── Contact ──────────────────────────────────────────────────────────────
   phone String?
   title String?
   address String?
+
+  gender Gender @default(required) @map("gender")
+  dateOfBirth DateTime @default(now()) @map("dateofbirth") @db.Timestamptz()
 
   // ── Academic identity ─────────────────────────────────────────────────────
   matricNumber String? @unique @map("matric_number")
@@ -238,6 +250,13 @@ model User {
 
   // ── Profile ───────────────────────────────────────────────────────────────
   photoUrl String? @map("photo_url")
+   twitter   String?
+  linkedin  String?
+  github    String?
+  bio       String?
+  nationality String?
+  stateoforigin String?
+  lga String?
 
   // ── Receipt audit trail ───────────────────────────────────────────────────
   receiptNo     String? @map("receipt_no")

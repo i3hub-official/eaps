@@ -77,7 +77,6 @@
           detector: { maxDetected: 1, return: true },
           description: { enabled: true },
           emotion: { enabled: true },
-          landmarks: { enabled: true },
           mesh: { enabled: false },
           iris: { enabled: true },
           antispoof: { enabled: true },
