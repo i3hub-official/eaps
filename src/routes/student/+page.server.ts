@@ -2,106 +2,86 @@
 import type { PageServerLoad } from './$types';
 import { requireStudent } from '$lib/server/auth/guards.js';
 import { prisma } from '$lib/server/db/index.js';
+import { getActiveSemester } from '$lib/server/academic/semester.js';
 
 export const load: PageServerLoad = async ({ locals }) => {
-  const user = await requireStudent(locals.user);
+  const user = requireStudent(locals.user);
 
-  const currentSession = user.session ?? deriveSessionFromDate();
-  const currentSemester = deriveSemesterFromDate();
+  // ── Single source of truth for session/semester ───────────────────────
+  // Always use getActiveSemester() — same as the register server —
+  // so all course counts are computed against the same session/semester.
+  const { session: currentSession, semester: currentSemester } = await getActiveSemester();
 
-  // Get student's level information
+  // ── Student level ─────────────────────────────────────────────────────
   let studentLevel = null;
-  let levelId = null;
+  let levelId: number | null = null;
   if (user.levelId) {
     const level = await prisma.level.findUnique({
       where: { id: user.levelId },
       select: { id: true, level: true, name: true },
     });
-    if (level) {
-      studentLevel = level;
-      levelId = level.id;
-    }
+    if (level) { studentLevel = level; levelId = level.id; }
   }
 
-  // Get level semester configuration
+  // ── Level credit config ───────────────────────────────────────────────
   let levelConfig = null;
   if (levelId) {
     try {
       levelConfig = await prisma.levelSemesterConfig.findUnique({
-        where: {
-          levelId_semester: {
-            levelId: levelId,
-            semester: currentSemester,
-          },
-        },
-        select: {
-          maxCredits: true,
-          maxCarryOver: true,
-          maxBorrowed: true,
-        },
+        where: { levelId_semester: { levelId, semester: currentSemester } },
+        select: { maxCredits: true, maxCarryOver: true, maxBorrowed: true },
       });
-    } catch (err) {
-      console.warn('Could not fetch LevelSemesterConfig:', err);
-    }
+    } catch (err) { console.warn('Could not fetch LevelSemesterConfig:', err); }
   }
 
-  // Get active academic semester details
+  // ── Active academic semester ───────────────────────────────────────────
   let activeSemester = null;
   try {
     activeSemester = await prisma.academicSemester.findFirst({
-      where: {
-        session: currentSession,
-        semester: currentSemester,
-        isActive: true,
-      },
-      select: {
-        id: true,
-        label: true,
-        startDate: true,
-        endDate: true,
-        regOpen: true,
-      },
+      where: { session: currentSession, semester: currentSemester, isActive: true },
+      select: { id: true, label: true, startDate: true, endDate: true, regOpen: true },
     });
-  } catch (err) {
-    console.warn('Could not fetch AcademicSemester:', err);
-  }
+  } catch (err) { console.warn('Could not fetch AcademicSemester:', err); }
 
-  // Fetch registrations to calculate credits and counts
+  // ── Registrations for this session/semester ───────────────────────────
+  // One query — drives course count, credit total, carry-over/borrowed counts.
+  // This is the SAME filter used in the register server so counts always match.
   const registrations = await prisma.courseRegistration.findMany({
     where: {
       studentId: user.id,
-      session: currentSession,
-      semester: currentSemester,
+      session:   currentSession,
+      semester:  currentSemester,
     },
-    include: {
-      course: {
-        select: {
-          creditUnits: true,
-        },
-      },
+    select: {
+      registrationType: true,
+      course: { select: { creditUnits: true } },
     },
   });
 
-  // Calculate totals from fetched registrations
-  const totalCredits = registrations.reduce((sum, reg) => sum + (reg.course?.creditUnits ?? 0), 0);
-  const carryOverCount = registrations.filter(r => r.registrationType === 'carry_over').length;
-  const borrowedCount = registrations.filter(r => r.registrationType === 'borrowed').length;
+  const registeredCourses = registrations.length;                              // ← exact count
+  const totalCredits      = registrations.reduce((s, r) => s + (r.course?.creditUnits ?? 0), 0);
+  const carryOverCount    = registrations.filter(r => r.registrationType === 'carry_over').length;
+  const borrowedCount     = registrations.filter(r => r.registrationType === 'borrowed').length;
 
-  const [
-    recentExams,
-    recentResults,
-    registeredCourses,
-    unreadNotifications,
-  ] = await Promise.all([
-    // Recent/upcoming exams
+  const maxCredits   = levelConfig?.maxCredits   ?? 24;
+  const maxCarryOver = levelConfig?.maxCarryOver ?? 6;
+  const maxBorrowed  = levelConfig?.maxBorrowed  ?? 6;
+
+  // ── Parallel queries ──────────────────────────────────────────────────
+  const [recentExams, recentResults, unreadNotifications] = await Promise.all([
+    // Upcoming / active exams for registered courses only
     prisma.exam.findMany({
       where: {
         status: { in: ['scheduled', 'active'] },
-        session: currentSession,
+        session:  currentSession,
         semester: currentSemester,
         course: {
           registrations: {
-            some: { studentId: user.id, session: currentSession, semester: currentSemester },
+            some: {
+              studentId: user.id,
+              session:   currentSession,
+              semester:  currentSemester,
+            },
           },
         },
       },
@@ -115,7 +95,8 @@ export const load: PageServerLoad = async ({ locals }) => {
         },
       },
     }),
-    // Recent results
+
+    // Recent results (all-time)
     prisma.examResult.findMany({
       where: { studentId: user.id },
       take: 5,
@@ -129,86 +110,67 @@ export const load: PageServerLoad = async ({ locals }) => {
         },
       },
     }),
-    // Course count
-    prisma.courseRegistration.count({
-      where: {
-        studentId: user.id,
-        session: currentSession,
-        semester: currentSemester,
-      },
-    }),
+
     // Unread notifications
     prisma.notification.count({
       where: { userId: user.id, isRead: false },
     }),
   ]);
 
-  // Calculate limits
-  const maxCredits = levelConfig?.maxCredits ?? 24;
-  const maxCarryOver = levelConfig?.maxCarryOver ?? 6;
-  const maxBorrowed = levelConfig?.maxBorrowed ?? 6;
-  const remainingCredits = Math.max(0, maxCredits - totalCredits);
-  const creditPercentage = (totalCredits / maxCredits) * 100;
+  const remainingCredits  = Math.max(0, maxCredits - totalCredits);
+  const creditPercentage  = maxCredits > 0 ? (totalCredits / maxCredits) * 100 : 0;
 
   return {
     recentExams: recentExams.map(e => ({
-      id: e.id,
-      title: e.title,
-      courseCode: e.course.code,
-      courseTitle: e.course.title,
-      status: e.status,
-      scheduledStart: e.scheduledStart,
-      scheduledEnd: e.scheduledEnd,
+      id:              e.id,
+      title:           e.title,
+      courseCode:      e.course.code,
+      courseTitle:     e.course.title,
+      status:          e.status,
+      scheduledStart:  e.scheduledStart,
+      scheduledEnd:    e.scheduledEnd,
       durationMinutes: e.durationMinutes,
-      sessionStatus: e.examSessions[0]?.status ?? null,
-      sessionId: e.examSessions[0]?.id ?? null,
+      sessionStatus:   e.examSessions[0]?.status ?? null,
+      sessionId:       e.examSessions[0]?.id     ?? null,
     })),
+
     recentResults: recentResults.map(r => ({
-      id: r.id,
-      examTitle: r.exam.title,
-      courseCode: r.exam.course?.code,
-      score: r.score,
-      percentage: r.percentage,
-      passed: r.passed,
-      grade: r.grade,
+      id:          r.id,
+      examTitle:   r.exam.title,
+      courseCode:  r.exam.course?.code,
+      score:       r.score,
+      percentage:  r.percentage,
+      passed:      r.passed,
+      grade:       r.grade,
       submittedAt: r.submittedAt,
     })),
+
     student: {
       level: studentLevel,
       levelConfig: {
         maxCredits,
         maxCarryOver,
         maxBorrowed,
-        currentCredits: totalCredits,
-        currentCarryOver: carryOverCount,
-        currentBorrowed: borrowedCount,
+        currentCredits:           totalCredits,
+        currentCarryOver:         carryOverCount,
+        currentBorrowed:          borrowedCount,
         remainingCredits,
         creditPercentage,
-        hasReachedCreditLimit: totalCredits >= maxCredits,
-        hasReachedCarryOverLimit: carryOverCount >= maxCarryOver,
-        hasReachedBorrowedLimit: borrowedCount >= maxBorrowed,
+        hasReachedCreditLimit:    totalCredits    >= maxCredits,
+        hasReachedCarryOverLimit: carryOverCount  >= maxCarryOver,
+        hasReachedBorrowedLimit:  borrowedCount   >= maxBorrowed,
       },
     },
+
     academicSemester: activeSemester,
+
     meta: {
-      session: currentSession,
-      semester: currentSemester,
-      semesterLabel: activeSemester?.label ?? `${currentSemester === 1 ? 'First' : 'Second'} Semester ${currentSession}`,
-      registeredCourses,
+      session:           currentSession,
+      semester:          currentSemester,
+      semesterLabel:     activeSemester?.label
+                           ?? `${currentSemester === 1 ? 'First' : 'Second'} Semester ${currentSession}`,
+      registeredCourses, // ← driven by the same registration query above
       unreadNotifications,
     },
   };
 };
-
-function deriveSessionFromDate(): string {
-  const now = new Date();
-  const year = now.getFullYear();
-  const month = now.getMonth() + 1;
-  if (month >= 10) return `${year}/${year + 1}`;
-  return `${year - 1}/${year}`;
-}
-
-function deriveSemesterFromDate(): number {
-  const month = new Date().getMonth() + 1;
-  return month >= 4 && month <= 9 ? 2 : 1;
-}

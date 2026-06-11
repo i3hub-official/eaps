@@ -2,59 +2,51 @@
 import type { PageServerLoad } from './$types';
 import { requireStudent } from '$lib/server/auth/guards.js';
 import { prisma } from '$lib/server/db/index.js';
+import { getActiveSemester } from '$lib/server/academic/semester.js';
 
 export const load: PageServerLoad = async ({ locals }) => {
   const user = requireStudent(locals.user);
 
-  const currentSession  = user.session ?? deriveSessionFromDate();
-  const currentSemester = deriveSemesterFromDate();
-  
-  // Get the active academic semester details
+  // ── Single source of truth ────────────────────────────────────────────
+  const { session: currentSession, semester: currentSemester } = await getActiveSemester();
+
+  // ── Student profile (for print slip) ──────────────────────────────────
+  const studentProfile = await prisma.user.findUnique({
+    where: { id: user.id },
+    select: {
+      fullName:     true,
+      matricNumber: true,
+      level:        { select: { level: true, name: true } },
+      college:      { select: { name: true } },
+      department:   { select: { name: true } },
+      programme:    { select: { name: true } },
+    },
+  });
+
+  // ── Active academic semester ───────────────────────────────────────────
   let activeSemester = null;
   try {
     activeSemester = await prisma.academicSemester.findFirst({
-      where: {
-        session: currentSession,
-        semester: currentSemester,
-        isActive: true,
-      },
+      where: { session: currentSession, semester: currentSemester, isActive: true },
       select: {
-        id: true,
-        session: true,
-        semester: true,
-        label: true,
-        startDate: true,
-        endDate: true,
-        regOpen: true,
+        id: true, session: true, semester: true,
+        label: true, startDate: true, endDate: true, regOpen: true,
       },
     });
-  } catch (err) {
-    console.warn('Could not fetch AcademicSemester:', err);
-  }
+  } catch (err) { console.warn('Could not fetch AcademicSemester:', err); }
 
-  // Get the student's level and semester configuration
+  // ── Level credit config ───────────────────────────────────────────────
   let levelConfig = null;
   if (user.levelId) {
     try {
       levelConfig = await prisma.levelSemesterConfig.findUnique({
-        where: {
-          levelId_semester: {
-            levelId: user.levelId,
-            semester: currentSemester,
-          },
-        },
-        select: {
-          maxCredits: true,
-          maxCarryOver: true,
-          maxBorrowed: true,
-        },
+        where: { levelId_semester: { levelId: user.levelId, semester: currentSemester } },
+        select: { maxCredits: true, maxCarryOver: true, maxBorrowed: true },
       });
-    } catch (err) {
-      console.warn('Could not fetch LevelSemesterConfig:', err);
-    }
+    } catch (err) { console.warn('Could not fetch LevelSemesterConfig:', err); }
   }
 
-  // ── Registered courses for this session/semester ──────────────────────
+  // ── Registered courses ────────────────────────────────────────────────
   const registrations = await prisma.courseRegistration.findMany({
     where: {
       studentId: user.id,
@@ -66,7 +58,11 @@ export const load: PageServerLoad = async ({ locals }) => {
         include: {
           department: { select: { name: true, code: true } },
           exams: {
-            where: { session: currentSession, semester: currentSemester },
+            where: {
+              session:  currentSession,
+              semester: currentSemester,
+              status:   { not: 'cancelled' },  // hide cancelled exams
+            },
             select: { id: true, title: true, status: true, scheduledStart: true },
           },
         },
@@ -76,24 +72,36 @@ export const load: PageServerLoad = async ({ locals }) => {
     orderBy: { createdAt: 'desc' },
   });
 
-  // Calculate totals
-  const totalCredits = registrations.reduce((s, r) => s + r.course.creditUnits, 0);
+  // ── Derived totals ────────────────────────────────────────────────────
+  const totalCredits   = registrations.reduce((s, r) => s + r.course.creditUnits, 0);
   const carryOverCount = registrations.filter(r => r.registrationType === 'carry_over').length;
-  const borrowedCount = registrations.filter(r => r.registrationType === 'borrowed').length;
-  
-  // Check limits (using config if available, otherwise defaults)
+  const borrowedCount  = registrations.filter(r => r.registrationType === 'borrowed').length;
+
   const maxCarryOver = levelConfig?.maxCarryOver ?? 6;
-  const maxBorrowed = levelConfig?.maxBorrowed ?? 6;
-  const maxCredits = levelConfig?.maxCredits ?? 24;
-  
+  const maxBorrowed  = levelConfig?.maxBorrowed  ?? 6;
+  const maxCredits   = levelConfig?.maxCredits   ?? 24;
+
+  const remainingCredits         = Math.max(0, maxCredits - totalCredits);
   const hasReachedCarryOverLimit = carryOverCount >= maxCarryOver;
-  const hasReachedBorrowedLimit = borrowedCount >= maxBorrowed;
-  const hasReachedCreditLimit = totalCredits >= maxCredits;
-  
-  const remainingCredits = Math.max(0, maxCredits - totalCredits);
-  const canAddMore = remainingCredits > 0 && !hasReachedCreditLimit;
+  const hasReachedBorrowedLimit  = borrowedCount  >= maxBorrowed;
+  const hasReachedCreditLimit    = totalCredits   >= maxCredits;
+  const canAddMore               = remainingCredits > 0 && !hasReachedCreditLimit;
 
   return {
+    // ── Print slip ──────────────────────────────────────────────────────
+    student: {
+      name:       studentProfile?.fullName         ?? user.fullName ?? '—',
+      regNumber:  studentProfile?.matricNumber     ?? '—',
+      faculty:    studentProfile?.college?.name    ?? '—',
+      department: studentProfile?.department?.name ?? '—',
+      programme:  studentProfile?.programme?.name  ?? '—',
+      level:      studentProfile?.level?.name
+                    ?? (studentProfile?.level?.level
+                        ? `${studentProfile.level.level} Level`
+                        : '—'),
+    },
+
+    // ── Registrations ───────────────────────────────────────────────────
     registrations: registrations.map(r => ({
       id:               r.id,
       courseId:         r.courseId,
@@ -113,10 +121,13 @@ export const load: PageServerLoad = async ({ locals }) => {
       })),
       registeredAt: r.createdAt,
     })),
+
+    // ── Meta ────────────────────────────────────────────────────────────
     meta: {
-      session:      currentSession,
-      semester:     currentSemester,
-      semesterLabel: activeSemester?.label ?? `${currentSemester === 1 ? 'First' : 'Second'} Semester ${currentSession}`,
+      session:       currentSession,
+      semester:      currentSemester,
+      semesterLabel: activeSemester?.label
+                       ?? `${currentSemester === 1 ? 'First' : 'Second'} Semester ${currentSession}`,
       totalCredits,
       maxCredits,
       remainingCredits,
@@ -124,29 +135,20 @@ export const load: PageServerLoad = async ({ locals }) => {
       limits: {
         maxCarryOver,
         maxBorrowed,
-        currentCarryOver: carryOverCount,
-        currentBorrowed: borrowedCount,
+        currentCarryOver:         carryOverCount,
+        currentBorrowed:          borrowedCount,
         hasReachedCarryOverLimit,
         hasReachedBorrowedLimit,
       },
     },
-    academicSemester: activeSemester ? {
-      label: activeSemester.label,
-      startDate: activeSemester.startDate,
-      endDate: activeSemester.endDate,
-      regOpen: activeSemester.regOpen,
-    } : null,
+
+    academicSemester: activeSemester
+      ? {
+          label:     activeSemester.label,
+          startDate: activeSemester.startDate,
+          endDate:   activeSemester.endDate,
+          regOpen:   activeSemester.regOpen,
+        }
+      : null,
   };
 };
-
-function deriveSessionFromDate(): string {
-  const now   = new Date();
-  const year  = now.getFullYear();
-  const month = now.getMonth() + 1;
-  return month >= 10 ? `${year}/${year + 1}` : `${year - 1}/${year}`;
-}
-
-function deriveSemesterFromDate(): number {
-  const month = new Date().getMonth() + 1;
-  return month >= 4 && month <= 9 ? 2 : 1;
-}
