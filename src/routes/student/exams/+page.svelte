@@ -1,19 +1,20 @@
 <script lang="ts">
   import {
     ClipboardList, Clock, Calendar, ArrowRight, AlertCircle,
-    Play, CheckCircle2, XCircle, Timer, Zap, Filter
+    Play, CheckCircle2, XCircle, Timer, Zap, Filter, Ban
   } from 'lucide-svelte';
   import type { PageData } from './$types';
 
   let { data }: { data: PageData } = $props();
 
-  let filter = $state<'all' | 'upcoming' | 'active' | 'completed'>('all');
+  let filter = $state<'all' | 'upcoming' | 'active' | 'completed' | 'cancelled'>('all');
 
   const filtered = $derived(() => {
     let list = data.exams;
-    if (filter === 'upcoming') list = list.filter(e => e.status === 'not_started' || e.status === 'scheduled');
-    if (filter === 'active') list = list.filter(e => e.status === 'active' || e.status === 'in_progress');
+    if (filter === 'upcoming')  list = list.filter(e => e.status === 'not_started' || e.status === 'scheduled');
+    if (filter === 'active')    list = list.filter(e => e.status === 'active' || e.status === 'in_progress');
     if (filter === 'completed') list = list.filter(e => e.status === 'submitted' || e.status === 'completed');
+    if (filter === 'cancelled') list = list.filter(e => e.status === 'cancelled');
     return list;
   });
 
@@ -28,6 +29,8 @@
       case 'not_started':
       case 'scheduled':
         return { label: 'Upcoming', color: '#f59e0b', bg: 'rgba(245,158,11,0.08)', icon: Calendar };
+      case 'cancelled':
+        return { label: 'Cancelled', color: '#dc2626', bg: 'rgba(220,38,38,0.08)', icon: Ban };
       default:
         return { label: status, color: 'var(--color-muted)', bg: 'var(--color-bg)', icon: Clock };
     }
@@ -65,10 +68,11 @@
 
   <!-- Filters -->
   <div class="filter-tabs">
-    <button class="filter-tab" class:active={filter === 'all'} onclick={() => filter = 'all'}>All</button>
-    <button class="filter-tab" class:active={filter === 'upcoming'} onclick={() => filter = 'upcoming'}>Upcoming</button>
-    <button class="filter-tab" class:active={filter === 'active'} onclick={() => filter = 'active'}>Active</button>
+    <button class="filter-tab" class:active={filter === 'all'}       onclick={() => filter = 'all'}>All</button>
+    <button class="filter-tab" class:active={filter === 'upcoming'}  onclick={() => filter = 'upcoming'}>Upcoming</button>
+    <button class="filter-tab" class:active={filter === 'active'}    onclick={() => filter = 'active'}>Active</button>
     <button class="filter-tab" class:active={filter === 'completed'} onclick={() => filter = 'completed'}>Completed</button>
+    <button class="filter-tab cancelled" class:active={filter === 'cancelled'} onclick={() => filter = 'cancelled'}>Cancelled</button>
   </div>
 
   <!-- Exam list -->
@@ -76,7 +80,8 @@
     {#each filtered() as exam (exam.id)}
       {@const cfg = statusConfig(exam.status)}
       {@const Icon = cfg.icon}
-      <div class="exam-card">
+      {@const isCancelled = exam.status === 'cancelled'}
+      <div class="exam-card" class:is-cancelled={isCancelled}>
         <div class="exam-card-top">
           <div class="exam-status-badge" style="background: {cfg.bg}; color: {cfg.color};">
             <Icon size={12} /> {cfg.label}
@@ -92,7 +97,7 @@
           <span><Calendar size={11} /> {formatDate(exam.scheduledStart)}</span>
           <span>Pass: {exam.passMark}/{exam.totalMarks}</span>
         </div>
-        {#if exam.scheduledStart}
+        {#if exam.scheduledStart && !isCancelled}
           {@const days = daysUntil(exam.scheduledStart)}
           {#if days !== null && days <= 3 && days > 0 && exam.status !== 'submitted'}
             <div class="exam-countdown-bar">
@@ -101,7 +106,11 @@
           {/if}
         {/if}
         <div class="exam-actions">
-          {#if exam.status === 'active' || exam.status === 'in_progress'}
+          {#if isCancelled}
+            <div class="cancelled-notice">
+              <Ban size={12} /> This exam has been cancelled
+            </div>
+          {:else if exam.status === 'active' || exam.status === 'in_progress'}
             <a href="/student/exam/{exam.sessionId ?? exam.id}" class="btn-start">
               <Play size={13} /> Resume Exam
             </a>
@@ -171,6 +180,8 @@
   }
   .filter-tab:hover { border-color: var(--green-600); color: var(--green-600); }
   .filter-tab.active { background: var(--green-600); color: white; border-color: var(--green-600); }
+  .filter-tab.cancelled:hover { border-color: #dc2626; color: #dc2626; }
+  .filter-tab.cancelled.active { background: #dc2626; border-color: #dc2626; color: white; }
 
   .exam-list-page {
     display: grid;
@@ -184,6 +195,13 @@
     transition: all 0.15s;
   }
   .exam-card:hover { border-color: var(--green-600); box-shadow: 0 4px 12px rgba(0,0,0,0.04); }
+  .exam-card.is-cancelled {
+    opacity: 0.65;
+    border-style: dashed;
+  }
+  .exam-card.is-cancelled:hover { border-color: #dc2626; box-shadow: none; }
+  .exam-card.is-cancelled .exam-title { text-decoration: line-through; }
+
   .exam-card-top { display: flex; align-items: center; gap: 0.4rem; flex-wrap: wrap; }
   .exam-status-badge {
     display: inline-flex; align-items: center; gap: 0.3rem;
@@ -211,6 +229,12 @@
     font-size: 0.72rem; font-weight: 700;
   }
   .exam-actions { display: flex; align-items: center; justify-content: space-between; gap: 0.625rem; margin-top: 0.25rem; }
+  .cancelled-notice {
+    display: inline-flex; align-items: center; gap: 0.35rem;
+    font-size: 0.72rem; font-weight: 600; color: #dc2626;
+    padding: 0.35rem 0.625rem; border-radius: 0.35rem;
+    background: rgba(220,38,38,0.06); border: 1px solid rgba(220,38,38,0.15);
+  }
   .btn-start {
     display: inline-flex; align-items: center; gap: 0.35rem;
     padding: 0.5rem 0.875rem; border-radius: 0.45rem;
@@ -273,7 +297,7 @@
   .result-mini-grade {
     width: 32px; height: 32px; border-radius: 50%; flex-shrink: 0;
     display: flex; align-items: center; justify-content: center;
-    font-size: 0.7rem; font-weight: 800; color: white;
+    font-size: 0.7rem; font-weight: 800;
     background: var(--color-border); color: var(--color-muted);
   }
   .result-mini-grade.pass { background: var(--green-600); color: white; }

@@ -156,4 +156,36 @@ export const actions: Actions = {
     if (invigilatorId) await removeInvigilator(exam.id, invigilatorId);
     return { removeSuccess: true };
   },
+
+  // Add this to the existing actions object
+cancelExam: async ({ params, locals }) => {
+  const user = requireLecturer(locals.user);
+  const exam = await getExamWithCourse(params.examId);
+  if (!exam) error(404, 'Exam not found');
+  requireOwnership(user, exam.createdBy);
+  
+  // Can only cancel if not already completed or cancelled
+  if (exam.status === 'completed') {
+    return fail(400, { cancelError: 'Cannot cancel a completed exam' });
+  }
+  if (exam.status === 'cancelled') {
+    return fail(400, { cancelError: 'Exam is already cancelled' });
+  }
+  
+  await setExamStatus(exam.id, 'cancelled');
+  
+  // Optional: Force submit any active sessions
+  await prisma.examSession.updateMany({
+    where: { 
+      examId: params.examId,
+      status: { in: ['active', 'in_progress'] }
+    },
+    data: { 
+      status: 'force_submitted',
+      submittedAt: new Date()
+    }
+  });
+  
+  return { cancelSuccess: true };
+},
 };

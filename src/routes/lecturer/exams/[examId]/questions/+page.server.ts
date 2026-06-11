@@ -289,6 +289,10 @@ export const actions: Actions = {
     if (!exam) error(404, 'Exam not found');
     requireOwnership(user, exam.createdBy);
 
+    if (exam.status === 'cancelled') {
+    return fail(400, { activateError: 'Cannot activate a cancelled exam' });
+  }
+  
     if (exam.status !== 'scheduled' && exam.status !== 'draft')
       return fail(400, { activateError: 'Exam must be in draft or scheduled status to activate' });
 

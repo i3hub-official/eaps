@@ -7,6 +7,9 @@
   let { data, form }: { data: PageData; form: ActionData } = $props();
   const { exam, questionCount, invigilators, allInvigilators } = data;
 
+  let showCancelModal = $state(false);
+let cancelling = $state(false);
+
   const STATUS_FLOW: Record<string, string> = {
     draft: 'Publish → Scheduled',
     scheduled: 'Activate → Live',
@@ -19,13 +22,13 @@
     active: 'complete',
   };
 
-  const STATUS_META: Record<string, { color: string; label: string }> = {
-    draft:     { color: 'gray',   label: 'Draft' },
-    scheduled: { color: 'blue',   label: 'Scheduled' },
-    active:    { color: 'green',  label: 'Live' },
-    completed: { color: 'purple', label: 'Completed' },
-    cancelled: { color: 'red',    label: 'Cancelled' },
-  };
+const STATUS_META: Record<string, { color: string; label: string; canCancel?: boolean; canEdit?: boolean }> = {
+  draft:     { color: 'gray',   label: 'Draft', canEdit: true, canCancel: false },
+  scheduled: { color: 'blue',   label: 'Scheduled', canEdit: false, canCancel: true },
+  active:    { color: 'green',  label: 'Live', canEdit: false, canCancel: true },
+  completed: { color: 'purple', label: 'Completed', canEdit: false, canCancel: false },
+  cancelled: { color: 'red',    label: 'Cancelled', canEdit: false, canCancel: false },
+};
 
   const assignedIds = $derived(new Set(invigilators.map((i: any) => i.invigilatorId)));
   const available = $derived(allInvigilators.filter((i: any) => !assignedIds.has(i.id)));
@@ -62,22 +65,27 @@
       </div>
     </div>
 
-    <div class="header-actions">
-      <a href="/lecturer/exams/{exam.id}/questions" class="btn-outline">
-        <FileText size={14} /> Questions
-      </a>
-      <a href="/lecturer/exams/{exam.id}/results" class="btn-outline">
-        <BarChart2 size={14} /> Results
-      </a>
-      {#if STATUS_ACTION[exam.status]}
-        <form method="POST" action="?/{STATUS_ACTION[exam.status]}" use:enhance>
-          <button type="submit" class="btn-advance">
-            <CheckCircle size={14} />
-            {STATUS_FLOW[exam.status]}
-          </button>
-        </form>
-      {/if}
-    </div>
+   <div class="header-actions">
+  <a href="/lecturer/exams/{exam.id}/questions" class="btn-outline">
+    <FileText size={14} /> Questions
+  </a>
+  <a href="/lecturer/exams/{exam.id}/results" class="btn-outline">
+    <BarChart2 size={14} /> Results
+  </a>
+  {#if STATUS_META[exam.status]?.canCancel}
+    <button class="btn-cancel" onclick={() => showCancelModal = true}>
+      <X size={14} /> Cancel Exam
+    </button>
+  {/if}
+  {#if STATUS_ACTION[exam.status]}
+    <form method="POST" action="?/{STATUS_ACTION[exam.status]}" use:enhance>
+      <button type="submit" class="btn-advance">
+        <CheckCircle size={14} />
+        {STATUS_FLOW[exam.status]}
+      </button>
+    </form>
+  {/if}
+</div>
   </div>
 
   <!-- Alerts -->
@@ -89,6 +97,62 @@
   {#if form?.settingsSuccess || form?.publishSuccess || form?.activateSuccess || form?.completeSuccess || form?.assignSuccess || form?.removeSuccess}
     <div class="alert success">Changes saved successfully.</div>
   {/if}
+
+  {#if form?.cancelError}
+  <div class="alert error">
+    <AlertCircle size={14} /> {form.cancelError}
+  </div>
+{/if}
+{#if form?.cancelSuccess}
+  <div class="alert success">
+    <CheckCircle size={14} /> Exam cancelled successfully.
+  </div>
+{/if}
+
+  <!-- Cancel Exam Modal -->
+{#if showCancelModal}
+  <div class="modal-backdrop" role="dialog" aria-modal="true">
+    <div class="modal-card">
+      <div class="modal-icon cancel">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <circle cx="12" cy="12" r="10"/>
+          <line x1="18" y1="6" x2="6" y2="18"/>
+          <line x1="6" y1="6" x2="18" y2="18"/>
+        </svg>
+      </div>
+      <h2 class="modal-title">Cancel Exam?</h2>
+      <p class="modal-desc">
+        This will immediately cancel the exam and prevent any further submissions.
+        {#if exam.status === 'active'}
+          <strong>Currently active students will have their attempts force-submitted.</strong>
+        {/if}
+        This action cannot be undone.
+      </p>
+      <div class="modal-warning">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#dc2626" stroke-width="2">
+          <path d="M12 8v4m0 4h.01M12 2a10 10 0 100 20 10 10 0 000-20z"/>
+        </svg>
+        All student progress will be saved, but no new attempts allowed.
+      </div>
+      <div class="modal-actions">
+        <button class="btn ghost" onclick={() => showCancelModal = false}>Keep Exam</button>
+        <form method="POST" action="?/cancelExam" use:enhance={() => {
+          cancelling = true;
+          return async ({ update }) => { 
+            await update(); 
+            cancelling = false; 
+            if (!form?.cancelError) showCancelModal = false;
+          };
+        }}>
+          <button type="submit" class="btn cancel-btn" disabled={cancelling}>
+            {#if cancelling}<span class="spinner-sm"></span>{/if}
+            {cancelling ? 'Cancelling…' : 'Yes, Cancel Exam'}
+          </button>
+        </form>
+      </div>
+    </div>
+  </div>
+{/if}
 
   <div class="layout">
     <!-- Main: Settings -->
@@ -716,4 +780,53 @@
     text-align: center;
     padding: 0.5rem 0;
   }
+
+  .btn-cancel {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.5rem 0.875rem;
+  background: rgba(220, 38, 38, 0.08);
+  border: 1px solid rgba(220, 38, 38, 0.3);
+  border-radius: 0.5rem;
+  color: #dc2626;
+  font-weight: 600;
+  font-size: 0.82rem;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.btn-cancel:hover {
+  background: rgba(220, 38, 38, 0.15);
+  border-color: #dc2626;
+}
+
+.modal-icon.cancel {
+  background: rgba(220, 38, 38, 0.1);
+  color: #dc2626;
+}
+
+.modal-warning {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.625rem 0.875rem;
+  background: rgba(220, 38, 38, 0.05);
+  border: 1px solid rgba(220, 38, 38, 0.2);
+  border-radius: 0.5rem;
+  font-size: 0.78rem;
+  color: #dc2626;
+  margin: 0.25rem 0;
+}
+
+.btn.cancel-btn {
+  background: #dc2626;
+  border: 1px solid #dc2626;
+  color: white;
+}
+
+.btn.cancel-btn:hover:not(:disabled) {
+  background: #b91c1c;
+  border-color: #b91c1c;
+}
 </style>
