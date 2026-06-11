@@ -159,8 +159,45 @@ model Level {
   exams         Exam[]               @relation("ExamLevels")
   registrations CourseRegistration[]
   examLevels    ExamLevel[]
+  semesterConfigs LevelSemesterConfig[]
+
 
   @@map("levels")
+}
+
+model LevelSemesterConfig {
+  id         Int      @id @default(autoincrement())
+  levelId    Int      @map("level_id")
+  semester   Int      @db.SmallInt        // 1 or 2
+  maxCredits   Int      @default(24) @map("max_credits")   @db.SmallInt
+  maxCarryOver Int      @default(6)  @map("max_carry_over") @db.SmallInt
+  maxBorrowed  Int      @default(6)  @map("max_borrowed")   @db.SmallInt
+  createdAt  DateTime @default(now()) @map("created_at") @db.Timestamptz()
+  updatedAt  DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz()
+
+  level Level @relation(fields: [levelId], references: [id], onDelete: Cascade)
+
+  @@unique([levelId, semester])
+  @@map("level_semester_configs")
+}
+
+model AcademicSemester {
+  id          Int      @id @default(autoincrement())
+  session     String
+  semester    Int      @db.SmallInt
+  label       String?
+  startDate   DateTime @map("start_date")  @db.Timestamptz()
+  endDate     DateTime @map("end_date")    @db.Timestamptz()
+  isActive    Boolean  @default(false) @map("is_active")
+  regOpen     Boolean  @default(true)  @map("reg_open")
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz()
+  updatedAt   DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz()
+  createdById String?  @map("created_by_id") @db.Uuid
+
+  createdBy   User?    @relation("SemesterCreatedBy", fields: [createdById], references: [id])
+
+  @@unique([session, semester])
+  @@map("academic_semesters")
 }
 
 // ─── Users ────────────────────────────────────────────────────────────────────
@@ -228,6 +265,7 @@ model User {
   createdApiKeys      ApiKey[]             @relation("ApiKeyCreatedBy")
   revokedApiKeys      ApiKey[]             @relation("ApiKeyRevokedBy")
   userPreferences     UserPreference[]
+  createdSemesters AcademicSemester[] @relation("SemesterCreatedBy")
 
   // ─── Face verification & similarity ───────────────────────────────────────
   verificationLogs  FaceVerificationLog[] @relation("StudentVerifications")

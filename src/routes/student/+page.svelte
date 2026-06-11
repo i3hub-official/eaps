@@ -3,13 +3,14 @@
   import {
     LayoutDashboard, ClipboardList, BarChart3, BookOpen,
     Bell, Clock, Calendar, ArrowRight, Award, AlertCircle,
-    TrendingUp, BookMarked, Zap
+    TrendingUp, BookMarked, Zap, GraduationCap, Info,
+    AlertTriangle, CreditCard, CheckCircle2
   } from 'lucide-svelte';
   import type { PageData } from './$types';
 
   let { data }: { data: PageData } = $props();
 
-  const { recentExams, recentResults, meta } = data;
+  const { recentExams, recentResults, meta, student, academicSemester } = data;
 
   function formatDate(d: Date | string | null) {
     if (!d) return 'TBD';
@@ -33,19 +34,113 @@
       default: return 'var(--color-muted)';
     }
   }
+
+  const creditColor = student.levelConfig.creditPercentage > 90 
+    ? '#dc2626' 
+    : student.levelConfig.creditPercentage > 75 
+      ? '#f59e0b' 
+      : 'var(--green-600)';
 </script>
 
 <div class="dashboard">
   <!-- Header -->
   <div class="dash-header">
-    <div>
-      <h1>Dashboard</h1>
-      <p class="dash-sub">{meta.session} · Semester {meta.semester}</p>
-    </div>
+   <div>
+  <h1>Dashboard</h1>
+  <p class="dash-sub">
+    {student.level ? (student.level.name ?? `${student.level.level}L`) : 'Level not set'}  · {meta.session} · {meta.semesterLabel}
+    {#if academicSemester?.startDate && academicSemester?.endDate}
+      · {formatDate(academicSemester.startDate)} – {formatDate(academicSemester.endDate)}
+    {/if}
+  </p>
+</div>
     <div class="dash-meta">
       <span class="meta-pill"><BookMarked size={13} /> {meta.registeredCourses} Courses</span>
+      {#if student.level}
+        <span class="meta-pill"><GraduationCap size={13} /> {student.level.name}</span>
+      {/if}
       {#if meta.unreadNotifications > 0}
         <span class="meta-pill alert"><Bell size={13} /> {meta.unreadNotifications} New</span>
+      {/if}
+    </div>
+  </div>
+
+  <!-- Student info card with level and limits -->
+  <div class="student-info-card">
+    <div class="info-header">
+      <div class="info-title">
+        <GraduationCap size={18} />
+        <h3>Academic Information</h3>
+      </div>
+      {#if academicSemester && !academicSemester.regOpen}
+        <span class="reg-badge closed">Registration Closed</span>
+      {:else if academicSemester && academicSemester.regOpen}
+        <span class="reg-badge open">Registration Open</span>
+      {/if}
+    </div>
+    <div class="info-grid">
+      <div class="info-item">
+        <span class="info-label">Level</span>
+        <span class="info-value">{student.level?.name ?? '—'}</span>
+      </div>
+      <div class="info-item">
+        <span class="info-label">Session</span>
+        <span class="info-value">{meta.session}</span>
+      </div>
+      <div class="info-item">
+        <span class="info-label">Semester</span>
+        <span class="info-value">{meta.semester === 1 ? 'First' : 'Second'}</span>
+      </div>
+      <div class="info-item">
+        <span class="info-label">Credit Limit</span>
+        <span class="info-value">{student.levelConfig.maxCredits} CU</span>
+      </div>
+      <div class="info-item">
+        <span class="info-label">Carry-Over Limit</span>
+        <span class="info-value">{student.levelConfig.maxCarryOver} max</span>
+      </div>
+      <div class="info-item">
+        <span class="info-label">Borrowed Limit</span>
+        <span class="info-value">{student.levelConfig.maxBorrowed} max</span>
+      </div>
+    </div>
+    
+    <!-- Credit progress -->
+    <div class="credit-section">
+      <div class="credit-header">
+        <CreditCard size={14} />
+        <span>Credit Usage</span>
+        <span class="credit-stats">{student.levelConfig.currentCredits} / {student.levelConfig.maxCredits} CU</span>
+      </div>
+      <div class="progress-bar">
+        <div class="progress-fill" style="width:{Math.min(student.levelConfig.creditPercentage, 100)}%; background:{creditColor}"></div>
+      </div>
+      {#if student.levelConfig.remainingCredits > 0}
+        <span class="remaining-text">{student.levelConfig.remainingCredits} CU remaining</span>
+      {:else}
+        <span class="remaining-text warning">Credit limit reached</span>
+      {/if}
+    </div>
+
+    <!-- Limit warnings -->
+    <div class="limit-warnings">
+      {#if student.levelConfig.hasReachedCarryOverLimit}
+        <div class="warning-chip">
+          <AlertTriangle size={12} />
+          <span>Carry-over limit reached ({student.levelConfig.maxCarryOver})</span>
+        </div>
+      {/if}
+      {#if student.levelConfig.hasReachedBorrowedLimit}
+        <div class="warning-chip">
+          <AlertTriangle size={12} />
+          <span>Borrowed limit reached ({student.levelConfig.maxBorrowed})</span>
+        </div>
+      {/if}
+      {#if student.levelConfig.hasReachedCreditLimit}
+        <div class="warning-chip error">
+          <AlertCircle size={12} />
+          <span>Credit limit reached ({student.levelConfig.maxCredits} CU)</span>
+        </div>
       {/if}
     </div>
   </div>
@@ -173,7 +268,7 @@
 <style>
   .dashboard { display: flex; flex-direction: column; gap: 1.5rem; }
 
-  .dash-header { display: flex; align-items: flex-end; justify-content: space-between; gap: 1rem; }
+  .dash-header { display: flex; align-items: flex-end; justify-content: space-between; gap: 1rem; flex-wrap: wrap; }
   .dash-header h1 { font-size: 1.35rem; font-weight: 800; color: var(--color-text); margin: 0; }
   .dash-sub { font-size: 0.78rem; color: var(--color-muted); margin: 0.25rem 0 0; }
   .dash-meta { display: flex; gap: 0.5rem; flex-wrap: wrap; }
@@ -184,6 +279,67 @@
     font-size: 0.72rem; font-weight: 600; color: var(--color-muted);
   }
   .meta-pill.alert { background: rgba(239,68,68,0.08); border-color: rgba(239,68,68,0.2); color: #dc2626; }
+
+  /* Student info card */
+  .student-info-card {
+    background: linear-gradient(135deg, var(--color-surface), var(--color-bg));
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-card);
+    padding: 1.125rem;
+  }
+  .info-header {
+    display: flex; align-items: center; justify-content: space-between;
+    margin-bottom: 1rem; flex-wrap: wrap; gap: 0.5rem;
+  }
+  .info-title { display: flex; align-items: center; gap: 0.5rem; }
+  .info-title h3 { margin: 0; font-size: 0.9rem; font-weight: 700; color: var(--color-text); }
+  .reg-badge {
+    font-size: 0.65rem; font-weight: 700; padding: 0.25rem 0.6rem;
+    border-radius: 999px; text-transform: uppercase; letter-spacing: 0.04em;
+  }
+  .reg-badge.open { background: var(--green-soft); color: var(--green-700); border: 1px solid var(--green-600); }
+  .reg-badge.closed { background: rgba(220,38,38,0.1); color: #dc2626; border: 1px solid rgba(220,38,38,0.3); }
+  
+  .info-grid {
+    display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+    gap: 0.75rem; margin-bottom: 1rem;
+  }
+  .info-item { display: flex; flex-direction: column; gap: 0.2rem; }
+  .info-label { font-size: 0.65rem; color: var(--color-muted); text-transform: uppercase; letter-spacing: 0.04em; }
+  .info-value { font-size: 0.85rem; font-weight: 700; color: var(--color-text); }
+
+  .credit-section {
+    padding-top: 0.75rem; border-top: 1px solid var(--color-border);
+    margin-bottom: 0.75rem;
+  }
+  .credit-header {
+    display: flex; align-items: center; gap: 0.5rem;
+    font-size: 0.7rem; font-weight: 600; color: var(--color-muted);
+    margin-bottom: 0.5rem;
+  }
+  .credit-stats { margin-left: auto; font-weight: 700; color: var(--color-text); }
+  .progress-bar {
+    height: 5px; background: var(--color-border); border-radius: 3px;
+    overflow: hidden; margin-bottom: 0.35rem;
+  }
+  .progress-fill {
+    height: 100%; border-radius: 3px;
+    transition: width 0.3s ease;
+  }
+  .remaining-text { font-size: 0.65rem; color: var(--color-muted); }
+  .remaining-text.warning { color: #dc2626; font-weight: 600; }
+
+  .limit-warnings {
+    display: flex; flex-wrap: wrap; gap: 0.5rem;
+    padding-top: 0.5rem;
+  }
+  .warning-chip {
+    display: inline-flex; align-items: center; gap: 0.35rem;
+    font-size: 0.65rem; font-weight: 600;
+    padding: 0.25rem 0.6rem; border-radius: 999px;
+    background: rgba(245,158,11,0.1); color: #b45309;
+  }
+  .warning-chip.error { background: rgba(220,38,38,0.1); color: #dc2626; }
 
   .stat-cards {
     display: grid;

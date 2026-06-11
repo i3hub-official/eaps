@@ -4,14 +4,47 @@ import { requireAdmin } from '$lib/server/auth/guards.js';
 import { prisma } from '$lib/server/db/index.js';
 import { fail } from '@sveltejs/kit';
 
-const MAX_CARRY_OVER = 6;
-const MAX_BORROWED = 6;
-const MAX_CREDITS = 24;
+// Default fallback values (only used when no config exists)
+const DEFAULT_MAX_CARRY_OVER = 6;
+const DEFAULT_MAX_BORROWED = 6;
+const DEFAULT_MAX_CREDITS = 24;
 
 export const load: PageServerLoad = async ({ locals, url }) => {
   requireAdmin(locals.user);
 
   const studentId = url.searchParams.get('studentId') ?? undefined;
+  const currentSemester = 1; // fallback semester for config lookup
+
+  // Get the admin's level ID for config lookup (or use default)
+  const adminLevelId = locals.user?.levelId ?? null;
+  
+  let maxCredits = DEFAULT_MAX_CREDITS;
+  let maxCarryOver = DEFAULT_MAX_CARRY_OVER;
+  let maxBorrowed = DEFAULT_MAX_BORROWED;
+
+  // Only fetch config if we have a levelId and the model exists
+  if (adminLevelId) {
+    try {
+      const configRow = await prisma.levelSemesterConfig.findUnique({
+        where: {
+          levelId_semester: {
+            levelId: adminLevelId,
+            semester: currentSemester,
+          },
+        },
+        select: { maxCredits: true, maxCarryOver: true, maxBorrowed: true },
+      });
+
+      if (configRow) {
+        maxCredits = configRow.maxCredits ?? DEFAULT_MAX_CREDITS;
+        maxCarryOver = configRow.maxCarryOver ?? DEFAULT_MAX_CARRY_OVER;
+        maxBorrowed = configRow.maxBorrowed ?? DEFAULT_MAX_BORROWED;
+      }
+    } catch (err) {
+      // Model might not exist yet - use defaults
+      console.warn('Could not fetch LevelSemesterConfig, using defaults:', err);
+    }
+  }
 
   const [registrations, students, courses, levels, colleges] = await Promise.all([
     prisma.courseRegistration.findMany({
@@ -69,14 +102,42 @@ export const load: PageServerLoad = async ({ locals, url }) => {
     const student = students.find((s) => s.id === studentId);
     if (student && student.level && student.departmentId) {
       const studentLevel = student.level.level;
-      const currentSession = student.session ?? '2024/2025';
+      const currentSession = student.session ?? '2025/2026';
       const currentSemester = studentLevel % 2 === 0 ? 2 : 1;
+
+      // Get student's config for limits
+      let studentMaxCarryOver = DEFAULT_MAX_CARRY_OVER;
+      let studentMaxBorrowed = DEFAULT_MAX_BORROWED;
+      
+      try {
+        const studentConfig = await prisma.levelSemesterConfig.findUnique({
+          where: {
+            levelId_semester: {
+              levelId: student.level.id,
+              semester: currentSemester,
+            },
+          },
+          select: { maxCarryOver: true, maxBorrowed: true },
+        });
+        
+        if (studentConfig) {
+          studentMaxCarryOver = studentConfig.maxCarryOver ?? DEFAULT_MAX_CARRY_OVER;
+          studentMaxBorrowed = studentConfig.maxBorrowed ?? DEFAULT_MAX_BORROWED;
+        }
+      } catch (err) {
+        // Model might not exist - use defaults
+        console.warn('Could not fetch student config, using defaults:', err);
+      }
 
       const currentRegs = await prisma.courseRegistration.findMany({
         where: { studentId, session: currentSession, semester: currentSemester },
         select: { courseId: true, registrationType: true },
       });
       const registeredIds = currentRegs.map((r) => r.courseId);
+      
+      // Count current carry-over and borrowed registrations
+      const currentCarryOverCount = currentRegs.filter(r => r.registrationType === 'carry_over').length;
+      const currentBorrowedCount = currentRegs.filter(r => r.registrationType === 'borrowed').length;
 
       // Normal
       const normalCourses = courses.filter(
@@ -86,9 +147,9 @@ export const load: PageServerLoad = async ({ locals, url }) => {
           !registeredIds.includes(c.id)
       );
 
-      // Carry-over
+      // Carry-over (only if student hasn't reached limit)
       let carryOverCourses: typeof courses = [];
-      if (studentLevel >= 200) {
+      if (studentLevel >= 200 && currentCarryOverCount < studentMaxCarryOver) {
         const [failedResults, passedResults] = await Promise.all([
           prisma.examResult.findMany({
             where: { studentId, passed: false },
@@ -113,17 +174,17 @@ export const load: PageServerLoad = async ({ locals, url }) => {
         );
       }
 
-      // Borrowed
-      const borrowedCourses =
-        student.collegeId != null
-          ? courses.filter(
-              (c) =>
-                c.departmentId !== student.departmentId &&
-                c.department.collegeId === student.collegeId &&
-                c.level === studentLevel &&
-                !registeredIds.includes(c.id)
-            )
-          : [];
+      // Borrowed (only if student hasn't reached limit)
+      let borrowedCourses: typeof courses = [];
+      if (student.collegeId != null && currentBorrowedCount < studentMaxBorrowed) {
+        borrowedCourses = courses.filter(
+          (c) =>
+            c.departmentId !== student.departmentId &&
+            c.department.collegeId === student.collegeId &&
+            c.level === studentLevel &&
+            !registeredIds.includes(c.id)
+        );
+      }
 
       studentAvailableCourses = {
         normal: normalCourses,
@@ -141,6 +202,11 @@ export const load: PageServerLoad = async ({ locals, url }) => {
     colleges,
     selectedStudentId: studentId ?? null,
     studentAvailableCourses,
+    limits: {
+      maxCredits,
+      maxCarryOver,
+      maxBorrowed,
+    },
   };
 };
 
@@ -161,7 +227,40 @@ export const actions: Actions = {
     if (!session) return fail(400, { error: 'Session is required' });
     if (isNaN(semester)) return fail(400, { error: 'Semester is required' });
 
-    // Carry-over / borrowed admin-level validations
+    // Get the student's level for config lookup
+    const student = await prisma.user.findUnique({
+      where: { id: studentId },
+      select: { levelId: true },
+    });
+
+    if (!student) return fail(404, { error: 'Student not found' });
+
+    // Fetch config limits for this student's level and semester
+    let maxCarryOver = DEFAULT_MAX_CARRY_OVER;
+    let maxBorrowed = DEFAULT_MAX_BORROWED;
+
+    if (student.levelId) {
+      try {
+        const configRow = await prisma.levelSemesterConfig.findUnique({
+          where: {
+            levelId_semester: {
+              levelId: student.levelId,
+              semester: semester,
+            },
+          },
+          select: { maxCarryOver: true, maxBorrowed: true },
+        });
+
+        if (configRow) {
+          maxCarryOver = configRow.maxCarryOver ?? DEFAULT_MAX_CARRY_OVER;
+          maxBorrowed = configRow.maxBorrowed ?? DEFAULT_MAX_BORROWED;
+        }
+      } catch (err) {
+        console.warn('Could not fetch config for validation, using defaults:', err);
+      }
+    }
+
+    // Carry-over / borrowed validations with config values
     if (registrationType === 'carry_over' || registrationType === 'borrowed') {
       const currentRegs = await prisma.courseRegistration.findMany({
         where: { studentId, session, semester },
@@ -170,15 +269,15 @@ export const actions: Actions = {
 
       if (registrationType === 'carry_over') {
         const coCount = currentRegs.filter((r) => r.registrationType === 'carry_over').length;
-        if (coCount >= MAX_CARRY_OVER) {
-          return fail(400, { error: `Carry-over limit (${MAX_CARRY_OVER}) already reached for this student` });
+        if (coCount >= maxCarryOver) {
+          return fail(400, { error: `Carry-over limit (${maxCarryOver}) already reached for this student` });
         }
       }
 
       if (registrationType === 'borrowed') {
         const bCount = currentRegs.filter((r) => r.registrationType === 'borrowed').length;
-        if (bCount >= MAX_BORROWED) {
-          return fail(400, { error: `Borrowed course limit (${MAX_BORROWED}) already reached for this student` });
+        if (bCount >= maxBorrowed) {
+          return fail(400, { error: `Borrowed course limit (${maxBorrowed}) already reached for this student` });
         }
       }
     }
@@ -220,6 +319,62 @@ export const actions: Actions = {
     if (!courseId) return fail(400, { error: 'Course selection is required' });
     if (!session) return fail(400, { error: 'Session is required' });
     if (isNaN(semester)) return fail(400, { error: 'Semester is required' });
+
+    // For edit, we should re-validate limits based on the new registration type
+    const student = await prisma.user.findUnique({
+      where: { id: studentId },
+      select: { levelId: true },
+    });
+
+    if (student?.levelId) {
+      let maxCarryOver = DEFAULT_MAX_CARRY_OVER;
+      let maxBorrowed = DEFAULT_MAX_BORROWED;
+
+      try {
+        const configRow = await prisma.levelSemesterConfig.findUnique({
+          where: {
+            levelId_semester: {
+              levelId: student.levelId,
+              semester: semester,
+            },
+          },
+          select: { maxCarryOver: true, maxBorrowed: true },
+        });
+
+        if (configRow) {
+          maxCarryOver = configRow.maxCarryOver ?? DEFAULT_MAX_CARRY_OVER;
+          maxBorrowed = configRow.maxBorrowed ?? DEFAULT_MAX_BORROWED;
+        }
+      } catch (err) {
+        console.warn('Could not fetch config for validation, using defaults:', err);
+      }
+
+      if (registrationType === 'carry_over' || registrationType === 'borrowed') {
+        const currentRegs = await prisma.courseRegistration.findMany({
+          where: { 
+            studentId, 
+            session, 
+            semester,
+            NOT: { id } // Exclude the current registration being edited
+          },
+          select: { registrationType: true },
+        });
+
+        if (registrationType === 'carry_over') {
+          const coCount = currentRegs.filter((r) => r.registrationType === 'carry_over').length;
+          if (coCount >= maxCarryOver) {
+            return fail(400, { error: `Carry-over limit (${maxCarryOver}) already reached for this student` });
+          }
+        }
+
+        if (registrationType === 'borrowed') {
+          const bCount = currentRegs.filter((r) => r.registrationType === 'borrowed').length;
+          if (bCount >= maxBorrowed) {
+            return fail(400, { error: `Borrowed course limit (${maxBorrowed}) already reached for this student` });
+          }
+        }
+      }
+    }
 
     try {
       await prisma.courseRegistration.update({

@@ -249,11 +249,10 @@
 </script>
 
 <div class="page">
-
-  <!-- ── Top bar ────────────────────────────────────────────────────────── -->
+  <!-- ── Top bar (simplified, no sidebar) ────────────────────────────────── -->
   <div class="topbar">
     <a href="/student/courses" class="back-link">
-      <ArrowLeft size={13} /> Courses
+      <ArrowLeft size={13} /> Back to Courses
     </a>
 
     <div class="topbar-center">
@@ -313,219 +312,225 @@
   {/if}
 
   <!-- ═══════════════════════════════════════════════════════════════════
-       COURSE DISCOVERY — always on top
+       FULL-WIDTH LAYOUT: Course Selection takes entire left side (full width)
+       Registered Courses becomes a sidebar on the right
   ════════════════════════════════════════════════════════════════════════ -->
-  {#if phase !== 'locked'}
-    <section class="discover">
-
-      <!-- Tab bar -->
-      <div class="tab-bar">
-        {#each tabs as tab}
-          {#if !tab.hidden}
-            <button
-              class="tab-btn"
-              class:active={activeTab === tab.key}
-              style="--tab-color:{tab.color}"
-              onclick={() => { activeTab = tab.key; search = ''; }}
-            >
-              <svelte:component this={tab.icon} size={12}/>
-              {tab.label}
-              <span class="tab-pill">{tab.count}</span>
-            </button>
-          {/if}
-        {/each}
-      </div>
-
-      <!-- Search -->
-      <div class="search-wrap">
-        <BookOpen size={13} class="search-icon"/>
-        <input
-          type="text"
-          placeholder="Search code, title, department…"
-          bind:value={search}
-          class="search-input"
-        />
-        {#if search}
-          <button class="search-clear" onclick={() => search = ''}>
-            <X size={11}/>
-          </button>
-        {/if}
-      </div>
-
-      <!-- Tab hint with real-time credit info -->
-      <p class="tab-hint">
-        {#if activeTab === 'college'}
-          <Building2 size={11}/> {data.meta.studentCollege ?? 'Your college'} · {data.meta.studentLevel}L courses
-        {:else if activeTab === 'carryover'}
-          <RotateCcw size={11}/> Lower-level carry-overs · pending approval
-        {:else}
-          <Globe size={11}/> Other-college courses · auto-approved
-        {/if}
-        {#if phase === 'draft' && pendingAddIds.size > 0}
-          <span class="hint-selected"> · {pendingAddIds.size} selected (+{pendingCredits} CU → {projectedAfterAdd}/{maxCredits} CU)</span>
-        {:else if phase === 'draft'}
-          <span class="hint-selected"> · {currentCredits}/{maxCredits} CU used</span>
-        {:else if phase === 'submitted' && (updateAddIds.size > 0 || updateDropIds.size > 0)}
-          <span class="hint-submitted"> · Net: {netCreditChange >= 0 ? '+' : ''}{netCreditChange} CU → {projectedAfterUpdate}/{maxCredits} CU</span>
-        {:else if phase === 'submitted'}
-          <span class="hint-submitted"> · {currentCredits}/{maxCredits} CU · Tap to queue for update</span>
-        {/if}
-      </p>
-
-      <!-- Course grid -->
-      {#if visibleCourses.length === 0}
-        <div class="empty-state">
-          <BookOpen size={28} strokeWidth={1.4}/>
-          <p>{search ? 'No courses match your search.' : activeTab === 'carryover' ? 'No carry-over courses available.' : 'All available courses already registered.'}</p>
-        </div>
-      {:else}
-        <div class="course-grid">
-          {#each visibleCourses as course (course.id)}
-            {@const type = typeFromTab(activeTab)}
-            {@const over = phase === 'draft' 
-              ? !canAddCourse(course.creditUnits, course.id) && !pendingAddIds.has(course.id)
-              : !canAddInUpdate(course.creditUnits, course.id) && !updateAddIds.has(course.id)
-            }
-            {@const isDraftSelected = pendingAddIds.has(course.id)}
-            {@const isUpdateSelected = updateAddIds.has(course.id)}
-            {@const isSelected = phase === 'draft' ? isDraftSelected : isUpdateSelected}
-            {@const tColor = typeColor(type)}
-            {@const tBg = typeBg(type)}
-
-            <button
-              class="course-card"
-              class:selected={isSelected}
-              class:over-limit={over && !isSelected}
-              data-regtype={type}
-              disabled={over && !isSelected}
-              onclick={() => handleCardTap(course)}
-              style="--card-accent:{tColor}; --card-bg:{tBg};"
-            >
-              <div class="card-top">
-                <span class="card-code">{course.code}</span>
-                <span class="card-cu">{course.creditUnits}<span class="cu-label">CU</span></span>
-              </div>
-
-              <span class="card-title">{course.title}</span>
-
-              <div class="card-meta">
-                <span class="meta-chip"><GraduationCap size={9}/> {course.level}L</span>
-                <span class="meta-chip"><Building2 size={9}/> {course.departmentCode}</span>
-                {#if activeTab === 'borrowed'}
-                  <span class="meta-chip borrowed-chip">{course.collegeAbbr}</span>
+  <div class="two-columns">
+    <!-- LEFT COLUMN: Course Discovery & Pending Tray (FILLS ENTIRE LEFT SIDE) -->
+    <div class="col-left">
+      {#if phase !== 'locked'}
+        <section class="discover">
+          <!-- Tab bar with horizontal scroll support -->
+          <div class="tab-bar-wrapper">
+            <div class="tab-bar">
+              {#each tabs as tab}
+                {#if !tab.hidden}
+                  <button
+                    class="tab-btn"
+                    class:active={activeTab === tab.key}
+                    style="--tab-color:{tab.color}"
+                    onclick={() => { activeTab = tab.key; search = ''; }}
+                  >
+                    <svelte:component this={tab.icon} size={12}/>
+                    {tab.label}
+                    <span class="tab-pill">{tab.count}</span>
+                  </button>
                 {/if}
-              </div>
-
-              <div class="card-footer" class:footer-selected={isSelected} style="--fc:{tColor}; --fb:{tBg}">
-                <span class="footer-type">
-                  <span class="type-dot" style="background:{tColor}"></span>
-                  {typeLabel(type)}
-                </span>
-                {#if over}
-                  <span class="footer-limit">Limit reached</span>
-                {:else if isSelected}
-                  <span class="footer-sel" style="color:{tColor}">
-                    <CheckCircle2 size={10}/> Selected
-                  </span>
-                {:else}
-                  <span class="footer-add">Tap to add</span>
-                {/if}
-              </div>
-            </button>
-          {/each}
-        </div>
-      {/if}
-    </section>
-  {/if}
-
-  <!-- ═══════════════════════════════════════════════════════════════════
-       PENDING ADD TRAY — draft phase, courses queued but not submitted
-  ════════════════════════════════════════════════════════════════════════ -->
-  {#if phase === 'draft' && pendingCourses.length > 0}
-    <section class="pending-tray">
-      <div class="tray-head">
-        <div class="tray-title">
-          <CheckCircle2 size={13} style="color:var(--green-600)"/>
-          <span>Selected to register</span>
-          <span class="tray-count">{pendingCourses.length}</span>
-        </div>
-        <button class="tray-clear" onclick={() => pendingAddIds = new Map()}>
-          <X size={12}/> Clear all
-        </button>
-      </div>
-
-      <div class="tray-list">
-        {#each pendingCourses as { course, type }}
-          <div class="tray-row" style="border-left-color:{typeColor(type)}">
-            <div class="tray-left">
-              <span class="tray-code">{course.code}</span>
-              <span class="tray-title">{course.title}</span>
-            </div>
-            <div class="tray-right">
-              <span class="tray-cu">{course.creditUnits} CU</span>
-              <span class="tray-type" style="color:{typeColor(type)}; background:{typeBg(type)}">{typeLabel(type)}</span>
-              <button
-                class="tray-remove"
-                onclick={() => {
-                  const m = new Map(pendingAddIds);
-                  m.delete(course.id);
-                  pendingAddIds = m;
-                }}
-              >
-                <X size={11}/>
-              </button>
+              {/each}
             </div>
           </div>
-        {/each}
-      </div>
 
-      <div class="tray-footer">
-        <div class="projected-credits">
-          <CreditCard size={12}/>
-          <span>After adding: <strong style="color:{projectedAfterAdd > maxCredits ? '#dc2626' : 'var(--green-600)'}">{projectedAfterAdd}</strong> / {maxCredits} CU</span>
-          {#if projectedAfterAdd > maxCredits}
-            <span style="color:#dc2626; font-size:0.7rem;">(Exceeds by {projectedAfterAdd - maxCredits} CU)</span>
-          {/if}
-        </div>
+          <!-- Search -->
+          <div class="search-wrap">
+            <BookOpen size={13} class="search-icon"/>
+            <input
+              type="text"
+              placeholder="Search code, title, department…"
+              bind:value={search}
+              class="search-input"
+            />
+            {#if search}
+              <button class="search-clear" onclick={() => search = ''}>
+                <X size={11}/>
+              </button>
+            {/if}
+          </div>
 
-        <!-- Hidden batch-register form -->
-        <form
-          method="POST"
-          action="?/batchRegister"
-          use:enhance={() => {
-            submitting = true;
-            const snapshot = { regs: [...regs], col: [...colCourses], co: [...coCourses], bor: [...borCourses], credits: usedCredits };
-            // Optimistic
-            for (const { course, type } of pendingCourses) optimisticAdd(course, type);
-            pendingAddIds = new Map();
-            return async ({ result, update }) => {
-              submitting = false;
-              if (result.type === 'failure') {
-                // revert
-                regs = snapshot.regs; colCourses = snapshot.col;
-                coCourses = snapshot.co; borCourses = snapshot.bor;
-                usedCredits = snapshot.credits;
-              }
-              await update({ reset: false });
-            };
-          }}
-        >
-          {#each pendingCourses as { course, type }}
-            <input type="hidden" name="courseId" value={course.id}/>
-            <input type="hidden" name="type"     value={type}/>
-          {/each}
-          <button type="submit" class="btn-add-selected" disabled={submitting || projectedAfterAdd > maxCredits}>
-            <CheckCircle2 size={14}/>
-            {submitting ? 'Adding…' : `Add ${pendingCourses.length} course${pendingCourses.length !== 1 ? 's' : ''}`}
-          </button>
-        </form>
-      </div>
-    </section>
-  {/if}
+          <!-- Tab hint with real-time credit info -->
+          <p class="tab-hint">
+            {#if activeTab === 'college'}
+              <Building2 size={11}/> {data.meta.studentCollege ?? 'Your college'} · {data.meta.studentLevel}L courses
+            {:else if activeTab === 'carryover'}
+              <RotateCcw size={11}/> Lower-level carry-overs · pending approval
+            {:else}
+              <Globe size={11}/> Other-college courses · auto-approved
+            {/if}
+            {#if phase === 'draft' && pendingAddIds.size > 0}
+              <span class="hint-selected"> · {pendingAddIds.size} selected (+{pendingCredits} CU → {projectedAfterAdd}/{maxCredits} CU)</span>
+            {:else if phase === 'draft'}
+              <span class="hint-selected"> · {currentCredits}/{maxCredits} CU used</span>
+            {:else if phase === 'submitted' && (updateAddIds.size > 0 || updateDropIds.size > 0)}
+              <span class="hint-submitted"> · Net: {netCreditChange >= 0 ? '+' : ''}{netCreditChange} CU → {projectedAfterUpdate}/{maxCredits} CU</span>
+            {:else if phase === 'submitted'}
+              <span class="hint-submitted"> · {currentCredits}/{maxCredits} CU · Tap to queue for update</span>
+            {/if}
+          </p>
 
-  <!-- ═══════════════════════════════════════════════════════════════════
-       REGISTERED COURSES + SUBMIT — below discovery
-  ════════════════════════════════════════════════════════════════════════ -->
+          <!-- Course grid with horizontal scroll on small devices -->
+          <div class="course-grid-wrapper">
+            {#if visibleCourses.length === 0}
+              <div class="empty-state">
+                <BookOpen size={28} strokeWidth={1.4}/>
+                <p>{search ? 'No courses match your search.' : activeTab === 'carryover' ? 'No carry-over courses available.' : 'All available courses already registered.'}</p>
+              </div>
+            {:else}
+              <div class="course-grid">
+                {#each visibleCourses as course (course.id)}
+                  {@const type = typeFromTab(activeTab)}
+                  {@const over = phase === 'draft' 
+                    ? !canAddCourse(course.creditUnits, course.id) && !pendingAddIds.has(course.id)
+                    : !canAddInUpdate(course.creditUnits, course.id) && !updateAddIds.has(course.id)
+                  }
+                  {@const isDraftSelected = pendingAddIds.has(course.id)}
+                  {@const isUpdateSelected = updateAddIds.has(course.id)}
+                  {@const isSelected = phase === 'draft' ? isDraftSelected : isUpdateSelected}
+                  {@const tColor = typeColor(type)}
+                  {@const tBg = typeBg(type)}
+
+                  <button
+                    class="course-card"
+                    class:selected={isSelected}
+                    class:over-limit={over && !isSelected}
+                    data-regtype={type}
+                    disabled={over && !isSelected}
+                    onclick={() => handleCardTap(course)}
+                    style="--card-accent:{tColor}; --card-bg:{tBg};"
+                  >
+                    <div class="card-top">
+                      <span class="card-code">{course.code}</span>
+                      <span class="card-cu">{course.creditUnits}<span class="cu-label">CU</span></span>
+                    </div>
+
+                    <span class="card-title">{course.title}</span>
+
+                    <div class="card-meta">
+                      <span class="meta-chip"><GraduationCap size={9}/> {course.level}L</span>
+                      <span class="meta-chip"><Building2 size={9}/> {course.departmentCode}</span>
+                      {#if activeTab === 'borrowed'}
+                        <span class="meta-chip borrowed-chip">{course.collegeAbbr}</span>
+                      {/if}
+                    </div>
+
+                    <div class="card-footer" class:footer-selected={isSelected} style="--fc:{tColor}; --fb:{tBg}">
+                      <span class="footer-type">
+                        <span class="type-dot" style="background:{tColor}"></span>
+                        {typeLabel(type)}
+                      </span>
+                      {#if over}
+                        <span class="footer-limit">Limit reached</span>
+                      {:else if isSelected}
+                        <span class="footer-sel" style="color:{tColor}">
+                          <CheckCircle2 size={10}/> Selected
+                        </span>
+                      {:else}
+                        <span class="footer-add">Tap to add</span>
+                      {/if}
+                    </div>
+                  </button>
+                {/each}
+              </div>
+            {/if}
+          </div>
+        </section>
+      {/if}
+
+      <!-- PENDING ADD TRAY — draft phase, courses queued but not submitted -->
+      {#if phase === 'draft' && pendingCourses.length > 0}
+        <section class="pending-tray">
+          <div class="tray-head">
+            <div class="tray-title">
+              <CheckCircle2 size={13} style="color:var(--green-600)"/>
+              <span>Selected to register</span>
+              <span class="tray-count">{pendingCourses.length}</span>
+            </div>
+            <button class="tray-clear" onclick={() => pendingAddIds = new Map()}>
+              <X size={12}/> Clear all
+            </button>
+          </div>
+
+          <div class="tray-list-wrapper">
+            <div class="tray-list">
+              {#each pendingCourses as { course, type }}
+                <div class="tray-row" style="border-left-color:{typeColor(type)}">
+                  <div class="tray-left">
+                    <span class="tray-code">{course.code}</span>
+                    <span class="tray-title">{course.title}</span>
+                  </div>
+                  <div class="tray-right">
+                    <span class="tray-cu">{course.creditUnits} CU</span>
+                    <span class="tray-type" style="color:{typeColor(type)}; background:{typeBg(type)}">{typeLabel(type)}</span>
+                    <button
+                      class="tray-remove"
+                      onclick={() => {
+                        const m = new Map(pendingAddIds);
+                        m.delete(course.id);
+                        pendingAddIds = m;
+                      }}
+                    >
+                      <X size={11}/>
+                    </button>
+                  </div>
+                </div>
+              {/each}
+            </div>
+          </div>
+
+          <div class="tray-footer">
+            <div class="projected-credits">
+              <CreditCard size={12}/>
+              <span>After adding: <strong style="color:{projectedAfterAdd > maxCredits ? '#dc2626' : 'var(--green-600)'}">{projectedAfterAdd}</strong> / {maxCredits} CU</span>
+              {#if projectedAfterAdd > maxCredits}
+                <span style="color:#dc2626; font-size:0.7rem;">(Exceeds by {projectedAfterAdd - maxCredits} CU)</span>
+              {/if}
+            </div>
+
+            <form
+              method="POST"
+              action="?/batchRegister"
+              use:enhance={() => {
+                submitting = true;
+                const snapshot = { regs: [...regs], col: [...colCourses], co: [...coCourses], bor: [...borCourses], credits: usedCredits };
+                // Optimistic
+                for (const { course, type } of pendingCourses) optimisticAdd(course, type);
+                pendingAddIds = new Map();
+                return async ({ result, update }) => {
+                  submitting = false;
+                  if (result.type === 'failure') {
+                    // revert
+                    regs = snapshot.regs; colCourses = snapshot.col;
+                    coCourses = snapshot.co; borCourses = snapshot.bor;
+                    usedCredits = snapshot.credits;
+                  }
+                  await update({ reset: false });
+                };
+              }}
+            >
+              {#each pendingCourses as { course, type }}
+                <input type="hidden" name="courseId" value={course.id}/>
+                <input type="hidden" name="type"     value={type}/>
+              {/each}
+              <button type="submit" class="btn-add-selected" disabled={submitting || projectedAfterAdd > maxCredits}>
+                <CheckCircle2 size={14}/>
+                {submitting ? 'Adding…' : `Add ${pendingCourses.length} course${pendingCourses.length !== 1 ? 's' : ''}`}
+              </button>
+            </form>
+          </div>
+        </section>
+      {/if}
+    </div>
+
+    <!-- RIGHT COLUMN: Registered Courses (sticky sidebar) -->
+<div class="col-right">
   <section class="reg-section">
     <button
       class="reg-section-head"
@@ -543,83 +548,85 @@
     </button>
 
     {#if regsExpanded}
-      {#if regs.length === 0}
-        <div class="reg-empty">
-          <BookOpen size={18} strokeWidth={1.5}/>
-          <p>No courses registered yet — select from the list above.</p>
-        </div>
-      {:else}
-        {#each [
-          { label: 'Normal',     color: 'var(--green-600)', list: normalRegs,    type: 'normal'     },
-          { label: 'Carry-Over', color: '#f59e0b',          list: carryOverRegs, type: 'carry_over' },
-          { label: 'Borrowed',   color: '#6366f1',          list: borrowedRegs,  type: 'borrowed'   },
-        ] as group (group.type)}
-          {#if group.list.length > 0}
-            <div class="reg-group">
-              <div class="group-label" style="color:{group.color}">
-                <span class="g-dot" style="background:{group.color}"></span>
-                {group.label}
-                <span class="g-count">{group.list.length}</span>
-              </div>
+      <!-- Scrollable courses area -->
+      <div class="reg-courses-scroll">
+        {#if regs.length === 0}
+          <div class="reg-empty">
+            <BookOpen size={18} strokeWidth={1.5}/>
+            <p>No courses registered yet — select from the list above.</p>
+          </div>
+        {:else}
+          {#each [
+            { label: 'Normal',     color: 'var(--green-600)', list: normalRegs,    type: 'normal'     },
+            { label: 'Carry-Over', color: '#f59e0b',          list: carryOverRegs, type: 'carry_over' },
+            { label: 'Borrowed',   color: '#6366f1',          list: borrowedRegs,  type: 'borrowed'   },
+          ] as group (group.type)}
+            {#if group.list.length > 0}
+              <div class="reg-group">
+                <div class="group-label" style="color:{group.color}">
+                  <span class="g-dot" style="background:{group.color}"></span>
+                  {group.label}
+                  <span class="g-count">{group.list.length}</span>
+                </div>
 
-              {#each group.list as reg (reg.id)}
-                {@const sb = statusBadge(reg.status)}
-                {@const isDropSelected = updateDropIds.has(reg.id)}
+                {#each group.list as reg (reg.id)}
+                  {@const sb = statusBadge(reg.status)}
+                  {@const isDropSelected = updateDropIds.has(reg.id)}
 
-                <div
-                  class="reg-row"
-                  class:row-drop-queued={isDropSelected}
-                  role={phase === 'submitted' ? 'button' : undefined}
-                  tabindex={phase === 'submitted' ? 0 : undefined}
-                  onclick={() => phase === 'submitted' && toggleDropReg(reg.id)}
-                  onkeydown={e => phase === 'submitted' && e.key === 'Enter' && toggleDropReg(reg.id)}
-                >
-                  <!-- Drop indicator — submitted phase -->
-                  {#if phase === 'submitted'}
-                    <span class="row-checkbox" class:row-cb-active={isDropSelected}>
-                      <span class="row-cb-inner"></span>
-                    </span>
-                  {/if}
+                  <div
+                    class="reg-row"
+                    class:row-drop-queued={isDropSelected}
+                    role={phase === 'submitted' ? 'button' : undefined}
+                    tabindex={phase === 'submitted' ? 0 : undefined}
+                    onclick={() => phase === 'submitted' && toggleDropReg(reg.id)}
+                    onkeydown={e => phase === 'submitted' && e.key === 'Enter' && toggleDropReg(reg.id)}
+                  >
+                    {#if phase === 'submitted'}
+                      <span class="row-checkbox" class:row-cb-active={isDropSelected}>
+                        <span class="row-cb-inner"></span>
+                      </span>
+                    {/if}
 
-                  <div class="reg-info">
-                    <span class="reg-code" style="border-color:{group.color}40; color:{group.color}">{reg.courseCode}</span>
-                    <div class="reg-text">
-                      <span class="reg-title">{reg.courseTitle}</span>
-                      <span class="reg-dept">{reg.department}</span>
+                    <div class="reg-info">
+                      <span class="reg-code" style="border-color:{group.color}40; color:{group.color}">{reg.courseCode}</span>
+                      <div class="reg-text">
+                        <span class="reg-title">{reg.courseTitle}</span>
+                        <span class="reg-dept">{reg.department}</span>
+                      </div>
+                    </div>
+
+                    <div class="reg-meta">
+                      <span class="reg-cu">{reg.creditUnits}<span style="opacity:.55; font-weight:400"> CU</span></span>
+                      <span class="status-badge" style="color:{sb.color}; background:{sb.bg}">{sb.text}</span>
+
+                      {#if phase === 'draft'}
+                        <form method="POST" action="?/drop" use:enhance={() => {
+                          dropping = reg.id;
+                          const snap = { regs: [...regs], credits: usedCredits };
+                          regs        = regs.filter(r => r.id !== reg.id);
+                          usedCredits -= reg.creditUnits;
+                          return async ({ result, update }) => {
+                            dropping = null;
+                            if (result.type === 'failure') { regs = snap.regs; usedCredits = snap.credits; }
+                            await update({ reset: false });
+                          };
+                        }}>
+                          <input type="hidden" name="registrationId" value={reg.id}/>
+                          <button class="drop-btn" disabled={dropping === reg.id} aria-label="Drop course">
+                            <Trash2 size={12}/>
+                          </button>
+                        </form>
+                      {/if}
                     </div>
                   </div>
+                {/each}
+              </div>
+            {/if}
+          {/each}
+        {/if}
+      </div>
 
-                  <div class="reg-meta">
-                    <span class="reg-cu">{reg.creditUnits}<span style="opacity:.55; font-weight:400"> CU</span></span>
-                    <span class="status-badge" style="color:{sb.color}; background:{sb.bg}">{sb.text}</span>
-
-                    {#if phase === 'draft'}
-                      <form method="POST" action="?/drop" use:enhance={() => {
-                        dropping = reg.id;
-                        const snap = { regs: [...regs], credits: usedCredits };
-                        regs        = regs.filter(r => r.id !== reg.id);
-                        usedCredits -= reg.creditUnits;
-                        return async ({ result, update }) => {
-                          dropping = null;
-                          if (result.type === 'failure') { regs = snap.regs; usedCredits = snap.credits; }
-                          await update({ reset: false });
-                        };
-                      }}>
-                        <input type="hidden" name="registrationId" value={reg.id}/>
-                        <button class="drop-btn" disabled={dropping === reg.id} aria-label="Drop course">
-                          <Trash2 size={12}/>
-                        </button>
-                      </form>
-                    {/if}
-                  </div>
-                </div>
-              {/each}
-            </div>
-          {/if}
-        {/each}
-      {/if}
-
-      <!-- ── Submit button (draft + has regs) ─────────────────────────── -->
+      <!-- Submit button - always visible at bottom -->
       {#if phase === 'draft' && regs.length > 0}
         <div class="submit-footer">
           <form method="POST" action="?/submit" use:enhance={() => {
@@ -640,10 +647,10 @@
       {/if}
     {/if}
   </section>
+</div>
+  </div>
 
-  <!-- ═══════════════════════════════════════════════════════════════════
-       UPDATE PANEL — submitted phase, sticky at bottom
-  ════════════════════════════════════════════════════════════════════════ -->
+  <!-- UPDATE PANEL — submitted phase, sticky at bottom -->
   {#if showUpdatePanel}
     <div class="update-panel">
       <div class="update-header">
@@ -666,7 +673,6 @@
         </button>
       </div>
 
-      <!-- Preview -->
       {#if updateDropRegs.length > 0}
         <div class="update-group">
           <span class="update-group-label remove-label">Removing</span>
@@ -730,839 +736,952 @@
       </p>
     </div>
   {/if}
-
 </div>
 
 <style>
-  /* src/routes/(student)/student/courses/register/styles.css */
+  /* CSS Variables - ensure these are defined in global styles */
+  :global(:root) {
+    --green-600: #16a34a;
+    --green-700: #15803d;
+    --green-soft: rgba(34, 197, 94, 0.08);
+    --amber-soft: rgba(245, 158, 11, 0.08);
+    --red-soft: rgba(220, 38, 38, 0.06);
+    --color-text: #1e293b;
+    --color-muted: #64748b;
+    --color-border: #e2e8f0;
+    --color-bg: #f8fafc;
+    --color-surface: #ffffff;
+  }
 
+  /* Page shell - full width, no sidebar */
+  .page {
+    display: flex;
+    flex-direction: column;
+    gap: 1.25rem;
+    padding: 1rem 1.5rem;
+    max-width: 1600px;
+    margin: 0 auto;
+    width: 100%;
+  }
 
-/* ── Page shell ───────────────────────────────────────────────────────── */
-.page {
-  display: flex;
-  flex-direction: column;
-  gap: 0.875rem;
-  padding-bottom: 7rem;
-  max-width: 860px;
-}
+  /* Top bar */
+  .topbar {
+    display: flex;
+    align-items: flex-start;
+    gap: 1rem;
+    flex-wrap: wrap;
+    padding-bottom: 0.5rem;
+    border-bottom: 1px solid var(--color-border);
+  }
+  .back-link {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3rem;
+    font-size: 0.72rem;
+    color: var(--color-muted);
+    text-decoration: none;
+    padding: 0.3rem 0;
+    transition: color 0.15s;
+    flex-shrink: 0;
+    margin-top: 0.2rem;
+  }
+  .back-link:hover { color: var(--green-600); }
 
-/* ── Top bar ──────────────────────────────────────────────────────────── */
-.topbar {
-  display: flex;
-  align-items: flex-start;
-  gap: 0.75rem;
-  flex-wrap: wrap;
-}
-.back-link {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.3rem;
-  font-size: 0.72rem;
-  color: var(--color-muted);
-  text-decoration: none;
-  padding: 0.3rem 0;
-  transition: color 0.15s;
-  flex-shrink: 0;
-  margin-top: 0.2rem;
-}
-.back-link:hover { color: var(--green-600); }
+  .topbar-center { flex: 1; min-width: 0; }
+  .topbar-center h1 { margin: 0; font-size: 1.25rem; font-weight: 800; color: var(--color-text); }
+  .page-sub { margin: 0.1rem 0 0; font-size: 0.72rem; color: var(--color-muted); }
 
-.topbar-center { flex: 1; min-width: 0; }
-.topbar-center h1 { margin: 0; font-size: 1.15rem; font-weight: 800; color: var(--color-text); }
-.page-sub { margin: 0.1rem 0 0; font-size: 0.72rem; color: var(--color-muted); }
+  .topbar-right {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    flex-shrink: 0;
+    flex-wrap: wrap;
+  }
 
-.topbar-right {
-  display: flex;
-  align-items: center;
-  gap: 0.6rem;
-  flex-shrink: 0;
-  flex-wrap: wrap;
-}
+  /* Credit ring */
+  .credit-ring {
+    position: relative;
+    width: 44px;
+    height: 44px;
+    flex-shrink: 0;
+  }
+  .credit-ring svg { position: absolute; inset: 0; transform: rotate(-90deg); }
+  .ring-label {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    line-height: 1;
+  }
+  .ring-used { font-size: 0.7rem; font-weight: 800; }
+  .ring-max  { font-size: 0.45rem; color: var(--color-muted); }
 
-/* Credit ring */
-.credit-ring {
-  position: relative;
-  width: 40px;
-  height: 40px;
-  flex-shrink: 0;
-}
-.credit-ring svg { position: absolute; inset: 0; transform: rotate(-90deg); }
-.ring-label {
-  position: absolute;
-  inset: 0;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  line-height: 1;
-}
-.ring-used { font-size: 0.65rem; font-weight: 800; }
-.ring-max  { font-size: 0.42rem; color: var(--color-muted); }
+  /* Phase tag */
+  .phase-tag {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3rem;
+    font-size: 0.65rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    padding: 0.25rem 0.7rem;
+    border-radius: 999px;
+    border: 1px solid;
+  }
 
-/* Phase tag */
-.phase-tag {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.25rem;
-  font-size: 0.63rem;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-  padding: 0.25rem 0.6rem;
-  border-radius: 999px;
-  border: 1px solid;
-}
-.phase-tag.draft {
-  border-color: var(--green-500);
-  background: var(--green-soft);
-  color: var(--green-700);
-}
-.phase-tag.submitted {
-  border-color: var(--amber-500);
-  background: var(--amber-soft);
-  color: #92400e;
-}
-.phase-tag.locked {
-  border-color: var(--red-500);
-  background: var(--red-soft);
-  color: #991b1b;
-}
+  /* Alerts */
+  .alert {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.6rem;
+    padding: 0.75rem 1rem;
+    border-radius: 0.6rem;
+    border: 1px solid;
+    font-size: 0.79rem;
+    line-height: 1.45;
+  }
+  .alert strong { font-weight: 700; }
+  .alert-error  { background: var(--red-soft); border-color: rgba(220,38,38,.25); color: #dc2626; }
+  .alert-amber  { background: var(--amber-soft); border-color: rgba(245,158,11,.3); color: #92400e; }
+  .alert-red    { background: var(--red-soft); border-color: rgba(220,38,38,.25); color: #991b1b; }
 
-/* ── Alerts ───────────────────────────────────────────────────────────── */
-.alert {
-  display: flex;
-  align-items: flex-start;
-  gap: 0.6rem;
-  padding: 0.75rem 1rem;
-  border-radius: 0.6rem;
-  border: 1px solid;
-  font-size: 0.79rem;
-  line-height: 1.45;
-}
-.alert strong { font-weight: 700; }
-.alert-error  { background: var(--red-soft); border-color: rgba(220,38,38,.25); color: var(--red-500); }
-.alert-amber  { background: var(--amber-soft); border-color: rgba(245,158,11,.3); color: #92400e; }
-.alert-red    { background: var(--red-soft); border-color: rgba(220,38,38,.25); color: #991b1b; }
-.alert-success { background: var(--green-soft); border-color: rgba(34,197,94,.25); color: var(--green-700); }
+  /* TWO COLUMN LAYOUT */
+  .two-columns {
+    display: flex;
+    gap: 1.5rem;
+    align-items: flex-start;
+  }
 
-/* ── Discover section ─────────────────────────────────────────────────── */
-.discover {
-  background: var(--color-surface);
-  border: 1px solid var(--color-border);
-  border-radius: 0.875rem;
-  overflow: hidden;
-  display: flex;
-  flex-direction: column;
-}
+  /* LEFT COLUMN - Takes more space, fills entire left side */
+  .col-left {
+    flex: 3;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+    align-self: flex-start;
+  }
 
-/* Tabs */
-.tab-bar {
-  display: flex;
-  border-bottom: 1px solid var(--color-border);
-  background: var(--color-bg);
-  overflow-x: auto;
-  scrollbar-width: none;
-  padding: 0 0.25rem;
-}
-.tab-bar::-webkit-scrollbar { display: none; }
-.tab-btn {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.3rem;
-  padding: 0.65rem 0.875rem;
-  border: none;
-  border-bottom: 2px solid transparent;
-  background: none;
-  font-size: 0.78rem;
-  font-weight: 600;
-  color: var(--color-muted);
-  cursor: pointer;
-  font-family: inherit;
-  white-space: nowrap;
-  transition: color 0.15s, border-color 0.15s;
-  margin-bottom: -1px;
-}
-.tab-btn:hover { color: var(--color-text); }
-.tab-btn.active { color: var(--tab-color); border-bottom-color: var(--tab-color); }
-.tab-pill {
-  min-width: 18px;
-  height: 18px;
-  border-radius: 999px;
-  background: var(--color-border);
-  color: var(--color-muted);
-  font-size: 0.58rem;
-  font-weight: 700;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  padding: 0 3px;
-  transition: background 0.15s, color 0.15s;
-}
-.tab-btn.active .tab-pill {
-  background: color-mix(in srgb, var(--tab-color) 15%, transparent);
-  color: var(--tab-color);
-}
+  /* RIGHT COLUMN - Sticky sidebar */
+  .col-right {
+    flex: 1.2;
+    min-width: 280px;
+    position: sticky;
+    top: 1rem;
+    align-self: flex-start;
+  }
 
-/* Search */
-.search-wrap {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  margin: 0.625rem 0.75rem 0;
-  padding: 0.4rem 0.625rem;
-  border-radius: 0.45rem;
-  background: var(--color-bg);
-  border: 1px solid var(--color-border);
-}
-.search-icon { color: var(--color-muted); flex-shrink: 0; }
-.search-input {
-  flex: 1;
-  border: none;
-  background: none;
-  outline: none;
-  font-size: 0.78rem;
-  color: var(--color-text);
-  font-family: inherit;
-}
-.search-input::placeholder { color: var(--color-muted); }
-.search-clear {
-  width: 16px;
-  height: 16px;
-  border-radius: 50%;
-  border: none;
-  background: var(--color-border);
-  color: var(--color-muted);
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  flex-shrink: 0;
-}
+  /* Responsive: stack on smaller screens */
+  @media (max-width: 860px) {
+    .two-columns {
+      flex-direction: column;
+    }
+    .col-right {
+      position: static;
+      width: 100%;
+    }
+    .col-left {
+      width: 100%;
+    }
+  }
 
-/* Tab hint */
-.tab-hint {
-  display: flex;
-  align-items: center;
-  gap: 0.3rem;
-  font-size: 0.7rem;
-  color: var(--color-muted);
-  padding: 0.35rem 0.75rem 0;
-  margin: 0;
-}
-.hint-selected  { color: var(--green-600); font-weight: 700; }
-.hint-submitted { color: #d97706; font-weight: 600; }
+  /* Discover section */
+  .discover {
+    background: var(--color-surface);
+    border: 1px solid var(--color-border);
+    border-radius: 1rem;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+  }
 
-/* Empty */
-.empty-state {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 0.5rem;
-  padding: 2.5rem 1rem;
-  color: var(--color-muted);
-  text-align: center;
-}
-.empty-state p { margin: 0; font-size: 0.78rem; }
+  /* Tab bar wrapper with horizontal scroll support */
+  .tab-bar-wrapper {
+    overflow-x: auto;
+    overflow-y: hidden;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: thin;
+  }
+  .tab-bar-wrapper::-webkit-scrollbar {
+    height: 3px;
+  }
+  .tab-bar-wrapper::-webkit-scrollbar-track {
+    background: var(--color-border);
+    border-radius: 3px;
+  }
+  .tab-bar-wrapper::-webkit-scrollbar-thumb {
+    background: var(--color-muted);
+    border-radius: 3px;
+  }
 
-/* Course grid */
-.course-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(185px, 1fr));
-  gap: 0.5rem;
-  padding: 0.625rem 0.75rem 0.875rem;
-}
+  .tab-bar {
+    display: flex;
+    border-bottom: 1px solid var(--color-border);
+    background: var(--color-bg);
+    padding: 0 0.25rem;
+    min-width: min-content;
+  }
+  .tab-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    padding: 0.7rem 1rem;
+    border: none;
+    border-bottom: 2px solid transparent;
+    background: none;
+    font-size: 0.8rem;
+    font-weight: 600;
+    color: var(--color-muted);
+    cursor: pointer;
+    font-family: inherit;
+    white-space: nowrap;
+    transition: color 0.15s, border-color 0.15s;
+    margin-bottom: -1px;
+  }
+  .tab-btn:hover { color: var(--color-text); }
+  .tab-btn.active { color: var(--tab-color); border-bottom-color: var(--tab-color); }
+  .tab-pill {
+    min-width: 20px;
+    height: 20px;
+    border-radius: 999px;
+    background: var(--color-border);
+    color: var(--color-muted);
+    font-size: 0.6rem;
+    font-weight: 700;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0 4px;
+  }
+  .tab-btn.active .tab-pill {
+    background: color-mix(in srgb, var(--tab-color) 15%, transparent);
+    color: var(--tab-color);
+  }
 
-/* Course card */
-.course-card {
-  background: var(--color-bg);
-  border: 1.5px solid var(--color-border);
-  border-radius: 0.7rem;
-  padding: 0;
-  display: flex;
-  flex-direction: column;
-  cursor: pointer;
-  text-align: left;
-  font-family: inherit;
-  transition: border-color 0.15s, box-shadow 0.15s, background 0.12s;
-  overflow: hidden;
-}
-.course-card:hover:not(:disabled):not(.selected) {
-  border-color: var(--card-accent);
-  box-shadow: 0 2px 10px rgba(0,0,0,0.07);
-}
-.course-card.selected {
-  border-color: var(--card-accent);
-  border-width: 2px;
-  background: color-mix(in srgb, var(--card-accent) 6%, var(--color-surface));
-  box-shadow: 0 0 0 3px color-mix(in srgb, var(--card-accent) 18%, transparent),
-                inset 0 0 0 0 transparent;
-}
-/* Normal-tab selected cards: explicit green */
-.course-card.selected[data-regtype="normal"] {
-  border-color: var(--green-600);
-  box-shadow: 0 0 0 3px rgba(34,197,94,.18);
-}
-.course-card.over-limit { opacity: 0.45; cursor: not-allowed; }
+  /* Search */
+  .search-wrap {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    margin: 0.75rem 0.875rem 0;
+    padding: 0.45rem 0.7rem;
+    border-radius: 0.5rem;
+    background: var(--color-bg);
+    border: 1px solid var(--color-border);
+  }
+  .search-icon { color: var(--color-muted); flex-shrink: 0; }
+  .search-input {
+    flex: 1;
+    border: none;
+    background: none;
+    outline: none;
+    font-size: 0.8rem;
+    color: var(--color-text);
+    font-family: inherit;
+  }
+  .search-input::placeholder { color: var(--color-muted); }
+  .search-clear {
+    width: 18px;
+    height: 18px;
+    border-radius: 50%;
+    border: none;
+    background: var(--color-border);
+    color: var(--color-muted);
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+  }
 
-/* Card inner layout — everything inside has padding */
+  /* Tab hint */
+  .tab-hint {
+    display: flex;
+    align-items: center;
+    gap: 0.3rem;
+    font-size: 0.7rem;
+    color: var(--color-muted);
+    padding: 0.4rem 0.875rem 0;
+    margin: 0;
+  }
+  .hint-selected  { color: var(--green-600); font-weight: 700; }
+  .hint-submitted { color: #d97706; font-weight: 600; }
 
-.card-top {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 0.7rem 0.75rem 0.25rem;
-}
-.card-code {
-  font-size: 0.72rem;
-  font-weight: 800;
-  color: var(--color-text);
-  font-family: monospace;
-  letter-spacing: 0.02em;
-}
-.card-cu {
-  font-size: 0.72rem;
-  font-weight: 800;
-  color: var(--card-accent);
-}
-.cu-label { font-size: 0.55rem; font-weight: 600; opacity: 0.7; margin-left: 1px; }
+  /* Empty state */
+  .empty-state {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 2.5rem 1rem;
+    color: var(--color-muted);
+    text-align: center;
+  }
+  .empty-state p { margin: 0; font-size: 0.8rem; }
 
-.card-title {
-  font-size: 0.76rem;
-  font-weight: 600;
-  color: var(--color-text);
-  line-height: 1.3;
-  padding: 0 0.75rem;
-}
+  /* Course grid wrapper with horizontal scroll for small devices */
+  .course-grid-wrapper {
+    overflow-x: auto;
+    overflow-y: visible;
+    -webkit-overflow-scrolling: touch;
+    margin: 0;
+    padding: 0.5rem 0.875rem 1rem;
+  }
+  .course-grid-wrapper::-webkit-scrollbar {
+    height: 4px;
+  }
+  .course-grid-wrapper::-webkit-scrollbar-track {
+    background: var(--color-border);
+    border-radius: 4px;
+  }
+  .course-grid-wrapper::-webkit-scrollbar-thumb {
+    background: var(--color-muted);
+    border-radius: 4px;
+  }
 
-.card-meta {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.2rem;
-  padding: 0.3rem 0.75rem;
-}
-.meta-chip {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.18rem;
-  font-size: 0.58rem;
-  color: var(--color-muted);
-  padding: 0.06rem 0.28rem;
-  border-radius: 0.18rem;
-  background: var(--color-surface);
-}
-.borrowed-chip { color: #6366f1 !important; background: rgba(99,102,241,.1) !important; font-weight: 700; }
+  .course-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+    gap: 0.75rem;
+    min-width: min-content;
+  }
 
-/* Card footer / selection bar */
-.card-footer {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 0.3rem;
-  font-size: 0.62rem;
-  font-weight: 700;
-  padding: 0.32rem 0.75rem;
-  margin-top: auto;
-  border-top: 1px solid var(--color-border);
-  background: var(--color-bg);
-  border-radius: 0 0 0.55rem 0.55rem;
-  transition: background 0.15s;
-}
-.card-footer.footer-selected {
-  background: color-mix(in srgb, var(--fc) 12%, transparent);
-  border-top-color: color-mix(in srgb, var(--fc) 30%, transparent);
-}
-.footer-type {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.28rem;
-  color: var(--card-accent);
-}
-.footer-add {
-  color: var(--color-muted);
-  font-weight: 500;
-  font-size: 0.6rem;
-}
-.footer-sel {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.2rem;
-  font-weight: 800;
-  font-size: 0.62rem;
-}
-.footer-limit {
-  color: var(--color-muted);
-  font-weight: 400;
-  font-size: 0.6rem;
-}
-.type-dot {
-  width: 5px;
-  height: 5px;
-  border-radius: 50%;
-  flex-shrink: 0;
-}
+  /* Small device: horizontal scroll instead of squishing */
+  @media (max-width: 640px) {
+    .course-grid {
+      grid-template-columns: repeat(2, minmax(200px, 280px));
+      width: max-content;
+    }
+    .course-grid-wrapper {
+      padding-bottom: 0.75rem;
+    }
+  }
 
-/* ── Pending tray ─────────────────────────────────────────────────────── */
-.pending-tray {
-  background: var(--color-surface);
-  border: 1.5px solid var(--green-600);
-  border-radius: 0.875rem;
-  overflow: hidden;
-}
-.tray-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 0.6rem 0.875rem;
-  border-bottom: 1px solid var(--color-border);
-  background: var(--green-soft);
-}
-.tray-title {
-  display: flex;
-  align-items: center;
-  gap: 0.4rem;
-  font-size: 0.79rem;
-  font-weight: 700;
-  color: var(--green-700);
-}
-.tray-count {
-  min-width: 18px;
-  height: 18px;
-  border-radius: 999px;
-  background: var(--green-600);
-  color: #fff;
-  font-size: 0.6rem;
-  font-weight: 800;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  padding: 0 4px;
-}
-.tray-clear {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.25rem;
-  font-size: 0.68rem;
-  font-weight: 600;
-  color: var(--color-muted);
-  background: none;
-  border: 1px solid var(--color-border);
-  border-radius: 0.35rem;
-  padding: 0.2rem 0.5rem;
-  cursor: pointer;
-  font-family: inherit;
-  transition: color 0.15s, border-color 0.15s;
-}
-.tray-clear:hover { color: #dc2626; border-color: #dc2626; }
+  /* Course card */
+  .course-card {
+    background: var(--color-bg);
+    border: 1.5px solid var(--color-border);
+    border-radius: 0.75rem;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    cursor: pointer;
+    text-align: left;
+    font-family: inherit;
+    transition: border-color 0.15s, box-shadow 0.15s, background 0.12s;
+    overflow: hidden;
+  }
+  .course-card:hover:not(:disabled):not(.selected) {
+    border-color: var(--card-accent);
+    box-shadow: 0 2px 10px rgba(0,0,0,0.07);
+  }
+  .course-card.selected {
+    border-color: var(--card-accent);
+    border-width: 2px;
+    background: color-mix(in srgb, var(--card-accent) 6%, var(--color-surface));
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--card-accent) 18%, transparent);
+  }
+  .course-card.over-limit { opacity: 0.45; cursor: not-allowed; }
 
-.tray-list { display: flex; flex-direction: column; }
-.tray-row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 0.5rem;
-  padding: 0.5rem 0.875rem;
-  border-bottom: 1px solid var(--color-border);
-  border-left: 3px solid transparent;
-}
-.tray-row:last-child { border-bottom: none; }
-.tray-left { display: flex; align-items: center; gap: 0.5rem; min-width: 0; flex: 1; }
-.tray-code {
-  font-size: 0.68rem;
-  font-weight: 800;
-  font-family: monospace;
-  color: var(--color-text);
-  white-space: nowrap;
-}
-.tray-title {
-  font-size: 0.76rem;
-  font-weight: 500;
-  color: var(--color-text);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-.tray-right {
-  display: flex;
-  align-items: center;
-  gap: 0.35rem;
-  flex-shrink: 0;
-}
-.tray-cu {
-  font-size: 0.65rem;
-  font-weight: 700;
-  color: var(--color-muted);
-}
-.tray-type {
-  font-size: 0.58rem;
-  font-weight: 800;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-  padding: 0.1rem 0.35rem;
-  border-radius: 0.2rem;
-}
-.tray-remove {
-  width: 22px;
-  height: 22px;
-  border-radius: 0.3rem;
-  border: 1px solid var(--color-border);
-  background: none;
-  color: var(--color-muted);
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  transition: all 0.15s;
-}
-.tray-remove:hover { color: #dc2626; border-color: #dc2626; background: rgba(220,38,38,.07); }
+  .card-top {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0.7rem 0.75rem 0.25rem;
+  }
+  .card-code {
+    font-size: 0.72rem;
+    font-weight: 800;
+    color: var(--color-text);
+    font-family: monospace;
+    letter-spacing: 0.02em;
+  }
+  .card-cu {
+    font-size: 0.72rem;
+    font-weight: 800;
+    color: var(--card-accent);
+  }
+  .cu-label { font-size: 0.55rem; font-weight: 600; opacity: 0.7; margin-left: 1px; }
 
-.tray-footer {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 0.75rem;
-  padding: 0.75rem 0.875rem;
-  border-top: 1px solid var(--color-border);
-  flex-wrap: wrap;
-}
-.projected-credits {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.35rem;
-  font-size: 0.74rem;
-  color: var(--color-muted);
-}
+  .card-title {
+    font-size: 0.76rem;
+    font-weight: 600;
+    color: var(--color-text);
+    line-height: 1.3;
+    padding: 0 0.75rem;
+  }
 
-.btn-add-selected {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.4rem;
-  padding: 0.55rem 1.1rem;
-  border-radius: 0.5rem;
-  border: none;
-  background: var(--green-600);
-  color: #fff;
-  font-size: 0.82rem;
-  font-weight: 700;
-  cursor: pointer;
-  font-family: inherit;
-  transition: background 0.15s;
-}
-.btn-add-selected:hover:not(:disabled) { background: var(--green-700); }
-.btn-add-selected:disabled { opacity: 0.5; cursor: not-allowed; }
+  .card-meta {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.25rem;
+    padding: 0.3rem 0.75rem;
+  }
+  .meta-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.2rem;
+    font-size: 0.6rem;
+    color: var(--color-muted);
+    padding: 0.06rem 0.3rem;
+    border-radius: 0.2rem;
+    background: var(--color-surface);
+  }
+  .borrowed-chip { color: #6366f1 !important; background: rgba(99,102,241,.1) !important; font-weight: 700; }
 
-/* ── Registered section ───────────────────────────────────────────────── */
-.reg-section {
-  background: var(--color-surface);
-  border: 1px solid var(--color-border);
-  border-radius: 0.875rem;
-  overflow: hidden;
-}
+  .card-footer {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.3rem;
+    font-size: 0.62rem;
+    font-weight: 700;
+    padding: 0.35rem 0.75rem;
+    margin-top: auto;
+    border-top: 1px solid var(--color-border);
+    background: var(--color-bg);
+    border-radius: 0 0 0.6rem 0.6rem;
+    transition: background 0.15s;
+  }
+  .card-footer.footer-selected {
+    background: color-mix(in srgb, var(--fc) 12%, transparent);
+    border-top-color: color-mix(in srgb, var(--fc) 30%, transparent);
+  }
+  .footer-type {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3rem;
+    color: var(--card-accent);
+  }
+  .footer-add { color: var(--color-muted); font-weight: 500; font-size: 0.6rem; }
+  .footer-sel { display: inline-flex; align-items: center; gap: 0.2rem; font-weight: 800; font-size: 0.62rem; }
+  .footer-limit { color: var(--color-muted); font-weight: 400; font-size: 0.6rem; }
+  .type-dot { width: 5px; height: 5px; border-radius: 50%; flex-shrink: 0; }
 
-.reg-section-head {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  width: 100%;
-  padding: 0.75rem 1rem;
-  background: none;
-  border: none;
-  border-bottom: 1px solid var(--color-border);
-  cursor: pointer;
-  font-family: inherit;
-  transition: background 0.12s;
-}
-.reg-section-head:hover { background: var(--color-bg); }
-.reg-section-head h2 {
-  margin: 0;
-  font-size: 0.85rem;
-  font-weight: 700;
-  color: var(--color-text);
-  flex: 1;
-  text-align: left;
-}
-.reg-pill {
-  font-size: 0.65rem;
-  font-weight: 700;
-  color: var(--color-muted);
-  background: var(--color-bg);
-  border: 1px solid var(--color-border);
-  padding: 0.1rem 0.45rem;
-  border-radius: 999px;
-}
-.tick-hint {
-  font-size: 0.65rem;
-  color: #d97706;
-  font-style: italic;
-}
-.expand-icon { color: var(--color-muted); line-height: 0; }
+  /* Pending tray */
+  .pending-tray {
+    background: var(--color-surface);
+    border: 1.5px solid var(--green-600);
+    border-radius: 1rem;
+    overflow: hidden;
+  }
+  .tray-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0.65rem 1rem;
+    border-bottom: 1px solid var(--color-border);
+    background: var(--green-soft);
+    flex-wrap: wrap;
+    gap: 0.5rem;
+  }
+  .tray-title {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    font-size: 0.8rem;
+    font-weight: 700;
+    color: var(--green-700);
+  }
+  .tray-count {
+    min-width: 20px;
+    height: 20px;
+    border-radius: 999px;
+    background: var(--green-600);
+    color: #fff;
+    font-size: 0.6rem;
+    font-weight: 800;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0 5px;
+  }
+  .tray-clear {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.25rem;
+    font-size: 0.68rem;
+    font-weight: 600;
+    color: var(--color-muted);
+    background: none;
+    border: 1px solid var(--color-border);
+    border-radius: 0.35rem;
+    padding: 0.2rem 0.5rem;
+    cursor: pointer;
+    font-family: inherit;
+    transition: color 0.15s, border-color 0.15s;
+  }
+  .tray-clear:hover { color: #dc2626; border-color: #dc2626; }
 
-.reg-empty {
-  display: flex;
-  align-items: center;
-  gap: 0.6rem;
-  padding: 1.25rem 1rem;
-  font-size: 0.79rem;
-  color: var(--color-muted);
-}
+  .tray-list-wrapper {
+    max-height: 300px;
+    overflow-y: auto;
+  }
+  .tray-list { display: flex; flex-direction: column; }
+  .tray-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.5rem;
+    padding: 0.6rem 1rem;
+    border-bottom: 1px solid var(--color-border);
+    border-left: 3px solid transparent;
+  }
+  .tray-row:last-child { border-bottom: none; }
+  .tray-left { display: flex; align-items: center; gap: 0.5rem; min-width: 0; flex: 1; }
+  .tray-code {
+    font-size: 0.68rem;
+    font-weight: 800;
+    font-family: monospace;
+    color: var(--color-text);
+    white-space: nowrap;
+  }
+  .tray-title {
+    font-size: 0.76rem;
+    font-weight: 500;
+    color: var(--color-text);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .tray-right {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    flex-shrink: 0;
+  }
+  .tray-cu { font-size: 0.65rem; font-weight: 700; color: var(--color-muted); }
+  .tray-type {
+    font-size: 0.58rem;
+    font-weight: 800;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    padding: 0.1rem 0.4rem;
+    border-radius: 0.2rem;
+  }
+  .tray-remove {
+    width: 24px;
+    height: 24px;
+    border-radius: 0.3rem;
+    border: 1px solid var(--color-border);
+    background: none;
+    color: var(--color-muted);
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.15s;
+  }
+  .tray-remove:hover { color: #dc2626; border-color: #dc2626; background: rgba(220,38,38,.07); }
 
-/* Reg groups */
-.reg-group { display: flex; flex-direction: column; }
-.reg-group + .reg-group { border-top: 1px solid var(--color-border); }
+  .tray-footer {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.75rem;
+    padding: 0.8rem 1rem;
+    border-top: 1px solid var(--color-border);
+    flex-wrap: wrap;
+  }
+  .projected-credits {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    font-size: 0.74rem;
+    color: var(--color-muted);
+  }
 
-.group-label {
-  display: flex;
-  align-items: center;
-  gap: 0.4rem;
-  font-size: 0.63rem;
-  font-weight: 800;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-  padding: 0.4rem 1rem;
-  background: var(--color-bg);
-}
-.g-dot { width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0; }
-.g-count {
-  margin-left: auto;
-  font-size: 0.6rem;
-  background: var(--color-border);
-  color: var(--color-muted);
-  padding: 0.05rem 0.35rem;
-  border-radius: 999px;
-}
+  .btn-add-selected {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    padding: 0.55rem 1.2rem;
+    border-radius: 0.5rem;
+    border: none;
+    background: var(--green-600);
+    color: #fff;
+    font-size: 0.82rem;
+    font-weight: 700;
+    cursor: pointer;
+    font-family: inherit;
+    transition: background 0.15s;
+  }
+  .btn-add-selected:hover:not(:disabled) { background: var(--green-700); }
+  .btn-add-selected:disabled { opacity: 0.5; cursor: not-allowed; }
 
-.reg-row {
-  display: flex;
-  align-items: center;
-  gap: 0.625rem;
-  padding: 0.6rem 1rem;
-  border-bottom: 1px solid var(--color-border);
-  transition: background 0.1s;
-}
-.reg-row:last-child { border-bottom: none; }
-.reg-row:hover { background: var(--color-bg); }
-.reg-row[role='button'] { cursor: pointer; }
-.row-drop-queued { background: rgba(220,38,38,.04) !important; }
+  /* Registered section */
+  .reg-section {
+    background: var(--color-surface);
+    border: 1px solid var(--color-border);
+    border-radius: 1rem;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+    max-height: calc(100vh - 200px); /* Adjust based on your top bar height */
+  }
 
-.row-checkbox {
-  flex-shrink: 0;
-  width: 16px;
-  height: 16px;
-  border-radius: 0.25rem;
-  border: 1.5px solid var(--color-border);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  transition: border-color 0.15s, background 0.15s;
-  background: var(--color-bg);
-}
-.row-checkbox.row-cb-active {
-  border-color: #dc2626;
-  background: rgba(220,38,38,.1);
-}
-.row-cb-inner {
-  width: 7px;
-  height: 7px;
-  border-radius: 0.12rem;
-  background: transparent;
-  transition: background 0.12s;
-}
-.row-cb-active .row-cb-inner { background: #dc2626; }
+  .reg-section-head {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    width: 100%;
+    padding: 0.8rem 1rem;
+    background: none;
+    border: none;
+    border-bottom: 1px solid var(--color-border);
+    cursor: pointer;
+    font-family: inherit;
+    transition: background 0.12s;
+    flex-shrink: 0; /* Prevent header from shrinking */
+  }
 
-.reg-info {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  flex: 1;
-  min-width: 0;
-}
-.reg-code {
-  font-size: 0.67rem;
-  font-weight: 800;
-  font-family: monospace;
-  white-space: nowrap;
-  padding: 0.1rem 0.3rem;
-  border-radius: 0.2rem;
-  border: 1px solid;
-  background: var(--color-bg);
-  flex-shrink: 0;
-}
-.reg-text {
-  display: flex;
-  flex-direction: column;
-  min-width: 0;
-}
-.reg-title {
-  font-size: 0.79rem;
-  font-weight: 600;
-  color: var(--color-text);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-.reg-dept { font-size: 0.63rem; color: var(--color-muted); margin-top: 0.05rem; }
+ .reg-section-head:hover { background: var(--color-bg); }
+  .reg-section-head h2 {
+    margin: 0;
+    font-size: 0.85rem;
+    font-weight: 700;
+    color: var(--color-text);
+    flex: 1;
+    text-align: left;
+  }
+  .reg-pill {
+    font-size: 0.65rem;
+    font-weight: 700;
+    color: var(--color-muted);
+    background: var(--color-bg);
+    border: 1px solid var(--color-border);
+    padding: 0.1rem 0.5rem;
+    border-radius: 999px;
+  }
+  .tick-hint { font-size: 0.65rem; color: #d97706; font-style: italic; }
+  .expand-icon { color: var(--color-muted); line-height: 0; }
 
-.reg-meta {
-  display: flex;
-  align-items: center;
-  gap: 0.4rem;
-  flex-shrink: 0;
-}
-.reg-cu {
-  font-size: 0.68rem;
-  font-weight: 700;
-  color: var(--color-muted);
-}
-.status-badge {
-  font-size: 0.57rem;
-  font-weight: 800;
-  text-transform: uppercase;
-  letter-spacing: 0.03em;
-  padding: 0.1rem 0.32rem;
-  border-radius: 0.2rem;
-}
+  /* Scrollable area for courses only - no scrollbar visible */
+  .reg-courses-scroll {
+    flex: 1;
+    overflow-y: auto;
+    scrollbar-width: none; /* Firefox - hides scrollbar */
+    -ms-overflow-style: none; /* IE/Edge - hides scrollbar */
+  }
 
-.drop-btn {
-  width: 24px;
-  height: 24px;
-  border-radius: 0.3rem;
-  border: 1px solid var(--color-border);
-  background: none;
-  color: var(--color-muted);
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  transition: all 0.15s;
-}
-.drop-btn:hover { background: rgba(220,38,38,.08); color: #dc2626; border-color: rgba(220,38,38,.4); }
-.drop-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+   /* Chrome/Safari/Opera - hides scrollbar */
+  .reg-courses-scroll::-webkit-scrollbar {
+    display: none;
+  }
 
-/* Submit footer */
-.submit-footer {
-  display: flex;
-  flex-direction: column;
-  gap: 0.45rem;
-  padding: 0.875rem 1rem;
-  border-top: 1px solid var(--color-border);
-}
-.btn-submit {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.4rem;
-  padding: 0.65rem 1.25rem;
-  border-radius: 0.5rem;
-  border: 1.5px solid var(--green-600);
-  background: var(--green-soft);
-  color: var(--green-700);
-  font-size: 0.875rem;
-  font-weight: 700;
-  cursor: pointer;
-  font-family: inherit;
-  transition: background 0.15s, border-color 0.15s, color 0.15s;
-  align-self: flex-start;
-}
-.btn-submit:hover:not(:disabled) {
-  background: var(--green-600);
-  color: var(--green-600);
-}
-.btn-submit:disabled { opacity: 0.4; cursor: not-allowed; }
-.submit-note { font-size: 0.7rem; color: var(--color-muted); margin: 0; }
+   /* Submit footer - always visible at bottom */
+  .submit-footer {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    padding: 1rem;
+    border-top: 1px solid var(--color-border);
+    flex-shrink: 0; /* Prevent footer from shrinking */
+    background: var(--color-surface);
+  }
 
-/* ── Update panel ─────────────────────────────────────────────────────── */
-.update-panel {
-  background: var(--color-surface);
-  border: 2px solid #f59e0b;
-  border-radius: 0.875rem;
-  padding: 1.25rem;
-  display: flex;
-  flex-direction: column;
-  gap: 0.875rem;
-}
-.update-header {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 0.5rem;
-}
-.update-header h3 { margin: 0; font-size: 0.95rem; font-weight: 800; color: var(--color-text); }
-.update-sub { font-size: 0.73rem; color: var(--color-muted); margin: 0.15rem 0 0; }
+ .reg-list-wrapper {
+    max-height: 600px;
+    overflow-y: auto;
+    scrollbar-width: none; /* Firefox - hides scrollbar */
+    -ms-overflow-style: none; /* IE/Edge - hides scrollbar */
+  }
+  
+  /* Chrome/Safari/Opera - hides scrollbar */
+  .reg-list-wrapper::-webkit-scrollbar {
+    display: none;
+  }
 
-.update-group { display: flex; flex-direction: column; gap: 0.25rem; }
-.update-group-label {
-  font-size: 0.62rem;
-  font-weight: 800;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-  margin-bottom: 0.1rem;
-}
-.remove-label { color: #dc2626; }
-.add-label    { color: var(--green-600); }
+  .reg-empty {
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+    padding: 1.5rem 1rem;
+    font-size: 0.8rem;
+    color: var(--color-muted);
+  }
 
-.update-row {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  padding: 0.4rem 0.625rem;
-  border-radius: 0.35rem;
-  font-size: 0.76rem;
-}
-.remove-row { background: rgba(220,38,38,.06); border: 1px solid rgba(220,38,38,.15); }
-.add-row    { background: rgba(34,197,94,.05);  border: 1px solid rgba(34,197,94,.2);  }
-.update-title { flex: 1; color: var(--color-text); font-weight: 500; }
+  .reg-group { display: flex; flex-direction: column; }
+  .reg-group + .reg-group { border-top: 1px solid var(--color-border); }
 
-.close-btn {
-  width: 26px;
-  height: 26px;
-  border-radius: 50%;
-  border: 1px solid var(--color-border);
-  background: none;
-  color: var(--color-muted);
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  flex-shrink: 0;
-  transition: background 0.15s;
-}
-.close-btn:hover { background: var(--color-bg); }
+  .group-label {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    font-size: 0.63rem;
+    font-weight: 800;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    padding: 0.5rem 1rem;
+    background: var(--color-bg);
+  }
+  .g-dot { width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0; }
+  .g-count {
+    margin-left: auto;
+    font-size: 0.6rem;
+    background: var(--color-border);
+    color: var(--color-muted);
+    padding: 0.05rem 0.4rem;
+    border-radius: 999px;
+  }
 
-.btn-update {
-  width: 100%;
-  padding: 0.65rem;
-  border-radius: 0.5rem;
-  border: none;
-  background: #f59e0b;
-  color: #fff;
-  font-size: 0.875rem;
-  font-weight: 700;
-  cursor: pointer;
-  font-family: inherit;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 0.4rem;
-  transition: background 0.15s;
-}
-.btn-update:hover:not(:disabled) { background: #d97706; }
-.btn-update:disabled { opacity: 0.5; cursor: not-allowed; }
+  .reg-row {
+    display: flex;
+    align-items: center;
+    gap: 0.625rem;
+    padding: 0.7rem 1rem;
+    border-bottom: 1px solid var(--color-border);
+    transition: background 0.1s;
+  }
+  .reg-row:last-child { border-bottom: none; }
+  .reg-row:hover { background: var(--color-bg); }
+  .reg-row[role='button'] { cursor: pointer; }
+  .row-drop-queued { background: rgba(220,38,38,.04) !important; }
 
-.update-warn {
-  font-size: 0.71rem;
-  color: #92400e;
-  margin: 0;
-  display: flex;
-  align-items: center;
-  gap: 0.3rem;
-}
+  .row-checkbox {
+    flex-shrink: 0;
+    width: 18px;
+    height: 18px;
+    border-radius: 0.25rem;
+    border: 1.5px solid var(--color-border);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: border-color 0.15s, background 0.15s;
+    background: var(--color-bg);
+  }
+  .row-checkbox.row-cb-active {
+    border-color: #dc2626;
+    background: rgba(220,38,38,.1);
+  }
+  .row-cb-inner {
+    width: 8px;
+    height: 8px;
+    border-radius: 0.12rem;
+    background: transparent;
+    transition: background 0.12s;
+  }
+  .row-cb-active .row-cb-inner { background: #dc2626; }
 
-/* ── Mobile ───────────────────────────────────────────────────────────── */
-@media (max-width: 640px) {
-  .page { padding-bottom: 0; }
-  .course-grid { grid-template-columns: 1fr 1fr; }
-  .topbar { gap: 0.5rem; }
-  .topbar-center h1 { font-size: 1rem; }
-  .update-panel { position: sticky; bottom: 0; z-index: 40; }
-  .tray-footer { flex-direction: column; align-items: stretch; }
-  .btn-add-selected { width: 100%; justify-content: center; }
-}
+  .reg-info {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    flex: 1;
+    min-width: 0;
+  }
+  .reg-code {
+    font-size: 0.67rem;
+    font-weight: 800;
+    font-family: monospace;
+    white-space: nowrap;
+    padding: 0.1rem 0.35rem;
+    border-radius: 0.2rem;
+    border: 1px solid;
+    background: var(--color-bg);
+    flex-shrink: 0;
+  }
+  .reg-text {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+  }
+  .reg-title {
+    font-size: 0.79rem;
+    font-weight: 600;
+    color: var(--color-text);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .reg-dept { font-size: 0.63rem; color: var(--color-muted); margin-top: 0.05rem; }
+
+  .reg-meta {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    flex-shrink: 0;
+  }
+  .reg-cu { font-size: 0.68rem; font-weight: 700; color: var(--color-muted); }
+  .status-badge {
+    font-size: 0.57rem;
+    font-weight: 800;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+    padding: 0.1rem 0.35rem;
+    border-radius: 0.2rem;
+  }
+
+  .drop-btn {
+    width: 26px;
+    height: 26px;
+    border-radius: 0.3rem;
+    border: 1px solid var(--color-border);
+    background: none;
+    color: var(--color-muted);
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.15s;
+  }
+  .drop-btn:hover { background: rgba(220,38,38,.08); color: #dc2626; border-color: rgba(220,38,38,.4); }
+  .drop-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+  .submit-footer {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    padding: 1rem;
+    border-top: 1px solid var(--color-border);
+  }
+  .btn-submit {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    padding: 0.7rem 1.3rem;
+    border-radius: 0.5rem;
+    border: 1.5px solid var(--green-600);
+    background: var(--green-soft);
+    color: var(--green-700);
+    font-size: 0.875rem;
+    font-weight: 700;
+    cursor: pointer;
+    font-family: inherit;
+    transition: background 0.15s, border-color 0.15s, color 0.15s;
+    align-self: flex-start;
+  }
+  .btn-submit:hover:not(:disabled) {
+    background: var(--green-600);
+    color: #fff;
+  }
+  .btn-submit:disabled { opacity: 0.4; cursor: not-allowed; }
+  .submit-note { font-size: 0.7rem; color: var(--color-muted); margin: 0; }
+
+  /* Update panel */
+  .update-panel {
+    background: var(--color-surface);
+    border: 2px solid #f59e0b;
+    border-radius: 1rem;
+    padding: 1.25rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.875rem;
+  }
+  .update-header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 0.5rem;
+  }
+  .update-header h3 { margin: 0; font-size: 0.95rem; font-weight: 800; color: var(--color-text); }
+  .update-sub { font-size: 0.73rem; color: var(--color-muted); margin: 0.15rem 0 0; }
+
+  .update-group { display: flex; flex-direction: column; gap: 0.3rem; }
+  .update-group-label {
+    font-size: 0.62rem;
+    font-weight: 800;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    margin-bottom: 0.1rem;
+  }
+  .remove-label { color: #dc2626; }
+  .add-label    { color: var(--green-600); }
+
+  .update-row {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.45rem 0.7rem;
+    border-radius: 0.35rem;
+    font-size: 0.76rem;
+  }
+  .remove-row { background: rgba(220,38,38,.06); border: 1px solid rgba(220,38,38,.15); }
+  .add-row    { background: rgba(34,197,94,.05);  border: 1px solid rgba(34,197,94,.2);  }
+  .update-title { flex: 1; color: var(--color-text); font-weight: 500; }
+
+  .close-btn {
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    border: 1px solid var(--color-border);
+    background: none;
+    color: var(--color-muted);
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    transition: background 0.15s;
+  }
+  .close-btn:hover { background: var(--color-bg); }
+
+  .btn-update {
+    width: 100%;
+    padding: 0.7rem;
+    border-radius: 0.5rem;
+    border: none;
+    background: #f59e0b;
+    color: #fff;
+    font-size: 0.875rem;
+    font-weight: 700;
+    cursor: pointer;
+    font-family: inherit;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.4rem;
+    transition: background 0.15s;
+  }
+  .btn-update:hover:not(:disabled) { background: #d97706; }
+  .btn-update:disabled { opacity: 0.5; cursor: not-allowed; }
+
+  .update-warn {
+    font-size: 0.71rem;
+    color: #92400e;
+    margin: 0;
+    display: flex;
+    align-items: center;
+    gap: 0.3rem;
+  }
+
+  /* Mobile adjustments */
+  @media (max-width: 640px) {
+    .page {
+      padding: 0.75rem 1rem;
+    }
+    .topbar {
+      flex-direction: column;
+    }
+    .topbar-center h1 {
+      font-size: 1.1rem;
+    }
+    .topbar-right {
+      justify-content: space-between;
+      width: 100%;
+    }
+    .tray-footer {
+      flex-direction: column;
+      align-items: stretch;
+    }
+    .btn-add-selected {
+      width: 100%;
+      justify-content: center;
+    }
+    .btn-submit {
+      width: 100%;
+      justify-content: center;
+    }
+  }
+
+  /* Small device horizontal scroll for course grid */
+  @media (max-width: 480px) {
+    .course-grid {
+      grid-template-columns: repeat(2, minmax(180px, 240px));
+    }
+  }
 </style>

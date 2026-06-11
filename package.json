@@ -18,7 +18,7 @@
     "push": "prisma db push && prisma generate",
     "db:fresh": "prisma db push && prisma generate && tsx prisma/seed.ts",
     "seed:all": "prisma migrate dev && tsx prisma/seed.ts",
-    "initSchema": "prisma migrate reset --force && tsx prisma/apply-sql.ts && prisma db push && prisma generate",
+    "initSchema": "prisma migrate reset --force && prisma db push && tsx prisma/apply-sql.ts && prisma generate",
     "db:seed": "tsx prisma/seed.ts",
     "db:setup": "prisma db push && pnpm initSchema && pnpm db:seed",
     "copy:models": "node scripts/copy-human-models.js",

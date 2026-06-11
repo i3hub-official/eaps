@@ -8,6 +8,51 @@ export const load: PageServerLoad = async ({ locals }) => {
 
   const currentSession  = user.session ?? deriveSessionFromDate();
   const currentSemester = deriveSemesterFromDate();
+  
+  // Get the active academic semester details
+  let activeSemester = null;
+  try {
+    activeSemester = await prisma.academicSemester.findFirst({
+      where: {
+        session: currentSession,
+        semester: currentSemester,
+        isActive: true,
+      },
+      select: {
+        id: true,
+        session: true,
+        semester: true,
+        label: true,
+        startDate: true,
+        endDate: true,
+        regOpen: true,
+      },
+    });
+  } catch (err) {
+    console.warn('Could not fetch AcademicSemester:', err);
+  }
+
+  // Get the student's level and semester configuration
+  let levelConfig = null;
+  if (user.levelId) {
+    try {
+      levelConfig = await prisma.levelSemesterConfig.findUnique({
+        where: {
+          levelId_semester: {
+            levelId: user.levelId,
+            semester: currentSemester,
+          },
+        },
+        select: {
+          maxCredits: true,
+          maxCarryOver: true,
+          maxBorrowed: true,
+        },
+      });
+    } catch (err) {
+      console.warn('Could not fetch LevelSemesterConfig:', err);
+    }
+  }
 
   // ── Registered courses for this session/semester ──────────────────────
   const registrations = await prisma.courseRegistration.findMany({
@@ -30,6 +75,23 @@ export const load: PageServerLoad = async ({ locals }) => {
     },
     orderBy: { createdAt: 'desc' },
   });
+
+  // Calculate totals
+  const totalCredits = registrations.reduce((s, r) => s + r.course.creditUnits, 0);
+  const carryOverCount = registrations.filter(r => r.registrationType === 'carry_over').length;
+  const borrowedCount = registrations.filter(r => r.registrationType === 'borrowed').length;
+  
+  // Check limits (using config if available, otherwise defaults)
+  const maxCarryOver = levelConfig?.maxCarryOver ?? 6;
+  const maxBorrowed = levelConfig?.maxBorrowed ?? 6;
+  const maxCredits = levelConfig?.maxCredits ?? 24;
+  
+  const hasReachedCarryOverLimit = carryOverCount >= maxCarryOver;
+  const hasReachedBorrowedLimit = borrowedCount >= maxBorrowed;
+  const hasReachedCreditLimit = totalCredits >= maxCredits;
+  
+  const remainingCredits = Math.max(0, maxCredits - totalCredits);
+  const canAddMore = remainingCredits > 0 && !hasReachedCreditLimit;
 
   return {
     registrations: registrations.map(r => ({
@@ -54,8 +116,26 @@ export const load: PageServerLoad = async ({ locals }) => {
     meta: {
       session:      currentSession,
       semester:     currentSemester,
-      totalCredits: registrations.reduce((s, r) => s + r.course.creditUnits, 0),
+      semesterLabel: activeSemester?.label ?? `${currentSemester === 1 ? 'First' : 'Second'} Semester ${currentSession}`,
+      totalCredits,
+      maxCredits,
+      remainingCredits,
+      canAddMore,
+      limits: {
+        maxCarryOver,
+        maxBorrowed,
+        currentCarryOver: carryOverCount,
+        currentBorrowed: borrowedCount,
+        hasReachedCarryOverLimit,
+        hasReachedBorrowedLimit,
+      },
     },
+    academicSemester: activeSemester ? {
+      label: activeSemester.label,
+      startDate: activeSemester.startDate,
+      endDate: activeSemester.endDate,
+      regOpen: activeSemester.regOpen,
+    } : null,
   };
 };
 
