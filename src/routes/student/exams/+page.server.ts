@@ -1,18 +1,14 @@
 // src/routes/student/exams/+page.server.ts
 import type { PageServerLoad } from './$types';
-import { error } from '@sveltejs/kit';
 import { prisma } from '$lib/server/db/index.js';
 import { requireStudent } from '$lib/server/auth/guards.js';
+import { getActiveSemester } from '$lib/server/academic/semester.js';
 
 export const load: PageServerLoad = async ({ locals }) => {
-  const user = await requireStudent(locals.user);
+  const user = requireStudent(locals.user);
 
-  // Derive current session/semester from date if user.session not set
-  const currentSession = user.session ?? deriveSessionFromDate();
-  const currentSemester = deriveSemesterFromDate();
+  const { session: currentSession, semester: currentSemester } = await getActiveSemester();
 
-  // Fetch ALL registered courses for this student across all registration types
-  // — normal, borrowed, carryover all treated equally
   const registrations = await prisma.courseRegistration.findMany({
     where: {
       studentId: user.id,
@@ -24,9 +20,7 @@ export const load: PageServerLoad = async ({ locals }) => {
         include: {
           exams: {
             where: {
-              status: { in: ['active', 'scheduled', 'completed'] },
-              session: currentSession,
-              semester: currentSemester,
+              status: { in: ['active', 'scheduled', 'completed', 'cancelled'] },
             },
             include: {
               examSessions: {
@@ -40,7 +34,6 @@ export const load: PageServerLoad = async ({ locals }) => {
     orderBy: { createdAt: 'desc' },
   });
 
-  // Flatten: one entry per exam
   const examEntries: Array<{
     id: string;
     sessionId: string | null;
@@ -69,7 +62,10 @@ export const load: PageServerLoad = async ({ locals }) => {
         title: exam.title,
         courseCode: reg.course.code,
         courseTitle: reg.course.title,
-        status: session?.status ?? 'not_started',
+        status:
+          exam.status === 'cancelled'
+            ? 'cancelled'
+            : (session?.status ?? 'not_started'),
         scheduledStart: exam.scheduledStart,
         scheduledEnd: exam.scheduledEnd,
         durationMinutes: exam.durationMinutes,
@@ -83,7 +79,6 @@ export const load: PageServerLoad = async ({ locals }) => {
     }
   }
 
-  // Results (all-time, for history)
   const results = await prisma.examResult.findMany({
     where: { studentId: user.id },
     orderBy: { generatedAt: 'desc' },
@@ -116,25 +111,3 @@ export const load: PageServerLoad = async ({ locals }) => {
     },
   };
 };
-
-// ── Session derivation ────────────────────────────────────────────────────────
-// Academic session format: "2025/2026"
-// First semester: Oct–Mar, Second semester: Apr–Sep
-function deriveSessionFromDate(): string {
-  const now = new Date();
-  const year = now.getFullYear();
-  const month = now.getMonth() + 1; // 1-12
-
-  // If we're in the second half of the year, session spans to next year
-  if (month >= 10) {
-    return `${year}/${year + 1}`;
-  }
-  return `${year - 1}/${year}`;
-}
-
-function deriveSemesterFromDate(): number {
-  const month = new Date().getMonth() + 1;
-  // First semester: Oct(10) – Mar(3)
-  // Second semester: Apr(4) – Sep(9)
-  return month >= 4 && month <= 9 ? 2 : 1;
-}
