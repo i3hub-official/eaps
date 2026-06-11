@@ -304,43 +304,53 @@
   }
 
   // ── verify against server ───────────────────────────────────────────────────
-  async function verify(descriptor: number[]) {
-    status = 'processing';
-    headline = 'Verifying…';
-    subline = 'Matching your face…';
-    stopCamera();
+async function verify(descriptor: number[]) {
+  status = 'processing';
+  headline = 'Verifying…';
+  subline = 'Matching your face…';
+  stopCamera();
 
-    console.log('Verification descriptor length:', descriptor.length);
+  try {
+    // Step 1: Verify face match
+    const res = await fetch('/api/face/verify', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ descriptor, examId, timestamp: Date.now() }),
+    });
 
-    try {
-      const res = await fetch('/api/face/verify', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ 
-          descriptor,
-          examId,
-          timestamp: Date.now()
-        }),
-      });
-
-      const data = await res.json();
-      
-      if (!res.ok || !data.success) {
-        throw new Error(data.message || 'Verification failed');
-      }
-      
-      status = 'success';
-      headline = 'Verified!';
-      subline = data.warning ?? `Identity confirmed. Match: ${Math.round(data.similarity * 100)}%`;
-      setTimeout(() => onVerified(), 1200);
-    } catch (e: any) {
-      console.error('Verification error:', e);
-      status = 'error';
-      headline = 'Verification failed';
-      errorMessage = e.message ?? 'Please try again';
-      subline = errorMessage;
+    const data = await res.json();
+    if (!res.ok || !data.success) {
+      throw new Error(data.message || 'Verification failed');
     }
+
+    // Step 2: Create verification session (sets cookies)
+    const sessionRes = await fetch('/api/face/verify-session', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        verified: true,
+        similarityScore: data.similarity,
+        examId,
+      }),
+    });
+
+    if (!sessionRes.ok) {
+      console.warn('Failed to set verification session cookies');
+      // Continue anyway — verify endpoint already logged it
+    }
+
+    status = 'success';
+    headline = 'Verified!';
+    subline = data.warning ?? `Identity confirmed. Match: ${Math.round(data.similarity * 100)}%`;
+    setTimeout(() => onVerified(), 1200);
+  } catch (e: any) {
+    console.error('Verification error:', e);
+    status = 'error';
+    headline = 'Verification failed';
+    errorMessage = e.message ?? 'Please try again';
+    subline = errorMessage;
   }
+}
 
   function stopCamera() {
     if (raf) {

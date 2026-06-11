@@ -1,4 +1,3 @@
-// src/routes/(lecturer)/lecturer/exams/[examId]/+page.server.ts
 import { error, fail } from '@sveltejs/kit';
 import type { Actions, PageServerLoad } from './$types';
 import { requireLecturer } from '$lib/server/auth/guards.js';
@@ -28,7 +27,7 @@ export const load: PageServerLoad = async ({ params, locals }) => {
 
 /**
  * Create ExamSession records for all students registered for this course.
- * Called after exam is activated. Upsert prevents duplicates.
+ * Called after exam is activated. Uses batch processing to avoid timeouts.
  */
 async function createSessionsForRegisteredStudents(examId: string) {
   const exam = await prisma.exam.findUnique({
@@ -37,6 +36,7 @@ async function createSessionsForRegisteredStudents(examId: string) {
   });
   if (!exam) return;
 
+  // Get all registered students for this course
   const registrations = await prisma.courseRegistration.findMany({
     where: {
       courseId: exam.courseId,
@@ -48,20 +48,42 @@ async function createSessionsForRegisteredStudents(examId: string) {
 
   if (registrations.length === 0) return;
 
-  await prisma.$transaction(
-    registrations.map(reg =>
-      prisma.examSession.upsert({
-        where: { examId_studentId: { examId, studentId: reg.studentId } },
-        create: {
-          examId,
-          studentId: reg.studentId,
-          status: 'not_started',
-          timeRemainingSecs: exam.durationMinutes * 60,
-        },
-        update: {},
-      })
-    )
-  );
+  // Get existing sessions to avoid duplicates
+  const existingSessions = await prisma.examSession.findMany({
+    where: { examId },
+    select: { studentId: true },
+  });
+  
+  const existingStudentIds = new Set(existingSessions.map(s => s.studentId));
+  
+  // Filter out students who already have sessions
+  const newRegistrations = registrations.filter(reg => !existingStudentIds.has(reg.studentId));
+  
+  if (newRegistrations.length === 0) return;
+  
+  // Batch create new sessions - 100 at a time to avoid timeout
+  const batchSize = 100;
+  const totalBatches = Math.ceil(newRegistrations.length / batchSize);
+  
+  console.log(`[DB] Creating ${newRegistrations.length} exam sessions in ${totalBatches} batches`);
+  
+  for (let i = 0; i < newRegistrations.length; i += batchSize) {
+    const batch = newRegistrations.slice(i, i + batchSize);
+    
+    await prisma.examSession.createMany({
+      data: batch.map(reg => ({
+        examId,
+        studentId: reg.studentId,
+        status: 'not_started',
+        timeRemainingSecs: exam.durationMinutes * 60,
+      })),
+      skipDuplicates: true, // Skip if duplicate (safety net)
+    });
+    
+    console.log(`[DB] Batch ${Math.floor(i / batchSize) + 1}/${totalBatches} completed`);
+  }
+  
+  console.log(`[DB] Successfully created ${newRegistrations.length} exam sessions`);
 }
 
 export const actions: Actions = {
@@ -117,7 +139,7 @@ export const actions: Actions = {
     await setExamStatus(exam.id, 'active');
     
     // Auto-create exam sessions for all registered students
-    await createSessionsForRegisteredStudents(exam.id);
+    await createSessionsForRegisteredStudents(params.examId);
 
     return { activateSuccess: true };
   },
@@ -129,6 +151,39 @@ export const actions: Actions = {
     requireOwnership(user, exam.createdBy);
     await setExamStatus(exam.id, 'completed');
     return { completeSuccess: true };
+  },
+
+  // ADD THIS CANCEL ACTION
+  cancelExam: async ({ params, locals }) => {
+    const user = requireLecturer(locals.user);
+    const exam = await getExamWithCourse(params.examId);
+    if (!exam) error(404, 'Exam not found');
+    requireOwnership(user, exam.createdBy);
+    
+    // Can only cancel if not already completed or cancelled
+    if (exam.status === 'completed') {
+      return fail(400, { cancelError: 'Cannot cancel a completed exam' });
+    }
+    if (exam.status === 'cancelled') {
+      return fail(400, { cancelError: 'Exam is already cancelled' });
+    }
+    
+    // Update exam status
+    await setExamStatus(exam.id, 'cancelled');
+    
+    // Force submit any active/in-progress sessions
+    await prisma.examSession.updateMany({
+      where: { 
+        examId: params.examId,
+        status: { in: ['active', 'in_progress'] }
+      },
+      data: { 
+        status: 'force_submitted',
+        submittedAt: new Date()
+      }
+    });
+    
+    return { cancelSuccess: true };
   },
 
   assignInvigilator: async ({ request, params, locals }) => {
@@ -156,36 +211,4 @@ export const actions: Actions = {
     if (invigilatorId) await removeInvigilator(exam.id, invigilatorId);
     return { removeSuccess: true };
   },
-
-  // Add this to the existing actions object
-cancelExam: async ({ params, locals }) => {
-  const user = requireLecturer(locals.user);
-  const exam = await getExamWithCourse(params.examId);
-  if (!exam) error(404, 'Exam not found');
-  requireOwnership(user, exam.createdBy);
-  
-  // Can only cancel if not already completed or cancelled
-  if (exam.status === 'completed') {
-    return fail(400, { cancelError: 'Cannot cancel a completed exam' });
-  }
-  if (exam.status === 'cancelled') {
-    return fail(400, { cancelError: 'Exam is already cancelled' });
-  }
-  
-  await setExamStatus(exam.id, 'cancelled');
-  
-  // Optional: Force submit any active sessions
-  await prisma.examSession.updateMany({
-    where: { 
-      examId: params.examId,
-      status: { in: ['active', 'in_progress'] }
-    },
-    data: { 
-      status: 'force_submitted',
-      submittedAt: new Date()
-    }
-  });
-  
-  return { cancelSuccess: true };
-},
 };

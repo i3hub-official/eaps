@@ -8,9 +8,14 @@ export const load: PageServerLoad = async ({ locals }) => {
   const user = requireStudent(locals.user);
 
   // ── Single source of truth for session/semester ───────────────────────
-  // Always use getActiveSemester() — same as the register server —
-  // so all course counts are computed against the same session/semester.
   const { session: currentSession, semester: currentSemester } = await getActiveSemester();
+
+  // ── Check if student has enrolled face ────────────────────────────────
+  const faceDescriptor = await prisma.faceDescriptor.findUnique({
+    where: { studentId: user.id },
+    select: { studentId: true },
+  });
+  const hasFaceEnrolled = !!faceDescriptor;
 
   // ── Student level ─────────────────────────────────────────────────────
   let studentLevel = null;
@@ -44,8 +49,6 @@ export const load: PageServerLoad = async ({ locals }) => {
   } catch (err) { console.warn('Could not fetch AcademicSemester:', err); }
 
   // ── Registrations for this session/semester ───────────────────────────
-  // One query — drives course count, credit total, carry-over/borrowed counts.
-  // This is the SAME filter used in the register server so counts always match.
   const registrations = await prisma.courseRegistration.findMany({
     where: {
       studentId: user.id,
@@ -58,7 +61,7 @@ export const load: PageServerLoad = async ({ locals }) => {
     },
   });
 
-  const registeredCourses = registrations.length;                              // ← exact count
+  const registeredCourses = registrations.length;
   const totalCredits      = registrations.reduce((s, r) => s + (r.course?.creditUnits ?? 0), 0);
   const carryOverCount    = registrations.filter(r => r.registrationType === 'carry_over').length;
   const borrowedCount     = registrations.filter(r => r.registrationType === 'borrowed').length;
@@ -147,6 +150,7 @@ export const load: PageServerLoad = async ({ locals }) => {
 
     student: {
       level: studentLevel,
+      hasFaceEnrolled,  // ← Add this
       levelConfig: {
         maxCredits,
         maxCarryOver,
@@ -169,7 +173,7 @@ export const load: PageServerLoad = async ({ locals }) => {
       semester:          currentSemester,
       semesterLabel:     activeSemester?.label
                            ?? `${currentSemester === 1 ? 'First' : 'Second'} Semester ${currentSession}`,
-      registeredCourses, // ← driven by the same registration query above
+      registeredCourses,
       unreadNotifications,
     },
   };

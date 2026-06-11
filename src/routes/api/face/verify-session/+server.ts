@@ -3,8 +3,8 @@ import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import { requireStudent } from '$lib/server/auth/guards.js';
 import { prisma } from '$lib/server/db/index.js';
+import { logVerification } from '$lib/server/db/faces.js';
 
-const VERIFICATION_WINDOW_MS = 5 * 60 * 1000; // 5 minutes
 
 export const POST: RequestHandler = async ({ request, locals, cookies }) => {
   try {
@@ -39,6 +39,15 @@ export const POST: RequestHandler = async ({ request, locals, cookies }) => {
       sameSite: 'lax',
       maxAge: 60 * 5
     });
+
+    await logVerification({
+  studentId: user.id,
+  examId: examId || null,
+  similarityScore: similarityScore || 0,
+  success: true,
+  ipAddress: getClientAddress(),
+  userAgent: request.headers.get('user-agent'),
+});
     
     // Log verification in audit trail
     if (examId) {

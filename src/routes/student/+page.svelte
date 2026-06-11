@@ -4,13 +4,19 @@
     LayoutDashboard, ClipboardList, BarChart3, BookOpen,
     Bell, Clock, Calendar, ArrowRight, Award, AlertCircle,
     TrendingUp, BookMarked, Zap, GraduationCap, Info,
-    AlertTriangle, CreditCard, CheckCircle2
+    AlertTriangle, CreditCard, CheckCircle2, UserCheck, Shield
   } from 'lucide-svelte';
   import type { PageData } from './$types';
+  import FaceEnrollmentModal from '$lib/components/exam/FaceEnrollmentModal.svelte';
 
   let { data }: { data: PageData } = $props();
 
   const { recentExams, recentResults, meta, student, academicSemester } = data;
+
+  // Face enrollment state
+  let showEnrollmentModal = $state(false);
+  let showEnrollmentAlert = $state(!student.hasFaceEnrolled);
+  let enrollmentInProgress = $state(false);
 
   function formatDate(d: Date | string | null) {
     if (!d) return 'TBD';
@@ -40,20 +46,42 @@
     : student.levelConfig.creditPercentage > 75 
       ? '#f59e0b' 
       : 'var(--green-600)';
+
+  function handleEnrollmentComplete() {
+    showEnrollmentModal = false;
+    showEnrollmentAlert = false;
+    enrollmentInProgress = false;
+    // Refresh the page to update the face enrollment status
+    window.location.reload();
+  }
+
+  function handleEnrollmentClose() {
+    showEnrollmentModal = false;
+    enrollmentInProgress = false;
+  }
+
+  function startEnrollment() {
+    enrollmentInProgress = true;
+    showEnrollmentModal = true;
+  }
+
+  function dismissAlert() {
+    showEnrollmentAlert = false;
+  }
 </script>
 
 <div class="dashboard">
   <!-- Header -->
   <div class="dash-header">
-   <div>
-  <h1>Dashboard</h1>
-  <p class="dash-sub">
-    {student.level ? (student.level.name ?? `${student.level.level}L`) : 'Level not set'}  · {meta.session} · {meta.semesterLabel}
-    {#if academicSemester?.startDate && academicSemester?.endDate}
-      · {formatDate(academicSemester.startDate)} – {formatDate(academicSemester.endDate)}
-    {/if}
-  </p>
-</div>
+    <div>
+      <h1>Dashboard</h1>
+      <p class="dash-sub">
+        {student.level ? (student.level.name ?? `${student.level.level}L`) : 'Level not set'}  · {meta.session} · {meta.semesterLabel}
+        {#if academicSemester?.startDate && academicSemester?.endDate}
+          · {formatDate(academicSemester.startDate)} – {formatDate(academicSemester.endDate)}
+        {/if}
+      </p>
+    </div>
     <div class="dash-meta">
       <span class="meta-pill"><BookMarked size={13} /> {meta.registeredCourses} Courses</span>
       {#if student.level}
@@ -64,6 +92,32 @@
       {/if}
     </div>
   </div>
+
+  <!-- Face Enrollment Alert Banner -->
+  {#if showEnrollmentAlert && !student.hasFaceEnrolled}
+    <div class="enrollment-alert">
+      <div class="alert-content">
+        <div class="alert-icon">
+          <Shield size={20} />
+        </div>
+        <div class="alert-text">
+          <strong>Face Enrollment Required</strong>
+          <p>To access and take exams, you need to enroll your face for identity verification. This process takes less than 2 minutes.</p>
+        </div>
+        <div class="alert-actions">
+          <button class="btn-enroll" onclick={startEnrollment} disabled={enrollmentInProgress}>
+            {#if enrollmentInProgress}
+              <span class="spinner-small"></span>
+              Loading...
+            {:else}
+              <UserCheck size={16} />
+              Enroll Now
+            {/if}
+          </button>
+        </div>
+      </div>
+    </div>
+  {/if}
 
   <!-- Student info card with level and limits -->
   <div class="student-info-card">
@@ -147,7 +201,7 @@
 
   <!-- Quick stats cards -->
   <div class="stat-cards">
-    <a href="/student/exams" class="stat-card">
+    <a href="/student/exam" class="stat-card">
       <div class="stat-card-icon" style="background: var(--green-soft); color: var(--green-600);">
         <ClipboardList size={20} />
       </div>
@@ -186,7 +240,7 @@
       <div class="section-head">
         <ClipboardList size={16} />
         <h2>Upcoming Exams</h2>
-        <a href="/student/exams" class="section-link">View all <ArrowRight size={12} /></a>
+        <a href="/student/exam" class="section-link">View all <ArrowRight size={12} /></a>
       </div>
       {#if recentExams.length === 0}
         <div class="empty-state">
@@ -214,7 +268,15 @@
                     <span class="exam-date"><Calendar size={11} /> {formatDate(exam.scheduledStart)}</span>
                   {/if}
                 {/if}
-                {#if exam.sessionStatus === 'active' || exam.sessionStatus === 'in_progress'}
+                {#if !student.hasFaceEnrolled}
+                  <button 
+                    class="exam-btn disabled" 
+                    disabled 
+                    title="Face enrollment required to take exams"
+                    onclick={startEnrollment}>
+                    Enroll Face First
+                  </button>
+                {:else if exam.sessionStatus === 'active' || exam.sessionStatus === 'in_progress'}
                   <a href="/student/exam/{exam.sessionId}" class="exam-btn primary">Resume</a>
                 {:else if exam.status === 'active'}
                   <a href="/student/exam/{exam.id}" class="exam-btn primary">Start</a>
@@ -248,7 +310,7 @@
                 <div class="result-grade" class:pass={result.passed} class:fail={!result.passed}>
                   {result.grade ?? '—'}
                 </div>
-                <div class="result-row-info">
+              <div class="result-row-info">
                   <span class="result-row-title">{result.examTitle}</span>
                   <span class="result-row-course">{result.courseCode ?? '—'}</span>
                 </div>
@@ -265,6 +327,13 @@
   </div>
 </div>
 
+<!-- Face Enrollment Modal -->
+<FaceEnrollmentModal
+  open={showEnrollmentModal}
+  onClose={handleEnrollmentClose}
+  onComplete={handleEnrollmentComplete}
+/>
+
 <style>
   .dashboard { display: flex; flex-direction: column; gap: 1.5rem; }
 
@@ -279,6 +348,96 @@
     font-size: 0.72rem; font-weight: 600; color: var(--color-muted);
   }
   .meta-pill.alert { background: rgba(239,68,68,0.08); border-color: rgba(239,68,68,0.2); color: #dc2626; }
+
+  /* Face Enrollment Alert Banner */
+  .enrollment-alert {
+    background: linear-gradient(135deg, rgba(0, 201, 167, 0.08), rgba(0, 201, 167, 0.03));
+    border: 0;
+    border-radius: var(--radius-card);
+    padding: 1rem;
+    animation: slide-down 0.3s ease;
+  }
+
+  .alert-content {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    flex-wrap: wrap;
+  }
+
+  .alert-icon {
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
+    background: rgba(0, 201, 167, 0.1);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #00c9a7;
+    flex-shrink: 0;
+  }
+
+  .alert-text {
+    flex: 1;
+    min-width: 180px;
+  }
+
+  .alert-text strong {
+    display: block;
+    font-size: 0.85rem;
+    font-weight: 700;
+    color: var(--color-text);
+    margin-bottom: 0.2rem;
+  }
+
+  .alert-text p {
+    margin: 0;
+    font-size: 0.75rem;
+    color: var(--color-muted);
+  }
+
+  .alert-actions {
+    display: flex;
+    gap: 0.5rem;
+    flex-shrink: 0;
+  }
+
+  .btn-enroll {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.5rem 1rem;
+    background: linear-gradient(135deg, #00c9a7, #00b894);
+    color: white;
+    border: none;
+    border-radius: 0.5rem;
+    font-size: 0.75rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.15s;
+    max-width: 150px;
+    width: 140px;
+  }
+
+  .btn-enroll:hover:not(:disabled) {
+    transform: translateY(-1px);
+    box-shadow: 0 4px 12px rgba(0, 201, 167, 0.3);
+  }
+
+  .btn-enroll:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+  }
+
+  .spinner-small {
+    width: 14px;
+    height: 14px;
+    border: 2px solid rgba(255, 255, 255, 0.3);
+    border-top-color: white;
+    border-radius: 50%;
+    animation: spin 0.6s linear infinite;
+    display: inline-block;
+  }
 
   /* Student info card */
   .student-info-card {
@@ -423,6 +582,12 @@
   }
   .exam-btn.primary { background: var(--green-600); color: white; }
   .exam-btn.primary:hover { background: var(--green-700); }
+  .exam-btn.disabled {
+    background: var(--color-border);
+    color: var(--color-muted);
+    cursor: not-allowed;
+    opacity: 0.6;
+  }
   .exam-btn.ghost { background: var(--color-bg); color: var(--color-muted); border: 1px solid var(--color-border); cursor: default; }
 
   .result-list { display: flex; flex-direction: column; }
@@ -449,4 +614,19 @@
   .result-row-right { display: flex; flex-direction: column; align-items: flex-end; flex-shrink: 0; }
   .result-score { font-size: 0.9rem; font-weight: 800; color: var(--color-text); }
   .result-date { font-size: 0.68rem; color: var(--color-muted); }
+
+  @keyframes slide-down {
+    from {
+      opacity: 0;
+      transform: translateY(-20px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+
+  @keyframes spin {
+    to { transform: rotate(360deg); }
+  }
 </style>

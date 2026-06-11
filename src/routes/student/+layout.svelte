@@ -43,7 +43,7 @@
 
 	const links = [
 		{ href: '/student',                  label: 'Dashboard',    icon: LayoutDashboard, exact: true,  desc: 'Overview & stats'     },
-		{ href: '/student/exams',            label: 'My Exams',     icon: ClipboardList,   exact: false, desc: 'Active & upcoming'    },
+		{ href: '/student/exam',            label: 'My Exams',     icon: ClipboardList,   exact: false, desc: 'Active & upcoming'    },
 		{ href: '/student/results',          label: 'Results',      icon: Target,          exact: false, desc: 'Performance history'  },
 		{ href: '/student/courses',          label: 'Courses',      icon: BookMarked,      exact: false, desc: 'Registered courses'   },
 		{ href: '/student/courses/register', label: 'Registration', icon: BookOpen,        exact: false, desc: 'Add new courses', badge: 'open' },

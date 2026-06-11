@@ -111,16 +111,15 @@
         gesture: { enabled: true },
         segmentation: { enabled: false },
         face: {
-          enabled: true,
-          detector: { maxDetected: 1, return: true },
-          description: { enabled: true },
-          emotion: { enabled: true },
-          landmarks: { enabled: true },
-          mesh: { enabled: false },
-          iris: { enabled: true },
-          antispoof: { enabled: true },
-          liveness: { enabled: true }
-          }
+  enabled: true,
+  detector: { maxDetected: 4, minConfidence: 0.45, return: true },
+  description: { enabled: true },
+  mesh: { enabled: true },        // ← was landmarks, now mesh
+  emotion: { enabled: false },
+  iris: { enabled: false },
+  antispoof: { enabled: true },
+  liveness: { enabled: true }
+}
         });
         await human.load();
         await human.warmup();

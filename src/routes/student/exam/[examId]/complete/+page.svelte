@@ -1,4 +1,4 @@
-<!-- src/routes/student/exams/[examId]/complete/+page.svelte -->
+<!-- src/routes/student/exam/[examId]/complete/+page.svelte -->
 <script lang="ts">
   import { onMount } from 'svelte';
   import { CheckCircle2, Clock, Award, AlertTriangle, FileText } from 'lucide-svelte';
@@ -101,7 +101,7 @@
         </div>
       {/if}
 
-      <a href="/student/exams" class="back-btn">← Back to My Exams</a>
+      <a href="/student/exam" class="back-btn">← Back to My Exams</a>
     </div>
 
   </div>

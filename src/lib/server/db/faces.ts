@@ -114,7 +114,7 @@ export function cosineSimilarity(a: number[], b: number[]): number {
 
 // Thresholds exported so API routes and FaceMonitor stay in sync
 export const FACE_THRESHOLDS = {
-  match:    0.82,   // cosine ≥ 0.82 → confident same person
-  soft:     0.70,   // cosine < 0.70 → likely different person → flag
+  match:    0.72,   // cosine ≥ 0.72 → confident same person
+  soft:     0.60,   // cosine < 0.60 → likely different person → flag
   // uncertain zone: 0.70–0.82 → log only, don't penalise
 } as const;

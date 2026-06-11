@@ -51,7 +51,7 @@ export const load: PageServerLoad = async ({ params, locals }) => {
 
 /**
  * Create ExamSession records for all students registered for this course.
- * Called after exam is activated. Upsert prevents duplicates.
+ * Called after exam is activated. Uses batch processing to avoid timeouts.
  */
 async function createSessionsForRegisteredStudents(examId: string) {
   const exam = await prisma.exam.findUnique({
@@ -60,6 +60,7 @@ async function createSessionsForRegisteredStudents(examId: string) {
   });
   if (!exam) return;
 
+  // Get all registered students for this course
   const registrations = await prisma.courseRegistration.findMany({
     where: {
       courseId: exam.courseId,
@@ -71,20 +72,42 @@ async function createSessionsForRegisteredStudents(examId: string) {
 
   if (registrations.length === 0) return;
 
-  await prisma.$transaction(
-    registrations.map(reg =>
-      prisma.examSession.upsert({
-        where: { examId_studentId: { examId, studentId: reg.studentId } },
-        create: {
-          examId,
-          studentId: reg.studentId,
-          status: 'not_started',
-          timeRemainingSecs: exam.durationMinutes * 60,
-        },
-        update: {},
-      })
-    )
-  );
+  // Get existing sessions to avoid duplicates
+  const existingSessions = await prisma.examSession.findMany({
+    where: { examId },
+    select: { studentId: true },
+  });
+  
+  const existingStudentIds = new Set(existingSessions.map(s => s.studentId));
+  
+  // Filter out students who already have sessions
+  const newRegistrations = registrations.filter(reg => !existingStudentIds.has(reg.studentId));
+  
+  if (newRegistrations.length === 0) return;
+  
+  // Batch create new sessions - 100 at a time to avoid timeout
+  const batchSize = 100;
+  const totalBatches = Math.ceil(newRegistrations.length / batchSize);
+  
+  console.log(`[DB] Creating ${newRegistrations.length} exam sessions in ${totalBatches} batches`);
+  
+  for (let i = 0; i < newRegistrations.length; i += batchSize) {
+    const batch = newRegistrations.slice(i, i + batchSize);
+    
+    await prisma.examSession.createMany({
+      data: batch.map(reg => ({
+        examId,
+        studentId: reg.studentId,
+        status: 'not_started',
+        timeRemainingSecs: exam.durationMinutes * 60,
+      })),
+      skipDuplicates: true, // Skip if duplicate (safety net)
+    });
+    
+    console.log(`[DB] Batch ${Math.floor(i / batchSize) + 1}/${totalBatches} completed`);
+  }
+  
+  console.log(`[DB] Successfully created ${newRegistrations.length} exam sessions`);
 }
 
 export const actions: Actions = {
@@ -292,7 +315,7 @@ export const actions: Actions = {
     if (exam.status === 'cancelled') {
     return fail(400, { activateError: 'Cannot activate a cancelled exam' });
   }
-  
+
     if (exam.status !== 'scheduled' && exam.status !== 'draft')
       return fail(400, { activateError: 'Exam must be in draft or scheduled status to activate' });
 

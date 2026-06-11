@@ -1,14 +1,10 @@
-<!-- src/routes/(lecturer)/exams/[examId]/+page.svelte -->
 <script lang="ts">
   import { enhance } from '$app/forms';
   import type { PageData, ActionData } from './$types';
-  import { FileText, BarChart2, CheckCircle, ChevronRight, UserCheck, X } from 'lucide-svelte';
+  import { FileText, BarChart2, CheckCircle, ChevronRight, UserCheck, X, AlertCircle } from 'lucide-svelte';
 
   let { data, form }: { data: PageData; form: ActionData } = $props();
   const { exam, questionCount, invigilators, allInvigilators } = data;
-
-  let showCancelModal = $state(false);
-let cancelling = $state(false);
 
   const STATUS_FLOW: Record<string, string> = {
     draft: 'Publish → Scheduled',
@@ -22,17 +18,22 @@ let cancelling = $state(false);
     active: 'complete',
   };
 
-const STATUS_META: Record<string, { color: string; label: string; canCancel?: boolean; canEdit?: boolean }> = {
-  draft:     { color: 'gray',   label: 'Draft', canEdit: true, canCancel: false },
-  scheduled: { color: 'blue',   label: 'Scheduled', canEdit: false, canCancel: true },
-  active:    { color: 'green',  label: 'Live', canEdit: false, canCancel: true },
-  completed: { color: 'purple', label: 'Completed', canEdit: false, canCancel: false },
-  cancelled: { color: 'red',    label: 'Cancelled', canEdit: false, canCancel: false },
-};
+  const STATUS_META: Record<string, { color: string; label: string; canCancel?: boolean; canEdit?: boolean }> = {
+    draft:     { color: 'gray',   label: 'Draft', canEdit: true, canCancel: false },
+    scheduled: { color: 'blue',   label: 'Scheduled', canEdit: false, canCancel: true },
+    active:    { color: 'green',  label: 'Live', canEdit: false, canCancel: true },
+    completed: { color: 'purple', label: 'Completed', canEdit: false, canCancel: false },
+    cancelled: { color: 'red',    label: 'Cancelled', canEdit: false, canCancel: false },
+  };
 
   const assignedIds = $derived(new Set(invigilators.map((i: any) => i.invigilatorId)));
   const available = $derived(allInvigilators.filter((i: any) => !assignedIds.has(i.id)));
   const isDraft = $derived(exam.status === 'draft');
+  const isCancelled = $derived(exam.status === 'cancelled');
+
+  // Modal states
+  let showCancelModal = $state(false);
+  let cancelling = $state(false);
 
   function fmtDateTime(d: Date | null | undefined) {
     if (!d) return '';
@@ -65,94 +66,83 @@ const STATUS_META: Record<string, { color: string; label: string; canCancel?: bo
       </div>
     </div>
 
-   <div class="header-actions">
-  <a href="/lecturer/exams/{exam.id}/questions" class="btn-outline">
-    <FileText size={14} /> Questions
-  </a>
-  <a href="/lecturer/exams/{exam.id}/results" class="btn-outline">
-    <BarChart2 size={14} /> Results
-  </a>
-  {#if STATUS_META[exam.status]?.canCancel}
-    <button class="btn-cancel" onclick={() => showCancelModal = true}>
-      <X size={14} /> Cancel Exam
-    </button>
-  {/if}
-  {#if STATUS_ACTION[exam.status]}
-    <form method="POST" action="?/{STATUS_ACTION[exam.status]}" use:enhance>
-      <button type="submit" class="btn-advance">
-        <CheckCircle size={14} />
-        {STATUS_FLOW[exam.status]}
-      </button>
-    </form>
-  {/if}
-</div>
+    <div class="header-actions">
+      <a href="/lecturer/exams/{exam.id}/questions" class="btn-outline">
+        <FileText size={14} /> Questions
+      </a>
+      <a href="/lecturer/exams/{exam.id}/results" class="btn-outline">
+        <BarChart2 size={14} /> Results
+      </a>
+      {#if STATUS_META[exam.status]?.canCancel && !isCancelled}
+        <button class="btn-cancel" onclick={() => showCancelModal = true}>
+          <X size={14} /> Cancel Exam
+        </button>
+      {/if}
+      {#if STATUS_ACTION[exam.status] && !isCancelled}
+        <form method="POST" action="?/{STATUS_ACTION[exam.status]}" use:enhance>
+          <button type="submit" class="btn-advance">
+            <CheckCircle size={14} />
+            {STATUS_FLOW[exam.status]}
+          </button>
+        </form>
+      {/if}
+    </div>
   </div>
 
   <!-- Alerts -->
-  {#if form?.publishError || form?.settingsError || form?.assignError}
+  {#if form?.publishError || form?.settingsError || form?.assignError || form?.cancelError}
     <div class="alert error">
-      {form?.publishError ?? form?.settingsError ?? form?.assignError}
+      {form?.publishError ?? form?.settingsError ?? form?.assignError ?? form?.cancelError}
     </div>
   {/if}
-  {#if form?.settingsSuccess || form?.publishSuccess || form?.activateSuccess || form?.completeSuccess || form?.assignSuccess || form?.removeSuccess}
-    <div class="alert success">Changes saved successfully.</div>
+  {#if form?.settingsSuccess || form?.publishSuccess || form?.activateSuccess || form?.completeSuccess || form?.assignSuccess || form?.removeSuccess || form?.cancelSuccess}
+    <div class="alert success">
+      {form?.cancelSuccess ? 'Exam cancelled successfully.' : 'Changes saved successfully.'}
+    </div>
   {/if}
-
-  {#if form?.cancelError}
-  <div class="alert error">
-    <AlertCircle size={14} /> {form.cancelError}
-  </div>
-{/if}
-{#if form?.cancelSuccess}
-  <div class="alert success">
-    <CheckCircle size={14} /> Exam cancelled successfully.
-  </div>
-{/if}
 
   <!-- Cancel Exam Modal -->
-{#if showCancelModal}
-  <div class="modal-backdrop" role="dialog" aria-modal="true">
-    <div class="modal-card">
-      <div class="modal-icon cancel">
-        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-          <circle cx="12" cy="12" r="10"/>
-          <line x1="18" y1="6" x2="6" y2="18"/>
-          <line x1="6" y1="6" x2="18" y2="18"/>
-        </svg>
-      </div>
-      <h2 class="modal-title">Cancel Exam?</h2>
-      <p class="modal-desc">
-        This will immediately cancel the exam and prevent any further submissions.
-        {#if exam.status === 'active'}
-          <strong>Currently active students will have their attempts force-submitted.</strong>
-        {/if}
-        This action cannot be undone.
-      </p>
-      <div class="modal-warning">
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#dc2626" stroke-width="2">
-          <path d="M12 8v4m0 4h.01M12 2a10 10 0 100 20 10 10 0 000-20z"/>
-        </svg>
-        All student progress will be saved, but no new attempts allowed.
-      </div>
-      <div class="modal-actions">
-        <button class="btn ghost" onclick={() => showCancelModal = false}>Keep Exam</button>
-        <form method="POST" action="?/cancelExam" use:enhance={() => {
-          cancelling = true;
-          return async ({ update }) => { 
-            await update(); 
-            cancelling = false; 
-            if (!form?.cancelError) showCancelModal = false;
-          };
-        }}>
-          <button type="submit" class="btn cancel-btn" disabled={cancelling}>
-            {#if cancelling}<span class="spinner-sm"></span>{/if}
-            {cancelling ? 'Cancelling…' : 'Yes, Cancel Exam'}
-          </button>
-        </form>
+  {#if showCancelModal}
+    <div class="modal-backdrop" role="dialog" aria-modal="true">
+      <div class="modal-card">
+        <div class="modal-icon cancel">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <circle cx="12" cy="12" r="10"/>
+            <line x1="18" y1="6" x2="6" y2="18"/>
+            <line x1="6" y1="6" x2="18" y2="18"/>
+          </svg>
+        </div>
+        <h2 class="modal-title">Cancel Exam?</h2>
+        <p class="modal-desc">
+          This will immediately cancel the exam and prevent any further submissions.
+          {#if exam.status === 'active'}
+            <strong>Currently active students will have their attempts force-submitted.</strong>
+          {/if}
+          This action cannot be undone.
+        </p>
+        <div class="modal-warning">
+          <AlertCircle size={14} />
+          All student progress will be saved, but no new attempts will be allowed.
+        </div>
+        <div class="modal-actions">
+          <button class="btn ghost" onclick={() => showCancelModal = false}>Keep Exam</button>
+          <form method="POST" action="?/cancelExam" use:enhance={() => {
+            cancelling = true;
+            return async ({ update }) => { 
+              await update(); 
+              cancelling = false; 
+              if (!form?.cancelError) showCancelModal = false;
+            };
+          }}>
+            <button type="submit" class="btn cancel-btn" disabled={cancelling}>
+              {#if cancelling}<span class="spinner-sm"></span>{/if}
+              {cancelling ? 'Cancelling…' : 'Yes, Cancel Exam'}
+            </button>
+          </form>
+        </div>
       </div>
     </div>
-  </div>
-{/if}
+  {/if}
 
   <div class="layout">
     <!-- Main: Settings -->
@@ -161,7 +151,7 @@ const STATUS_META: Record<string, { color: string; label: string; canCancel?: bo
         <div class="card-header">
           <h2>Exam Settings</h2>
           {#if !isDraft}
-            <span class="locked-badge">Locked</span>
+            <span class="locked-badge">{isCancelled ? 'Cancelled' : 'Locked'}</span>
           {/if}
         </div>
 
@@ -169,69 +159,69 @@ const STATUS_META: Record<string, { color: string; label: string; canCancel?: bo
 
           <div class="field">
             <label>Title</label>
-            <input name="title" type="text" value={exam.title} required disabled={!isDraft} />
+            <input name="title" type="text" value={exam.title} required disabled={!isDraft || isCancelled} />
           </div>
 
           <div class="field">
             <label>Instructions</label>
-            <textarea name="instructions" rows="3" disabled={!isDraft}>{exam.instructions ?? ''}</textarea>
+            <textarea name="instructions" rows="3" disabled={!isDraft || isCancelled}>{exam.instructions ?? ''}</textarea>
           </div>
 
           <div class="field-row four">
             <div class="field">
               <label>Duration (min)</label>
-              <input name="duration_minutes" type="number" value={exam.durationMinutes} min="5" disabled={!isDraft} />
+              <input name="duration_minutes" type="number" value={exam.durationMinutes} min="5" disabled={!isDraft || isCancelled} />
             </div>
             <div class="field">
               <label>Total Marks</label>
-              <input name="total_marks" type="number" value={exam.totalMarks} min="1" disabled={!isDraft} />
+              <input name="total_marks" type="number" value={exam.totalMarks} min="1" disabled={!isDraft || isCancelled} />
             </div>
             <div class="field">
               <label>Pass Mark</label>
-              <input name="pass_mark" type="number" value={exam.passMark} min="1" disabled={!isDraft} />
+              <input name="pass_mark" type="number" value={exam.passMark} min="1" disabled={!isDraft || isCancelled} />
             </div>
             <div class="field">
               <label>Max Violations</label>
-              <input name="max_violations" type="number" value={exam.maxViolations} min="1" disabled={!isDraft} />
+              <input name="max_violations" type="number" value={exam.maxViolations} min="1" disabled={!isDraft || isCancelled} />
             </div>
           </div>
 
           <div class="field-row">
             <div class="field">
               <label>Scheduled Start</label>
-              <input name="scheduled_start" type="datetime-local" value={fmtDateTime(exam.scheduledStart)} disabled={!isDraft} />
+              <input name="scheduled_start" type="datetime-local" value={fmtDateTime(exam.scheduledStart)} disabled={!isDraft || isCancelled} />
             </div>
             <div class="field">
               <label>Scheduled End</label>
-              <input name="scheduled_end" type="datetime-local" value={fmtDateTime(exam.scheduledEnd)} disabled={!isDraft} />
+              <input name="scheduled_end" type="datetime-local" value={fmtDateTime(exam.scheduledEnd)} disabled={!isDraft || isCancelled} />
             </div>
           </div>
 
           <div class="toggles">
-            <label class="toggle" class:disabled={!isDraft}>
+            <label class="toggle" class:disabled={!isDraft || isCancelled}>
               <div class="toggle-track">
-                <input type="checkbox" name="randomize_questions" checked={exam.randomizeQuestions} disabled={!isDraft} />
+                <input type="checkbox" name="randomize_questions" checked={exam.randomizeQuestions} disabled={!isDraft || isCancelled} />
                 <span class="toggle-slider"></span>
               </div>
               <span>Randomize question order</span>
             </label>
-            <label class="toggle" class:disabled={!isDraft}>
+            <label class="toggle" class:disabled={!isDraft || isCancelled}>
               <div class="toggle-track">
-                <input type="checkbox" name="randomize_options" checked={exam.randomizeOptions} disabled={!isDraft} />
+                <input type="checkbox" name="randomize_options" checked={exam.randomizeOptions} disabled={!isDraft || isCancelled} />
                 <span class="toggle-slider"></span>
               </div>
               <span>Randomize option order</span>
             </label>
-            <label class="toggle" class:disabled={!isDraft}>
+            <label class="toggle" class:disabled={!isDraft || isCancelled}>
               <div class="toggle-track">
-                <input type="checkbox" name="show_result_after" checked={exam.showResultAfter} disabled={!isDraft} />
+                <input type="checkbox" name="show_result_after" checked={exam.showResultAfter} disabled={!isDraft || isCancelled} />
                 <span class="toggle-slider"></span>
               </div>
               <span>Show result to student after submission</span>
             </label>
           </div>
 
-          {#if isDraft}
+          {#if isDraft && !isCancelled}
             <button type="submit" class="btn-save">Save Settings</button>
           {/if}
         </form>
@@ -288,18 +278,20 @@ const STATUS_META: Record<string, { color: string; label: string; canCancel?: bo
                   <span class="invig-name">{inv.invigilator.fullName}</span>
                   <span class="invig-email">{inv.invigilator.email}</span>
                 </div>
-                <form method="POST" action="?/removeInvigilator" use:enhance>
-                  <input type="hidden" name="invigilator_id" value={inv.invigilatorId} />
-                  <button type="submit" class="remove-btn" aria-label="Remove">
-                    <X size={13} />
-                  </button>
-                </form>
+                {#if !isCancelled}
+                  <form method="POST" action="?/removeInvigilator" use:enhance>
+                    <input type="hidden" name="invigilator_id" value={inv.invigilatorId} />
+                    <button type="submit" class="remove-btn" aria-label="Remove">
+                      <X size={13} />
+                    </button>
+                  </form>
+                {/if}
               </li>
             {/each}
           </ul>
         {/if}
 
-        {#if available.length > 0}
+        {#if available.length > 0 && !isCancelled}
           <form method="POST" action="?/assignInvigilator" use:enhance class="assign-form">
             <select name="invigilator_id" required>
               <option value="">Assign invigilator…</option>
@@ -825,8 +817,47 @@ const STATUS_META: Record<string, { color: string; label: string; canCancel?: bo
   color: white;
 }
 
-.btn.cancel-btn:hover:not(:disabled) {
-  background: #b91c1c;
-  border-color: #b91c1c;
-}
+.btn-cancel {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    padding: 0.5rem 0.875rem;
+    background: rgba(220, 38, 38, 0.08);
+    border: 1px solid rgba(220, 38, 38, 0.3);
+    border-radius: 0.5rem;
+    color: #dc2626;
+    font-weight: 600;
+    font-size: 0.82rem;
+    cursor: pointer;
+    transition: all 0.15s;
+  }
+
+  .btn-cancel:hover {
+    background: rgba(220, 38, 38, 0.15);
+    border-color: #dc2626;
+  }
+
+  .modal-icon.cancel {
+    background: rgba(220, 38, 38, 0.1);
+    color: #dc2626;
+  }
+
+  .modal-warning {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.625rem 0.875rem;
+    background: rgba(220, 38, 38, 0.05);
+    border: 1px solid rgba(220, 38, 38, 0.2);
+    border-radius: 0.5rem;
+    font-size: 0.78rem;
+    color: #dc2626;
+    margin: 0.25rem 0;
+  }
+
+  .btn.cancel-btn:hover:not(:disabled) {
+    background: #b91c1c;
+    border-color: #b91c1c;
+  }
+
 </style>

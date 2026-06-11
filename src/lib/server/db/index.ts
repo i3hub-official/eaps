@@ -13,8 +13,9 @@ const prismaPool = new pg.Pool({
   connectionString: DATABASE_URL_UNPOOLED,   // ← direct Neon connection
   ssl: { rejectUnauthorized: false },        // required for Neon SSL
   max: 5,                                    // keep low — Neon free tier limit
-  idleTimeoutMillis: 30_000,
-  connectionTimeoutMillis: 10_000,           // Neon cold-start can take ~3-5 s
+  idleTimeoutMillis: 60_000,
+  connectionTimeoutMillis: 30_000,           // Neon cold-start can take ~3-5 s
+
 });
 
 prismaPool.on('error', (err) => {
@@ -62,8 +63,8 @@ function getRawPool(): pg.Pool {
     connectionString: DATABASE_URL,   // ← pooled URL fine for raw queries
     ssl: { rejectUnauthorized: false },
     max: 10,
-    idleTimeoutMillis: 30_000,
-    connectionTimeoutMillis: 10_000,
+    idleTimeoutMillis: 60_000,
+    connectionTimeoutMillis: 30_000,
   });
 
   _rawPool.on('error', (err) => {
