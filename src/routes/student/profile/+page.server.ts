@@ -7,24 +7,48 @@ import { fail } from '@sveltejs/kit';
 export const load: PageServerLoad = async ({ locals }) => {
   const user = await requireStudent(locals.user);
 
-  const fullUser = await prisma.user.findUnique({
-    where: { id: user.id },
-    include: {
-      department: true,
-      college: true,
-      level: true,
-      programme: true,
-      faceDescriptor: { select: { enrolledAt: true, updatedAt: true } },
-      _count: {
-        select: {
-          courseRegistrations: true,
-          examSessions: true,
-          examResults: true,
-          emailVerified: true,
-        },
+ const fullUser = await prisma.user.findUnique({
+  where: { id: user.id },
+  select: {
+    id: true,
+    fullName: true,
+    email: true,
+    phone: true,
+    title: true,
+    matricNumber: true,
+    jambRegNo: true,
+    gender: true,
+    dateOfBirth: true,
+    nationality: true,
+    stateoforigin: true,
+    lga: true,
+    address: true,
+    session: true,
+    bio: true,
+    twitter: true,
+    linkedin: true,
+    github: true,
+    photoUrl: true,
+    isActive: true,
+    isSuspended: true,
+    suspendedAt: true,
+    emailVerified: true,        // ← ADD THIS
+    createdAt: true,
+    updatedAt: true,
+    department: true,
+    college: true,
+    level: true,
+    programme: true,
+    faceDescriptor: { select: { enrolledAt: true, updatedAt: true } },
+    _count: {
+      select: {
+        courseRegistrations: true,
+        examSessions: true,
+        examResults: true,
       },
     },
-  });
+  },
+});
 
   if (!fullUser) throw fail(404, { error: 'User not found' });
 
@@ -75,11 +99,12 @@ export const load: PageServerLoad = async ({ locals }) => {
       gender: fullUser.gender,
       dateOfBirth: fullUser.dateOfBirth,
       nationality: fullUser.nationality,
-      stateOfOrigin: fullUser.stateoforigin,
+      stateoforigin: fullUser.stateoforigin,
       lga: fullUser.lga,
       address: fullUser.address,
       session: fullUser.session,
       bio: fullUser.bio ?? '',
+          emailVerified: fullUser.emailVerified,
       twitter: fullUser.twitter ?? '',
       linkedin: fullUser.linkedin ?? '',
       github: fullUser.github ?? '',

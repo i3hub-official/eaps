@@ -92,7 +92,7 @@
       bg: 'var(--amber-soft)',
       fields: [
         { label: 'Nationality', value: data.user.nationality ?? '—', icon: Globe },
-        { label: 'State of Origin', value: data.user.stateOfOrigin ?? '—', icon: MapPin },
+        { label: 'State of Origin', value: data.user.stateoforigin ?? '—', icon: MapPin },
         { label: 'LGA', value: data.user.lga ?? '—', icon: Building2 },
         { label: 'Address', value: data.user.address ?? '—', icon: MapPinned, editable: true },
       ].filter(f => f.value !== '—' || f.editable),
