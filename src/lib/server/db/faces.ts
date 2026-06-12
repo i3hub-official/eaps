@@ -14,13 +14,13 @@ export async function saveFaceDescriptor(studentId: string, descriptor: number[]
     where: { studentId },
     update: {
       descriptor,
-      embeddingDimension: dimension,
+      embedding_dimension: dimension,
       updatedAt: new Date(),
     },
     create: {
       studentId,
       descriptor,
-      embeddingDimension: dimension,
+      embedding_dimension: dimension,
     },
   });
 }
@@ -45,14 +45,14 @@ export async function getFaceDescriptorWithMeta(studentId: string) {
   const result = await prisma.faceDescriptor.findUnique({
     where: { studentId },
   });
-  
+
   if (!result) return null;
-  
+
   return {
-    descriptor: result.descriptor as number[],
-    dimension: result.embeddingDimension,
-    enrolledAt: result.createdAt,
-    updatedAt: result.updatedAt,
+    descriptor:  result.descriptor as number[],
+    dimension:   result.embedding_dimension,
+    enrolledAt:  result.enrolledAt,
+    updatedAt:   result.updatedAt,
   };
 }
 
@@ -75,7 +75,7 @@ export async function deleteFaceDescriptor(studentId: string): Promise<void> {
 export async function logVerification(opts: {
   studentId:       string;
   examId?:         string | null;
-  similarityScore: number;   // cosine similarity from @vladmandic/human
+  similarityScore: number;
   success:         boolean;
   ipAddress?:      string | null;
   userAgent?:      string | null;
@@ -84,9 +84,6 @@ export async function logVerification(opts: {
     data: {
       studentId:       opts.studentId,
       examId:          opts.examId ?? null,
-      // Store cosine similarity (0–1) in the similarityScore column
-      // and leave distance null (distance is the euclidean metric used
-      // by the old face-api; human uses cosine, so distance doesn't apply).
       similarityScore: opts.similarityScore,
       distance:        null,
       success:         opts.success,
@@ -97,8 +94,6 @@ export async function logVerification(opts: {
 }
 
 // ─── Cosine similarity (server-side verify helper) ────────────────────────────
-// Used in /api/face/verify-session when comparing a submitted descriptor
-// against the enrolled one without running the full human pipeline.
 
 export function cosineSimilarity(a: number[], b: number[]): number {
   if (a.length !== b.length || a.length === 0) return 0;
@@ -114,7 +109,6 @@ export function cosineSimilarity(a: number[], b: number[]): number {
 
 // Thresholds exported so API routes and FaceMonitor stay in sync
 export const FACE_THRESHOLDS = {
-  match:    0.72,   // cosine ≥ 0.72 → confident same person
-  soft:     0.60,   // cosine < 0.60 → likely different person → flag
-  // uncertain zone: 0.70–0.82 → log only, don't penalise
+  match: 0.72,   // cosine ≥ 0.72 → confident same person
+  soft:  0.60,   // cosine < 0.60 → likely different person → flag
 } as const;

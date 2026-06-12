@@ -19,7 +19,7 @@ export const POST: RequestHandler = async ({ request, locals }) => {
       );
     }
 
-    const { descriptor, photo, embedding_dimension } = await request.json();
+    const { descriptor, photo, } = await request.json();
 
     // Human embeddings are typically 512 or 1024 dimensions, not 128
     if (!Array.isArray(descriptor) || descriptor.length === 0) {

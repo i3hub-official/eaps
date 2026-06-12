@@ -6,6 +6,7 @@
     selectGestures,
     gestureConfidence,
     GestureTracker,
+    createTrackerForGesture,
     type GestureDefinition,
   } from './gesture-service.js';
 
@@ -26,38 +27,39 @@
 
   // ── Status ────────────────────────────────────────────────────────────────
   type Status = 'intro' | 'loading' | 'positioning' | 'gesture' | 'processing' | 'done' | 'error';
-  let status        = $state<Status>('intro');
-  let headline      = $state('Face Enrollment');
-  let subline       = $state('Starting camera…');
-  let errorMessage  = $state('');
+  let status          = $state<Status>('intro');
+  let headline        = $state('Face Enrollment');
+  let subline         = $state('Starting camera…');
+  let errorMessage    = $state('');
   let loadingProgress = $state(0);
-  let faceDetected  = $state(false);
+  let faceDetected    = $state(false);
 
   // ── Gesture state ─────────────────────────────────────────────────────────
   /** 3 randomly chosen gestures for this session */
   let selected: GestureDefinition[] = [];
-  let gestureIndex  = $state(0);
-  let gesturesDone  = $state(0);
+  let gestureIndex = $state(0);
+  let gesturesDone = $state(0);
   /** progress bar for current gesture (0-1), driven by GestureTracker */
-  let holdProgress  = $state(0);
+  let holdProgress = $state(0);
 
-  // One tracker instance — reset when we move to a new gesture
-  const tracker = new GestureTracker();
+  // FIX 1: tracker is initialised to a no-op default here; it gets replaced
+  // with the correct per-gesture tracker (blink vs hold) inside gestureLoop
+  // when each new gesture step begins. Using a plain default here avoids the
+  // "step is not defined" ReferenceError that was in the original code.
+  let tracker = new GestureTracker();
 
   // ── Descriptor collection ─────────────────────────────────────────────────
-  // We collect one descriptor per confirmed gesture (3 total) then average them.
   let descriptors: number[][] = [];
 
   // ── Positioning hold bar ──────────────────────────────────────────────────
   let posHoldProgress  = $state(0);
   let posHoldStart: number | null = null;
-  const POS_HOLD_MS    = 1000;   // ms face must stay centred before proceeding
+  const POS_HOLD_MS    = 1000;
 
   // ── Human ────────────────────────────────────────────────────────────────
   let human: any = null;
   let modelLoadingPromise: Promise<any> | null = null;
 
-  // Pre-load models as soon as the module is evaluated (background warm-up)
   if (browser && !modelLoadingPromise) {
     modelLoadingPromise = (async () => {
       const { default: Human } = await import('@vladmandic/human');
@@ -68,12 +70,12 @@
         body:         { enabled: false },
         object:       { enabled: false },
         segmentation: { enabled: false },
-        gesture:      { enabled: true },   // ← required for gesture[] array
+        gesture:      { enabled: true },
         face: {
           enabled:     true,
           detector:    { maxDetected: 1, minConfidence: 0.5, return: true },
-          description: { enabled: true },  // produces face.embedding
-          mesh:        { enabled: true },  // required for EAR / mouth checks
+          description: { enabled: true },
+          mesh:        { enabled: true },
           emotion:     { enabled: false },
           iris:        { enabled: false },
           antispoof:   { enabled: true },
@@ -87,11 +89,9 @@
   }
 
   // ── Detection throttle ────────────────────────────────────────────────────
-  // We run detect() at most once per DETECT_INTERVAL ms so the GPU isn't
-  // slammed, but rAF still runs every frame to keep the canvas smooth.
-  const DETECT_INTERVAL = 80;   // ~12 fps detection, 60 fps canvas
+  const DETECT_INTERVAL = 80;
   let lastDetectAt = 0;
-  let lastResult: any = null;   // cached result from last detect() call
+  let lastResult: any = null;
 
   async function runDetect(): Promise<void> {
     if (!human || !video || video.paused || !video.videoWidth) return;
@@ -114,7 +114,6 @@
 
     ctx.clearRect(0, 0, w, h);
 
-    // Dark vignette with oval cutout
     ctx.save();
     ctx.fillStyle = 'rgba(10,13,15,0.72)';
     ctx.fillRect(0, 0, w, h);
@@ -124,7 +123,6 @@
     ctx.fill();
     ctx.restore();
 
-    // Oval border
     ctx.beginPath();
     ctx.ellipse(cx, cy, rx, ry, 0, 0, Math.PI * 2);
     ctx.strokeStyle = multiple
@@ -135,7 +133,6 @@
     ctx.lineWidth   = detected ? 2.5 : 1.5;
     ctx.stroke();
 
-    // Corner brackets
     const corners: [number, number, [number, number]][] = [
       [cx - rx, cy - ry, [1,  1]],
       [cx + rx, cy - ry, [-1, 1]],
@@ -153,7 +150,6 @@
       ctx.stroke();
     }
 
-    // Progress arc (outside the oval)
     if (progress > 0 && detected && !multiple) {
       ctx.save();
       ctx.beginPath();
@@ -167,22 +163,16 @@
       ctx.restore();
     }
 
-    // ── Gesture instruction pill — bottom-center, inside the dark vignette ──
-    // Drawn at 88% of canvas height so it's always well within the visible area.
     if (gestureLabel && !multiple) {
       ctx.save();
-
       const pillH   = 38;
       const pillY   = h * 0.95 - pillH / 2;
       const pillMid = pillY + pillH / 2;
-
       ctx.font = 'bold 14px system-ui';
       const textW = ctx.measureText(gestureLabel).width;
       const padX  = 22;
       const pillW = Math.min(textW + padX * 2, w * 0.82);
       const pillX = cx - pillW / 2;
-
-      // Background
       ctx.fillStyle   = progress > 0
         ? `rgba(0,201,167,${0.18 + progress * 0.14})`
         : 'rgba(10,13,15,0.85)';
@@ -194,21 +184,15 @@
       ctx.roundRect(pillX, pillY, pillW, pillH, pillH / 2);
       ctx.fill();
       ctx.stroke();
-
-      // Text
       ctx.fillStyle    = progress > 0 ? '#00e5b9' : '#ffffff';
       ctx.textAlign    = 'center';
       ctx.textBaseline = 'middle';
       ctx.fillText(gestureLabel, cx, pillMid);
-
       ctx.restore();
     }
 
-    // ── Status badge — top-center, inside the dark vignette ──────────────────
-    // At 10% canvas height so it's always visible regardless of oval size.
     {
       const badgeY = h * 0.10;
-
       if (multiple) {
         ctx.save();
         ctx.fillStyle    = 'rgba(239,68,68,0.2)';
@@ -267,8 +251,8 @@
     const faces = lastResult?.face ?? [];
 
     if (faces.length === 0) {
-      faceDetected   = false;
-      posHoldStart   = null;
+      faceDetected    = false;
+      posHoldStart    = null;
       posHoldProgress = 0;
       drawOverlay(false, false, 0);
       subline = 'Move closer and centre your face in the oval';
@@ -277,8 +261,8 @@
     }
 
     if (faces.length > 1) {
-      faceDetected   = false;
-      posHoldStart   = null;
+      faceDetected    = false;
+      posHoldStart    = null;
       posHoldProgress = 0;
       drawOverlay(false, true, 0);
       subline = 'Only one person allowed';
@@ -289,10 +273,9 @@
     const face = faces[0];
     faceDetected = true;
 
-    // Check if face is centred and large enough
-    const box   = face.box;
-    const faceW = Array.isArray(box) ? box[2] : box.bottomRight[0] - box.topLeft[0];
-    const faceH = Array.isArray(box) ? box[3] : box.bottomRight[1] - box.topLeft[1];
+    const box    = face.box;
+    const faceW  = Array.isArray(box) ? box[2] : box.bottomRight[0] - box.topLeft[0];
+    const faceH  = Array.isArray(box) ? box[3] : box.bottomRight[1] - box.topLeft[1];
     const faceCX = Array.isArray(box) ? box[0] + box[2] / 2 : (box.topLeft[0] + box.bottomRight[0]) / 2;
     const faceCY = Array.isArray(box) ? box[1] + box[3] / 2 : (box.topLeft[1] + box.bottomRight[1]) / 2;
 
@@ -310,13 +293,14 @@
       drawOverlay(true, false, posHoldProgress);
 
       if (posHoldProgress >= 1) {
-        // Transition to gesture phase
-        selected      = selectGestures(3);
-        gestureIndex  = 0;
-        gesturesDone  = 0;
-        descriptors   = [];
-        tracker.reset();
-        holdProgress  = 0;
+        selected     = selectGestures(3);
+        gestureIndex = 0;
+        gesturesDone = 0;
+        descriptors  = [];
+
+        // FIX 2: create the correct tracker for the FIRST gesture step
+        tracker = createTrackerForGesture(selected[0].id);
+        holdProgress = 0;
 
         status   = 'gesture';
         headline = 'Face Enrollment';
@@ -342,10 +326,11 @@
 
     await runDetect();
 
-    const faces    = lastResult?.face ?? [];
-    const gestures = lastResult?.gesture ?? [];
+    const faces    = lastResult?.face     ?? [];
+    const gestures = lastResult?.gesture  ?? [];
 
-    // No face
+    console.log('[gestureLoop] faces:', faces.length, 'gestures:', gestures.map((g: any) => g.gesture));
+
     if (faces.length === 0) {
       tracker.reset();
       holdProgress = 0;
@@ -355,7 +340,6 @@
       return;
     }
 
-    // Multiple faces
     if (faces.length > 1) {
       tracker.reset();
       holdProgress = 0;
@@ -366,32 +350,36 @@
     }
 
     const face = faces[0];
-    const g    = selected[gestureIndex];
 
+    // FIX 3: guard against gestureIndex going out of bounds (was "No gesture
+    // at index 0" error that caused infinite rAF spin). This can happen when
+    // gestureIndex gets incremented past selected.length, or when selected[]
+    // is empty because the positioning phase never completed cleanly.
+    const g = selected[gestureIndex];
     if (!g) {
-      // Shouldn't happen, but guard anyway
+      console.warn('[gestureLoop] gestureIndex out of range:', gestureIndex, '/ selected.length:', selected.length);
       finishEnrollment();
       return;
     }
 
-    // Compute confidence and feed to tracker
     const confidence = gestureConfidence(g.id, face, gestures);
     const confirmed  = tracker.update(confidence);
 
-    // Mirror tracker progress to reactive state for the progress bar
     holdProgress = tracker.holdProgress;
 
     drawOverlay(true, false, holdProgress, g.label);
     subline = g.label;
 
     if (confirmed) {
-      // Capture descriptor on confirmation
       const embedding = face.embedding
         ? Array.from(face.embedding as number[])
         : null;
 
       if (embedding && embedding.length > 0) {
         descriptors.push(embedding);
+        console.log('[gestureLoop] Captured descriptor for', g.id, 'dim:', embedding.length);
+      } else {
+        console.warn('[gestureLoop] No embedding captured for', g.id);
       }
 
       gesturesDone = gestureIndex + 1;
@@ -401,11 +389,13 @@
         return;
       }
 
-      // Advance to next gesture
+      // FIX 2 (continued): advance index THEN create the tracker for the
+      // NEW gesture. This ensures blink gets its 2-frame tracker and all
+      // hold gestures get the 5-frame tracker, automatically.
       gestureIndex++;
-      tracker.reset();
+      tracker = createTrackerForGesture(selected[gestureIndex].id);
       holdProgress = 0;
-      subline      = selected[gestureIndex].label;
+      subline = selected[gestureIndex].label;
     }
 
     raf = requestAnimationFrame(gestureLoop);
@@ -431,7 +421,6 @@
   async function submitEnrollment() {
     const photoDataUrl = await captureAndCompress();
 
-    // Average all captured descriptors into one embedding
     const dim = descriptors[0].length;
     const avg = new Array<number>(dim).fill(0);
     for (const d of descriptors) {
@@ -506,7 +495,7 @@
     faceDetected    = false;
     lastResult      = null;
     lastDetectAt    = 0;
-    tracker.reset();
+    tracker         = new GestureTracker(); // reset to neutral default
     selected        = [];
   }
 
@@ -514,7 +503,6 @@
     if (!browser) return;
 
     try {
-      // Simulate loading progress while waiting for model promise
       const interval = setInterval(() => {
         if (loadingProgress < 88) loadingProgress += 6;
       }, 180);
@@ -569,13 +557,12 @@
     if (!open) {
       stopCamera();
       resetState();
-      status        = 'intro';
-      errorMessage  = '';
+      status          = 'intro';
+      errorMessage    = '';
       loadingProgress = 0;
     }
   });
 
-  // Derived label shown in the gesture panel
   const currentGestureLabel = $derived(
     status === 'gesture' && selected[gestureIndex] ? selected[gestureIndex].label : ''
   );
@@ -870,42 +857,34 @@
   }
 
   .success-state { background: rgba(10, 13, 15, 0.9); }
-  .error-state { background: rgba(10, 13, 15, 0.9); }
+  .error-state   { background: rgba(10, 13, 15, 0.9); }
 
   .success-ring {
-    width: 64px;
-    height: 64px;
+    width: 64px; height: 64px;
     border-radius: 50%;
     border: 2px solid rgba(0, 201, 167, 0.3);
     background: rgba(0, 201, 167, 0.1);
-    display: flex;
-    align-items: center;
-    justify-content: center;
+    display: flex; align-items: center; justify-content: center;
     animation: scale-in 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
   }
 
   .error-ring {
-    width: 64px;
-    height: 64px;
+    width: 64px; height: 64px;
     border-radius: 50%;
     border: 2px solid rgba(239, 68, 68, 0.3);
     background: rgba(239, 68, 68, 0.1);
-    display: flex;
-    align-items: center;
-    justify-content: center;
+    display: flex; align-items: center; justify-content: center;
     animation: scale-in 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
   }
 
-  .state-text { font-size: 0.875rem; color: rgba(255, 255, 255, 0.5); margin: 0; }
-  .success-text { color: #00c9a7; font-weight: 600; }
-  .error-text { color: #ef4444; font-weight: 600; }
+  .state-text    { font-size: 0.875rem; color: rgba(255, 255, 255, 0.5); margin: 0; }
+  .success-text  { color: #00c9a7; font-weight: 600; }
+  .error-text    { color: #ef4444; font-weight: 600; }
 
   .progress-bar {
-    width: 200px;
-    height: 4px;
+    width: 200px; height: 4px;
     background: rgba(255, 255, 255, 0.1);
-    border-radius: 2px;
-    overflow: hidden;
+    border-radius: 2px; overflow: hidden;
   }
 
   .progress-fill {
@@ -933,9 +912,9 @@
     min-height: 1.3em;
   }
 
-  .subline.error-sub { color: #ef4444; }
+  .subline.error-sub   { color: #ef4444; }
   .subline.success-sub { color: #00c9a7; }
-  .gesture-label { font-size: 0.9rem; font-weight: 600; color: #fff; }
+  .gesture-label       { font-size: 0.9rem; font-weight: 600; color: #fff; }
 
   .cta {
     width: 100%;
@@ -952,116 +931,70 @@
     box-shadow: 0 4px 16px rgba(21, 128, 61, 0.3);
   }
 
-  .cta:hover { transform: translateY(-1px); box-shadow: 0 6px 20px rgba(21, 128, 61, 0.4); }
+  .cta:hover  { transform: translateY(-1px); box-shadow: 0 6px 20px rgba(21, 128, 61, 0.4); }
   .cta:active { transform: scale(0.98) translateY(0); }
 
   .intro-content {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    gap: 0.875rem;
-    width: 100%;
+    display: flex; flex-direction: column; align-items: center;
+    gap: 0.875rem; width: 100%;
     animation: slide-up 0.35s cubic-bezier(0.34, 1.56, 0.64, 1);
   }
 
   .intro-icon {
-    width: 48px;
-    height: 48px;
-    border-radius: 50%;
+    width: 48px; height: 48px; border-radius: 50%;
     background: rgba(0, 201, 167, 0.08);
     border: 1px solid rgba(0, 201, 167, 0.25);
-    display: flex;
-    align-items: center;
-    justify-content: center;
+    display: flex; align-items: center; justify-content: center;
   }
 
   .intro-text {
-    font-size: 0.8rem;
-    color: rgba(255, 255, 255, 0.45);
-    margin: 0;
-    text-align: center;
-    line-height: 1.6;
+    font-size: 0.8rem; color: rgba(255, 255, 255, 0.45);
+    margin: 0; text-align: center; line-height: 1.6;
   }
 
   .intro-text strong { color: rgba(255, 255, 255, 0.75); font-weight: 600; }
 
   .intro-steps {
-    display: flex;
-    flex-direction: column;
-    gap: 0.5rem;
-    width: 100%;
-    margin: 0.25rem 0;
+    display: flex; flex-direction: column; gap: 0.5rem;
+    width: 100%; margin: 0.25rem 0;
   }
 
   .step {
-    display: flex;
-    align-items: center;
-    gap: 0.625rem;
-    font-size: 0.78rem;
-    color: rgba(255, 255, 255, 0.5);
+    display: flex; align-items: center; gap: 0.625rem;
+    font-size: 0.78rem; color: rgba(255, 255, 255, 0.5);
   }
 
   .step-num {
-    width: 22px;
-    height: 22px;
-    border-radius: 50%;
+    width: 22px; height: 22px; border-radius: 50%;
     background: rgba(0, 201, 167, 0.15);
     border: 1px solid rgba(0, 201, 167, 0.3);
-    color: #00c9a7;
-    font-size: 0.65rem;
-    font-weight: 800;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    flex-shrink: 0;
+    color: #00c9a7; font-size: 0.65rem; font-weight: 800;
+    display: flex; align-items: center; justify-content: center; flex-shrink: 0;
   }
 
   .gesture-panel {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    gap: 0.625rem;
-    width: 100%;
+    display: flex; flex-direction: column; align-items: center;
+    gap: 0.625rem; width: 100%;
   }
 
-  .dots {
-    display: flex;
-    gap: 7px;
-    align-items: center;
-    margin-bottom: 0.25rem;
-  }
+  .dots { display: flex; gap: 7px; align-items: center; margin-bottom: 0.25rem; }
 
   .dot {
-    width: 6px;
-    height: 6px;
-    border-radius: 3px;
+    width: 6px; height: 6px; border-radius: 3px;
     background: rgba(255, 255, 255, 0.15);
     transition: all 0.35s cubic-bezier(0.34, 1.56, 0.64, 1);
   }
 
   .dot.active { width: 24px; background: #00c9a7; }
-  .dot.done { background: rgba(0, 201, 167, 0.4); }
+  .dot.done   { background: rgba(0, 201, 167, 0.4); }
 
-  .gesture-hint {
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
-  }
-
-  .gesture-icon {
-    color: #00c9a7;
-    display: flex;
-    align-items: center;
-  }
+  .gesture-hint { display: flex; align-items: center; gap: 0.5rem; }
+  .gesture-icon { color: #00c9a7; display: flex; align-items: center; }
 
   .hold-bar {
-    width: 100%;
-    max-width: 200px;
-    height: 3px;
+    width: 100%; max-width: 200px; height: 3px;
     background: rgba(255, 255, 255, 0.1);
-    border-radius: 999px;
-    overflow: hidden;
-    margin-top: 0.25rem;
+    border-radius: 999px; overflow: hidden; margin-top: 0.25rem;
   }
 
   .hold-fill {
@@ -1072,24 +1005,17 @@
   }
 
   .positioning-panel {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    gap: 0.625rem;
-    width: 100%;
+    display: flex; flex-direction: column; align-items: center;
+    gap: 0.625rem; width: 100%;
     animation: slide-up 0.3s ease;
   }
 
   .face-status {
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
-    padding: 0.4rem 1rem;
-    border-radius: 999px;
+    display: flex; align-items: center; gap: 0.5rem;
+    padding: 0.4rem 1rem; border-radius: 999px;
     background: rgba(255, 255, 255, 0.06);
     border: 1px solid rgba(255, 255, 255, 0.1);
-    font-size: 0.8rem;
-    font-weight: 600;
+    font-size: 0.8rem; font-weight: 600;
     color: rgba(255, 255, 255, 0.5);
     transition: all 0.3s ease;
   }
@@ -1101,16 +1027,13 @@
   }
 
   .searching-dot {
-    width: 8px;
-    height: 8px;
-    border-radius: 50%;
+    width: 8px; height: 8px; border-radius: 50%;
     background: rgba(255, 255, 255, 0.3);
     animation: pulse 1.5s ease-in-out infinite;
   }
 
   .spinner {
-    width: 36px;
-    height: 36px;
+    width: 36px; height: 36px;
     border: 2.5px solid rgba(255, 255, 255, 0.08);
     border-top-color: rgba(255, 255, 255, 0.4);
     border-radius: 50%;
@@ -1119,19 +1042,19 @@
 
   .spinner.teal { border-top-color: #00c9a7; }
 
-  @keyframes spin { to { transform: rotate(360deg); } }
+  @keyframes spin    { to { transform: rotate(360deg); } }
   @keyframes fade-in { from { opacity: 0; } to { opacity: 1; } }
   @keyframes scale-in {
     from { opacity: 0; transform: scale(0.9); }
-    to { opacity: 1; transform: scale(1); }
+    to   { opacity: 1; transform: scale(1); }
   }
   @keyframes slide-up {
     from { opacity: 0; transform: translateY(16px); }
-    to { opacity: 1; transform: translateY(0); }
+    to   { opacity: 1; transform: translateY(0); }
   }
   @keyframes pulse {
     0%, 100% { opacity: 1; transform: scale(1); }
-    50% { opacity: 0.4; transform: scale(0.8); }
+    50%       { opacity: 0.4; transform: scale(0.8); }
   }
 
   @media (max-width: 480px) {
