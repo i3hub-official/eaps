@@ -12,8 +12,6 @@
 
   let { data }: { data: PageData } = $props();
 
-  // Verification state — true if server already confirmed a recent verification,
-  // or if the student just passed the modal in this session.
   let verified    = $state(data.faceVerified);
   let showVerify  = $state(false);
   let entering    = $state(false);
@@ -29,10 +27,6 @@
     showVerify = false;
   }
 
-  function onVerifyError(msg: string) {
-    error = msg;
-  }
-
   async function enterExam() {
     if (!verified || entering) return;
     entering = true;
@@ -45,9 +39,6 @@
         entering = false;
         return;
       }
-      // KioskShell component takes over — navigate to the kiosk route
-      // (your KioskShell is embedded on this same page below, or you navigate)
-      // If KioskShell is on the same page, just set a local state flag instead.
       await goto(`/student/exam/${data.exam.id}/session`);
     } catch (e) {
       error    = 'Network error. Please check your connection.';
@@ -69,15 +60,13 @@
   }
 </script>
 
-<!-- Face Verify Modal — opens automatically if not verified -->
-{#if showVerify}
-  <FaceVerifyModal
-    examId={data.exam.id}
-    onSuccess={onVerifySuccess}
-    onError={onVerifyError}
-    onClose={() => { showVerify = false; if (!verified) goto('/student/exam'); }}
-  />
-{/if}
+<!-- FaceVerifyModal — prop names match FaceVerifyModal's Props interface exactly -->
+<FaceVerifyModal
+  open={showVerify}
+  examId={data.exam.id}
+  onVerified={onVerifySuccess}
+  onClose={() => { showVerify = false; if (!verified) goto('/student/exam'); }}
+/>
 
 <div class="lobby">
 
@@ -164,7 +153,6 @@
     <!-- Action footer -->
     <div class="lobby-footer">
 
-      <!-- Verification status indicator -->
       <div class="verify-status" class:verified>
         {#if verified}
           <CheckCircle2 size={14}/>

@@ -6,10 +6,8 @@ import { broadcastStudentStatus } from '$lib/server/ws/server.js';
 import { prisma } from '$lib/server/db/index.js';
 import { isStudentEligible } from '$lib/server/db/exams.js';
 
-export const POST: RequestHandler = async ({ request, locals, params }) => {
+export const POST: RequestHandler = async ({ locals, params }) => {
   if (!locals.user) error(401, 'Unauthorized');
-
-  const { session_id } = await request.json();
 
   // ── Scope eligibility guard ───────────────────────────────────────────────
   const exam = await prisma.exam.findUnique({
@@ -19,7 +17,6 @@ export const POST: RequestHandler = async ({ request, locals, params }) => {
 
   if (!exam) error(404, 'Exam not found');
 
-  // Only enforce scope for students — invigilators/admins can always proceed
   if (locals.user.role === 'student') {
     const student = await prisma.user.findUnique({
       where: { id: locals.user.id },
@@ -35,9 +32,30 @@ export const POST: RequestHandler = async ({ request, locals, params }) => {
     if (!eligible) error(403, reason ?? 'You are not eligible for this exam.');
   }
 
-  // ── Start session ─────────────────────────────────────────────────────────
-  const session = await startSession(session_id);
-  broadcastStudentStatus(session.examId, session_id, 'in_progress');
+  // ── Resolve session — find existing or create new ─────────────────────────
+  // Never trust a client-supplied session_id; derive it server-side.
+  let session = await prisma.examSession.findFirst({
+    where: {
+      examId:    params.examId,
+      studentId: locals.user.id,
+      status:    { in: ['not_started', 'in_progress'] },
+    },
+    orderBy: { createdAt: 'desc' },
+  });
 
-  return json({ ok: true });
+  if (!session) {
+    // Create a fresh session
+    session = await prisma.examSession.create({
+      data: {
+        examId:    params.examId,
+        studentId: locals.user.id,
+        status:    'not_started',
+      },
+    });
+  }
+
+  const started = await startSession(session.id);
+  broadcastStudentStatus(started.examId, session.id, 'in_progress');
+
+  return json({ ok: true, session_id: session.id });
 };

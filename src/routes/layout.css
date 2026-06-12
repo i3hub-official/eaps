@@ -18,6 +18,12 @@
   --color-border:         #e2e8f0;
   --color-text:           #0f172a;
   --color-muted:          #64748b;
+
+  --color-primary-light: #4ade80;   /* lighter primary */
+--color-primary-glow: rgba(34, 197, 94, 0.15);  /* focus ring */
+--color-surface-hover: rgba(255,255,255,0.03); /* hover state */
+--green-soft: rgba(34, 197, 94, 0.1);
+--green-700: #15803d;
 }
 
 [data-theme="dark"] {

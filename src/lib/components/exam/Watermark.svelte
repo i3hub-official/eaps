@@ -1,33 +1,51 @@
 <!-- src/lib/components/exam/Watermark.svelte -->
 <script lang="ts">
   interface Props {
-    text: string;   // e.g. "2021/CS/001 — John Doe"
+    text: string;
   }
   let { text }: Props = $props();
+
+  // Generate deterministic positions so watermark tiles consistently
+  const tiles = Array.from({ length: 48 }, (_, i) => ({
+    id: i,
+    x: (i % 6) * 16.66 + 8.33,
+    y: Math.floor(i / 6) * 14.28 + 7.14,
+    rotation: -25 + (i % 5) * 3,
+    opacity: 0.025 + (i % 3) * 0.008,
+  }));
 </script>
 
-<div class="watermark" aria-hidden="true">
-  {#each Array(40) as _}
-    <span>{text}</span>
+<div class="watermark-layer" aria-hidden="true">
+  {#each tiles as tile}
+    <span
+      class="watermark-tile"
+      style="left: {tile.x}%; top: {tile.y}%; transform: rotate({tile.rotation}deg); opacity: {tile.opacity}"
+    >
+      {text}
+    </span>
   {/each}
 </div>
 
 <style>
-  .watermark {
-    position: fixed; inset: 0; z-index: 1;
-    pointer-events: none; user-select: none;
-    display: flex; flex-wrap: wrap; gap: 3rem;
-    padding: 2rem;
+  .watermark-layer {
+    position: fixed;
+    inset: 0;
+    z-index: 1;
+    pointer-events: none;
+    user-select: none;
     overflow: hidden;
-    opacity: 0.04;
+    isolation: isolate;
   }
 
-  span {
-    font-size: 0.85rem;
+  .watermark-tile {
+    position: absolute;
+    font-size: 0.75rem;
     font-weight: 700;
-    color: var(--color-text);
+    color: #fff;
     white-space: nowrap;
-    transform: rotate(-30deg);
-    display: inline-block;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    font-family: 'JetBrains Mono', monospace;
+    mix-blend-mode: overlay;
   }
 </style>

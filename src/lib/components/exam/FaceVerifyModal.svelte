@@ -19,180 +19,173 @@
   let raf: number | null = null;
 
   type Status = 'intro' | 'loading' | 'scanning' | 'processing' | 'success' | 'error';
-  let status = $state<Status>('intro');
-  let headline = $state('Verify your identity');
-  let subline = $state('Position your face in the frame');
-  let faceDetected = $state(false);
-  let faceCount = $state(0);
-  let holdProgress = $state(0);
+  let status        = $state<Status>('intro');
+  let headline      = $state('Verify your identity');
+  let subline       = $state('Position your face in the frame');
+  let faceDetected  = $state(false);
+  let faceCount     = $state(0);
+  let holdProgress  = $state(0);
   let holdTimer: number | null = null;
-  let errorMessage = $state('');
+  let holdStartTime: number | null = null;  // FIX: track hold start for accurate progress
+  let errorMessage  = $state('');
   let loadingProgress = $state(0);
-  
+
   let human: any = null;
   let isInitializing = false;
   let modelLoadingPromise: Promise<any> | null = null;
 
   const HOLD_DURATION = 1500;
 
-  // ── Pre-load models in background ──────────────────────────────────────────
+  // ── Pre-load models in background ─────────────────────────────────────────
   if (browser && !modelLoadingPromise) {
     modelLoadingPromise = (async () => {
-      console.log('🚀 Pre-loading Human models for verification...');
       const HumanModule = await import('@vladmandic/human');
       const humanInstance = new HumanModule.default({
-        backend: 'webgl',
+        backend:      'webgl',
         modelBasePath: '/models/human',
-        hand: { enabled: false },
-        body: { enabled: false },
-        object: { enabled: false },
-        gesture: { enabled: true },
+        hand:         { enabled: false },
+        body:         { enabled: false },
+        object:       { enabled: false },
+        gesture:      { enabled: false },  // not needed for verify
         segmentation: { enabled: false },
         face: {
-          enabled: true,
-          detector: { maxDetected: 1, return: true },
+          enabled:     true,
+          detector:    { maxDetected: 1, return: true },
           description: { enabled: true },
-          emotion: { enabled: true },
-          landmarks: { enabled: true },
-          mesh: { enabled: false },
-          iris: { enabled: true },
-          antispoof: { enabled: true },
-          liveness: { enabled: true }
-        }
+          emotion:     { enabled: false },
+          mesh:        { enabled: false },
+          iris:        { enabled: false },
+          antispoof:   { enabled: true },
+          liveness:    { enabled: true },
+        },
       });
       await humanInstance.load();
       await humanInstance.warmup();
-      console.log('✅ Models pre-loaded for verification');
       return humanInstance;
     })();
   }
 
-  // ── Face detection with Human ─────────────────────────────────────────────
+  // ── Face detection ─────────────────────────────────────────────────────────
   async function detectFace() {
     if (!human || !video || video.paused || !video.videoWidth) return null;
-    
     try {
       const result = await human.detect(video);
-      if (!result || !result.face || result.face.length === 0) return null;
+      if (!result?.face?.length) return null;
       return result;
-    } catch (error) {
-      console.error('Detection error:', error);
+    } catch {
       return null;
     }
   }
 
-  // ── Get face descriptor (embedding) from Human ───────────────────────────
   function getFaceDescriptor(face: any): number[] | null {
-    if (face.embedding && Array.isArray(face.embedding)) {
-      console.log('Verification embedding dimension:', face.embedding.length);
-      return face.embedding;
-    }
+    if (face.embedding && Array.isArray(face.embedding)) return face.embedding;
     return null;
   }
 
-  // ── canvas overlay (vertical oval - matching enrollment) ─────────────────
-  function drawOverlay(detected: boolean, multiple: boolean = false, progress: number = 0, securityPass: boolean = true) {
+  // ── Canvas overlay ─────────────────────────────────────────────────────────
+  function drawOverlay(
+    detected: boolean,
+    multiple: boolean = false,
+    progress: number = 0,
+    securityPass: boolean = true,
+  ) {
     if (!ctx || !canvas) return;
     const w = canvas.width, h = canvas.height;
     const cx = w / 2, cy = h / 2;
-    const rx = w * 0.28;
-    const ry = h * 0.44;
+    const rx = w * 0.28, ry = h * 0.44;
 
     ctx.clearRect(0, 0, w, h);
 
+    // Vignette with oval cutout
     ctx.save();
     ctx.fillStyle = 'rgba(10,13,15,0.72)';
     ctx.fillRect(0, 0, w, h);
     ctx.globalCompositeOperation = 'destination-out';
-    ctx.beginPath(); 
-    ctx.ellipse(cx, cy, rx, ry, 0, 0, Math.PI * 2); 
+    ctx.beginPath();
+    ctx.ellipse(cx, cy, rx, ry, 0, 0, Math.PI * 2);
     ctx.fill();
     ctx.restore();
 
-    ctx.beginPath(); 
+    // Oval border
+    ctx.beginPath();
     ctx.ellipse(cx, cy, rx, ry, 0, 0, Math.PI * 2);
-    if (multiple) {
-      ctx.strokeStyle = '#ef4444';
-      ctx.lineWidth = 2.5;
-    } else if (detected) {
-      ctx.strokeStyle = '#00c9a7';
-      ctx.lineWidth = 2.5;
-    } else {
-      ctx.strokeStyle = 'rgba(255,255,255,0.18)';
-      ctx.lineWidth = 1.5;
-    }
+    ctx.strokeStyle = multiple ? '#ef4444' : detected ? '#00c9a7' : 'rgba(255,255,255,0.18)';
+    ctx.lineWidth   = detected ? 2.5 : 1.5;
     ctx.stroke();
 
-    const bLen = 20, bW = 2.5;
-    const positions = [
-      { x: cx - rx, y: cy - ry, d: [1, 1] as [number, number] },
-      { x: cx + rx, y: cy - ry, d: [-1, 1] as [number, number] },
-      { x: cx - rx, y: cy + ry, d: [1, -1] as [number, number] },
-      { x: cx + rx, y: cy + ry, d: [-1, -1] as [number, number] },
+    // Corner brackets
+    const corners: [number, number, [number, number]][] = [
+      [cx - rx, cy - ry, [1,  1]],
+      [cx + rx, cy - ry, [-1, 1]],
+      [cx - rx, cy + ry, [1, -1]],
+      [cx + rx, cy + ry, [-1,-1]],
     ];
     ctx.strokeStyle = multiple ? '#ef4444' : detected ? '#00c9a7' : 'rgba(0,201,167,0.6)';
-    ctx.lineWidth = bW;
-    ctx.lineCap = 'round';
-    for (const { x, y, d } of positions) {
+    ctx.lineWidth   = 2.5;
+    ctx.lineCap     = 'round';
+    for (const [x, y, [dx, dy]] of corners) {
       ctx.beginPath();
-      ctx.moveTo(x + d[0] * bLen, y);
+      ctx.moveTo(x + dx * 20, y);
       ctx.lineTo(x, y);
-      ctx.lineTo(x, y + d[1] * bLen);
+      ctx.lineTo(x, y + dy * 20);
       ctx.stroke();
     }
 
-    // Security badge
+    // Security label (top of oval)
     if (!securityPass && !multiple) {
       ctx.save();
-      ctx.fillStyle = '#ef4444';
-      ctx.font = 'bold 10px system-ui';
-      ctx.textAlign = 'center';
+      ctx.fillStyle    = '#ef4444';
+      ctx.font         = 'bold 10px system-ui';
+      ctx.textAlign    = 'center';
       ctx.fillText('🔒 Security Check Failed', cx, cy - ry - 10);
       ctx.restore();
     } else if (securityPass && detected && progress > 0) {
       ctx.save();
-      ctx.fillStyle = '#00c9a7';
-      ctx.font = 'bold 10px system-ui';
-      ctx.textAlign = 'center';
+      ctx.fillStyle    = '#00c9a7';
+      ctx.font         = 'bold 10px system-ui';
+      ctx.textAlign    = 'center';
       ctx.fillText('✓ Live Person Verified', cx, cy - ry - 10);
       ctx.restore();
     }
 
+    // Progress arc
     if (detected && progress > 0 && !multiple) {
       ctx.save();
       ctx.beginPath();
-      ctx.ellipse(cx, cy, rx + 8, ry + 8, 0, -Math.PI / 2, -Math.PI / 2 + progress * Math.PI * 2);
+      ctx.ellipse(
+        cx, cy, rx + 8, ry + 8, 0,
+        -Math.PI / 2,
+        -Math.PI / 2 + progress * Math.PI * 2,
+      );
       ctx.strokeStyle = 'rgba(0,201,167,0.6)';
-      ctx.lineWidth = 3;
-      ctx.lineCap = 'round';
+      ctx.lineWidth   = 3;
+      ctx.lineCap     = 'round';
       ctx.stroke();
-      
-      ctx.font = 'bold 12px system-ui';
-      ctx.fillStyle = '#00c9a7';
-      ctx.textAlign = 'center';
+      ctx.font        = 'bold 12px system-ui';
+      ctx.fillStyle   = '#00c9a7';
+      ctx.textAlign   = 'center';
       ctx.fillText(`${Math.round(progress * 100)}%`, cx, cy + ry + 20);
       ctx.restore();
     }
 
+    // Multiple faces label
     if (multiple) {
       ctx.save();
-      ctx.fillStyle = '#ef4444';
-      ctx.font = 'bold 14px system-ui';
-      ctx.textAlign = 'center';
+      ctx.fillStyle  = '#ef4444';
+      ctx.font       = 'bold 14px system-ui';
+      ctx.textAlign  = 'center';
       ctx.fillText('⚠ Multiple faces detected', cx, cy + ry + 28);
       ctx.restore();
     }
   }
 
-  // ── detection loop with liveness & antispoof ────────────────────────────────
+  // ── Detection loop ─────────────────────────────────────────────────────────
   let lastDetectionTime = 0;
   const DETECTION_INTERVAL = 100;
 
   async function loop() {
     if (status !== 'scanning' || !human || !video) {
-      if (status === 'scanning') {
-        raf = requestAnimationFrame(loop);
-      }
+      if (status === 'scanning') raf = requestAnimationFrame(loop);
       return;
     }
 
@@ -205,15 +198,13 @@
 
     try {
       const result = await detectFace();
-      
-      if (!result || !result.face || result.face.length === 0) {
+
+      if (!result?.face?.length) {
         drawOverlay(false);
-        faceDetected = false;
-        holdProgress = 0;
-        if (holdTimer) { 
-          clearTimeout(holdTimer); 
-          holdTimer = null; 
-        }
+        faceDetected  = false;
+        holdProgress  = 0;
+        holdStartTime = null;
+        if (holdTimer) { clearTimeout(holdTimer); holdTimer = null; }
         subline = 'Position your face in the oval';
         raf = requestAnimationFrame(loop);
         return;
@@ -223,303 +214,220 @@
 
       if (faceCount > 1) {
         drawOverlay(false, true);
-        faceDetected = false;
-        holdProgress = 0;
-        if (holdTimer) { 
-          clearTimeout(holdTimer); 
-          holdTimer = null; 
-        }
+        faceDetected  = false;
+        holdProgress  = 0;
+        holdStartTime = null;
+        if (holdTimer) { clearTimeout(holdTimer); holdTimer = null; }
         subline = 'Only one person allowed';
         raf = requestAnimationFrame(loop);
         return;
       }
 
       const face = result.face[0];
-      
-      // ── Liveness & Antispoof Checks ────────────────────────────────────────
-      let isLive = true;
-      let isReal = true;
-      let securityMessage = '';
-      
-      // Check liveness
-      if (face.liveness && face.liveness.score !== undefined) {
-        const livenessScore = face.liveness.score;
-        isLive = livenessScore > 0.65;
-        if (!isLive) {
-          securityMessage = 'Real face required - no photos/videos allowed';
-          console.warn(`Verification liveness failed: ${livenessScore}`);
-        }
-      }
-      
-      // Check antispoof
-      if (face.antispoof && face.antispoof.score !== undefined) {
-        const antispoofScore = face.antispoof.score;
-        isReal = antispoofScore > 0.65;
-        if (!isReal) {
-          securityMessage = 'Fake face detected - verification blocked';
-          console.warn(`Verification antispoof failed: ${antispoofScore}`);
-        }
-      }
-      
-      const securityPass = isLive && isReal;
-      
-      // Reject if security checks fail
-      if (!securityPass) {
+
+      // Liveness / antispoof
+      const isLive = face.liveness?.score  != null ? face.liveness.score  > 0.65 : true;
+      const isReal = face.antispoof?.score != null ? face.antispoof.score > 0.65 : true;
+
+      if (!isLive || !isReal) {
         drawOverlay(false, false, 0, false);
-        faceDetected = false;
-        holdProgress = 0;
-        subline = securityMessage || 'Security check failed - real face required';
-        if (holdTimer) {
-          clearTimeout(holdTimer);
-          holdTimer = null;
-        }
+        faceDetected  = false;
+        holdProgress  = 0;
+        holdStartTime = null;
+        if (holdTimer) { clearTimeout(holdTimer); holdTimer = null; }
+        subline = !isLive
+          ? 'Real face required — no photos or videos allowed'
+          : 'Fake face detected — verification blocked';
         raf = requestAnimationFrame(loop);
         return;
       }
-      
+
       const descriptor = getFaceDescriptor(face);
-      
       if (!descriptor) {
         raf = requestAnimationFrame(loop);
         return;
       }
-      
-      faceDetected = true;
-      
-      if (!holdTimer) {
-        holdTimer = window.setTimeout(() => {
-          verify(descriptor);
-        }, HOLD_DURATION);
-      }
-      
-      holdProgress = Math.min(holdProgress + 0.025, 1);
-      subline = 'Verifying identity...';
 
+      faceDetected = true;
+
+      // FIX: start hold timer and record start time together
+      if (!holdTimer) {
+        holdStartTime = Date.now();
+        holdTimer = window.setTimeout(() => verify(descriptor), HOLD_DURATION);
+      }
+
+      // FIX: derive progress from elapsed time so bar and timer are in sync
+      holdProgress = holdStartTime
+        ? Math.min((Date.now() - holdStartTime) / HOLD_DURATION, 1)
+        : 0;
+
+      subline = 'Hold still…';
       drawOverlay(true, false, holdProgress, true);
       raf = requestAnimationFrame(loop);
-    } catch (error) {
-      console.error('Detection error:', error);
+    } catch (err) {
+      console.error('Detection error:', err);
       raf = requestAnimationFrame(loop);
     }
   }
 
-  // ── verify against server ───────────────────────────────────────────────────
-async function verify(descriptor: number[]) {
-  status = 'processing';
-  headline = 'Verifying…';
-  subline = 'Matching your face…';
-  stopCamera();
+  // ── Verify against server ──────────────────────────────────────────────────
+  async function verify(descriptor: number[]) {
+    status   = 'processing';
+    headline = 'Verifying…';
+    subline  = 'Matching your face…';
+    stopCamera();
 
-  try {
-    // Step 1: Verify face match
-    const res = await fetch('/api/face/verify', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ descriptor, examId, timestamp: Date.now() }),
-    });
-
-    const data = await res.json();
-    if (!res.ok || !data.success) {
-      throw new Error(data.message || 'Verification failed');
-    }
-
-    // Step 2: Create verification session (sets cookies)
-    const sessionRes = await fetch('/api/face/verify-session', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        verified: true,
-        similarityScore: data.similarity,
-        examId,
-      }),
-    });
-
-    if (!sessionRes.ok) {
-      console.warn('Failed to set verification session cookies');
-      // Continue anyway — verify endpoint already logged it
-    }
-
-    status = 'success';
-    headline = 'Verified!';
-    subline = data.warning ?? `Identity confirmed. Match: ${Math.round(data.similarity * 100)}%`;
-    setTimeout(() => onVerified(), 1200);
-  } catch (e: any) {
-    console.error('Verification error:', e);
-    status = 'error';
-    headline = 'Verification failed';
-    errorMessage = e.message ?? 'Please try again';
-    subline = errorMessage;
-  }
-}
-
-  function stopCamera() {
-    if (raf) {
-      cancelAnimationFrame(raf);
-      raf = null;
-    }
-    if (holdTimer) {
-      clearTimeout(holdTimer);
-      holdTimer = null;
-    }
-    if (stream) {
-      stream.getTracks().forEach(t => {
-        if (t.readyState === 'live') {
-          t.stop();
-        }
+    try {
+      // Step 1: match descriptor
+      const res = await fetch('/api/face/verify', {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body:    JSON.stringify({ descriptor, examId, timestamp: Date.now() }),
       });
-      stream = null;
+
+      const data = await res.json();
+      if (!res.ok || !data.success) throw new Error(data.message || 'Verification failed');
+
+      // Step 2: set session cookies
+      const sessionRes = await fetch('/api/face/verify-session', {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body:    JSON.stringify({ verified: true, similarityScore: data.similarity, examId }),
+      });
+
+      if (!sessionRes.ok) {
+        console.warn('Failed to set verification session cookies');
+      }
+
+      status   = 'success';
+      headline = 'Verified!';
+      subline  = data.warning ?? `Identity confirmed. Match: ${Math.round(data.similarity * 100)}%`;
+      setTimeout(() => onVerified(), 1200);
+    } catch (e: any) {
+      console.error('Verification error:', e);
+      status       = 'error';
+      headline     = 'Verification failed';
+      errorMessage = e.message ?? 'Please try again';
+      subline      = errorMessage;
     }
   }
 
-  function startVerification() {
-    status = 'loading';
-    init();
+  // ── Camera helpers ─────────────────────────────────────────────────────────
+  function stopCamera() {
+    if (raf)       { cancelAnimationFrame(raf); raf = null; }
+    if (holdTimer) { clearTimeout(holdTimer);   holdTimer = null; }
+    stream?.getTracks().forEach(t => { if (t.readyState === 'live') t.stop(); });
+    stream = null;
   }
+
+  function startVerification() { status = 'loading'; init(); }
 
   function retry() {
-    holdProgress = 0;
-    faceDetected = false;
-    errorMessage = '';
-    if (holdTimer) {
-      clearTimeout(holdTimer);
-      holdTimer = null;
-    }
+    holdProgress  = 0;
+    holdStartTime = null;
+    faceDetected  = false;
+    errorMessage  = '';
+    if (holdTimer) { clearTimeout(holdTimer); holdTimer = null; }
     status = 'loading';
     init();
   }
 
   async function init() {
-    if (!browser) return;
-    if (isInitializing) return;
-    
+    if (!browser || isInitializing) return;
+
     try {
-      // Show loading progress
       const progressInterval = setInterval(() => {
-        if (loadingProgress < 90) {
-          loadingProgress += 10;
-          subline = `Loading models: ${Math.round(loadingProgress)}%`;
-        }
+        if (loadingProgress < 90) loadingProgress += 10;
       }, 200);
-      
+
       if (!human) {
         isInitializing = true;
-        console.log('Initializing Human for verification...');
-        
-        // Use pre-loaded models if available
-        if (modelLoadingPromise) {
-          console.log('📦 Using pre-loaded models...');
-          human = await modelLoadingPromise;
-        } else {
+        human = await (modelLoadingPromise ?? (async () => {
           const HumanModule = await import('@vladmandic/human');
-          human = new HumanModule.default({
-            backend: 'webgl',
+          const h = new HumanModule.default({
+            backend:      'webgl',
             modelBasePath: '/models/human',
-            hand: { enabled: false },
-            body: { enabled: false },
-            object: { enabled: false },
-            gesture: { enabled: false },
+            hand:         { enabled: false },
+            body:         { enabled: false },
+            object:       { enabled: false },
+            gesture:      { enabled: false },
             segmentation: { enabled: false },
             face: {
-              enabled: true,
-              detector: { maxDetected: 1, return: true },
+              enabled:     true,
+              detector:    { maxDetected: 1, return: true },
               description: { enabled: true },
-              emotion: { enabled: false },
-              landmarks: { enabled: true },
-              mesh: { enabled: false },
-              iris: { enabled: false },
-              antispoof: { enabled: true },
-              liveness: { enabled: true }
-            }
+              emotion:     { enabled: false },
+              mesh:        { enabled: false },
+              iris:        { enabled: false },
+              antispoof:   { enabled: true },
+              liveness:    { enabled: true },
+            },
           });
-          await human.load();
-          await human.warmup();
-        }
-        
-        console.log('Human models loaded successfully');
+          await h.load();
+          await h.warmup();
+          return h;
+        })());
         isInitializing = false;
       }
-      
+
       clearInterval(progressInterval);
       loadingProgress = 100;
 
       stream = await navigator.mediaDevices.getUserMedia({
-        video: { 
-          facingMode: 'user', 
-          width: { ideal: 640 }, 
-          height: { ideal: 480 },
-          frameRate: { ideal: 30 }
-        },
+        video: { facingMode: 'user', width: { ideal: 640 }, height: { ideal: 480 }, frameRate: { ideal: 30 } },
       });
-      
-      if (video) {
-        video.srcObject = stream;
-        
-        // Use 'loadeddata' event for faster startup
-        await new Promise<void>((resolve) => {
-          const onLoaded = () => {
-            if (video.videoWidth && video.videoHeight) {
-              video.removeEventListener('loadeddata', onLoaded);
-              resolve();
-            }
-          };
-          video.addEventListener('loadeddata', onLoaded);
-          if (video.readyState >= 2) {
-            onLoaded();
+
+      video.srcObject = stream;
+
+      await new Promise<void>(resolve => {
+        const onLoaded = () => {
+          if (video.videoWidth && video.videoHeight) {
+            video.removeEventListener('loadeddata', onLoaded);
+            resolve();
           }
-        });
-        
-        canvas.width = video.videoWidth;
-        canvas.height = video.videoHeight;
-        ctx = canvas.getContext('2d');
+        };
+        video.addEventListener('loadeddata', onLoaded);
+        if (video.readyState >= 2) onLoaded();
+      });
 
-        status = 'scanning';
-        headline = 'Verify your identity';
-        subline = 'Position your face in the frame';
-        holdProgress = 0;
+      canvas.width  = video.videoWidth;
+      canvas.height = video.videoHeight;
+      ctx = canvas.getContext('2d');
 
-        if (raf) cancelAnimationFrame(raf);
-        raf = requestAnimationFrame(loop);
-      }
+      status      = 'scanning';
+      headline    = 'Verify your identity';
+      subline     = 'Position your face in the oval';
+      holdProgress = 0;
+
+      if (raf) cancelAnimationFrame(raf);
+      raf = requestAnimationFrame(loop);
     } catch (e: any) {
-      console.error('Camera initialization error:', e);
       isInitializing = false;
-      status = 'error';
-      headline = 'Camera error';
-      errorMessage = e.message?.includes('denied')
-        ? 'Please allow camera access and try again'
+      status         = 'error';
+      headline       = 'Camera error';
+      errorMessage   = e.message?.includes('denied')
+        ? 'Allow camera access and try again'
         : e.message?.includes('not found')
-        ? 'No camera found on this device'
-        : e.message?.includes('fetch')
-        ? 'Failed to load face detection models. Check network connection.'
-        : 'Failed to start camera. Please check permissions.';
+          ? 'No camera found on this device'
+          : 'Failed to start camera — check permissions';
       subline = errorMessage;
     }
   }
 
-  onMount(() => {
-    return () => {
-      stopCamera();
-    };
-  });
-  
+  onMount(() => () => stopCamera());
   onDestroy(stopCamera);
 
   $effect(() => {
-    if (open && status === 'intro') {
-      startVerification();
-    }
+    if (open && status === 'intro') startVerification();
     if (!open) {
       stopCamera();
-      status = 'intro';
-      holdProgress = 0;
-      faceDetected = false;
-      faceCount = 0;
-      errorMessage = '';
+      status        = 'intro';
+      holdProgress  = 0;
+      holdStartTime = null;
+      faceDetected  = false;
+      faceCount     = 0;
+      errorMessage  = '';
       loadingProgress = 0;
-      if (raf) {
-        cancelAnimationFrame(raf);
-        raf = null;
-      }
     }
   });
 </script>
@@ -534,7 +442,6 @@ async function verify(descriptor: number[]) {
   >
     <div class="modal" onclick={(e) => e.stopPropagation()}>
 
-      <!-- Header -->
       <header class="modal-header">
         <h2 id="verify-title">{headline}</h2>
         <button class="close-btn" onclick={onClose} aria-label="Close">
@@ -544,7 +451,6 @@ async function verify(descriptor: number[]) {
         </button>
       </header>
 
-      <!-- Camera -->
       <div class="cam-wrap">
         <video bind:this={video} class="feed" autoplay muted playsinline></video>
         <canvas bind:this={canvas} class="overlay"></canvas>
@@ -593,7 +499,6 @@ async function verify(descriptor: number[]) {
           </div>
         {/if}
 
-        <!-- Face badge -->
         {#if status === 'scanning'}
           <div class="face-badge" class:bad={faceCount > 1} class:good={faceCount === 1}>
             {#if faceCount === 0}
@@ -607,7 +512,6 @@ async function verify(descriptor: number[]) {
         {/if}
       </div>
 
-      <!-- Bottom panel -->
       <div class="bottom">
         {#if status === 'intro'}
           <p class="subline">Click below to start face verification</p>
@@ -646,301 +550,156 @@ async function verify(descriptor: number[]) {
 
 <style>
   .modal-backdrop {
-    position: fixed;
-    inset: 0;
-    z-index: 100;
-    background: rgba(0, 0, 0, 0.7);
+    position: fixed; inset: 0; z-index: 100;
+    background: rgba(0,0,0,0.7);
     backdrop-filter: blur(8px);
-    display: flex;
-    align-items: center;
-    justify-content: center;
+    display: flex; align-items: center; justify-content: center;
     padding: 1rem;
     animation: fade-in 0.2s ease;
   }
-
   .modal {
-    width: 100%;
-    max-width: 420px;
-    background: #0f1115;
-    border-radius: 1.25rem;
-    overflow: hidden;
-    border: 1px solid rgba(255, 255, 255, 0.08);
-    box-shadow: 0 24px 48px rgba(0, 0, 0, 0.5);
-    animation: scale-in 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
-    display: flex;
-    flex-direction: column;
+    width: 100%; max-width: 420px;
+    background: #0f1115; border-radius: 1.25rem; overflow: hidden;
+    border: 1px solid rgba(255,255,255,0.08);
+    box-shadow: 0 24px 48px rgba(0,0,0,0.5);
+    animation: scale-in 0.3s cubic-bezier(0.34,1.56,0.64,1);
+    display: flex; flex-direction: column;
   }
-
   .modal-header {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
+    display: flex; align-items: center; justify-content: space-between;
     padding: 1rem 1.25rem;
-    border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+    border-bottom: 1px solid rgba(255,255,255,0.06);
   }
-
-  .modal-header h2 {
-    font-size: 0.95rem;
-    font-weight: 700;
-    color: #fff;
-    margin: 0;
-  }
-
+  .modal-header h2 { font-size: 0.95rem; font-weight: 700; color: #fff; margin: 0; }
   .close-btn {
-    width: 32px;
-    height: 32px;
-    border-radius: 50%;
-    background: rgba(255, 255, 255, 0.06);
-    border: 1px solid rgba(255, 255, 255, 0.08);
-    color: rgba(255, 255, 255, 0.5);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    cursor: pointer;
-    transition: all 0.15s;
+    width: 32px; height: 32px; border-radius: 50%;
+    background: rgba(255,255,255,0.06);
+    border: 1px solid rgba(255,255,255,0.08);
+    color: rgba(255,255,255,0.5);
+    display: flex; align-items: center; justify-content: center;
+    cursor: pointer; transition: all 0.15s;
   }
-
-  .close-btn:hover {
-    background: rgba(255, 255, 255, 0.1);
-    color: #fff;
-  }
-
+  .close-btn:hover { background: rgba(255,255,255,0.1); color: #fff; }
   .cam-wrap {
-    position: relative;
-    width: 100%;
-    aspect-ratio: 4/3;
-    background: #000;
-    overflow: hidden;
+    position: relative; width: 100%; aspect-ratio: 4/3;
+    background: #000; overflow: hidden;
   }
-
   .feed {
-    position: absolute;
-    inset: 0;
-    width: 100%;
-    height: 100%;
-    object-fit: cover;
-    transform: scaleX(-1);
+    position: absolute; inset: 0; width: 100%; height: 100%;
+    object-fit: cover; transform: scaleX(-1);
   }
-
   .overlay {
-    position: absolute;
-    inset: 0;
-    width: 100%;
-    height: 100%;
+    position: absolute; inset: 0; width: 100%; height: 100%;
     pointer-events: none;
   }
-
   .center-state {
-    position: absolute;
-    inset: 0;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    gap: 0.875rem;
-    background: rgba(10, 13, 15, 0.85);
-    z-index: 10;
+    position: absolute; inset: 0; z-index: 10;
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    gap: 0.875rem; background: rgba(10,13,15,0.85);
   }
-
-  .success-state { background: rgba(10, 13, 15, 0.9); }
-  .error-state { background: rgba(10, 13, 15, 0.9); }
-
+  .success-state, .error-state { background: rgba(10,13,15,0.9); }
   .success-ring {
-    width: 64px;
-    height: 64px;
-    border-radius: 50%;
-    border: 2px solid rgba(0, 201, 167, 0.3);
-    background: rgba(0, 201, 167, 0.1);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    animation: scale-in 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
+    width: 64px; height: 64px; border-radius: 50%;
+    border: 2px solid rgba(0,201,167,0.3); background: rgba(0,201,167,0.1);
+    display: flex; align-items: center; justify-content: center;
+    animation: scale-in 0.4s cubic-bezier(0.34,1.56,0.64,1);
   }
-
   .error-ring {
-    width: 64px;
-    height: 64px;
-    border-radius: 50%;
-    border: 2px solid rgba(239, 68, 68, 0.3);
-    background: rgba(239, 68, 68, 0.1);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    animation: scale-in 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
+    width: 64px; height: 64px; border-radius: 50%;
+    border: 2px solid rgba(239,68,68,0.3); background: rgba(239,68,68,0.1);
+    display: flex; align-items: center; justify-content: center;
+    animation: scale-in 0.4s cubic-bezier(0.34,1.56,0.64,1);
   }
-
-  .state-text { font-size: 0.875rem; color: rgba(255, 255, 255, 0.5); margin: 0; }
+  .state-text  { font-size: 0.875rem; color: rgba(255,255,255,0.5); margin: 0; }
   .success-text { color: #00c9a7; font-weight: 600; }
-  .error-text { color: #ef4444; font-weight: 600; }
-
+  .error-text   { color: #ef4444; font-weight: 600; }
   .progress-bar {
-    width: 200px;
-    height: 4px;
-    background: rgba(255, 255, 255, 0.1);
-    border-radius: 2px;
-    overflow: hidden;
+    width: 200px; height: 4px;
+    background: rgba(255,255,255,0.1); border-radius: 2px; overflow: hidden;
   }
-
   .progress-fill {
     height: 100%;
-    background: linear-gradient(90deg, #00c9a7, #00e5b9);
-    border-radius: 2px;
-    transition: width 0.3s ease;
+    background: linear-gradient(90deg,#00c9a7,#00e5b9);
+    border-radius: 2px; transition: width 0.3s ease;
   }
-
   .face-badge {
-    position: absolute;
-    top: 0.75rem;
-    right: 0.75rem;
-    z-index: 15;
-    padding: 0.375rem 0.75rem;
-    border-radius: 100px;
-    font-size: 0.7rem;
-    font-weight: 600;
-    display: flex;
-    align-items: center;
-    gap: 0.375rem;
-    background: rgba(0, 0, 0, 0.5);
-    border: 1px solid rgba(255, 255, 255, 0.1);
-    backdrop-filter: blur(8px);
-    color: rgba(255, 255, 255, 0.5);
-    transition: all 0.3s;
-    animation: fade-in 0.3s ease;
+    position: absolute; top: 0.75rem; right: 0.75rem; z-index: 15;
+    padding: 0.375rem 0.75rem; border-radius: 100px;
+    font-size: 0.7rem; font-weight: 600;
+    display: flex; align-items: center; gap: 0.375rem;
+    background: rgba(0,0,0,0.5); border: 1px solid rgba(255,255,255,0.1);
+    backdrop-filter: blur(8px); color: rgba(255,255,255,0.5);
+    transition: all 0.3s; animation: fade-in 0.3s ease;
   }
-
   .face-badge.good {
-    background: rgba(0, 201, 167, 0.15);
-    border-color: rgba(0, 201, 167, 0.3);
-    color: #00c9a7;
+    background: rgba(0,201,167,0.15); border-color: rgba(0,201,167,0.3); color: #00c9a7;
   }
-
   .face-badge.bad {
-    background: rgba(239, 68, 68, 0.15);
-    border-color: rgba(239, 68, 68, 0.3);
-    color: #ef4444;
+    background: rgba(239,68,68,0.15); border-color: rgba(239,68,68,0.3); color: #ef4444;
     animation: shake 0.4s ease, fade-in 0.3s ease;
   }
-
-  .badge-dot {
-    width: 5px;
-    height: 5px;
-    border-radius: 50%;
-    background: rgba(255, 255, 255, 0.3);
-  }
-
-  .badge-dot.green {
-    background: #22c55e;
-    box-shadow: 0 0 4px rgba(34, 197, 94, 0.5);
-  }
-
-  .badge-dot.red {
-    background: #ef4444;
-    box-shadow: 0 0 4px rgba(239, 68, 68, 0.5);
-  }
-
+  .badge-dot { width: 5px; height: 5px; border-radius: 50%; background: rgba(255,255,255,0.3); }
+  .badge-dot.green { background: #22c55e; box-shadow: 0 0 4px rgba(34,197,94,0.5); }
+  .badge-dot.red   { background: #ef4444; box-shadow: 0 0 4px rgba(239,68,68,0.5); }
   .bottom {
     padding: 1.25rem;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    gap: 0.75rem;
-    border-top: 1px solid rgba(255, 255, 255, 0.06);
+    display: flex; flex-direction: column; align-items: center; gap: 0.75rem;
+    border-top: 1px solid rgba(255,255,255,0.06);
   }
-
   .subline {
-    font-size: 0.8rem;
-    color: rgba(255, 255, 255, 0.4);
-    margin: 0;
-    text-align: center;
-    min-height: 1.3em;
+    font-size: 0.8rem; color: rgba(255,255,255,0.4);
+    margin: 0; text-align: center; min-height: 1.3em;
   }
-
-  .subline.hold { color: #00c9a7; }
-  .subline.error-sub { color: #ef4444; }
+  .subline.hold        { color: #00c9a7; }
+  .subline.error-sub   { color: #ef4444; }
   .subline.success-sub { color: #00c9a7; }
-
   .cta {
-    width: 100%;
-    padding: 0.85rem;
-    background: linear-gradient(135deg, #15803d, #166534);
-    color: #fff;
-    border: none;
-    border-radius: 0.75rem;
-    font-weight: 700;
-    font-size: 0.9rem;
-    cursor: pointer;
-    font-family: inherit;
-    transition: all 0.15s;
-    box-shadow: 0 4px 16px rgba(21, 128, 61, 0.3);
+    width: 100%; padding: 0.85rem;
+    background: linear-gradient(135deg,#15803d,#166534);
+    color: #fff; border: none; border-radius: 0.75rem;
+    font-weight: 700; font-size: 0.9rem; cursor: pointer;
+    font-family: inherit; transition: all 0.15s;
+    box-shadow: 0 4px 16px rgba(21,128,61,0.3);
   }
-
-  .cta:hover { transform: translateY(-1px); box-shadow: 0 6px 20px rgba(21, 128, 61, 0.4); }
+  .cta:hover  { transform: translateY(-1px); box-shadow: 0 6px 20px rgba(21,128,61,0.4); }
   .cta:active { transform: scale(0.98) translateY(0); }
-
   .scan-indicator {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    gap: 0.625rem;
-    width: 100%;
+    display: flex; flex-direction: column; align-items: center; gap: 0.625rem; width: 100%;
   }
-
   .scan-dots { display: flex; gap: 6px; }
-
   .s-dot {
-    width: 6px;
-    height: 6px;
-    border-radius: 50%;
-    background: rgba(255, 255, 255, 0.15);
-    transition: all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+    width: 6px; height: 6px; border-radius: 50%;
+    background: rgba(255,255,255,0.15);
+    transition: all 0.3s cubic-bezier(0.34,1.56,0.64,1);
   }
-
-  .s-dot.active {
-    background: #00c9a7;
-    box-shadow: 0 0 8px rgba(0, 201, 167, 0.4);
-    transform: scale(1.2);
-  }
-
+  .s-dot.active { background: #00c9a7; box-shadow: 0 0 8px rgba(0,201,167,0.4); transform: scale(1.2); }
   .hold-bar {
-    width: 100%;
-    max-width: 200px;
-    height: 3px;
-    background: rgba(255, 255, 255, 0.1);
-    border-radius: 999px;
-    overflow: hidden;
-    margin-top: 0.25rem;
+    width: 100%; max-width: 200px; height: 3px;
+    background: rgba(255,255,255,0.1); border-radius: 999px; overflow: hidden; margin-top: 0.25rem;
   }
-
   .hold-fill {
     height: 100%;
-    background: linear-gradient(90deg, #00c9a7, #00e5b9);
-    border-radius: 999px;
-    transition: width 0.1s linear;
+    background: linear-gradient(90deg,#00c9a7,#00e5b9);
+    border-radius: 999px; transition: width 0.1s linear;
   }
-
   .spinner {
-    width: 36px;
-    height: 36px;
-    border: 2.5px solid rgba(255, 255, 255, 0.08);
-    border-top-color: rgba(255, 255, 255, 0.4);
-    border-radius: 50%;
-    animation: spin 0.75s linear infinite;
+    width: 36px; height: 36px;
+    border: 2.5px solid rgba(255,255,255,0.08);
+    border-top-color: rgba(255,255,255,0.4);
+    border-radius: 50%; animation: spin 0.75s linear infinite;
   }
-
   .spinner.teal { border-top-color: #00c9a7; }
-
-  @keyframes spin { to { transform: rotate(360deg); } }
+  @keyframes spin    { to { transform: rotate(360deg); } }
   @keyframes fade-in { from { opacity: 0; } to { opacity: 1; } }
   @keyframes scale-in {
     from { opacity: 0; transform: scale(0.9); }
-    to { opacity: 1; transform: scale(1); }
+    to   { opacity: 1; transform: scale(1); }
   }
   @keyframes shake {
-    0%, 100% { transform: translateX(0); }
-    25% { transform: translateX(-3px); }
-    75% { transform: translateX(3px); }
+    0%,100% { transform: translateX(0); }
+    25%     { transform: translateX(-3px); }
+    75%     { transform: translateX(3px); }
   }
-
   @media (max-width: 480px) {
     .modal-backdrop { padding: 0.5rem; }
     .modal { max-width: 100%; border-radius: 1rem; }
