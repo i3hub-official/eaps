@@ -38,7 +38,7 @@
 <div class="overlay" role="alertdialog" aria-modal="true" aria-labelledby="vw-title">
   <div class="modal" style="--accent: {config.color}" data-severity={severity}>
     <div class="modal-glow"></div>
-    
+
     <div class="icon-ring" style="border-color: {config.color}">
       <span class="icon" aria-hidden="true">{config.icon}</span>
     </div>
@@ -239,7 +239,7 @@
     justify-content: center;
     gap: 0.5rem;
     padding: 0.875rem 1.5rem;
-    background: linear-gradient(135deg, #15803d, #166534);
+    background: linear-gradient(135deg, #059669, #047857);
     color: #fff;
     border: none;
     border-radius: 0.875rem;
@@ -247,12 +247,12 @@
     font-weight: 700;
     cursor: pointer;
     transition: all 0.15s ease;
-    box-shadow: 0 4px 16px rgba(21, 128, 61, 0.25);
+    box-shadow: 0 4px 16px rgba(5, 150, 105, 0.25);
   }
 
   .dismiss:hover {
     transform: translateY(-1px);
-    box-shadow: 0 6px 20px rgba(21, 128, 61, 0.35);
+    box-shadow: 0 6px 20px rgba(5, 150, 105, 0.35);
   }
 
   .dismiss:active {

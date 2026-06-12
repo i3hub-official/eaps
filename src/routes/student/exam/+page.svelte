@@ -10,7 +10,6 @@
   let { data }: { data: PageData } = $props();
   let filter = $state<'all' | 'upcoming' | 'active' | 'completed'>('all');
 
-  // $derived — reactive value, NOT a callable function (no parens when reading)
   const filteredExams = $derived(
     filter === 'active'
       ? data.exams.filter(e => e.status === 'active' || e.sessionStatus === 'in_progress')
@@ -29,7 +28,7 @@
     if (exam.sessionStatus === 'submitted' || exam.sessionStatus === 'force_submitted')
       return { label: 'Completed', color: '#3b82f6', bg: 'rgba(59,130,246,0.08)', icon: CheckCircle2 };
     if (exam.status === 'active' || exam.sessionStatus === 'in_progress')
-      return { label: 'In Progress', color: '#16a34a', bg: 'rgba(34,197,94,0.08)', icon: Play };
+      return { label: 'In Progress', color: '#059669', bg: 'rgba(5,150,105,0.08)', icon: Play };
     if (exam.status === 'scheduled')
       return { label: 'Upcoming', color: '#f59e0b', bg: 'rgba(245,158,11,0.08)', icon: Calendar };
     if (exam.status === 'cancelled')
@@ -105,7 +104,7 @@
                 View Results <ChevronRight size={14}/>
               </button>
             {:else if exam.status === 'active'}
-              <!-- Navigate to lobby — lobby handles face verification then entry -->
+              <!-- Navigate to lobby — lobby handles face verification then opens session in new tab -->
               <button class="btn-primary" onclick={() => goto(`/student/exam/${exam.id}`)}>
                 <Play size={14}/>
                 {exam.sessionStatus === 'in_progress' ? 'Resume Exam' : 'Start Exam'}

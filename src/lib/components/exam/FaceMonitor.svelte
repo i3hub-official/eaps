@@ -10,15 +10,17 @@
     checkInterval?: number;
     onViolation: (type: 'no_face_detected' | 'multiple_faces') => void;
     onCameraError?: (msg: string) => void;
+    onForceSubmit?: () => void;  // NEW: called when violations hit threshold
   }
 
   let {
     examId,
     sessionId,
     enrolledDescriptor,
-    checkInterval = 12_000,
+    checkInterval = 10_000,      // STRICT: 10 seconds (was 12s)
     onViolation,
     onCameraError,
+    onForceSubmit,
   }: Props = $props();
 
   let videoEl: HTMLVideoElement;
@@ -26,7 +28,7 @@
   let human: any = null;
   let stream: MediaStream | null = null;
   let interval: ReturnType<typeof setInterval> | null = null;
-  let tickInterval: ReturnType<typeof setInterval> | null = null; // FIX: for nextCheckIn countdown
+  let tickInterval: ReturnType<typeof setInterval> | null = null;
   let ready = false;
   let consecutiveNoFace = 0;
 
@@ -34,13 +36,15 @@
   let eyeOpenHistory: number[] = [];
   const LIVENESS_WINDOW = 8;
 
-  const MATCH_THRESHOLD = 0.65;
-  const SOFT_THRESHOLD  = 0.55;
-  const NO_FACE_GRACE   = 2;
+  // STRICT THRESHOLDS — tightened for impersonation detection
+  const MATCH_THRESHOLD = 0.60;   // was 0.65 — stricter
+  const SOFT_THRESHOLD  = 0.50;   // was 0.55 — stricter
+  const NO_FACE_GRACE   = 1;      // was 2 — immediate flag on 1st miss
   const EAR_OPEN        = 0.25;
   const EAR_CLOSED      = 0.18;
+  const MAX_VIOLATIONS  = 3;      // auto-submit at 3 violations
 
-  // ── UI State ───────────────────────────────────────────────────────────────
+  // ── UI State ────────────────────────────────────────────────────────────
   type MonitorStatus = 'initializing' | 'active' | 'warning' | 'error' | 'paused';
   let monitorStatus   = $state<MonitorStatus>('initializing');
   let faceCount       = $state(0);
@@ -49,13 +53,13 @@
   let violationCount  = $state({ no_face: 0, multiple: 0, mismatch: 0 });
   let isExpanded      = $state(false);
   let cameraPermission = $state<'prompt' | 'granted' | 'denied'>('prompt');
+  let totalViolations = $state(0);  // running total for auto-submit
 
-  // FIX: reactive `now` so nextCheckIn countdown actually ticks
   let now = $state(Date.now());
 
   let modelLoadingPromise: Promise<any> | null = null;
 
-  // ── Pre-load models ────────────────────────────────────────────────────────
+  // ── Pre-load models ───────────────────────────────────────────────────────
   if (browser && !modelLoadingPromise) {
     modelLoadingPromise = (async () => {
       const HumanModule = await import('@vladmandic/human');
@@ -65,13 +69,13 @@
         hand:          { enabled: false },
         body:          { enabled: false },
         object:        { enabled: false },
-        gesture:       { enabled: false }, // FIX: was true in fallback, false here — aligned to false
+        gesture:       { enabled: false },
         segmentation:  { enabled: false },
         face: {
           enabled:     true,
-          detector:    { maxDetected: 4, minConfidence: 0.45, return: true },
+          detector:    { maxDetected: 4, minConfidence: 0.50, return: true },  // STRICT: was 0.45
           description: { enabled: true },
-          mesh:        { enabled: true },  // needed for EAR liveness check
+          mesh:        { enabled: true },
           emotion:     { enabled: false },
           iris:        { enabled: false },
           antispoof:   { enabled: true },
@@ -87,7 +91,6 @@
   onMount(async () => {
     if (!browser) return;
 
-    // FIX: tick `now` every second so nextCheckIn derived value updates
     tickInterval = setInterval(() => { now = Date.now(); }, 1000);
 
     try {
@@ -107,11 +110,11 @@
           hand:          { enabled: false },
           body:          { enabled: false },
           object:        { enabled: false },
-          gesture:       { enabled: false }, // FIX: aligned with pre-load config
+          gesture:       { enabled: false },
           segmentation:  { enabled: false },
           face: {
             enabled:     true,
-            detector:    { maxDetected: 4, minConfidence: 0.45, return: true },
+            detector:    { maxDetected: 4, minConfidence: 0.50, return: true },
             description: { enabled: true },
             mesh:        { enabled: true },
             emotion:     { enabled: false },
@@ -137,7 +140,7 @@
       monitorStatus = 'active';
       cameraPermission = 'granted';
 
-      setTimeout(runCheck, 3_000);
+      setTimeout(runCheck, 2_000);  // first check after 2s
       interval = setInterval(runCheck, checkInterval);
     } catch (e: any) {
       const msg = e?.message ?? 'Camera unavailable';
@@ -173,7 +176,7 @@
     }
   }
 
-  // ── EAR helpers ────────────────────────────────────────────────────────────
+  // ── EAR helpers ──────────────────────────────────────────────────────────
   function dist2d(a: number[], b: number[]): number {
     return Math.hypot(a[0] - b[0], a[1] - b[1]);
   }
@@ -203,7 +206,7 @@
     if (openFrames >= 4 && closedFrames >= 1) livenessConfirmed = true;
   }
 
-  // ── Descriptor comparison ──────────────────────────────────────────────────
+  // ── Descriptor comparison ─────────────────────────────────────────────────
   function cosineSimilarity(a: number[], b: number[]): number {
     if (a.length !== b.length || a.length === 0) return 0;
     let dot = 0, normA = 0, normB = 0;
@@ -222,7 +225,7 @@
     return cosineSimilarity(enrolled.slice(0, min), current.slice(0, min));
   }
 
-  // ── Main check ─────────────────────────────────────────────────────────────
+  // ── Main check ───────────────────────────────────────────────────────────
   async function runCheck() {
     if (!ready || !human || !videoEl) return;
 
@@ -239,8 +242,10 @@
         if (consecutiveNoFace >= NO_FACE_GRACE) {
           consecutiveNoFace = 0;
           violationCount.no_face++;
+          totalViolations++;
           onViolation('no_face_detected');
           await reportViolation('no_face_detected');
+          checkAutoSubmit();
         }
         return;
       }
@@ -250,22 +255,25 @@
       if (count > 1) {
         monitorStatus = 'warning';
         violationCount.multiple++;
+        totalViolations++;
         onViolation('multiple_faces');
         await reportViolation('multiple_faces');
+        checkAutoSubmit();
         return;
       }
 
       const face = faces[0];
 
-      // Liveness & antispoof
-      const isLive = face.liveness?.score  != null ? face.liveness.score  > 0.55 : true;
-      const isReal = face.antispoof?.score != null ? face.antispoof.score > 0.55 : true;
+      // STRICT liveness & antispoof
+      const isLive = face.liveness?.score  != null ? face.liveness.score  > 0.60 : true;   // was 0.55
+      const isReal = face.antispoof?.score != null ? face.antispoof.score > 0.60 : true;   // was 0.55
 
       if (!isLive || !isReal) {
-        // FIX: spoof attempts logged with reason in meta, not as a bare 'multiple_faces'
         monitorStatus = 'warning';
         violationCount.mismatch++;
+        totalViolations++;
         await reportMismatch(0, 'spoof_attempt');
+        checkAutoSubmit();
         console.warn('Spoofing attempt detected during exam');
       } else {
         monitorStatus = 'active';
@@ -283,13 +291,23 @@
         similarityScore = similarity;
         if (similarity < SOFT_THRESHOLD) {
           violationCount.mismatch++;
+          totalViolations++;
           await reportMismatch(similarity, 'face_mismatch');
+          checkAutoSubmit();
         }
       } else {
         similarityScore = null;
       }
     } catch (err) {
       console.error('Face check error:', err);
+    }
+  }
+
+  // STRICT: auto-submit when total violations hit threshold
+  function checkAutoSubmit() {
+    if (totalViolations >= MAX_VIOLATIONS) {
+      console.warn(`[FaceMonitor] Auto-submit triggered: ${totalViolations} violations`);
+      onForceSubmit?.();
     }
   }
 
@@ -326,7 +344,7 @@
     } catch { /* fire-and-forget */ }
   }
 
-  // ── Derived UI ─────────────────────────────────────────────────────────────
+  // ── Derived UI ──────────────────────────────────────────────────────────
   let statusColor = $derived(
     monitorStatus === 'error'   ? '#ef4444' :
     monitorStatus === 'warning' ? '#f59e0b' :
@@ -342,11 +360,16 @@
     faceCount === 1             ? 'Monitoring Active' : 'Checking…'
   );
 
-  // FIX: uses reactive `now` so it ticks every second
   let nextCheckIn = $derived(
     lastCheckTime
       ? Math.max(0, Math.round((checkInterval - (now - lastCheckTime.getTime())) / 1000))
       : checkInterval / 1000
+  );
+
+  // Violation warning color
+  let violationColor = $derived(
+    totalViolations >= MAX_VIOLATIONS - 1 ? '#ef4444' :
+    totalViolations >= 2 ? '#f59e0b' : '#22c55e'
   );
 </script>
 
@@ -364,6 +387,9 @@
         class:error={monitorStatus === 'error'}
       ></div>
       <span class="status-text">{statusLabel}</span>
+      <span class="violation-badge" style="background: {violationColor}">
+        {totalViolations}/{MAX_VIOLATIONS}
+      </span>
       <svg class="chevron" class:rotated={isExpanded} width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
         <polyline points="6 9 12 15 18 9"/>
       </svg>
@@ -474,6 +500,13 @@
           </div>
         </div>
 
+        <div class="detail-row" class:critical={totalViolations >= MAX_VIOLATIONS - 1}>
+          <span class="detail-label">Total</span>
+          <span class="detail-value" style="color: {violationColor}; font-weight: 800;">
+            {totalViolations} / {MAX_VIOLATIONS} violations
+          </span>
+        </div>
+
         {#if cameraPermission === 'denied'}
           <div class="permission-banner">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -491,80 +524,39 @@
 </div>
 
 <style>
-  .monitor-wrap {
-    position: fixed; bottom: 1rem; right: 1rem; z-index: 50;
-    font-family: 'DM Sans', system-ui, sans-serif;
-  }
-  .monitor {
-    width: 160px; background: #0f1115; border-radius: 12px; overflow: hidden;
-    border: 1px solid rgba(255,255,255,0.08);
-    box-shadow: 0 4px 24px rgba(0,0,0,0.5), 0 0 0 1px rgba(0,0,0,0.2);
-    transition: width 0.3s cubic-bezier(0.34,1.56,0.64,1), box-shadow 0.3s;
-  }
-  .monitor-wrap.expanded .monitor {
-    width: 240px;
-    box-shadow: 0 8px 32px rgba(0,0,0,0.6), 0 0 0 1px rgba(255,255,255,0.05);
-  }
-  .monitor-header {
-    width: 100%; display: flex; align-items: center; gap: 8px;
-    padding: 8px 10px; background: rgba(255,255,255,0.03);
-    border: none; color: rgba(255,255,255,0.7);
-    font-size: 0.7rem; font-weight: 600; cursor: pointer;
-    font-family: inherit; transition: background 0.15s;
-  }
+  .monitor-wrap { position: fixed; bottom: 1rem; right: 1rem; z-index: 50; font-family: 'DM Sans', system-ui, sans-serif; }
+  .monitor { width: 180px; background: #0f1115; border-radius: 12px; overflow: hidden; border: 1px solid rgba(255,255,255,0.08); box-shadow: 0 4px 24px rgba(0,0,0,0.5), 0 0 0 1px rgba(0,0,0,0.2); transition: width 0.3s cubic-bezier(0.34,1.56,0.64,1), box-shadow 0.3s; }
+  .monitor-wrap.expanded .monitor { width: 260px; box-shadow: 0 8px 32px rgba(0,0,0,0.6), 0 0 0 1px rgba(255,255,255,0.05); }
+  .monitor-header { width: 100%; display: flex; align-items: center; gap: 8px; padding: 8px 10px; background: rgba(255,255,255,0.03); border: none; color: rgba(255,255,255,0.7); font-size: 0.7rem; font-weight: 600; cursor: pointer; font-family: inherit; transition: background 0.15s; }
   .monitor-header:hover { background: rgba(255,255,255,0.06); }
-  .status-pulse {
-    width: 7px; height: 7px; border-radius: 50%;
-    background: var(--status-color, #3b82f6); flex-shrink: 0; position: relative;
-  }
-  .status-pulse::after {
-    content: ''; position: absolute; inset: -3px; border-radius: 50%;
-    border: 1.5px solid var(--status-color, #3b82f6);
-    opacity: 0; animation: ping 2s cubic-bezier(0,0,0.2,1) infinite;
-  }
+  .status-pulse { width: 7px; height: 7px; border-radius: 50%; background: var(--status-color, #3b82f6); flex-shrink: 0; position: relative; }
+  .status-pulse::after { content: ''; position: absolute; inset: -3px; border-radius: 50%; border: 1.5px solid var(--status-color, #3b82f6); opacity: 0; animation: ping 2s cubic-bezier(0,0,0.2,1) infinite; }
   .status-pulse.warning { background: #f59e0b; animation: pulse-amber 1.5s ease-in-out infinite; }
   .status-pulse.warning::after { border-color: #f59e0b; }
   .status-pulse.error   { background: #ef4444; animation: pulse-red 1s ease-in-out infinite; }
   .status-pulse.error::after   { border-color: #ef4444; }
   .status-text { flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .violation-badge { font-size: 0.6rem; font-weight: 800; padding: 1px 6px; border-radius: 999px; color: #fff; flex-shrink: 0; transition: background 0.3s; }
   .chevron { flex-shrink: 0; opacity: 0.4; transition: transform 0.2s, opacity 0.2s; }
   .chevron.rotated { transform: rotate(180deg); }
   .monitor-header:hover .chevron { opacity: 0.7; }
   .video-container { position: relative; width: 100%; aspect-ratio: 4/3; background: #000; overflow: hidden; }
   .feed { width: 100%; height: 100%; object-fit: cover; display: block; transform: scaleX(-1); opacity: 0.9; }
-  .video-overlay {
-    position: absolute; inset: 0; pointer-events: none;
-    display: flex; flex-direction: column; justify-content: space-between; padding: 6px;
-  }
-  .overlay-badge {
-    display: inline-flex; align-items: center; gap: 4px;
-    padding: 3px 8px; border-radius: 6px; font-size: 0.65rem; font-weight: 600;
-    backdrop-filter: blur(8px); width: fit-content;
-    animation: slide-down 0.2s ease;
-  }
-  .overlay-badge.warning {
-    background: rgba(245,158,11,0.2); color: #fbbf24; border: 1px solid rgba(245,158,11,0.3);
-    animation: shake-subtle 0.5s ease, slide-down 0.2s ease;
-  }
+  .video-overlay { position: absolute; inset: 0; pointer-events: none; display: flex; flex-direction: column; justify-content: space-between; padding: 6px; }
+  .overlay-badge { display: inline-flex; align-items: center; gap: 4px; padding: 3px 8px; border-radius: 6px; font-size: 0.65rem; font-weight: 600; backdrop-filter: blur(8px); width: fit-content; animation: slide-down 0.2s ease; }
+  .overlay-badge.warning { background: rgba(245,158,11,0.2); color: #fbbf24; border: 1px solid rgba(245,158,11,0.3); animation: shake-subtle 0.5s ease, slide-down 0.2s ease; }
   .overlay-badge.error   { background: rgba(239,68,68,0.2);  color: #fca5a5; border: 1px solid rgba(239,68,68,0.3); }
   .overlay-badge.info    { background: rgba(59,130,246,0.15); color: #93bbfc; border: 1px solid rgba(59,130,246,0.2); }
-  .face-counter {
-    align-self: flex-end; display: flex; align-items: center; gap: 4px;
-    padding: 2px 8px; border-radius: 100px; font-size: 0.6rem; font-weight: 600;
-    background: rgba(0,0,0,0.5); backdrop-filter: blur(8px);
-    border: 1px solid rgba(255,255,255,0.1); color: rgba(255,255,255,0.5); transition: all 0.3s;
-  }
+  .face-counter { align-self: flex-end; display: flex; align-items: center; gap: 4px; padding: 2px 8px; border-radius: 100px; font-size: 0.6rem; font-weight: 600; background: rgba(0,0,0,0.5); backdrop-filter: blur(8px); border: 1px solid rgba(255,255,255,0.1); color: rgba(255,255,255,0.5); transition: all 0.3s; }
   .face-counter.good { background: rgba(34,197,94,0.15); border-color: rgba(34,197,94,0.3); color: #86efac; }
   .face-counter.bad  { background: rgba(239,68,68,0.15);  border-color: rgba(239,68,68,0.3);  color: #fca5a5; animation: shake-subtle 0.4s ease; }
   .fc-dot { width: 5px; height: 5px; border-radius: 50%; background: rgba(255,255,255,0.3); }
   .fc-dot.green { background: #22c55e; box-shadow: 0 0 4px rgba(34,197,94,0.5); }
   .fc-dot.red   { background: #ef4444; box-shadow: 0 0 4px rgba(239,68,68,0.5); }
-  .details-panel {
-    padding: 10px; border-top: 1px solid rgba(255,255,255,0.06);
-    display: flex; flex-direction: column; gap: 8px;
-  }
+  .details-panel { padding: 10px; border-top: 1px solid rgba(255,255,255,0.06); display: flex; flex-direction: column; gap: 8px; }
   .detail-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
   .detail-row.violations { flex-direction: column; align-items: flex-start; gap: 6px; }
+  .detail-row.critical { background: rgba(239,68,68,0.08); padding: 4px 8px; border-radius: 6px; border: 1px solid rgba(239,68,68,0.15); }
   .detail-label { font-size: 0.65rem; color: rgba(255,255,255,0.35); font-weight: 500; text-transform: uppercase; letter-spacing: 0.05em; }
   .detail-value { font-size: 0.7rem; color: rgba(255,255,255,0.7); font-weight: 600; display: inline-flex; align-items: center; gap: 4px; }
   .detail-value.confirmed { color: #86efac; }
@@ -576,11 +568,7 @@
   .v-chip.green { background: rgba(34,197,94,0.15);  color: #86efac; }
   .v-chip.amber { background: rgba(245,158,11,0.15); color: #fcd34d; }
   .v-chip.red   { background: rgba(239,68,68,0.15);  color: #fca5a5; }
-  .permission-banner {
-    display: flex; align-items: center; gap: 6px; padding: 8px; border-radius: 6px;
-    background: rgba(239,68,68,0.1); border: 1px solid rgba(239,68,68,0.2);
-    color: #fca5a5; font-size: 0.65rem; font-weight: 500; line-height: 1.4;
-  }
+  .permission-banner { display: flex; align-items: center; gap: 6px; padding: 8px; border-radius: 6px; background: rgba(239,68,68,0.1); border: 1px solid rgba(239,68,68,0.2); color: #fca5a5; font-size: 0.65rem; font-weight: 500; line-height: 1.4; }
   .status-bar { height: 3px; width: 100%; transition: background 0.3s; }
   @keyframes ping         { 75%,100% { transform: scale(2); opacity: 0; } }
   @keyframes pulse-amber  { 0%,100% { opacity: 1; } 50% { opacity: 0.4; } }

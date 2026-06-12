@@ -30,7 +30,7 @@
 
     <div class="card">
       <div class="header">
-        <CheckCircle2 size={48} color="#16a34a" />
+        <CheckCircle2 size={48} color="#059669" />
         <h1>Exam Submitted</h1>
         <p class="sub">Your answers have been recorded.</p>
       </div>
@@ -145,12 +145,12 @@
     font-size: .65rem;
     font-weight: 700;
     padding: .15rem .5rem;
-    background: rgba(34,197,94,.1);
-    color: #16a34a;
+    background: rgba(5,150,105,.1);
+    color: #059669;
     border-radius: 999px;
     align-self: center;
   }
-  :global(.dark) .code { background: rgba(34,197,94,.15); color: #4ade80; }
+  :global(.dark) .code { background: rgba(5,150,105,.15); color: #34d399; }
   .exam-info h2 { font-size: 1rem; font-weight: 600; margin: 0; }
 
   .meta-grid {
@@ -220,7 +220,7 @@
   .r-label { font-size: .68rem; color: var(--color-muted); font-weight: 500; }
   .r-value { font-size: .875rem; font-weight: 700; }
   .r-value.grade { font-size: 1.25rem; }
-  .r-value.pass { color: #16a34a; }
+  .r-value.pass { color: #059669; }
   .r-value.fail { color: #dc2626; }
 
   .pending {
@@ -237,7 +237,7 @@
     justify-content: center;
     width: 100%;
     padding: .75rem;
-    background: var(--color-primary);
+    background: linear-gradient(135deg, #059669, #047857);
     color: #fff;
     text-decoration: none;
     border-radius: .5rem;

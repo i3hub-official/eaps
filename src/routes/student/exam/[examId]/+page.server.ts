@@ -6,16 +6,14 @@ import { error, redirect } from '@sveltejs/kit';
 
 export const load: PageServerLoad = async ({ params, locals }) => {
   const user   = requireStudent(locals.user);
-  const examId = params.examId; // ← correct param name
+  const examId = params.examId;
 
-  // ── 1. Face ENROLLMENT check (onboarding gate) ────────────────────────
-  // Enrollment happens during registration — if missing, hard block.
+  // ── 1. Face ENROLLMENT check ────────────────────────────────────────────
   const faceDescriptor = await prisma.faceDescriptor.findUnique({
     where:  { studentId: user.id },
     select: { studentId: true },
   });
   if (!faceDescriptor) {
-    // Redirect to profile/enrollment page instead of a dead error
     redirect(302, '/student/profile?enroll=1');
   }
 
@@ -41,9 +39,7 @@ export const load: PageServerLoad = async ({ params, locals }) => {
     error(403, 'This exam is not currently available.');
   }
 
-  // ── 4. Registration check (any type, any status) ──────────────────────
-  // carry_over registrations are 'pending' — they must still be allowed in.
-  // The check is: does a registration row exist at all?
+  // ── 4. Registration check ─────────────────────────────────────────────
   const registration = await prisma.courseRegistration.findFirst({
     where: {
       studentId: user.id,
@@ -56,7 +52,6 @@ export const load: PageServerLoad = async ({ params, locals }) => {
   if (!registration) {
     error(403, 'You are not registered for this course.');
   }
-  // Only block truly rejected registrations
   if (registration.status === 'rejected') {
     error(403, 'Your course registration was rejected. Contact your academic office.');
   }
@@ -67,7 +62,6 @@ export const load: PageServerLoad = async ({ params, locals }) => {
     select: { id: true, status: true },
   });
 
-  // Already fully submitted → go to completion page
   if (
     existingSession?.status === 'submitted' ||
     existingSession?.status === 'force_submitted'
@@ -76,7 +70,6 @@ export const load: PageServerLoad = async ({ params, locals }) => {
   }
 
   // ── 6. Scheduled time check ───────────────────────────────────────────
-  // Stored in DB as UTC — compare directly.
   const now = new Date();
   if (exam.scheduledStart && exam.scheduledStart > now) {
     error(403, 'This exam has not started yet.');
@@ -85,9 +78,7 @@ export const load: PageServerLoad = async ({ params, locals }) => {
     error(403, 'This exam period has ended.');
   }
 
-  // ── 7. Face VERIFICATION check (per-exam gate) ────────────────────────
-  // Has the student successfully verified their face for THIS exam today?
-  // We check for a successful log within the last 2 hours as the window.
+  // ── 7. Face VERIFICATION check ─────────────────────────────────────────
   const twoHoursAgo = new Date(now.getTime() - 2 * 60 * 60 * 1000);
   const faceVerified = await prisma.faceVerificationLog.findFirst({
     where: {
@@ -97,6 +88,21 @@ export const load: PageServerLoad = async ({ params, locals }) => {
       verifiedAt: { gte: twoHoursAgo },
     },
     select: { id: true },
+  });
+
+  // ── 8. Student data for identity confirmation ────────────────────────────
+  const studentData = await prisma.user.findUnique({
+    where: { id: user.id },
+    select: {
+      id: true,
+      fullName: true,
+      matricNumber: true,
+      email: true,
+      department: { select: { name: true } },
+      college: { select: { name: true } },
+      level: { select: { level: true, name: true } },
+      photoUrl: true,
+    },
   });
 
   return {
@@ -119,9 +125,18 @@ export const load: PageServerLoad = async ({ params, locals }) => {
       allowLateEntry:     exam.allowLateEntry,
       lateEntryMinutes:   exam.lateEntryMinutes,
     },
-    // These two flags drive what the Svelte lobby page shows
-    faceVerified:       !!faceVerified,   // false → show FaceVerifyModal
-    hasExistingSession: !!existingSession, // true → show "Resume" instead of "Start"
+    faceVerified:       !!faceVerified,
+    hasExistingSession: !!existingSession,
     registrationType:   registration.registrationType,
+    student: {
+      id:           studentData?.id ?? user.id,
+      fullName:     studentData?.fullName ?? user.fullName,
+      matricNumber: studentData?.matricNumber ?? null,
+      email:        studentData?.email ?? user.email,
+      department:   studentData?.department?.name ?? null,
+      college:      studentData?.college?.name ?? null,
+      level:        studentData?.level?.name ?? (studentData?.level?.level ? `${studentData.level.level} Level` : null),
+      photoUrl:     studentData?.photoUrl ?? null,
+    },
   };
 };

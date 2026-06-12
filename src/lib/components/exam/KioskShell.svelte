@@ -14,7 +14,7 @@
 
   // ── Enter fullscreen ────────────────────────────────────────────────────────
   async function enterFullscreen() {
-    if (!browser) return;  // ✅ guard
+    if (!browser) return;
     try {
       await document.documentElement.requestFullscreen();
       isFullscreen = true;
@@ -26,7 +26,7 @@
   // ── Violation detection hooks ───────────────────────────────────────────────
 
   function onVisibilityChange() {
-    if (!browser) return;  // ✅ guard
+    if (!browser) return;
     if (document.hidden) onViolation('tab_switch');
   }
 
@@ -35,7 +35,7 @@
   }
 
   function onFullscreenChange() {
-    if (!browser) return;  // ✅ guard
+    if (!browser) return;
     if (!document.fullscreenElement) {
       isFullscreen = false;
       onViolation('fullscreen_exit');
@@ -82,7 +82,7 @@
   let devtoolsInterval: ReturnType<typeof setInterval> | undefined;
 
   function startDevtoolsDetection() {
-    if (!browser) return;  // ✅ guard
+    if (!browser) return;
     devtoolsInterval = setInterval(() => {
       const threshold = 160;
       if (
@@ -95,7 +95,7 @@
   }
 
   onMount(() => {
-    if (!browser) return;  // ✅ guard
+    if (!browser) return;
 
     enterFullscreen();
 
@@ -110,7 +110,7 @@
   });
 
   onDestroy(() => {
-    if (!browser) return;  // ✅ guard
+    if (!browser) return;
 
     document.removeEventListener('visibilitychange', onVisibilityChange);
     window.removeEventListener('blur', onWindowBlur);
@@ -127,10 +127,10 @@
 {#if !isFullscreen}
   <div class="fullscreen-prompt">
     <div class="prompt-card">
-      <span class="icon" aria-hidden="true">⛶</span>
+      <div class="prompt-icon">⛶</div>
       <h2>Fullscreen Required</h2>
-      <p>This exam must be taken in fullscreen mode.</p>
-      <button onclick={enterFullscreen} type="button">Enter Fullscreen</button>
+      <p>This exam must be taken in fullscreen mode. Exiting will trigger a violation.</p>
+      <button class="prompt-btn" onclick={enterFullscreen} type="button">Enter Fullscreen</button>
     </div>
   </div>
 {/if}
@@ -150,33 +150,44 @@
 
   .fullscreen-prompt {
     position: fixed; inset: 0; z-index: 10000;
-    background: rgba(0,0,0,0.85);
+    background: rgba(0,0,0,0.88);
+    backdrop-filter: blur(12px);
     display: flex; align-items: center; justify-content: center;
   }
 
   .prompt-card {
-    background: var(--color-surface);
+    background: linear-gradient(135deg, #064e3b, #065f46);
     border-radius: 1rem;
     padding: 2.5rem;
     text-align: center;
-    max-width: 360px;
+    max-width: 380px;
     width: 100%;
     display: flex; flex-direction: column; align-items: center; gap: 1rem;
+    border: 1px solid rgba(16, 185, 129, 0.2);
+    box-shadow: 0 24px 48px rgba(0,0,0,0.4), 0 0 0 1px rgba(16, 185, 129, 0.1);
+    color: #fff;
   }
 
-  .icon  { font-size: 3rem; }
-  h2     { font-size: 1.3rem; font-weight: 700; margin: 0; }
-  p      { color: var(--color-muted); margin: 0; }
+  .prompt-icon { font-size: 3rem; line-height: 1; }
+  .prompt-card h2 { font-size: 1.25rem; font-weight: 700; margin: 0; }
+  .prompt-card p { color: rgba(255,255,255,0.7); margin: 0; font-size: 0.85rem; line-height: 1.5; }
 
-  button {
+  .prompt-btn {
     padding: 0.75rem 2rem;
-    background: var(--color-primary);
+    background: linear-gradient(135deg, #10b981, #059669);
     color: #fff;
     border: none;
     border-radius: 0.5rem;
-    font-size: 1rem;
-    font-weight: 600;
+    font-size: 0.9rem;
+    font-weight: 700;
     cursor: pointer;
     margin-top: 0.5rem;
+    transition: all 0.15s;
+    box-shadow: 0 4px 16px rgba(16, 185, 129, 0.3);
   }
+  .prompt-btn:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 6px 20px rgba(16, 185, 129, 0.4);
+  }
+  .prompt-btn:active { transform: scale(0.98); }
 </style>

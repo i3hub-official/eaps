@@ -3,16 +3,16 @@
   import { onMount, onDestroy } from 'svelte';
 
   interface Props {
-    seconds:    number;         // initial seconds (passed as `seconds` from session page)
-    totalSeconds: number;       // total for progress ring calculation
-    onExpired:  () => void;     // called when timer hits 0
+    seconds:    number;
+    totalSeconds: number;
+    onExpired:  () => void;
     onTick?:    (remaining: number) => void;
   }
 
   let { seconds, totalSeconds, onExpired, onTick }: Props = $props();
 
   let remaining = $state(seconds);
-  let interval: ReturnType<typeof setInterval> | null = null;  // ← fixed syntax
+  let interval: ReturnType<typeof setInterval> | null = null;
 
   const fmt = (n: number) => String(n).padStart(2, '0');
 
@@ -79,14 +79,14 @@
     display: flex;
     flex-direction: column;
     align-items: center;
-    gap: 0.5rem;
+    gap: 0.35rem;
     font-family: 'JetBrains Mono', 'SF Mono', monospace;
   }
 
   .timer-ring {
     position: relative;
-    width: 120px;
-    height: 120px;
+    width: 96px;
+    height: 96px;
     display: flex;
     align-items: center;
     justify-content: center;
@@ -102,7 +102,7 @@
 
   .track {
     fill: none;
-    stroke: rgba(255, 255, 255, 0.06);
+    stroke: rgba(255, 255, 255, 0.1);
     stroke-width: 3;
   }
 
@@ -113,10 +113,11 @@
     transition: stroke-dashoffset 1s linear, stroke 0.3s;
   }
 
-  .timer-root[data-phase="normal"] .fill  { stroke: #00c9a7; }
-  .timer-root[data-phase="warning"] .fill { stroke: #f59e0b; }
+  /* GREEN BRAND TIMER */
+  .timer-root[data-phase="normal"] .fill  { stroke: #34d399; }
+  .timer-root[data-phase="warning"] .fill { stroke: #fbbf24; }
   .timer-root[data-phase="urgent"] .fill  {
-    stroke: #ef4444;
+    stroke: #f87171;
     animation: ring-pulse 1s ease-in-out infinite;
   }
 
@@ -124,7 +125,7 @@
     display: flex;
     align-items: baseline;
     gap: 2px;
-    font-size: 1.1rem;
+    font-size: 0.95rem;
     font-weight: 700;
     color: #fff;
     z-index: 1;
@@ -139,16 +140,16 @@
   .sep { opacity: 0.4; margin: 0 1px; }
 
   .timer-label {
-    font-size: 0.65rem;
+    font-size: 0.6rem;
     font-weight: 600;
     text-transform: uppercase;
     letter-spacing: 0.08em;
-    color: rgba(255, 255, 255, 0.4);
+    color: rgba(255, 255, 255, 0.5);
   }
 
-  .timer-root[data-phase="warning"] .timer-label { color: #f59e0b; }
+  .timer-root[data-phase="warning"] .timer-label { color: #fbbf24; }
   .timer-root[data-phase="urgent"]  .timer-label {
-    color: #ef4444;
+    color: #f87171;
     animation: text-pulse 1s ease-in-out infinite;
   }
 

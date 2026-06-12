@@ -23,7 +23,6 @@ export const load: PageServerLoad = async ({ params, locals }) => {
   });
 
   if (!session) {
-    // No active session — bounce back to lobby
     redirect(302, `/student/exam/${examId}`);
   }
 
@@ -63,7 +62,7 @@ export const load: PageServerLoad = async ({ params, locals }) => {
     orderBy: { orderIndex: 'asc' },
   });
 
-  // ── Apply randomization (persists order on first load, restores on refresh) ─
+  // ── Apply randomization ─
   const orderedQuestions = await buildStudentQuestionOrder(
     session.id,
     allQuestions,
@@ -72,7 +71,6 @@ export const load: PageServerLoad = async ({ params, locals }) => {
     exam.questionsToPresent,
   );
 
-  // Strip isCorrect and fitbAnswers before sending to client
   const questions = sanitizeQuestionsForClient(orderedQuestions);
 
   // ── Load saved answers ────────────────────────────────────────────────────
@@ -85,7 +83,7 @@ export const load: PageServerLoad = async ({ params, locals }) => {
     };
   }
 
-  // ── Enrolled face descriptor (for FaceMonitor) ────────────────────────────
+  // ── Enrolled face descriptor ────────────────────────────────────────────
   const enrolledDescriptor = await getFaceDescriptor(locals.user.id);
 
   // ── Compute time remaining ────────────────────────────────────────────────

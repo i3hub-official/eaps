@@ -2,7 +2,7 @@
 <script lang="ts">
   interface Option {
     id: string;
-    optionText: string;     // ← Prisma field name (camelCase)
+    optionText: string;
     displayIndex?: number;
   }
 
@@ -87,12 +87,12 @@
   .question-card { display: flex; flex-direction: column; gap: 2rem; max-width: 720px; margin: 0 auto; padding: 0 1rem; }
   .question-header { display: flex; flex-direction: column; gap: 0.75rem; }
   .progress-track { height: 3px; background: var(--color-border); border-radius: 2px; overflow: hidden; }
-  .progress-fill { height: 100%; background: linear-gradient(90deg, var(--color-primary), var(--color-primary-light)); border-radius: 2px; transition: width 0.4s ease; }
+  .progress-fill { height: 100%; background: linear-gradient(90deg, #059669, #10b981); border-radius: 2px; transition: width 0.4s ease; }
   .header-row { display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap; }
   .question-number { font-size: 0.875rem; font-weight: 700; color: var(--color-text); }
   .question-total { font-size: 0.875rem; color: var(--color-muted); }
   .status-badge { font-size: 0.7rem; font-weight: 700; padding: 0.2rem 0.6rem; border-radius: 999px; text-transform: uppercase; letter-spacing: 0.04em; margin-left: auto; }
-  .status-badge.answered { background: var(--green-soft); color: var(--green-700); }
+  .status-badge.answered { background: rgba(16, 185, 129, 0.1); color: #047857; }
   .status-badge.unanswered { background: var(--color-bg); color: var(--color-muted); border: 1px solid var(--color-border); }
   .question-body { display: flex; flex-direction: column; gap: 1.25rem; }
   .image-container { margin: 0; border-radius: var(--radius-card); overflow: hidden; border: 1px solid var(--color-border); background: var(--color-surface); }
@@ -104,16 +104,16 @@
   .options-grid { display: grid; grid-template-columns: 1fr; gap: 0.625rem; }
   @media (min-width: 640px) { .options-grid { grid-template-columns: repeat(2, 1fr); } }
   .option { position: relative; width: 100%; padding: 0; border: 2px solid var(--color-border); border-radius: var(--radius-card); background: var(--color-surface); cursor: pointer; text-align: left; transition: all 0.15s ease; overflow: hidden; }
-  .option:hover, .option.hovered { border-color: var(--color-primary); background: var(--color-surface-hover); transform: translateY(-1px); box-shadow: 0 4px 12px rgba(0,0,0,0.06); }
-  .option.selected { border-color: var(--color-primary); background: var(--color-primary-subtle); box-shadow: 0 0 0 3px var(--color-primary-glow); }
+  .option:hover, .option.hovered { border-color: #059669; background: rgba(16, 185, 129, 0.03); transform: translateY(-1px); box-shadow: 0 4px 12px rgba(0,0,0,0.06); }
+  .option.selected { border-color: #059669; background: rgba(16, 185, 129, 0.06); box-shadow: 0 0 0 3px rgba(16, 185, 129, 0.12); }
   .option-layout { display: flex; align-items: center; gap: 1rem; padding: 1rem 1.25rem; }
   .letter-ring { width: 2.5rem; height: 2.5rem; border-radius: 50%; border: 2px solid var(--color-border); background: var(--color-bg); display: flex; align-items: center; justify-content: center; flex-shrink: 0; transition: all 0.15s ease; }
-  .letter-ring.filled { border-color: var(--color-primary); background: var(--color-primary); }
+  .letter-ring.filled { border-color: #059669; background: #059669; }
   .letter { font-weight: 700; font-size: 0.9rem; color: var(--color-muted); transition: color 0.15s; }
   .option.selected .letter { color: #fff; }
   .option-text { flex: 1; font-size: 1rem; line-height: 1.5; color: var(--color-text); font-weight: 400; }
   .option.selected .option-text { font-weight: 600; }
-  .selection-indicator { width: 2rem; height: 2rem; border-radius: 50%; background: var(--color-primary); color: #fff; display: flex; align-items: center; justify-content: center; opacity: 0; transform: scale(0.6); transition: all 0.2s cubic-bezier(0.34, 1.56, 0.64, 1); flex-shrink: 0; }
+  .selection-indicator { width: 2rem; height: 2rem; border-radius: 50%; background: #059669; color: #fff; display: flex; align-items: center; justify-content: center; opacity: 0; transform: scale(0.6); transition: all 0.2s cubic-bezier(0.34, 1.56, 0.64, 1); flex-shrink: 0; }
   .selection-indicator.visible { opacity: 1; transform: scale(1); }
   .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0,0,0,0); border: 0; }
 </style>

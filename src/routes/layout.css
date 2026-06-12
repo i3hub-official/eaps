@@ -2,15 +2,17 @@
 @plugin '@tailwindcss/forms';
 @plugin '@tailwindcss/typography';
 
-
 /* src/routes/layout.css */
 
 /* ── Design tokens ─────────────────────────────────────────────────────────── */
 :root {
-  --color-primary:        #2563eb;
-  --color-primary-hover:  #1d4ed8;
-  --color-primary-subtle: #eff6ff;
-  --color-focus:          #16a34a;  /* ADD THIS - green focus color */
+  /* GREEN BRAND — primary shifted to emerald */
+  --color-primary:        #059669;
+  --color-primary-hover:  #047857;
+  --color-primary-subtle: #ecfdf5;
+  --color-focus:          #10b981;
+  --color-primary-light:  #34d399;
+  --color-primary-glow:   rgba(16, 185, 129, 0.15);
 
   --color-bg:             #f8fafc;
   --color-surface:        #ffffff;
@@ -19,18 +21,17 @@
   --color-text:           #0f172a;
   --color-muted:          #64748b;
 
-  --color-primary-light: #4ade80;   /* lighter primary */
---color-primary-glow: rgba(34, 197, 94, 0.15);  /* focus ring */
---color-surface-hover: rgba(255,255,255,0.03); /* hover state */
---green-soft: rgba(34, 197, 94, 0.1);
---green-700: #15803d;
+  --green-soft: rgba(16, 185, 129, 0.1);
+  --green-700: #047857;
 }
 
 [data-theme="dark"] {
-  --color-primary:        #3b82f6;
-  --color-primary-hover:  #2563eb;
-  --color-primary-subtle: #1e3a5f;
-  --color-focus:          #22c55e;  /* ADD THIS - brighter green for dark mode */
+  --color-primary:        #10b981;
+  --color-primary-hover:  #059669;
+  --color-primary-subtle: #064e3b;
+  --color-focus:          #34d399;
+  --color-primary-light:  #6ee7b7;
+  --color-primary-glow:   rgba(16, 185, 129, 0.2);
 
   --color-bg:             #0f172a;
   --color-surface:        #1e293b;
@@ -38,6 +39,9 @@
   --color-border:         #334155;
   --color-text:           #f1f5f9;
   --color-muted:          #94a3b8;
+
+  --green-soft: rgba(16, 185, 129, 0.15);
+  --green-700: #34d399;
 }
 
 /* ── Reset ─────────────────────────────────────────────────────────────────── */
@@ -73,7 +77,7 @@ img { max-width: 100%; display: block; }
 
 /* ── Focus ring ────────────────────────────────────────────────────────────── */
 :focus-visible {
-  outline: 2px solid var(--color-focus, #16a34a);  /* CHANGED from --color-primary to --color-focus */
+  outline: 2px solid var(--color-focus, #10b981);
   outline-offset: 2px;
 }
 
