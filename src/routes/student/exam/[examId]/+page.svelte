@@ -4,7 +4,7 @@
   import { goto } from '$app/navigation';
   import {
     Play, Clock, Calendar, Award, AlertTriangle,
-    CheckCircle2, ShieldCheck, BookOpen, ArrowLeft,
+    CheckCircle2, BookOpen, ArrowLeft,
     Timer, Info, Scan
   } from 'lucide-svelte';
   import FaceVerifyModal from '$lib/components/exam/FaceVerifyModal.svelte';
