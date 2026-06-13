@@ -31,15 +31,6 @@ enum ExamStatus {
   cancelled
 }
 
-enum SessionStatus {
-  active
-  not_started
-  in_progress
-  submitted
-  flagged
-  force_submitted
-}
-
 enum QuestionType {
   mcq
   fill_in_the_blank
