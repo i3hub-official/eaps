@@ -7,7 +7,6 @@
 
 generator client {
   provider = "prisma-client-js"
-  output   = "../node_modules/.prisma/client"
 }
 
 datasource db {
@@ -155,25 +154,24 @@ model Level {
   updatedAt DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz()
 
   // Relations
-  users         User[]               @relation("UserLevel")
-  exams         Exam[]               @relation("ExamLevels")
-  registrations CourseRegistration[]
-  examLevels    ExamLevel[]
+  users           User[]                @relation("UserLevel")
+  exams           Exam[]                @relation("ExamLevels")
+  registrations   CourseRegistration[]
+  examLevels      ExamLevel[]
   semesterConfigs LevelSemesterConfig[]
-
 
   @@map("levels")
 }
 
 model LevelSemesterConfig {
-  id         Int      @id @default(autoincrement())
-  levelId    Int      @map("level_id")
-  semester   Int      @db.SmallInt        // 1 or 2
-  maxCredits   Int      @default(24) @map("max_credits")   @db.SmallInt
-  maxCarryOver Int      @default(6)  @map("max_carry_over") @db.SmallInt
-  maxBorrowed  Int      @default(6)  @map("max_borrowed")   @db.SmallInt
-  createdAt  DateTime @default(now()) @map("created_at") @db.Timestamptz()
-  updatedAt  DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz()
+  id           Int      @id @default(autoincrement())
+  levelId      Int      @map("level_id")
+  semester     Int      @db.SmallInt // 1 or 2
+  maxCredits   Int      @default(24) @map("max_credits") @db.SmallInt
+  maxCarryOver Int      @default(6) @map("max_carry_over") @db.SmallInt
+  maxBorrowed  Int      @default(6) @map("max_borrowed") @db.SmallInt
+  createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz()
+  updatedAt    DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz()
 
   level Level @relation(fields: [levelId], references: [id], onDelete: Cascade)
 
@@ -186,15 +184,15 @@ model AcademicSemester {
   session     String
   semester    Int      @db.SmallInt
   label       String?
-  startDate   DateTime @map("start_date")  @db.Timestamptz()
-  endDate     DateTime @map("end_date")    @db.Timestamptz()
+  startDate   DateTime @map("start_date") @db.Timestamptz()
+  endDate     DateTime @map("end_date") @db.Timestamptz()
   isActive    Boolean  @default(false) @map("is_active")
-  regOpen     Boolean  @default(true)  @map("reg_open")
+  regOpen     Boolean  @default(true) @map("reg_open")
   createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz()
   updatedAt   DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz()
   createdById String?  @map("created_by_id") @db.Uuid
 
-  createdBy   User?    @relation("SemesterCreatedBy", fields: [createdById], references: [id])
+  createdBy User? @relation("SemesterCreatedBy", fields: [createdById], references: [id])
 
   @@unique([session, semester])
   @@map("academic_semesters")
@@ -204,22 +202,22 @@ model AcademicSemester {
 
 // User model - corrected Level relationship
 model User {
-  id           String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  email        String   @unique
-  fullName     String   @map("full_name")
-  passwordHash String   @map("password_hash")
-  role         UserRole
-  isActive     Boolean  @default(true) @map("is_active")
-  createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz()
-  updatedAt    DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz()
-  emailVerified Boolean   @default(false) @map("emailverified)")
+  id            String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  email         String   @unique
+  fullName      String   @map("full_name")
+  passwordHash  String   @map("password_hash")
+  role          UserRole
+  isActive      Boolean  @default(true) @map("is_active")
+  createdAt     DateTime @default(now()) @map("created_at") @db.Timestamptz()
+  updatedAt     DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz()
+  emailVerified Boolean  @default(false) @map("emailverified)")
 
   // ── Contact ──────────────────────────────────────────────────────────────
-  phone String?
-  title String?
+  phone   String?
+  title   String?
   address String?
 
-  gender Gender @default(required) @map("gender")
+  gender      Gender   @default(required) @map("gender")
   dateOfBirth DateTime @default(now()) @map("dateofbirth") @db.Timestamptz()
 
   // ── Academic identity ─────────────────────────────────────────────────────
@@ -241,14 +239,14 @@ model User {
   programme    Programme?  @relation(fields: [programmeId], references: [id])
 
   // ── Profile ───────────────────────────────────────────────────────────────
-  photoUrl String? @map("photo_url")
-   twitter   String?
-  linkedin  String?
-  github    String?
-  bio       String?
-  nationality String?
+  photoUrl      String? @map("photo_url")
+  twitter       String?
+  linkedin      String?
+  github        String?
+  bio           String?
+  nationality   String?
   stateoforigin String?
-  lga String?
+  lga           String?
 
   // ── Receipt audit trail ───────────────────────────────────────────────────
   receiptNo     String? @map("receipt_no")
@@ -276,7 +274,7 @@ model User {
   createdApiKeys      ApiKey[]             @relation("ApiKeyCreatedBy")
   revokedApiKeys      ApiKey[]             @relation("ApiKeyRevokedBy")
   userPreferences     UserPreference[]
-  createdSemesters AcademicSemester[] @relation("SemesterCreatedBy")
+  createdSemesters    AcademicSemester[]   @relation("SemesterCreatedBy")
 
   // ─── Face verification & similarity ───────────────────────────────────────
   verificationLogs  FaceVerificationLog[] @relation("StudentVerifications")
@@ -321,12 +319,12 @@ model PasswordReset {
 // update faces.ts accordingly — the API surface stays the same.
 
 model FaceDescriptor {
-  studentId  String   @id @map("student_id") @db.Uuid
-  descriptor Json // 128-element float array — e.g. [0.123, -0.456, ...]
-  enrolledAt DateTime @default(now()) @map("enrolled_at") @db.Timestamptz()
-  updatedAt  DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz()
-  embedding_dimension Int     @default(512) @map("embedding_dimension")
-  student User @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  studentId           String   @id @map("student_id") @db.Uuid
+  descriptor          Json // 128-element float array — e.g. [0.123, -0.456, ...]
+  enrolledAt          DateTime @default(now()) @map("enrolled_at") @db.Timestamptz()
+  updatedAt           DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz()
+  embedding_dimension Int      @default(512) @map("embedding_dimension")
+  student             User     @relation(fields: [studentId], references: [id], onDelete: Cascade)
 
   @@map("face_descriptors")
 }
@@ -398,13 +396,13 @@ model AuthSession {
 // ─── Courses ──────────────────────────────────────────────────────────────────
 
 model Course {
- id           String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  id           String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   departmentId String   @map("department_id") @db.Uuid
   code         String   @unique
   title        String
   creditUnits  Int      @default(2) @map("credit_units") @db.SmallInt
   level        Int?     @db.SmallInt
-  semester     Int?     @db.SmallInt  // ← ADD THIS: 1 or 2
+  semester     Int?     @db.SmallInt // ← ADD THIS: 1 or 2
   createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz()
 
   department    Department           @relation(fields: [departmentId], references: [id])
@@ -417,15 +415,15 @@ model Course {
 }
 
 model CourseRegistration {
-id               String           @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  studentId        String           @map("student_id") @db.Uuid
-  courseId         String           @map("course_id") @db.Uuid
+  id               String             @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  studentId        String             @map("student_id") @db.Uuid
+  courseId         String             @map("course_id") @db.Uuid
   session          String
-  levelId          Int?             @map("level_id")
-  semester         Int              @db.SmallInt
-  registrationType RegistrationType @default(normal) @map("registration_type")
+  levelId          Int?               @map("level_id")
+  semester         Int                @db.SmallInt
+  registrationType RegistrationType   @default(normal) @map("registration_type")
   status           RegistrationStatus @default(pending) @map("status") // Add this
-  createdAt        DateTime         @default(now()) @map("created_at") @db.Timestamptz()
+  createdAt        DateTime           @default(now()) @map("created_at") @db.Timestamptz()
 
   student User   @relation(fields: [studentId], references: [id], onDelete: Cascade)
   course  Course @relation(fields: [courseId], references: [id], onDelete: Cascade)
@@ -471,7 +469,7 @@ model Exam {
   lateEntryMinutes   Int        @default(10) @map("late_entry_minutes") @db.SmallInt
   randomizeQuestions Boolean    @default(true) @map("randomize_questions")
   randomizeOptions   Boolean    @default(true) @map("randomize_options")
-  questionsToPresent Int        @default(0) @map("questions_to_present") @db.SmallInt  // ← NEW
+  questionsToPresent Int        @default(0) @map("questions_to_present") @db.SmallInt // ← NEW
   showResultAfter    Boolean    @default(false) @map("show_result_after")
   maxViolations      Int        @default(5) @map("max_violations") @db.SmallInt
   session            String
@@ -496,7 +494,6 @@ model Exam {
   @@index([status])
   @@map("exams")
 }
-
 
 model ExamLevel {
   examId  String @map("exam_id") @db.Uuid
@@ -572,20 +569,20 @@ model FitbAnswer {
 // ─── Exam Sessions ────────────────────────────────────────────────────────────
 
 model ExamSession {
-  id                String        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  examId            String        @map("exam_id") @db.Uuid
-  studentId         String        @map("student_id") @db.Uuid
-  invigilatorId     String?       @map("invigilator_id") @db.Uuid
-  status            SessionStatus @default(not_started)
-  startedAt         DateTime?     @map("started_at") @db.Timestamptz()
-  submittedAt       DateTime?     @map("submitted_at") @db.Timestamptz()
-  timeRemainingSecs Int?          @map("time_remaining_secs")
-  ipAddress         String?       @map("ip_address")
-  deviceInfo        String?       @map("device_info")
-  score             Decimal?      @db.Decimal(5, 2)
-  isGraded          Boolean       @default(false) @map("is_graded")
-  violationCount    Int           @default(0) @map("violation_count") @db.SmallInt
-  createdAt         DateTime      @default(now()) @map("created_at") @db.Timestamptz()
+  id                String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  examId            String    @map("exam_id") @db.Uuid
+  studentId         String    @map("student_id") @db.Uuid
+  invigilatorId     String?   @map("invigilator_id") @db.Uuid
+  status            String    @default("not_started")
+  startedAt         DateTime? @map("started_at") @db.Timestamptz()
+  submittedAt       DateTime? @map("submitted_at") @db.Timestamptz()
+  timeRemainingSecs Int?      @map("time_remaining_secs")
+  ipAddress         String?   @map("ip_address")
+  deviceInfo        String?   @map("device_info")
+  score             Decimal?  @db.Decimal(5, 2)
+  isGraded          Boolean   @default(false) @map("is_graded")
+  violationCount    Int       @default(0) @map("violation_count") @db.SmallInt
+  createdAt         DateTime  @default(now()) @map("created_at") @db.Timestamptz()
 
   exam                 Exam                   @relation(fields: [examId], references: [id])
   student              User                   @relation("StudentSessions", fields: [studentId], references: [id])
