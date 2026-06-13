@@ -25,6 +25,8 @@ function courseCredits(deptCode: string, level: number): number {
 }
 
 export const load: PageServerLoad = async ({ locals }) => {
+            const prisma = await getPrismaClient();
+  
   const userCount = await prisma.user.count();
   if (userCount > 0) requireAdmin(locals.user);
 
@@ -50,7 +52,10 @@ export const load: PageServerLoad = async ({ locals }) => {
 };
 
 export const actions: Actions = {
+  
   seed: async ({ locals }) => {
+              const prisma = await getPrismaClient();
+    
     const userCount = await prisma.user.count();
     if (userCount > 0) requireAdmin(locals.user);
 
@@ -1077,6 +1082,8 @@ results.push(`✓ ${creditCaps.length} level/semester credit caps`);
 
   reset: async ({ locals }) => {
     requireAdmin(locals.user);
+              const prisma = await getPrismaClient();
+    
 
     try {
       progressBroadcaster.broadcastProgress('reset', 'Resetting database...', 'Clearing all tables', '🗑️');
