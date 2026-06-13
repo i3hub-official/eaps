@@ -2,7 +2,7 @@
 import type { LayoutServerLoad } from './$types';
 import { requireStudent } from '$lib/server/auth/guards.js';
 import { getPrismaClient } from '$lib/server/db/index.js';
-import { SessionStatus } from '$prisma';
+import { SessionStatus } from '@prisma/client';
 
 export const load: LayoutServerLoad = async ({ locals }) => {
   const user = await requireStudent(locals.user);
