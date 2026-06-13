@@ -1,21 +1,16 @@
 // src/lib/server/db/index.ts
-import { PrismaClient } from '@prisma/client';
 import { PrismaPg } from '@prisma/adapter-pg';
+import { PrismaClient } from '@prisma/client';
 import pg from 'pg';
 import { DATABASE_URL, DATABASE_URL_UNPOOLED } from '$env/static/private';
 
 // ─── Prisma pool ──────────────────────────────────────────────────────────────
-// @prisma/adapter-pg requires a DIRECT (unpooled) connection.
-// Prisma's managed pool (pooled.db.prisma.io) is for Prisma Accelerate only;
-// using it with adapter-pg causes the "timeout exceeded" errors you're seeing.
-
 const prismaPool = new pg.Pool({
-  connectionString: DATABASE_URL_UNPOOLED,   // ← direct Neon connection
-  ssl: { rejectUnauthorized: false },        // required for Neon SSL
-  max: 5,                                    // keep low — Neon free tier limit
+  connectionString: DATABASE_URL_UNPOOLED,
+  ssl: { rejectUnauthorized: false },
+  max: 5,
   idleTimeoutMillis: 60_000,
-  connectionTimeoutMillis: 30_000,           // Neon cold-start can take ~3-5 s
-
+  connectionTimeoutMillis: 30_000,
 });
 
 prismaPool.on('error', (err) => {
@@ -24,24 +19,19 @@ prismaPool.on('error', (err) => {
 
 const adapter = new PrismaPg(prismaPool);
 
+// Global singleton for PrismaClient
 const globalForPrisma = globalThis as unknown as { prisma?: PrismaClient };
 
-export const prisma =
-  globalForPrisma.prisma ??
-  new PrismaClient({
-    adapter,
-    log: process.env.NODE_ENV === 'development' ? ['warn', 'error'] : ['error'],
-  });
+export const prisma = globalForPrisma.prisma ?? new PrismaClient({
+  adapter,
+  log: process.env.NODE_ENV === 'development' ? ['warn', 'error'] : ['error'],
+});
 
 if (process.env.NODE_ENV !== 'production') {
   globalForPrisma.prisma = prisma;
 }
 
 // ─── Neon keepalive ───────────────────────────────────────────────────────────
-// Neon free tier suspends after ~5 min inactivity. Ping every 4 min via the
-// RAW pool (not prismaPool) to avoid inflating Prisma's connection count.
-// Only runs in long-lived server processes (dev), not in serverless.
-
 if (typeof setInterval !== 'undefined') {
   setInterval(() => {
     getRawPool()
@@ -51,16 +41,13 @@ if (typeof setInterval !== 'undefined') {
 }
 
 // ─── Raw pg pool ──────────────────────────────────────────────────────────────
-// Uses the POOLED URL for raw SQL — Neon's pgBouncer handles connection
-// multiplexing so many concurrent requests share fewer backend connections.
-
 let _rawPool: pg.Pool | null = null;
 
 function getRawPool(): pg.Pool {
   if (_rawPool) return _rawPool;
 
   _rawPool = new pg.Pool({
-    connectionString: DATABASE_URL,   // ← pooled URL fine for raw queries
+    connectionString: DATABASE_URL,
     ssl: { rejectUnauthorized: false },
     max: 10,
     idleTimeoutMillis: 60_000,
@@ -75,7 +62,6 @@ function getRawPool(): pg.Pool {
 }
 
 // ─── Raw SQL helper ───────────────────────────────────────────────────────────
-
 export async function sql<T extends pg.QueryResultRow = pg.QueryResultRow>(
   text: string,
   params?: unknown[]
@@ -93,7 +79,6 @@ export async function sql<T extends pg.QueryResultRow = pg.QueryResultRow>(
 }
 
 // ─── Transaction wrapper ──────────────────────────────────────────────────────
-
 export async function withTransaction<T>(
   fn: (client: pg.PoolClient) => Promise<T>
 ): Promise<T> {
