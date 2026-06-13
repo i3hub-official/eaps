@@ -3,8 +3,8 @@ import { PrismaPg } from '@prisma/adapter-pg';
 import pg from 'pg';
 import { DATABASE_URL, DATABASE_URL_UNPOOLED } from '$env/static/private';
 
-// Import from the generated client - use the index.js file
-import { PrismaClient } from '../../../../node_modules/.prisma/client/index.js';
+// For Prisma 7, we need to handle the import differently
+let prismaPromise: Promise<any> | null = null;
 
 // ─── Prisma pool ──────────────────────────────────────────────────────────────
 const prismaPool = new pg.Pool({
@@ -21,17 +21,39 @@ prismaPool.on('error', (err) => {
 
 const adapter = new PrismaPg(prismaPool);
 
-const globalForPrisma = globalThis as unknown as { prisma?: PrismaClient };
+const globalForPrisma = globalThis as unknown as { prisma?: any };
 
-export const prisma =
-  globalForPrisma.prisma ??
-  new PrismaClient({
-    adapter,
-    log: process.env.NODE_ENV === 'development' ? ['warn', 'error'] : ['error'],
-  });
+// Create Prisma client with correct initialization
+export const prisma = (() => {
+  if (globalForPrisma.prisma) return globalForPrisma.prisma;
+  
+  if (!prismaPromise) {
+    prismaPromise = (async () => {
+      // Import the PrismaClient constructor
+      const { PrismaClient } = await import('@prisma/client');
+      
+      // Create and return the client instance
+      const client = new PrismaClient({
+        adapter,
+        log: process.env.NODE_ENV === 'development' ? ['warn', 'error'] : ['error'],
+      });
+      
+      return client;
+    })();
+  }
+  
+  if (process.env.NODE_ENV !== 'production') {
+    prismaPromise.then(client => {
+      globalForPrisma.prisma = client;
+    });
+  }
+  
+  return prismaPromise;
+})();
 
-if (process.env.NODE_ENV !== 'production') {
-  globalForPrisma.prisma = prisma;
+// Export a function to get the client (for use in other files)
+export async function getPrismaClient() {
+  return await prisma;
 }
 
 // ─── Neon keepalive ───────────────────────────────────────────────────────────

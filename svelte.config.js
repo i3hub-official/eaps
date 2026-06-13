@@ -26,6 +26,7 @@ onwarn: (warning, handler) => {
     adapter: adapter(),
     alias: {
       $jobs: 'src/jobs',
+      $prisma: 'node_modules/.prisma/client/index.js',
     },
   },
   csp: {

@@ -34,24 +34,9 @@ export default defineConfig(() => {
       exclude: [
         '@tensorflow/tfjs-node',
         '@tensorflow/tfjs-node-gpu',
+        '@prisma/client',
+        '.prisma/client'
       ],
-      // Add esbuild options to handle Node.js modules
-      esbuildOptions: {
-        define: {
-          global: 'globalThis',
-        },
-        plugins: [
-          {
-            name: 'fix-crypto',
-            setup(build) {
-              // Replace crypto require with a mock
-              build.onResolve({ filter: /^crypto$/ }, () => {
-                return { path: 'crypto', external: true };
-              });
-            },
-          },
-        ],
-      },
     },
 
     ssr: {
@@ -62,7 +47,9 @@ export default defineConfig(() => {
         'crypto',
         '@tensorflow/tfjs-node', 
         '@tensorflow/tfjs-node-gpu',
-        'sharp'
+        'sharp',
+        '@prisma/client',
+        '.prisma/client'
       ],
     },
 
@@ -75,7 +62,22 @@ export default defineConfig(() => {
       alias: {
         '@tensorflow/tfjs-node': '@tensorflow/tfjs',
         '@tensorflow/tfjs-node-gpu': '@tensorflow/tfjs',
-            '@prisma/client': path.resolve(__dirname, 'node_modules/.prisma/client/index.js'),
+      },
+    },
+
+    build: {
+      commonjsOptions: {
+        transformMixedEsModules: true,
+        include: [/@vladmandic\/human/, /@tensorflow\/tfjs/],
+        exclude: [/@prisma\/client/, /\.prisma\/client/],
+      },
+      rollupOptions: {
+        external: [
+          '@tensorflow/tfjs-node', 
+          '@tensorflow/tfjs-node-gpu',
+          '@prisma/client',
+          '.prisma/client'
+        ],
       },
     },
   };
