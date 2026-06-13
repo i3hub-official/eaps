@@ -5,7 +5,7 @@ import { prisma } from '$lib/server/db/index.js';
 import { getActiveSemester } from '$lib/server/academic/semester.js';
 
 export const load: PageServerLoad = async ({ locals }) => {
-  const user = requireStudent(locals.user);
+  const user = await requireStudent(locals.user);
 
   // ── Single source of truth ────────────────────────────────────────────
   const { session: currentSession, semester: currentSemester } = await getActiveSemester();

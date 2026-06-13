@@ -2,179 +2,132 @@
 import type { PageServerLoad } from './$types';
 import { requireStudent } from '$lib/server/auth/guards.js';
 import { prisma } from '$lib/server/db/index.js';
-import { getActiveSemester } from '$lib/server/academic/semester.js';
 
 export const load: PageServerLoad = async ({ locals }) => {
-  const user = requireStudent(locals.user);
+  const user = await requireStudent(locals.user);
 
-  // ── Single source of truth for session/semester ───────────────────────
-  const { session: currentSession, semester: currentSemester } = await getActiveSemester();
-
-  // ── Check if student has enrolled face ────────────────────────────────
-  const faceDescriptor = await prisma.faceDescriptor.findUnique({
-    where: { studentId: user.id },
-    select: { studentId: true },
-  });
-  const hasFaceEnrolled = !!faceDescriptor;
-
-  // ── Student level ─────────────────────────────────────────────────────
-  let studentLevel = null;
-  let levelId: number | null = null;
-  if (user.levelId) {
-    const level = await prisma.level.findUnique({
-      where: { id: user.levelId },
-      select: { id: true, level: true, name: true },
-    });
-    if (level) { studentLevel = level; levelId = level.id; }
-  }
-
-  // ── Level credit config ───────────────────────────────────────────────
-  let levelConfig = null;
-  if (levelId) {
-    try {
-      levelConfig = await prisma.levelSemesterConfig.findUnique({
-        where: { levelId_semester: { levelId, semester: currentSemester } },
-        select: { maxCredits: true, maxCarryOver: true, maxBorrowed: true },
-      });
-    } catch (err) { console.warn('Could not fetch LevelSemesterConfig:', err); }
-  }
-
-  // ── Active academic semester ───────────────────────────────────────────
-  let activeSemester = null;
-  try {
-    activeSemester = await prisma.academicSemester.findFirst({
-      where: { session: currentSession, semester: currentSemester, isActive: true },
-      select: { id: true, label: true, startDate: true, endDate: true, regOpen: true },
-    });
-  } catch (err) { console.warn('Could not fetch AcademicSemester:', err); }
-
-  // ── Registrations for this session/semester ───────────────────────────
-  const registrations = await prisma.courseRegistration.findMany({
-    where: {
-      studentId: user.id,
-      session:   currentSession,
-      semester:  currentSemester,
-    },
-    select: {
-      registrationType: true,
-      course: { select: { creditUnits: true } },
-    },
+  // Current session/semester from active AcademicSemester
+  const activeSemester = await prisma.academicSemester.findFirst({
+    where: { isActive: true },
+    select: { session: true, semester: true },
   });
 
-  const registeredCourses = registrations.length;
-  const totalCredits      = registrations.reduce((s, r) => s + (r.course?.creditUnits ?? 0), 0);
-  const carryOverCount    = registrations.filter(r => r.registrationType === 'carry_over').length;
-  const borrowedCount     = registrations.filter(r => r.registrationType === 'borrowed').length;
+  const [
+    availableExams,
+    recentResults,
+    registeredCourses,
+    resultStats,
+  ] = await Promise.all([
 
-  const maxCredits   = levelConfig?.maxCredits   ?? 24;
-  const maxCarryOver = levelConfig?.maxCarryOver ?? 6;
-  const maxBorrowed  = levelConfig?.maxBorrowed  ?? 6;
-
-  // ── Parallel queries ──────────────────────────────────────────────────
-  const [recentExams, recentResults, unreadNotifications] = await Promise.all([
-    // Upcoming / active exams for registered courses only
+    // Exams this student can take: active or scheduled, department/level match
     prisma.exam.findMany({
       where: {
-        status: { in: ['scheduled', 'active'] },
-        session:  currentSession,
-        semester: currentSemester,
-        course: {
-          registrations: {
-            some: {
-              studentId: user.id,
-              session:   currentSession,
-              semester:  currentSemester,
-            },
+        status: { in: ['active', 'scheduled'] },
+        // Filter by student's level
+        ...(user.levelId ? {
+          OR: [
+            { examLevels: { some: { levelId: user.levelId } } },
+            { levels:     { some: { id: user.levelId } } },
+          ],
+        } : {}),
+        // Filter by student's department
+        ...(user.departmentId ? {
+          OR: [
+            { examDepartments: { some: { departmentId: user.departmentId } } },
+            { course: { departmentId: user.departmentId } },
+          ],
+        } : {}),
+        // Exclude exams already completed by this student
+        examSessions: {
+          none: {
+            studentId: user.id,
+            status: { in: ['submitted', 'force_submitted'] },
           },
         },
       },
-      take: 5,
-      orderBy: { scheduledStart: 'asc' },
-      include: {
+      orderBy: [{ status: 'asc' }, { scheduledStart: 'asc' }],
+      take: 10,
+      select: {
+        id: true,
+        title: true,
+        status: true,
+        durationMinutes: true,
+        scheduledStart: true,
+        questionsToPresent: true,
         course: { select: { code: true, title: true } },
-        examSessions: {
-          where: { studentId: user.id },
-          select: { id: true, status: true, score: true },
-        },
+        _count: { select: { questions: true } },
       },
     }),
 
-    // Recent results (all-time)
+    // Most recent exam results for this student
     prisma.examResult.findMany({
       where: { studentId: user.id },
-      take: 5,
       orderBy: { generatedAt: 'desc' },
-      include: {
+      take: 5,
+      select: {
+        id: true,
+        percentage: true,
+        score: true,
+        passed: true,
+        grade: true,
+        generatedAt: true,
         exam: {
           select: {
             title: true,
-            course: { select: { code: true, title: true } },
+            course: { select: { code: true } },
           },
         },
       },
     }),
 
-    // Unread notifications
-    prisma.notification.count({
-      where: { userId: user.id, isRead: false },
+    // Registered courses for the current semester
+    prisma.courseRegistration.findMany({
+      where: {
+        studentId: user.id,
+        ...(activeSemester ? {
+          session:  activeSemester.session,
+          semester: activeSemester.semester,
+        } : {}),
+        status: { in: ['pending', 'approved'] },
+      },
+      select: {
+        id: true,
+        registrationType: true,
+        status: true,
+        course: {
+          select: {
+            code: true,
+            title: true,
+            creditUnits: true,
+            semester: true,
+          },
+        },
+      },
+      orderBy: { createdAt: 'asc' },
+    }),
+
+    // Average score across all results
+    prisma.examResult.aggregate({
+      where: { studentId: user.id },
+      _avg: { percentage: true },
+      _count: { id: true },
     }),
   ]);
 
-  const remainingCredits  = Math.max(0, maxCredits - totalCredits);
-  const creditPercentage  = maxCredits > 0 ? (totalCredits / maxCredits) * 100 : 0;
+  // Count upcoming exams (scheduled and not yet sat)
+  const upcomingCount = availableExams.filter(e => e.status === 'scheduled').length;
+  const activeCount   = availableExams.filter(e => e.status === 'active').length;
 
   return {
-    recentExams: recentExams.map(e => ({
-      id:              e.id,
-      title:           e.title,
-      courseCode:      e.course.code,
-      courseTitle:     e.course.title,
-      status:          e.status,
-      scheduledStart:  e.scheduledStart,
-      scheduledEnd:    e.scheduledEnd,
-      durationMinutes: e.durationMinutes,
-      sessionStatus:   e.examSessions[0]?.status ?? null,
-      sessionId:       e.examSessions[0]?.id     ?? null,
-    })),
-
-    recentResults: recentResults.map(r => ({
-      id:          r.id,
-      examTitle:   r.exam.title,
-      courseCode:  r.exam.course?.code,
-      score:       r.score,
-      percentage:  r.percentage,
-      passed:      r.passed,
-      grade:       r.grade,
-      submittedAt: r.submittedAt,
-    })),
-
-    student: {
-      level: studentLevel,
-      hasFaceEnrolled,  // ← Add this
-      levelConfig: {
-        maxCredits,
-        maxCarryOver,
-        maxBorrowed,
-        currentCredits:           totalCredits,
-        currentCarryOver:         carryOverCount,
-        currentBorrowed:          borrowedCount,
-        remainingCredits,
-        creditPercentage,
-        hasReachedCreditLimit:    totalCredits    >= maxCredits,
-        hasReachedCarryOverLimit: carryOverCount  >= maxCarryOver,
-        hasReachedBorrowedLimit:  borrowedCount   >= maxBorrowed,
-      },
+    stats: {
+      activeExams:   activeCount,
+      upcomingExams: upcomingCount,
+      totalResults:  resultStats._count.id,
+      averageScore:  Math.round(Number(resultStats._avg.percentage ?? 0)),
     },
-
-    academicSemester: activeSemester,
-
-    meta: {
-      session:           currentSession,
-      semester:          currentSemester,
-      semesterLabel:     activeSemester?.label
-                           ?? `${currentSemester === 1 ? 'First' : 'Second'} Semester ${currentSession}`,
-      registeredCourses,
-      unreadNotifications,
-    },
+    availableExams,
+    recentResults,
+    registeredCourses,
+    activeSemester,
   };
 };

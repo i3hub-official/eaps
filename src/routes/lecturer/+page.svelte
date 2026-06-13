@@ -1,550 +1,525 @@
 <!-- src/routes/lecturer/+page.svelte -->
 <script lang="ts">
   import type { PageData } from './$types';
+  import { goto } from '$app/navigation';
   import {
-    BookOpen, Plus, CheckCircle,
-    Calendar, Zap, BarChart3, ArrowUpRight,
-    TrendingUp, Users, Clock,
-    RefreshCw, ChevronRight,
-    FileText, Edit3
+    PlusCircle, Clock, Users, CheckCircle2, AlertCircle,
+    BarChart2, ChevronRight, BookOpen, FileText, Zap,
+    TrendingUp, Calendar, Eye, PlayCircle, XCircle,
+    MoreVertical, ArrowUpRight, Layers, Award
   } from 'lucide-svelte';
 
   let { data }: { data: PageData } = $props();
-  const { exams, statsMap } = data;
 
-  const totalExams     = $derived(exams.length);
-  const activeExams    = $derived(exams.filter((e: any) => e.status === 'active').length);
-  const scheduledExams = $derived(exams.filter((e: any) => e.status === 'scheduled').length);
-  const completedExams = $derived(exams.filter((e: any) => e.status === 'completed').length);
-  const draftExams     = $derived(exams.filter((e: any) => e.status === 'draft').length);
+  // Derived stats from data
+  const stats = $derived(data.stats ?? {});
+  const recentExams = $derived(data.recentExams ?? []);
+  const upcomingExams = $derived(data.upcomingExams ?? []);
+  const recentActivity = $derived(data.recentActivity ?? []);
 
-  const totalStudents = $derived(
-    Object.values(statsMap ?? {}).reduce((sum: number, s: any) => sum + (s?.total ?? 0), 0)
-  );
+  const activeExams   = $derived(stats.activeExams   ?? 0);
+  const totalExams    = $derived(stats.totalExams    ?? 0);
+  const totalStudents = $derived(stats.totalStudents ?? 0);
+  const avgScore      = $derived(stats.avgScore      ?? 0);
+  const pendingGrades = $derived(stats.pendingGrades ?? 0);
+  const passRate      = $derived(stats.passRate      ?? 0);
 
-  const avgPass = $derived(() => {
-    const vals = Object.values(statsMap ?? {}).filter((s: any) => s?.pass_rate != null);
-    if (!vals.length) return 0;
-    return Math.round(
-      vals.reduce((a: number, s: any) => a + Number(s.pass_rate ?? 0), 0) / vals.length
-    );
-  });
+  const firstName = $derived(data.user?.fullName?.split(' ')[0] ?? 'Lecturer');
 
-  const STATUS_META: Record<string, { label: string; color: string }> = {
-    draft:     { label: 'Draft',     color: '#64748b' },
-    scheduled: { label: 'Scheduled', color: '#3b82f6' },
-    active:    { label: 'Live',      color: '#22c55e' },
-    completed: { label: 'Done',      color: '#a78bfa' },
-    cancelled: { label: 'Cancelled', color: '#ef4444' },
-  };
+  function statusColor(status: string) {
+    if (status === 'active')    return 'status-active';
+    if (status === 'scheduled') return 'status-scheduled';
+    if (status === 'completed') return 'status-completed';
+    if (status === 'draft')     return 'status-draft';
+    return 'status-draft';
+  }
 
-  // Sort: active → scheduled → draft → completed → cancelled
-  const ORDER: Record<string, number> = { active: 0, scheduled: 1, draft: 2, completed: 3, cancelled: 4 };
-  const sortedExams = $derived([...exams].sort((a: any, b: any) => (ORDER[a.status] ?? 9) - (ORDER[b.status] ?? 9)));
+  function statusLabel(status: string) {
+    return status.charAt(0).toUpperCase() + status.slice(1);
+  }
+
+  function formatDate(d: string | null | undefined) {
+    if (!d) return '—';
+    return new Intl.DateTimeFormat('en-NG', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }).format(new Date(d));
+  }
+
+  function timeAgo(d: string) {
+    const m = Math.floor((Date.now() - new Date(d).getTime()) / 60000);
+    if (m < 1) return 'Just now';
+    if (m < 60) return `${m}m ago`;
+    const h = Math.floor(m / 60);
+    if (h < 24) return `${h}h ago`;
+    return `${Math.floor(h / 24)}d ago`;
+  }
 </script>
 
-<svelte:head><title>Lecturer Dashboard — MOUAU eTest</title></svelte:head>
+<div class="page">
 
-<div class="dashboard">
-
-  <!-- ══ HEADER ═════════════════════════════════════════════════ -->
-  <header class="dash-header">
-    <div class="dash-header-left">
-      <div class="dash-eyebrow">
-        <span class="dash-dot pulse"></span>
-        Lecturer Portal
-      </div>
-      <h1 class="dash-title">My Dashboard</h1>
-      <p class="dash-subtitle">Welcome back, <strong>{data.user.title} {data.user.fullName}</strong></p>
+  <!-- ── Page header ─────────────────────────────────────────── -->
+  <div class="page-header">
+    <div class="header-left">
+      <p class="header-eyebrow">Good {new Date().getHours() < 12 ? 'morning' : new Date().getHours() < 17 ? 'afternoon' : 'evening'}</p>
+      <h1 class="header-title">{data.user?.title ? data.user.title + ' ' : ''}{data.user?.fullName ?? 'Lecturer'}</h1>
+      <p class="header-sub">Here's what's happening with your exams today.</p>
     </div>
     <div class="header-actions">
-      <button class="btn-outline" type="button" onclick={() => window.location.reload()}>
-        <RefreshCw size={14} /> Refresh
-      </button>
       <a href="/lecturer/exams/create" class="btn-primary">
-        <Plus size={14} /> New Exam
+        <PlusCircle size={15} />
+        New Exam
       </a>
     </div>
-  </header>
+  </div>
 
-  <!-- ══ KPI STRIP ══════════════════════════════════════════════ -->
-  <section class="kpi-strip" aria-label="Key statistics">
-    <div class="kpi-card kpi-slate" style="--delay:0ms">
-      <div class="kpi-icon"><BookOpen size={20} /></div>
-      <div class="kpi-body">
-        <span class="kpi-value">{totalExams}</span>
-        <span class="kpi-label">Total Exams</span>
-      </div>
-      <div class="kpi-trend">all time</div>
-    </div>
+  <!-- ── Stat cards ───────────────────────────────────────────── -->
+  <div class="stats-grid">
 
-    <div class="kpi-card kpi-green" style="--delay:60ms">
-      <div class="kpi-icon"><Zap size={20} /></div>
-      <div class="kpi-body">
-        <span class="kpi-value">{activeExams}</span>
-        <span class="kpi-label">Active Now</span>
+    <div class="stat-card" class:highlight={activeExams > 0}>
+      <div class="stat-top">
+        <div class="stat-icon icon-active">
+          <Zap size={16} />
+        </div>
+        {#if activeExams > 0}
+          <span class="live-badge"><span class="live-dot"></span>Live</span>
+        {/if}
       </div>
+      <div class="stat-value">{activeExams}</div>
+      <div class="stat-label">Active Exams</div>
       {#if activeExams > 0}
-        <div class="kpi-live-badge">LIVE</div>
-      {:else}
-        <div class="kpi-trend">none running</div>
+        <a href="/lecturer/exams" class="stat-link">View active <ArrowUpRight size={11} /></a>
       {/if}
     </div>
 
-    <div class="kpi-card kpi-blue" style="--delay:120ms">
-      <div class="kpi-icon"><Calendar size={20} /></div>
-      <div class="kpi-body">
-        <span class="kpi-value">{scheduledExams}</span>
-        <span class="kpi-label">Scheduled</span>
-      </div>
-      <div class="kpi-trend up"><ArrowUpRight size={12} /> upcoming</div>
-    </div>
-
-    <div class="kpi-card kpi-violet" style="--delay:180ms">
-      <div class="kpi-icon"><CheckCircle size={20} /></div>
-      <div class="kpi-body">
-        <span class="kpi-value">{completedExams}</span>
-        <span class="kpi-label">Completed</span>
-      </div>
-      <div class="kpi-trend">finished</div>
-    </div>
-
-    <div class="kpi-card kpi-teal" style="--delay:240ms">
-      <div class="kpi-icon"><Users size={20} /></div>
-      <div class="kpi-body">
-        <span class="kpi-value">{totalStudents}</span>
-        <span class="kpi-label">Students</span>
-      </div>
-      <div class="kpi-trend up"><ArrowUpRight size={12} /> enrolled</div>
-    </div>
-
-    <div class="kpi-card kpi-emerald" style="--delay:300ms">
-      <div class="kpi-icon"><TrendingUp size={20} /></div>
-      <div class="kpi-body">
-        <span class="kpi-value">{avgPass()}%</span>
-        <span class="kpi-label">Avg Pass Rate</span>
-      </div>
-      <div class="kpi-trend">across exams</div>
-    </div>
-  </section>
-
-  <!-- ══ EXAMS PANEL ════════════════════════════════════════════ -->
-  {#if sortedExams.length === 0}
-    <section class="panel">
-      <div class="empty-state">
-        <div class="empty-icon"><BookOpen size={32} strokeWidth={1.2} /></div>
-        <p class="empty-title">No exams yet</p>
-        <p class="empty-sub">Create your first exam to get started.</p>
-        <a href="/lecturer/exams/create" class="btn-primary">
-          <Plus size={14} /> Create Exam
-        </a>
-      </div>
-    </section>
-  {:else}
-    <section class="panel">
-      <div class="panel-head">
-        <div class="panel-title-wrap">
-          <FileText size={15} />
-          <h2>My Exams</h2>
-        </div>
-        <div class="panel-head-right">
-          <span class="panel-count">{totalExams} exam{totalExams !== 1 ? 's' : ''}</span>
-          <a href="/lecturer/exams" class="panel-link">
-            View all <ChevronRight size={12} />
-          </a>
+    <div class="stat-card">
+      <div class="stat-top">
+        <div class="stat-icon icon-total">
+          <FileText size={16} />
         </div>
       </div>
+      <div class="stat-value">{totalExams}</div>
+      <div class="stat-label">Total Exams</div>
+      <a href="/lecturer/exams" class="stat-link">All exams <ArrowUpRight size={11} /></a>
+    </div>
 
-      <div class="exam-grid">
-        {#each sortedExams as exam, i (exam.id)}
-          {@const s    = (statsMap ?? {})[exam.id]}
-          {@const meta = STATUS_META[exam.status] ?? STATUS_META.draft}
-          <div class="exam-card" style="animation-delay:{i * 45}ms">
-            <div class="card-accent" style="background:{meta.color}"></div>
+    <div class="stat-card">
+      <div class="stat-top">
+        <div class="stat-icon icon-students">
+          <Users size={16} />
+        </div>
+      </div>
+      <div class="stat-value">{totalStudents.toLocaleString()}</div>
+      <div class="stat-label">Total Students</div>
+      <a href="/lecturer/students" class="stat-link">View students <ArrowUpRight size={11} /></a>
+    </div>
 
-            <div class="card-top">
-              <span class="course-badge">{exam.course.code}</span>
-              <span class="status-pill" style="color:{meta.color}; background:{meta.color}18; border-color:{meta.color}35;">
-                {#if exam.status === 'active'}
-                  <span class="live-dot" style="background:{meta.color}"></span>
-                {/if}
-                {meta.label}
-              </span>
-            </div>
+    <div class="stat-card">
+      <div class="stat-top">
+        <div class="stat-icon icon-score">
+          <TrendingUp size={16} />
+        </div>
+      </div>
+      <div class="stat-value">{avgScore}<span class="stat-unit">%</span></div>
+      <div class="stat-label">Average Score</div>
+      <div class="score-bar">
+        <div class="score-fill" style="width: {avgScore}%"></div>
+      </div>
+    </div>
 
-            <h3 class="exam-title">{exam.title}</h3>
+    <div class="stat-card" class:warn={pendingGrades > 0}>
+      <div class="stat-top">
+        <div class="stat-icon" class:icon-pending={pendingGrades > 0} class:icon-clear={pendingGrades === 0}>
+          {#if pendingGrades > 0}<AlertCircle size={16} />{:else}<CheckCircle2 size={16} />{/if}
+        </div>
+      </div>
+      <div class="stat-value">{pendingGrades}</div>
+      <div class="stat-label">Pending Grades</div>
+      {#if pendingGrades > 0}
+        <a href="/lecturer/results" class="stat-link warn-link">Grade now <ArrowUpRight size={11} /></a>
+      {/if}
+    </div>
 
-            <div class="exam-meta-row">
-              <span class="meta-chip"><Clock size={11} />{exam.durationMinutes}m</span>
-              <span class="meta-chip"><BarChart3 size={11} />{exam.totalMarks} marks</span>
-              <span class="meta-chip">Pass {exam.passMark}</span>
-            </div>
+    <div class="stat-card">
+      <div class="stat-top">
+        <div class="stat-icon icon-pass">
+          <Award size={16} />
+        </div>
+      </div>
+      <div class="stat-value">{passRate}<span class="stat-unit">%</span></div>
+      <div class="stat-label">Pass Rate</div>
+      <div class="score-bar">
+        <div class="score-fill pass-fill" style="width: {passRate}%"></div>
+      </div>
+    </div>
 
-            {#if s && (s.total > 0)}
-              <div class="stats-strip">
-                <div class="stat-box">
-                  <span class="stat-val">{s.total}</span>
-                  <span class="stat-lbl">Students</span>
-                </div>
-                <div class="stat-divider"></div>
-                <div class="stat-box">
-                  <span class="stat-val">{s.submitted ?? 0}</span>
-                  <span class="stat-lbl">Submitted</span>
-                </div>
-                <div class="stat-divider"></div>
-                <div class="stat-box">
-                  <span class="stat-val" class:good={(s.avg_pct ?? 0) >= 50}>{s.avg_pct ?? 0}%</span>
-                  <span class="stat-lbl">Avg</span>
+  </div>
+
+  <!-- ── Main content grid ─────────────────────────────────────── -->
+  <div class="content-grid">
+
+    <!-- Recent Exams -->
+    <section class="card exams-card">
+      <div class="card-head">
+        <div class="card-head-l">
+          <Layers size={15} />
+          <h2>Recent Exams</h2>
+        </div>
+        <a href="/lecturer/exams" class="card-link">All exams <ChevronRight size={13} /></a>
+      </div>
+
+      {#if recentExams.length === 0}
+        <div class="empty-state">
+          <BookOpen size={32} strokeWidth={1.2} />
+          <p>No exams yet</p>
+          <a href="/lecturer/exams/create" class="btn-sm">Create your first exam</a>
+        </div>
+      {:else}
+        <div class="exam-list">
+          {#each recentExams as exam}
+            <a href="/lecturer/exams/{exam.id}" class="exam-row">
+              <div class="exam-row-l">
+                <div class="exam-code">{exam.course?.code ?? '—'}</div>
+                <div class="exam-info">
+                  <span class="exam-title">{exam.title}</span>
+                  <span class="exam-meta">
+                    <Clock size={11} />{formatDate(exam.scheduledStart ?? exam.createdAt)}
+                    &middot; {exam._count?.questions ?? 0} questions
+                  </span>
                 </div>
               </div>
-            {:else}
-              <div class="no-data">No attempts yet</div>
-            {/if}
-
-            <div class="card-actions">
-              <a href="/lecturer/exams/{exam.id}/questions" class="act">
-                <FileText size={12} /> Questions
-              </a>
-              <a href="/lecturer/exams/{exam.id}/results" class="act">
-                <BarChart3 size={12} /> Results
-              </a>
-              <a href="/lecturer/exams/{exam.id}" class="act act-outline">
-                <Edit3 size={12} /> Manage
-              </a>
-            </div>
-          </div>
-        {/each}
-      </div>
+              <div class="exam-row-r">
+                <span class="status-pill {statusColor(exam.status)}">{statusLabel(exam.status)}</span>
+                <ChevronRight size={14} class="row-arr" />
+              </div>
+            </a>
+          {/each}
+        </div>
+      {/if}
     </section>
-  {/if}
+
+    <!-- Right column -->
+    <div class="right-col">
+
+      <!-- Quick actions -->
+      <section class="card quick-card">
+        <div class="card-head">
+          <div class="card-head-l">
+            <Zap size={15} />
+            <h2>Quick actions</h2>
+          </div>
+        </div>
+        <div class="quick-grid">
+          <a href="/lecturer/exams/create" class="quick-btn">
+            <PlusCircle size={18} />
+            <span>New exam</span>
+          </a>
+          <a href="/lecturer/exams" class="quick-btn">
+            <PlayCircle size={18} />
+            <span>My exams</span>
+          </a>
+          <a href="/lecturer/results" class="quick-btn">
+            <BarChart2 size={18} />
+            <span>Results</span>
+          </a>
+          <a href="/lecturer/students/report" class="quick-btn">
+            <Eye size={18} />
+            <span>Reports</span>
+          </a>
+        </div>
+      </section>
+
+      <!-- Upcoming exams -->
+      <section class="card upcoming-card">
+        <div class="card-head">
+          <div class="card-head-l">
+            <Calendar size={15} />
+            <h2>Upcoming</h2>
+          </div>
+        </div>
+
+        {#if upcomingExams.length === 0}
+          <div class="empty-sm">
+            <CheckCircle2 size={20} strokeWidth={1.3} />
+            <p>No upcoming exams</p>
+          </div>
+        {:else}
+          <div class="upcoming-list">
+            {#each upcomingExams.slice(0, 4) as exam}
+              <a href="/lecturer/exams/{exam.id}" class="upcoming-row">
+                <div class="upcoming-dot"></div>
+                <div class="upcoming-info">
+                  <span class="upcoming-title">{exam.title}</span>
+                  <span class="upcoming-date">
+                    <Calendar size={10} />{formatDate(exam.scheduledStart)}
+                  </span>
+                </div>
+                <span class="upcoming-code">{exam.course?.code ?? '—'}</span>
+              </a>
+            {/each}
+          </div>
+        {/if}
+      </section>
+
+    </div>
+  </div>
 
 </div>
 
 <style>
-  /* ── Tokens ──────────────────────────────────────────────────── */
-  :root {
-    --green-400: #4ade80;
-    --green-500: #22c55e;
-    --green-600: #16a34a;
-    --green-700: #15803d;
-    --green-soft: rgba(34,197,94,0.08);
+  /* ── Page ──────────────────────────────────────────────────── */
+  .page { display: flex; flex-direction: column; gap: 1.75rem; }
 
-    /* Lecturers - Indigo */
-    --indigo-400: #818cf8;
-    --indigo-500: #6366f1;
-    --indigo-600: #4f46e5;
-    --indigo-700: #4338ca;
-    --indigo-soft: rgba(99, 102, 241, 0.08);
+  /* ── Header ────────────────────────────────────────────────── */
+  .page-header {
+    display: flex; align-items: flex-end; justify-content: space-between;
+    gap: 1rem; flex-wrap: wrap;
   }
-
-  .dashboard {
-    padding: 2rem 1.5rem 3rem;
-    max-width: 1200px; margin: 0 auto;
-    display: flex; flex-direction: column; gap: 2rem;
+  .header-eyebrow {
+    font-size: 0.75rem; font-weight: 600; text-transform: uppercase;
+    letter-spacing: 0.08em; color: var(--lc600); margin-bottom: 0.25rem;
   }
-  @media (min-width: 1024px) { .dashboard { padding: 2rem 2.5rem 3rem; } }
-
-  /* ── Header ──────────────────────────────────────────────────── */
-  .dash-header {
-    display: flex; align-items: flex-start; justify-content: space-between;
-    flex-wrap: wrap; gap: 1rem;
-    padding-bottom: 1.25rem; border-bottom: 1px solid var(--color-border);
+  .header-title {
+    font-size: 1.6rem; font-weight: 800; color: var(--color-text);
+    letter-spacing: -0.03em; line-height: 1.15; margin: 0 0 0.3rem;
   }
-
-  .dash-eyebrow {
-    display: inline-flex; align-items: center; gap: 0.4rem;
-    font-size: 0.7rem; font-weight: 700; letter-spacing: 0.08em;
-    text-transform: uppercase; color: var(--indigo-600); margin-bottom: 0.3rem;
+  .header-sub {
+    font-size: 0.82rem; color: var(--color-muted); margin: 0;
   }
-
-  .dash-dot {
-    width: 7px; height: 7px; border-radius: 50%; background: var(--indigo-600);
-  }
-  .dash-dot.pulse { animation: dot-pulse 2s ease-in-out infinite; }
-
-  @keyframes dot-pulse {
-    0%,100% { box-shadow: 0 0 0 0 rgba(79, 70, 229, 0.5); }
-    70%      { box-shadow: 0 0 0 6px rgba(79, 70, 229, 0); }
-  }
-
-  .dash-title {
-    font-size: 2rem; font-weight: 900; letter-spacing: -0.04em;
-    color: var(--color-text); margin: 0 0 0.25rem; line-height: 1;
-  }
-
-  .dash-subtitle { font-size: 0.82rem; color: var(--color-muted); margin: 0; }
-  .dash-subtitle strong { color: var(--color-text); font-weight: 700; }
-
-  .header-actions { display: flex; align-items: center; gap: 0.75rem; flex-wrap: wrap; }
-
-  .btn-outline {
-    display: inline-flex; align-items: center; gap: 0.45rem;
-    padding: 0.5rem 1rem; background: transparent;
-    border: 1px solid var(--color-border); border-radius: 0.5rem;
-    font-size: 0.8rem; font-weight: 600; color: var(--color-text);
-    cursor: pointer; transition: all 0.15s; font-family: inherit;
-  }
-  .btn-outline:hover { border-color: var(--indigo-600); color: var(--indigo-600); }
-
   .btn-primary {
-    display: inline-flex; align-items: center; gap: 0.45rem;
-    padding: 0.5rem 1.1rem; background: var(--indigo-600);
-    border: none; border-radius: 0.5rem;
-    font-size: 0.8rem; font-weight: 700; color: white;
-    cursor: pointer; transition: all 0.15s; text-decoration: none; font-family: inherit;
+    display: inline-flex; align-items: center; gap: 0.4rem;
+    padding: 0.6rem 1.1rem; background: var(--lc600); color: #fff;
+    border-radius: 10px; font-size: 0.83rem; font-weight: 700;
+    text-decoration: none; transition: background 0.15s, transform 0.1s;
     white-space: nowrap;
   }
-  .btn-primary:hover {
-    background: var(--indigo-700);
-    transform: translateY(-1px);
-    box-shadow: 0 4px 14px rgba(79, 70, 229, 0.3);
-  }
+  .btn-primary:hover { background: var(--lc700); transform: translateY(-1px); }
 
-  /* ── KPI Strip ───────────────────────────────────────────────── */
-  .kpi-strip {
+  /* ── Stats grid ─────────────────────────────────────────────── */
+  .stats-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(158px, 1fr));
-    gap: 1rem;
+    grid-template-columns: repeat(auto-fit, minmax(148px, 1fr));
+    gap: 0.875rem;
   }
-
-  .kpi-card {
-    background: var(--color-surface); border: 1px solid var(--color-border);
-    border-radius: 1rem; padding: 1.25rem;
-    display: flex; flex-direction: column; gap: 0.75rem;
-    position: relative; overflow: hidden;
-    transition: transform 0.15s, box-shadow 0.15s;
-    animation: fade-up 0.4s ease both;
-    animation-delay: var(--delay, 0ms);
+  .stat-card {
+    background: var(--color-surface);
+    border: 1px solid var(--color-border);
+    border-radius: 14px;
+    padding: 1rem 1.1rem 1rem;
+    display: flex; flex-direction: column; gap: 0.2rem;
+    transition: border-color 0.15s, box-shadow 0.15s;
   }
-  .kpi-card:hover { transform: translateY(-2px); box-shadow: 0 8px 24px rgba(0,0,0,0.07); }
-
-  /* Coloured top bar */
-  .kpi-card::before {
-    content: ''; position: absolute; top: 0; left: 0; right: 0; height: 3px;
-    border-radius: 1rem 1rem 0 0;
+  .stat-card:hover {
+    border-color: var(--lc600);
+    box-shadow: 0 0 0 3px rgba(79,70,229,0.06);
   }
-  .kpi-green::before   { background: var(--green-500); }
-  .kpi-blue::before    { background: #3b82f6; }
-  .kpi-indigo::before  { background: var(--indigo-500); }
-  .kpi-slate::before   { background: #64748b; }
-  .kpi-teal::before    { background: #14b8a6; }
-  .kpi-emerald::before { background: var(--green-400); }
-
-  .kpi-icon {
-    width: 36px; height: 36px; border-radius: 0.6rem; flex-shrink: 0;
-    display: flex; align-items: center; justify-content: center;
-    background: var(--color-bg);
+  .stat-card.highlight {
+    border-color: rgba(79,70,229,0.4);
+    background: rgba(79,70,229,0.03);
   }
-  .kpi-green   .kpi-icon { color: var(--green-600); }
-  .kpi-blue    .kpi-icon { color: #3b82f6; }
-  .kpi-indigo  .kpi-icon { color: var(--indigo-600); }
-  .kpi-slate   .kpi-icon { color: #64748b; }
-  .kpi-teal    .kpi-icon { color: #14b8a6; }
-  .kpi-emerald .kpi-icon { color: var(--green-600); }
-
-  .kpi-body { display: flex; flex-direction: column; gap: 0.1rem; }
-  .kpi-value {
-    font-size: 1.85rem; font-weight: 900; letter-spacing: -0.04em;
-    color: var(--color-text); line-height: 1;
+  .stat-card.warn {
+    border-color: rgba(245,158,11,0.4);
+    background: rgba(245,158,11,0.03);
   }
-  .kpi-label {
-    font-size: 0.68rem; font-weight: 700; text-transform: uppercase;
-    letter-spacing: 0.06em; color: var(--color-muted);
-  }
-  .kpi-trend {
-    display: inline-flex; align-items: center; gap: 0.2rem;
-    font-size: 0.68rem; font-weight: 600; color: var(--color-muted);
-  }
-  .kpi-trend.up { color: var(--green-600); }
-
-  .kpi-live-badge {
-    font-size: 0.6rem; font-weight: 800; letter-spacing: 0.12em;
-    color: var(--indigo-600);
-    background: var(--indigo-soft);
-    border: 1px solid rgba(79, 70, 229, 0.3);
-    padding: 0.12rem 0.5rem; border-radius: 999px; width: fit-content;
-    animation: blink 1.5s step-end infinite;
-  }
-  @keyframes blink { 50% { opacity: 0.35; } }
-
-  /* ── Panel ───────────────────────────────────────────────────── */
-  .panel {
-    background: var(--color-surface); border: 1px solid var(--color-border);
-    border-radius: 1rem; overflow: hidden;
-    animation: fade-up 0.45s ease both; animation-delay: 320ms;
-  }
-
-  .panel-head {
+  .stat-top {
     display: flex; align-items: center; justify-content: space-between;
-    padding: 0.875rem 1.25rem; border-bottom: 1px solid var(--color-border);
-    gap: 1rem;
+    margin-bottom: 0.5rem;
   }
-  .panel-title-wrap {
-    display: flex; align-items: center; gap: 0.5rem; color: var(--color-muted);
-  }
-  .panel-title-wrap h2 {
-    font-size: 0.82rem; font-weight: 700; text-transform: uppercase;
-    letter-spacing: 0.06em; color: var(--color-text); margin: 0;
-  }
-  .panel-head-right { display: flex; align-items: center; gap: 0.75rem; }
-  .panel-count {
-    font-size: 0.7rem; font-weight: 600; color: var(--color-muted);
-    background: var(--color-bg); border: 1px solid var(--color-border);
-    padding: 0.15rem 0.55rem; border-radius: 999px;
-  }
-  .panel-link {
-    display: inline-flex; align-items: center; gap: 0.2rem;
-    font-size: 0.75rem; font-weight: 600; color: var(--indigo-600);
-    text-decoration: none; transition: gap 0.15s;
-  }
-  .panel-link:hover { gap: 0.4rem; }
-
-  /* ── Exam grid ───────────────────────────────────────────────── */
-  .exam-grid {
-    padding: 1.25rem;
-    display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
-    gap: 1rem;
-  }
-
-  /* ── Exam card ───────────────────────────────────────────────── */
-  .exam-card {
-    background: var(--color-bg); border: 1px solid var(--color-border);
-    border-radius: 0.875rem; padding: 1.125rem;
-    display: flex; flex-direction: column; gap: 0.875rem;
-    position: relative; overflow: hidden;
-    transition: transform 0.15s, box-shadow 0.15s, border-color 0.15s;
-    animation: fade-up 0.4s ease both;
-  }
-  .exam-card:hover {
-    transform: translateY(-2px);
-    box-shadow: 0 8px 24px rgba(0,0,0,0.07);
-    border-color: rgba(79, 70, 229, 0.3);
-  }
-
-  .card-accent {
-    position: absolute; top: 0; left: 0; right: 0; height: 3px;
-    border-radius: 0.875rem 0.875rem 0 0;
-  }
-
-  /* Card top */
-  .card-top {
-    display: flex; justify-content: space-between; align-items: center; gap: 0.5rem;
-  }
-
-  .course-badge {
-    font-size: 0.7rem; font-weight: 800; padding: 0.2rem 0.6rem;
-    background: var(--indigo-soft); color: var(--indigo-600);
-    border-radius: 999px; letter-spacing: 0.04em;
-  }
-
-  .status-pill {
-    display: inline-flex; align-items: center; gap: 0.35rem;
-    font-size: 0.68rem; font-weight: 700; padding: 0.2rem 0.6rem;
-    border-radius: 999px; border: 1px solid; white-space: nowrap;
-  }
-
-  .live-dot {
-    width: 5px; height: 5px; border-radius: 50%; flex-shrink: 0;
-    animation: blink 1.5s step-end infinite;
-  }
-
-  .exam-title {
-    font-size: 0.92rem; font-weight: 700; color: var(--color-text);
-    margin: 0; line-height: 1.4;
-    display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
-  }
-
-  .exam-meta-row { display: flex; gap: 0.4rem; flex-wrap: wrap; }
-
-  .meta-chip {
-    display: inline-flex; align-items: center; gap: 0.3rem;
-    font-size: 0.68rem; font-weight: 600; color: var(--color-muted);
-    background: var(--color-surface); border: 1px solid var(--color-border);
-    padding: 0.18rem 0.5rem; border-radius: 999px;
-  }
-
-  /* Stats strip */
-  .stats-strip {
-    display: flex; align-items: center;
-    background: var(--color-surface); border: 1px solid var(--color-border);
-    border-radius: 0.625rem; overflow: hidden;
-  }
-  .stat-box {
-    flex: 1; display: flex; flex-direction: column; align-items: center;
-    gap: 0.1rem; padding: 0.55rem 0.5rem;
-  }
-  .stat-val {
-    font-size: 1.05rem; font-weight: 800; letter-spacing: -0.03em;
-    color: var(--color-text); line-height: 1;
-  }
-  .stat-val.good { color: var(--green-600); }
-  .stat-lbl {
-    font-size: 0.6rem; font-weight: 600; text-transform: uppercase;
-    letter-spacing: 0.05em; color: var(--color-muted);
-  }
-  .stat-divider { width: 1px; height: 30px; background: var(--color-border); flex-shrink: 0; }
-
-  .no-data {
-    font-size: 0.72rem; color: var(--color-muted);
-    padding: 0.45rem 0.625rem;
-    background: var(--color-surface); border: 1px solid var(--color-border);
-    border-radius: 0.45rem;
-  }
-
-  /* Card actions */
-  .card-actions { display: flex; gap: 0.4rem; margin-top: auto; flex-wrap: wrap; }
-
-  .act {
-    display: inline-flex; align-items: center; gap: 0.35rem;
-    padding: 0.38rem 0.75rem;
-    background: var(--indigo-600); border: 1px solid var(--indigo-600);
-    border-radius: 0.45rem; font-size: 0.73rem; font-weight: 700;
-    text-decoration: none; color: white; cursor: pointer;
-    font-family: inherit; transition: all 0.12s; white-space: nowrap;
-  }
-  .act:hover { background: var(--indigo-700); border-color: var(--indigo-700); }
-
-  .act.act-outline {
-    background: transparent; border-color: var(--color-border);
-    color: var(--color-text); margin-left: auto;
-  }
-  .act.act-outline:hover {
-    border-color: var(--indigo-600); color: var(--indigo-600);
-    background: var(--indigo-soft);
-  }
-
-  /* ── Empty state ─────────────────────────────────────────────── */
-  .empty-state {
-    display: flex; flex-direction: column; align-items: center; gap: 0.75rem;
-    padding: 4rem 1.5rem; text-align: center;
-  }
-
-  .empty-icon {
-    width: 64px; height: 64px; border-radius: 1rem;
-    background: var(--indigo-soft); border: 1px solid rgba(79, 70, 229, 0.15);
+  .stat-icon {
+    width: 32px; height: 32px; border-radius: 8px;
     display: flex; align-items: center; justify-content: center;
-    color: var(--indigo-600); margin-bottom: 0.25rem;
+  }
+  .icon-active   { background: rgba(99,102,241,0.12); color: var(--lc600); }
+  .icon-total    { background: rgba(99,102,241,0.08); color: var(--lc600); }
+  .icon-students { background: rgba(14,165,233,0.1); color: #0ea5e9; }
+  .icon-score    { background: rgba(16,185,129,0.1); color: #10b981; }
+  .icon-pending  { background: rgba(245,158,11,0.1); color: #f59e0b; }
+  .icon-clear    { background: rgba(16,185,129,0.1); color: #10b981; }
+  .icon-pass     { background: rgba(168,85,247,0.1); color: #a855f7; }
+
+  .live-badge {
+    display: inline-flex; align-items: center; gap: 0.3rem;
+    font-size: 0.62rem; font-weight: 800; text-transform: uppercase;
+    letter-spacing: 0.06em; color: var(--lc600);
+    background: rgba(79,70,229,0.1); padding: 0.15rem 0.5rem; border-radius: 20px;
+  }
+  .live-dot {
+    width: 5px; height: 5px; border-radius: 50%; background: var(--lc600);
+    animation: pulse 1.5s ease-in-out infinite;
   }
 
-  .empty-title { font-size: 1rem; font-weight: 700; color: var(--color-text); margin: 0; }
-  .empty-sub   { font-size: 0.8rem; color: var(--color-muted); margin: 0; }
+  .stat-value {
+    font-size: 2rem; font-weight: 900; color: var(--color-text);
+    letter-spacing: -0.04em; line-height: 1;
+  }
+  .stat-unit { font-size: 1rem; font-weight: 600; opacity: 0.6; }
+  .stat-label {
+    font-size: 0.72rem; font-weight: 600; color: var(--color-muted);
+    text-transform: uppercase; letter-spacing: 0.05em; margin-top: 0.1rem;
+  }
+  .stat-link {
+    display: inline-flex; align-items: center; gap: 0.2rem;
+    font-size: 0.7rem; font-weight: 700; color: var(--lc600);
+    text-decoration: none; margin-top: 0.4rem; transition: gap 0.15s;
+  }
+  .stat-link:hover { gap: 0.35rem; }
+  .warn-link { color: #f59e0b; }
+  .score-bar {
+    height: 3px; background: var(--color-border);
+    border-radius: 2px; overflow: hidden; margin-top: 0.5rem;
+  }
+  .score-fill {
+    height: 100%; background: linear-gradient(90deg, var(--lc500), var(--lc400));
+    border-radius: 2px; transition: width 0.8s cubic-bezier(0.4,0,0.2,1);
+  }
+  .pass-fill { background: linear-gradient(90deg, #10b981, #34d399); }
 
-  /* ── Animations ──────────────────────────────────────────────── */
-  @keyframes fade-up {
-    from { opacity: 0; transform: translateY(12px); }
-    to   { opacity: 1; transform: translateY(0); }
+  /* ── Content grid ───────────────────────────────────────────── */
+  .content-grid {
+    display: grid;
+    grid-template-columns: 1fr 320px;
+    gap: 0.875rem;
+    align-items: start;
+  }
+  @media (max-width: 900px) {
+    .content-grid { grid-template-columns: 1fr; }
   }
 
-  /* ── Responsive ──────────────────────────────────────────────── */
-  @media (max-width: 768px) {
-    .dash-title    { font-size: 1.65rem; }
-    .kpi-strip     { grid-template-columns: repeat(2, 1fr); }
-    .exam-grid     { grid-template-columns: 1fr; padding: 1rem; }
-    .header-actions{ flex-wrap: wrap; }
+  /* ── Cards ──────────────────────────────────────────────────── */
+  .card {
+    background: var(--color-surface);
+    border: 1px solid var(--color-border);
+    border-radius: 14px;
+    overflow: hidden;
   }
+  .card-head {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 0.875rem 1.125rem;
+    border-bottom: 1px solid var(--color-border);
+  }
+  .card-head-l {
+    display: flex; align-items: center; gap: 0.5rem;
+    color: var(--lc600);
+  }
+  .card-head-l h2 {
+    font-size: 0.85rem; font-weight: 700; color: var(--color-text); margin: 0;
+  }
+  .card-link {
+    display: inline-flex; align-items: center; gap: 0.15rem;
+    font-size: 0.72rem; font-weight: 600; color: var(--lc600); text-decoration: none;
+  }
+  .card-link:hover { text-decoration: underline; }
 
-  @media (max-width: 420px) {
-    .kpi-strip { grid-template-columns: 1fr 1fr; }
+  /* ── Exam list ──────────────────────────────────────────────── */
+  .exam-list { display: flex; flex-direction: column; }
+  .exam-row {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 0.8rem 1.125rem; gap: 0.75rem;
+    border-bottom: 1px solid var(--color-border);
+    text-decoration: none; transition: background 0.12s;
   }
+  .exam-row:last-child { border-bottom: none; }
+  .exam-row:hover { background: var(--color-bg); }
+  .exam-row-l { display: flex; align-items: center; gap: 0.75rem; flex: 1; min-width: 0; }
+  .exam-code {
+    font-size: 0.62rem; font-weight: 800; text-transform: uppercase; letter-spacing: 0.06em;
+    padding: 0.25rem 0.5rem; border-radius: 6px;
+    background: var(--lc-soft); color: var(--lc700); white-space: nowrap; flex-shrink: 0;
+  }
+  :global(.dark) .exam-code { color: var(--lc400); }
+  .exam-info { display: flex; flex-direction: column; min-width: 0; gap: 0.2rem; }
+  .exam-title {
+    font-size: 0.82rem; font-weight: 600; color: var(--color-text);
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .exam-meta {
+    font-size: 0.68rem; color: var(--color-muted);
+    display: flex; align-items: center; gap: 0.3rem;
+  }
+  .exam-row-r { display: flex; align-items: center; gap: 0.5rem; flex-shrink: 0; }
+  :global(.row-arr) { color: var(--color-border); transition: color 0.15s, transform 0.15s; }
+  .exam-row:hover :global(.row-arr) { color: var(--lc600); transform: translateX(2px); }
+
+  /* Status pills */
+  .status-pill {
+    font-size: 0.62rem; font-weight: 800; text-transform: uppercase;
+    letter-spacing: 0.05em; padding: 0.2rem 0.55rem; border-radius: 20px;
+    white-space: nowrap;
+  }
+  .status-active    { background: rgba(79,70,229,0.1);  color: var(--lc700); }
+  .status-scheduled { background: rgba(14,165,233,0.1); color: #0369a1; }
+  .status-completed { background: rgba(16,185,129,0.1); color: #065f46; }
+  .status-draft     { background: var(--color-bg);      color: var(--color-muted); border: 1px solid var(--color-border); }
+  :global(.dark) .status-active    { color: var(--lc400); }
+  :global(.dark) .status-completed { color: #34d399; }
+  :global(.dark) .status-scheduled { color: #38bdf8; }
+
+  /* ── Quick actions ──────────────────────────────────────────── */
+  .quick-grid {
+    display: grid; grid-template-columns: 1fr 1fr;
+    gap: 0.5rem; padding: 0.875rem;
+  }
+  .quick-btn {
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    gap: 0.45rem; padding: 0.875rem 0.5rem;
+    border-radius: 10px; text-decoration: none;
+    background: var(--color-bg); border: 1px solid var(--color-border);
+    color: var(--color-muted); font-size: 0.72rem; font-weight: 600;
+    transition: all 0.15s;
+  }
+  .quick-btn:hover {
+    border-color: var(--lc600); color: var(--lc700);
+    background: var(--lc-soft); transform: translateY(-1px);
+  }
+  :global(.dark) .quick-btn:hover { color: var(--lc400); }
+
+  /* ── Upcoming ───────────────────────────────────────────────── */
+  .upcoming-list { display: flex; flex-direction: column; padding: 0.25rem 0; }
+  .upcoming-row {
+    display: flex; align-items: center; gap: 0.75rem;
+    padding: 0.65rem 1.125rem; text-decoration: none;
+    transition: background 0.12s;
+  }
+  .upcoming-row:hover { background: var(--color-bg); }
+  .upcoming-dot {
+    width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0;
+    background: var(--lc600); box-shadow: 0 0 0 3px rgba(79,70,229,0.15);
+  }
+  .upcoming-info { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 0.15rem; }
+  .upcoming-title {
+    font-size: 0.8rem; font-weight: 600; color: var(--color-text);
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .upcoming-date {
+    font-size: 0.65rem; color: var(--color-muted);
+    display: flex; align-items: center; gap: 0.25rem;
+  }
+  .upcoming-code {
+    font-size: 0.62rem; font-weight: 700; color: var(--lc700);
+    background: var(--lc-soft); padding: 0.15rem 0.45rem; border-radius: 5px;
+    flex-shrink: 0; white-space: nowrap;
+  }
+  :global(.dark) .upcoming-code { color: var(--lc400); }
+
+  /* ── Right column ───────────────────────────────────────────── */
+  .right-col { display: flex; flex-direction: column; gap: 0.875rem; }
+
+  /* ── Empty states ───────────────────────────────────────────── */
+  .empty-state {
+    display: flex; flex-direction: column; align-items: center; gap: 0.625rem;
+    padding: 2.5rem 1rem; color: var(--color-muted); text-align: center;
+  }
+  .empty-state p { font-size: 0.82rem; margin: 0; }
+  .empty-sm {
+    display: flex; flex-direction: column; align-items: center; gap: 0.4rem;
+    padding: 1.25rem 1rem; color: var(--color-muted); text-align: center;
+    font-size: 0.78rem;
+  }
+  .empty-sm p { margin: 0; }
+  .btn-sm {
+    display: inline-flex; align-items: center; gap: 0.35rem;
+    padding: 0.45rem 0.9rem; background: var(--lc600); color: #fff;
+    border-radius: 8px; font-size: 0.75rem; font-weight: 700;
+    text-decoration: none; margin-top: 0.25rem;
+  }
+  .btn-sm:hover { background: var(--lc700); }
+
+  @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.4; } }
 </style>

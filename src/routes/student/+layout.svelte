@@ -261,7 +261,7 @@
             {/each}
           </nav>
         {:else}
-          <div class="greet"><Sparkles size={13} /><span>Welcome, <strong>{firstName}</strong></span></div>
+          <!-- <div class="greet"><Sparkles size={13} /><span>Welcome, <strong>{firstName}</strong></span></div> -->
         {/if}
       </div>
 

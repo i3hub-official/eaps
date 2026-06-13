@@ -2,10 +2,10 @@
 import type { LayoutServerLoad } from './$types';
 import { requireStudent } from '$lib/server/auth/guards.js';
 import { prisma } from '$lib/server/db/index.js';
-import { SessionStatus, RegistrationStatus } from '@prisma/client';
+import { SessionStatus } from '@prisma/client';
 
 export const load: LayoutServerLoad = async ({ locals }) => {
-  const user = requireStudent(locals.user);
+  const user = await requireStudent(locals.user);
 
   // Fetch full student profile with all relations
   const fullUser = await prisma.user.findUnique({

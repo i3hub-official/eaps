@@ -45,7 +45,7 @@ async function setRegPhase(userId: string, key: string, phase: RegPhase) {
 // Load
 // ─────────────────────────────────────────────────────────────────────────────
 export const load: PageServerLoad = async ({ locals, url }) => {
-  const user = requireStudent(locals.user);
+  const user = await requireStudent(locals.user);
 
   const { session: currentSession, semester: currentSemester, regOpen } = await getActiveSemester();
   const studentCollegeId = user.collegeId ?? null;
@@ -237,7 +237,7 @@ export const actions: Actions = {
   // Replaces the old single `register` action.
   // Receives repeated fields: courseId[], type[]  (parallel arrays)
   batchRegister: async ({ request, locals }) => {
-    const user = requireStudent(locals.user);
+    const user =  await  requireStudent(locals.user);
     const fd   = await request.formData();
     const ctx  = await resolveStudentContext(user);
 
@@ -321,7 +321,7 @@ export const actions: Actions = {
 
   // ── Drop one course (draft phase) ─────────────────────────────────────
   drop: async ({ request, locals }) => {
-    const user = requireStudent(locals.user);
+    const user = await requireStudent(locals.user);
     const fd   = await request.formData();
     const registrationId = fd.get('registrationId')?.toString();
     if (!registrationId) return fail(400, { error: 'Registration ID required.' });
@@ -342,7 +342,7 @@ export const actions: Actions = {
 
   // ── Submit registration (draft → submitted) ───────────────────────────
   submit: async ({ locals }) => {
-    const user = requireStudent(locals.user);
+    const user = await requireStudent(locals.user);
     const ctx  = await resolveStudentContext(user);
 
     if (ctx.phase !== 'draft') return fail(400, { error: 'Already submitted.' });
@@ -361,7 +361,7 @@ export const actions: Actions = {
   // ── One-time update (submitted → locked) ──────────────────────────────
   // addCourseId[] + addType[] (parallel) and dropId[] (registration IDs)
   update: async ({ request, locals }) => {
-    const user = requireStudent(locals.user);
+    const user = await requireStudent(locals.user);
     const fd   = await request.formData();
     const ctx  = await resolveStudentContext(user);
 

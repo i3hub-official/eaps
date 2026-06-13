@@ -4,7 +4,7 @@ import { requireLecturer } from '$lib/server/auth/guards.js';
 import { prisma } from '$lib/server/db/index.js';
 
 export const load: LayoutServerLoad = async ({ locals }) => {
-  const user = requireLecturer(locals.user);
+  const user = await requireLecturer(locals.user);
 
   const [notifications, activeExams, totalExams, pendingGrades] = await Promise.all([
     // Latest 30 notifications for this user

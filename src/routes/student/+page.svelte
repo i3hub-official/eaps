@@ -1,287 +1,187 @@
 <!-- src/routes/student/+page.svelte -->
 <script lang="ts">
-  import {
-    LayoutDashboard, ClipboardList, BarChart3, BookOpen,
-    Bell, Clock, Calendar, ArrowRight, Award, AlertCircle,
-    TrendingUp, BookMarked, Zap, GraduationCap, Info,
-    AlertTriangle, CreditCard, CheckCircle2, UserCheck, Shield
-  } from 'lucide-svelte';
   import type { PageData } from './$types';
-  import FaceEnrollmentModal from '$lib/components/exam/FaceEnrollmentModal.svelte';
+  import {
+    ClipboardList, Clock, Target, BookMarked, ChevronRight,
+    ArrowRight, AlertTriangle, CheckCircle2, PlayCircle,
+    Calendar, Zap, TrendingUp, Award, BookOpen, Activity,
+    ArrowUpRight, Sparkles, Lock, BarChart3
+  } from 'lucide-svelte';
 
   let { data }: { data: PageData } = $props();
 
-  const { recentExams, recentResults, meta, student, academicSemester } = data;
+  const stats = $derived(data.stats ?? {});
+  const availableExams = $derived(data.availableExams ?? []);
+  const recentResults  = $derived(data.recentResults  ?? []);
+  const registeredCourses = $derived(data.registeredCourses ?? []);
 
-  // Face enrollment state
-  let showEnrollmentModal = $state(false);
-  let showEnrollmentAlert = $state(!student.hasFaceEnrolled);
-  let enrollmentInProgress = $state(false);
+  const activeExams   = $derived(stats.activeExams   ?? 0);
+  const upcomingExams = $derived(stats.upcomingExams ?? 0);
+  const totalResults  = $derived(stats.totalResults  ?? 0);
+  const averageScore  = $derived(stats.averageScore  ?? 0);
+  const totalCourses  = $derived(registeredCourses.length);
 
-  function formatDate(d: Date | string | null) {
-    if (!d) return 'TBD';
-    return new Date(d).toLocaleDateString('en-GB', {
-      day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit'
-    });
+  const firstName = $derived(data.user?.fullName?.trim().split(/\s+/)[0] ?? 'Student');
+
+  function formatDate(d: string | null | undefined) {
+    if (!d) return '—';
+    return new Intl.DateTimeFormat('en-NG', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }).format(new Date(d));
   }
 
-  function daysUntil(d: Date | string | null) {
-    if (!d) return null;
-    const diff = new Date(d).getTime() - Date.now();
-    const days = Math.ceil(diff / (1000 * 60 * 60 * 24));
-    return days > 0 ? days : 0;
+  function gradeColor(pct: number) {
+    if (pct >= 70) return 'grade-a';
+    if (pct >= 60) return 'grade-b';
+    if (pct >= 50) return 'grade-c';
+    if (pct >= 45) return 'grade-d';
+    return 'grade-f';
   }
 
-  function statusColor(status: string) {
-    switch (status) {
-      case 'active': return 'var(--green-600)';
-      case 'scheduled': return 'var(--blue-500)';
-      case 'completed': return 'var(--color-muted)';
-      default: return 'var(--color-muted)';
-    }
+  function gradeLabel(pct: number) {
+    if (pct >= 70) return 'A';
+    if (pct >= 60) return 'B';
+    if (pct >= 50) return 'C';
+    if (pct >= 45) return 'D';
+    return 'F';
   }
 
-  const creditColor = student.levelConfig.creditPercentage > 90 
-    ? '#dc2626' 
-    : student.levelConfig.creditPercentage > 75 
-      ? '#f59e0b' 
-      : 'var(--green-600)';
-
-  function handleEnrollmentComplete() {
-    showEnrollmentModal = false;
-    showEnrollmentAlert = false;
-    enrollmentInProgress = false;
-    // Refresh the page to update the face enrollment status
-    window.location.reload();
-  }
-
-  function handleEnrollmentClose() {
-    showEnrollmentModal = false;
-    enrollmentInProgress = false;
-  }
-
-  function startEnrollment() {
-    enrollmentInProgress = true;
-    showEnrollmentModal = true;
-  }
-
-  function dismissAlert() {
-    showEnrollmentAlert = false;
+  function examStatusColor(status: string) {
+    if (status === 'active')    return 'pill-active';
+    if (status === 'scheduled') return 'pill-scheduled';
+    return '';
   }
 </script>
 
-<div class="dashboard">
-  <!-- Header -->
-  <div class="dash-header">
-    <div>
-      <h1>Dashboard</h1>
-      <p class="dash-sub">
-        {student.level ? (student.level.name ?? `${student.level.level}L`) : 'Level not set'}  · {meta.session} · {meta.semesterLabel}
-        {#if academicSemester?.startDate && academicSemester?.endDate}
-          · {formatDate(academicSemester.startDate)} – {formatDate(academicSemester.endDate)}
+<div class="page">
+
+  <!-- ── Welcome header ──────────────────────────────────────── -->
+  <div class="welcome-header">
+    <div class="welcome-left">
+      <div class="welcome-greet">
+        <Sparkles size={14} class="greet-spark" />
+        <span>{new Date().getHours() < 12 ? 'Good morning' : new Date().getHours() < 17 ? 'Good afternoon' : 'Good evening'}, <strong>{firstName}</strong></span>
+      </div>
+      <h1 class="welcome-title">Your Academic Dashboard</h1>
+      <div class="welcome-meta">
+        <span class="meta-chip"><BookMarked size={11} />{totalCourses} Courses</span>
+        <span class="meta-chip"><Target size={11} />{totalResults} Results</span>
+        {#if averageScore > 0}
+          <span class="meta-chip score-chip"><TrendingUp size={11} />{averageScore}% Average</span>
         {/if}
-      </p>
+      </div>
     </div>
-    <div class="dash-meta">
-      <span class="meta-pill"><BookMarked size={13} /> {meta.registeredCourses} Courses</span>
-      {#if student.level}
-        <span class="meta-pill"><GraduationCap size={13} /> {student.level.name}</span>
+    {#if activeExams > 0}
+      <a href="/student/exam" class="exam-now-btn">
+        <Zap size={14} />
+        {activeExams} Exam{activeExams > 1 ? 's' : ''} Live
+        <ArrowRight size={14} />
+      </a>
+    {/if}
+  </div>
+
+  <!-- ── Stats ─────────────────────────────────────────────────── -->
+  <div class="stats-row">
+    <div class="stat-card" class:active-card={activeExams > 0}>
+      <div class="stat-icon" class:icon-live={activeExams > 0} class:icon-neutral={activeExams === 0}>
+        <Zap size={17} />
+      </div>
+      <div class="stat-body">
+        <span class="stat-val">{activeExams}</span>
+        <span class="stat-lbl">Live Now</span>
+      </div>
+      {#if activeExams > 0}
+        <div class="live-pulse"></div>
       {/if}
-      {#if meta.unreadNotifications > 0}
-        <span class="meta-pill alert"><Bell size={13} /> {meta.unreadNotifications} New</span>
-      {/if}
+    </div>
+
+    <div class="stat-card">
+      <div class="stat-icon icon-soon">
+        <Calendar size={17} />
+      </div>
+      <div class="stat-body">
+        <span class="stat-val">{upcomingExams}</span>
+        <span class="stat-lbl">Upcoming</span>
+      </div>
+    </div>
+
+    <div class="stat-card">
+      <div class="stat-icon icon-done">
+        <CheckCircle2 size={17} />
+      </div>
+      <div class="stat-body">
+        <span class="stat-val">{totalResults}</span>
+        <span class="stat-lbl">Completed</span>
+      </div>
+    </div>
+
+    <div class="stat-card">
+      <div class="stat-icon icon-avg">
+        <Activity size={17} />
+      </div>
+      <div class="stat-body">
+        <span class="stat-val" class:good={averageScore >= 50}>{averageScore}<span class="pct">%</span></span>
+        <span class="stat-lbl">Average</span>
+      </div>
     </div>
   </div>
 
-  <!-- Face Enrollment Alert Banner -->
-  {#if showEnrollmentAlert && !student.hasFaceEnrolled}
-    <div class="enrollment-alert">
-      <div class="alert-content">
-        <div class="alert-icon">
-          <Shield size={20} />
-        </div>
-        <div class="alert-text">
-          <strong>Face Enrollment Required</strong>
-          <p>To access and take exams, you need to enroll your face for identity verification. This process takes less than 2 minutes.</p>
-        </div>
-        <div class="alert-actions">
-          <button class="btn-enroll" onclick={startEnrollment} disabled={enrollmentInProgress}>
-            {#if enrollmentInProgress}
-              <span class="spinner-small"></span>
-              Loading...
-            {:else}
-              <UserCheck size={16} />
-              Enroll Now
-            {/if}
-          </button>
-        </div>
-      </div>
-    </div>
-  {/if}
+  <!-- ── Main grid ──────────────────────────────────────────────── -->
+  <div class="main-grid">
 
-  <!-- Student info card with level and limits -->
-  <div class="student-info-card">
-    <div class="info-header">
-      <div class="info-title">
-        <GraduationCap size={18} />
-        <h3>Academic Information</h3>
-      </div>
-      {#if academicSemester && !academicSemester.regOpen}
-        <span class="reg-badge closed">Registration Closed</span>
-      {:else if academicSemester && academicSemester.regOpen}
-        <span class="reg-badge open">Registration Open</span>
-      {/if}
-    </div>
-    <div class="info-grid">
-      <div class="info-item">
-        <span class="info-label">Level</span>
-        <span class="info-value">{student.level?.name ?? '—'}</span>
-      </div>
-      <div class="info-item">
-        <span class="info-label">Session</span>
-        <span class="info-value">{meta.session}</span>
-      </div>
-      <div class="info-item">
-        <span class="info-label">Semester</span>
-        <span class="info-value">{meta.semester === 1 ? 'First' : 'Second'}</span>
-      </div>
-      <div class="info-item">
-        <span class="info-label">Credit Limit</span>
-        <span class="info-value">{student.levelConfig.maxCredits} CU</span>
-      </div>
-      <div class="info-item">
-        <span class="info-label">Carry-Over Limit</span>
-        <span class="info-value">{student.levelConfig.maxCarryOver} max</span>
-      </div>
-      <div class="info-item">
-        <span class="info-label">Borrowed Limit</span>
-        <span class="info-value">{student.levelConfig.maxBorrowed} max</span>
-      </div>
-    </div>
-    
-    <!-- Credit progress -->
-    <div class="credit-section">
-      <div class="credit-header">
-        <CreditCard size={14} />
-        <span>Credit Usage</span>
-        <span class="credit-stats">{student.levelConfig.currentCredits} / {student.levelConfig.maxCredits} CU</span>
-      </div>
-      <div class="progress-bar">
-        <div class="progress-fill" style="width:{Math.min(student.levelConfig.creditPercentage, 100)}%; background:{creditColor}"></div>
-      </div>
-      {#if student.levelConfig.remainingCredits > 0}
-        <span class="remaining-text">{student.levelConfig.remainingCredits} CU remaining</span>
-      {:else}
-        <span class="remaining-text warning">Credit limit reached</span>
-      {/if}
-    </div>
-
-    <!-- Limit warnings -->
-    <div class="limit-warnings">
-      {#if student.levelConfig.hasReachedCarryOverLimit}
-        <div class="warning-chip">
-          <AlertTriangle size={12} />
-          <span>Carry-over limit reached ({student.levelConfig.maxCarryOver})</span>
+    <!-- Available Exams -->
+    <section class="card span-wide">
+      <div class="card-head">
+        <div class="card-head-l">
+          <ClipboardList size={15} />
+          <h2>Available Exams</h2>
+          {#if activeExams > 0}
+            <span class="live-chip"><span class="live-dot"></span>{activeExams} live</span>
+          {/if}
         </div>
-      {/if}
-      {#if student.levelConfig.hasReachedBorrowedLimit}
-        <div class="warning-chip">
-          <AlertTriangle size={12} />
-          <span>Borrowed limit reached ({student.levelConfig.maxBorrowed})</span>
-        </div>
-      {/if}
-      {#if student.levelConfig.hasReachedCreditLimit}
-        <div class="warning-chip error">
-          <AlertCircle size={12} />
-          <span>Credit limit reached ({student.levelConfig.maxCredits} CU)</span>
-        </div>
-      {/if}
-    </div>
-  </div>
+        <a href="/student/exam" class="see-all">All exams <ChevronRight size={13} /></a>
+      </div>
 
-  <!-- Quick stats cards -->
-  <div class="stat-cards">
-    <a href="/student/exam" class="stat-card">
-      <div class="stat-card-icon" style="background: var(--green-soft); color: var(--green-600);">
-        <ClipboardList size={20} />
-      </div>
-      <div class="stat-card-info">
-        <span class="stat-card-value">{recentExams.length}</span>
-        <span class="stat-card-label">Upcoming Exams</span>
-      </div>
-      <ArrowRight size={14} class="stat-card-arrow" />
-    </a>
-    <a href="/student/results" class="stat-card">
-      <div class="stat-card-icon" style="background: var(--blue-soft); color: var(--blue-500);">
-        <BarChart3 size={20} />
-      </div>
-      <div class="stat-card-info">
-        <span class="stat-card-value">{recentResults.length}</span>
-        <span class="stat-card-label">Recent Results</span>
-      </div>
-      <ArrowRight size={14} class="stat-card-arrow" />
-    </a>
-    <a href="/student/courses" class="stat-card">
-      <div class="stat-card-icon" style="background: var(--teal-soft); color: var(--teal-500);">
-        <BookOpen size={20} />
-      </div>
-      <div class="stat-card-info">
-        <span class="stat-card-value">{meta.registeredCourses}</span>
-        <span class="stat-card-label">Registered</span>
-      </div>
-      <ArrowRight size={14} class="stat-card-arrow" />
-    </a>
-  </div>
-
-  <!-- Main grid -->
-  <div class="dash-grid">
-    <!-- Upcoming exams -->
-    <section class="dash-section">
-      <div class="section-head">
-        <ClipboardList size={16} />
-        <h2>Upcoming Exams</h2>
-        <a href="/student/exam" class="section-link">View all <ArrowRight size={12} /></a>
-      </div>
-      {#if recentExams.length === 0}
-        <div class="empty-state">
-          <AlertCircle size={28} strokeWidth={1.5} />
-          <p>No upcoming exams for this semester.</p>
-          <a href="/student/courses/register">Register courses →</a>
+      {#if availableExams.length === 0}
+        <div class="empty">
+          <ClipboardList size={28} strokeWidth={1.2} />
+          <p>No exams available right now</p>
+          <span>Check back later or contact your lecturer</span>
         </div>
       {:else}
         <div class="exam-list">
-          {#each recentExams as exam}
+          {#each availableExams.slice(0, 5) as exam}
             <div class="exam-row">
-              <div class="exam-row-left">
-                <div class="exam-dot" style="background: {statusColor(exam.status)}"></div>
-                <div class="exam-row-info">
-                  <span class="exam-row-title">{exam.title}</span>
-                  <span class="exam-row-course">{exam.courseCode} — {exam.courseTitle}</span>
+              <div class="exam-status-indicator" class:ind-active={exam.status === 'active'} class:ind-scheduled={exam.status === 'scheduled'}></div>
+              <div class="exam-details">
+                <div class="exam-top">
+                  <span class="exam-title">{exam.title}</span>
+                  <span class="exam-pill {examStatusColor(exam.status)}">
+                    {exam.status === 'active' ? 'Live' : 'Scheduled'}
+                  </span>
+                </div>
+                <div class="exam-bottom">
+                  <span class="exam-course">{exam.course?.code ?? ''} · {exam.course?.title ?? ''}</span>
+                  <span class="exam-dots">
+                    <Clock size={10} />{exam.durationMinutes}min
+                    <span class="dot">·</span>
+                    <Target size={10} />{exam.questionsToPresent || exam._count?.questions} q's
+                    {#if exam.scheduledStart}
+                      <span class="dot">·</span>
+                      <Calendar size={10} />{formatDate(exam.scheduledStart)}
+                    {/if}
+                  </span>
                 </div>
               </div>
-              <div class="exam-row-right">
-                {#if exam.scheduledStart}
-                  {@const days = daysUntil(exam.scheduledStart)}
-                  {#if days !== null && days <= 7 && days > 0}
-                    <span class="exam-countdown"><Zap size={11} /> {days}d left</span>
-                  {:else}
-                    <span class="exam-date"><Calendar size={11} /> {formatDate(exam.scheduledStart)}</span>
-                  {/if}
-                {/if}
-                {#if !student.hasFaceEnrolled}
-                  <button 
-                    class="exam-btn disabled" 
-                    disabled 
-                    title="Face enrollment required to take exams"
-                    onclick={startEnrollment}>
-                    Enroll Face First
-                  </button>
-                {:else if exam.sessionStatus === 'active' || exam.sessionStatus === 'in_progress'}
-                  <a href="/student/exam/{exam.sessionId}" class="exam-btn primary">Resume</a>
-                {:else if exam.status === 'active'}
-                  <a href="/student/exam/{exam.id}" class="exam-btn primary">Start</a>
+              <div class="exam-cta">
+                {#if exam.status === 'active'}
+                  <a href="/student/exam/{exam.id}" class="btn-start">
+                    <PlayCircle size={13} />
+                    Start
+                  </a>
                 {:else}
-                  <span class="exam-btn ghost">Scheduled</span>
+                  <span class="btn-waiting">
+                    <Lock size={12} />
+                    Waiting
+                  </span>
                 {/if}
               </div>
             </div>
@@ -290,343 +190,378 @@
       {/if}
     </section>
 
-    <!-- Recent results -->
-    <section class="dash-section">
-      <div class="section-head">
-        <Award size={16} />
-        <h2>Recent Results</h2>
-        <a href="/student/results" class="section-link">View all <ArrowRight size={12} /></a>
+    <!-- Recent Results -->
+    <section class="card">
+      <div class="card-head">
+        <div class="card-head-l">
+          <BarChart3 size={15} />
+          <h2>Recent Results</h2>
+        </div>
+        <a href="/student/results" class="see-all">All results <ChevronRight size={13} /></a>
       </div>
+
       {#if recentResults.length === 0}
-        <div class="empty-state">
-          <TrendingUp size={28} strokeWidth={1.5} />
-          <p>No results available yet.</p>
+        <div class="empty sm">
+          <Award size={22} strokeWidth={1.3} />
+          <p>No results yet</p>
         </div>
       {:else}
-        <div class="result-list">
-          {#each recentResults as result}
-            <div class="result-row">
-              <div class="result-row-left">
-                <div class="result-grade" class:pass={result.passed} class:fail={!result.passed}>
-                  {result.grade ?? '—'}
-                </div>
-              <div class="result-row-info">
-                  <span class="result-row-title">{result.examTitle}</span>
-                  <span class="result-row-course">{result.courseCode ?? '—'}</span>
+        <div class="results-list">
+          {#each recentResults.slice(0, 5) as result}
+            <a href="/student/results/{result.id}" class="result-row">
+              <div class="grade-badge {gradeColor(Number(result.percentage ?? 0))}">
+                {gradeLabel(Number(result.percentage ?? 0))}
+              </div>
+              <div class="result-info">
+                <span class="result-title">{result.exam?.title ?? '—'}</span>
+                <span class="result-meta">{result.exam?.course?.code ?? ''} &middot; {Math.round(Number(result.percentage ?? 0))}%</span>
+              </div>
+              <div class="result-bar-wrap">
+                <div class="result-bar">
+                  <div class="result-fill {gradeColor(Number(result.percentage ?? 0))}-fill" style="width:{Math.min(Number(result.percentage ?? 0), 100)}%"></div>
                 </div>
               </div>
-              <div class="result-row-right">
-                <span class="result-score">{result.percentage ?? result.score ?? 0}%</span>
-                <span class="result-date">{result.submittedAt ? formatDate(result.submittedAt) : '—'}</span>
-              </div>
-            </div>
+            </a>
           {/each}
         </div>
       {/if}
     </section>
+
+    <!-- My Courses -->
+    <section class="card">
+      <div class="card-head">
+        <div class="card-head-l">
+          <BookMarked size={15} />
+          <h2>My Courses</h2>
+        </div>
+        <a href="/student/courses" class="see-all">All <ChevronRight size={13} /></a>
+      </div>
+
+      {#if registeredCourses.length === 0}
+        <div class="empty sm">
+          <BookOpen size={22} strokeWidth={1.3} />
+          <p>No courses registered</p>
+          <a href="/student/courses/register" class="register-link">Register courses</a>
+        </div>
+      {:else}
+        <div class="courses-list">
+          {#each registeredCourses.slice(0, 6) as reg}
+            <div class="course-row">
+              <div class="course-icon">
+                <BookOpen size={13} />
+              </div>
+              <div class="course-info">
+                <span class="course-code">{reg.course?.code}</span>
+                <span class="course-title">{reg.course?.title}</span>
+              </div>
+              <span class="course-credits">{reg.course?.creditUnits ?? 2} cr</span>
+            </div>
+          {/each}
+        </div>
+        {#if registeredCourses.length > 6}
+          <div class="courses-more">
+            <a href="/student/courses">+{registeredCourses.length - 6} more courses</a>
+          </div>
+        {/if}
+      {/if}
+    </section>
+
   </div>
 </div>
 
-<!-- Face Enrollment Modal -->
-<FaceEnrollmentModal
-  open={showEnrollmentModal}
-  onClose={handleEnrollmentClose}
-  onComplete={handleEnrollmentComplete}
-/>
-
 <style>
-  .dashboard { display: flex; flex-direction: column; gap: 1.5rem; }
-
-  .dash-header { display: flex; align-items: flex-end; justify-content: space-between; gap: 1rem; flex-wrap: wrap; }
-  .dash-header h1 { font-size: 1.35rem; font-weight: 800; color: var(--color-text); margin: 0; }
-  .dash-sub { font-size: 0.78rem; color: var(--color-muted); margin: 0.25rem 0 0; }
-  .dash-meta { display: flex; gap: 0.5rem; flex-wrap: wrap; }
-  .meta-pill {
-    display: inline-flex; align-items: center; gap: 0.35rem;
-    padding: 0.35rem 0.7rem; border-radius: 999px;
-    background: var(--color-bg); border: 1px solid var(--color-border);
-    font-size: 0.72rem; font-weight: 600; color: var(--color-muted);
-  }
-  .meta-pill.alert { background: rgba(239,68,68,0.08); border-color: rgba(239,68,68,0.2); color: #dc2626; }
-
-  /* Face Enrollment Alert Banner */
-  .enrollment-alert {
-    background: linear-gradient(135deg, rgba(0, 201, 167, 0.08), rgba(0, 201, 167, 0.03));
-    border: 0;
-    border-radius: var(--radius-card);
-    padding: 1rem;
-    animation: slide-down 0.3s ease;
+  /* ── Tokens — Green for students ─────────────────────────── */
+  :root {
+    --g50:  #f0fdf4;
+    --g100: #dcfce7;
+    --g400: #4ade80;
+    --g500: #22c55e;
+    --g600: #16a34a;
+    --g700: #15803d;
+    --g-soft: rgba(22,163,74,0.08);
   }
 
-  .alert-content {
-    display: flex;
-    align-items: center;
-    gap: 1rem;
-    flex-wrap: wrap;
-  }
+  .page { display: flex; flex-direction: column; gap: 1.5rem; }
 
-  .alert-icon {
-    width: 40px;
-    height: 40px;
-    border-radius: 50%;
-    background: rgba(0, 201, 167, 0.1);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    color: #00c9a7;
-    flex-shrink: 0;
+  /* ── Welcome ─────────────────────────────────────────────── */
+  .welcome-header {
+    display: flex; align-items: flex-end; justify-content: space-between;
+    gap: 1rem; flex-wrap: wrap;
   }
-
-  .alert-text {
-    flex: 1;
-    min-width: 180px;
+  .welcome-greet {
+    display: inline-flex; align-items: center; gap: 0.4rem;
+    font-size: 0.78rem; color: var(--g700); margin-bottom: 0.375rem;
+    background: var(--g-soft); padding: 0.3rem 0.75rem;
+    border-radius: 20px; font-weight: 500;
   }
-
-  .alert-text strong {
-    display: block;
-    font-size: 0.85rem;
-    font-weight: 700;
-    color: var(--color-text);
-    margin-bottom: 0.2rem;
+  :global(.dark) .welcome-greet { color: var(--g400); }
+  :global(.greet-spark) { color: var(--g600); }
+  .welcome-greet strong { font-weight: 800; }
+  .welcome-title {
+    font-size: 1.55rem; font-weight: 900; color: var(--color-text);
+    letter-spacing: -0.03em; line-height: 1.15; margin: 0 0 0.5rem;
   }
-
-  .alert-text p {
-    margin: 0;
-    font-size: 0.75rem;
-    color: var(--color-muted);
-  }
-
-  .alert-actions {
-    display: flex;
-    gap: 0.5rem;
-    flex-shrink: 0;
-  }
-
-  .btn-enroll {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.5rem;
-    padding: 0.5rem 1rem;
-    background: linear-gradient(135deg, #00c9a7, #00b894);
-    color: white;
-    border: none;
-    border-radius: 0.5rem;
-    font-size: 0.75rem;
-    font-weight: 600;
-    cursor: pointer;
-    transition: all 0.15s;
-    max-width: 150px;
-    width: 140px;
-  }
-
-  .btn-enroll:hover:not(:disabled) {
-    transform: translateY(-1px);
-    box-shadow: 0 4px 12px rgba(0, 201, 167, 0.3);
-  }
-
-  .btn-enroll:disabled {
-    opacity: 0.6;
-    cursor: not-allowed;
-  }
-
-  .spinner-small {
-    width: 14px;
-    height: 14px;
-    border: 2px solid rgba(255, 255, 255, 0.3);
-    border-top-color: white;
-    border-radius: 50%;
-    animation: spin 0.6s linear infinite;
-    display: inline-block;
-  }
-
-  /* Student info card */
-  .student-info-card {
-    background: linear-gradient(135deg, var(--color-surface), var(--color-bg));
-    border: 1px solid var(--color-border);
-    border-radius: var(--radius-card);
-    padding: 1.125rem;
-  }
-  .info-header {
-    display: flex; align-items: center; justify-content: space-between;
-    margin-bottom: 1rem; flex-wrap: wrap; gap: 0.5rem;
-  }
-  .info-title { display: flex; align-items: center; gap: 0.5rem; }
-  .info-title h3 { margin: 0; font-size: 0.9rem; font-weight: 700; color: var(--color-text); }
-  .reg-badge {
-    font-size: 0.65rem; font-weight: 700; padding: 0.25rem 0.6rem;
-    border-radius: 999px; text-transform: uppercase; letter-spacing: 0.04em;
-  }
-  .reg-badge.open { background: var(--green-soft); color: var(--green-700); border: 1px solid var(--green-600); }
-  .reg-badge.closed { background: rgba(220,38,38,0.1); color: #dc2626; border: 1px solid rgba(220,38,38,0.3); }
-  
-  .info-grid {
-    display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
-    gap: 0.75rem; margin-bottom: 1rem;
-  }
-  .info-item { display: flex; flex-direction: column; gap: 0.2rem; }
-  .info-label { font-size: 0.65rem; color: var(--color-muted); text-transform: uppercase; letter-spacing: 0.04em; }
-  .info-value { font-size: 0.85rem; font-weight: 700; color: var(--color-text); }
-
-  .credit-section {
-    padding-top: 0.75rem; border-top: 1px solid var(--color-border);
-    margin-bottom: 0.75rem;
-  }
-  .credit-header {
-    display: flex; align-items: center; gap: 0.5rem;
+  .welcome-meta { display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap; }
+  .meta-chip {
+    display: inline-flex; align-items: center; gap: 0.3rem;
     font-size: 0.7rem; font-weight: 600; color: var(--color-muted);
-    margin-bottom: 0.5rem;
+    background: var(--color-bg); border: 1px solid var(--color-border);
+    padding: 0.2rem 0.6rem; border-radius: 20px;
   }
-  .credit-stats { margin-left: auto; font-weight: 700; color: var(--color-text); }
-  .progress-bar {
-    height: 5px; background: var(--color-border); border-radius: 3px;
-    overflow: hidden; margin-bottom: 0.35rem;
+  .score-chip { color: var(--g700); background: var(--g-soft); border-color: transparent; }
+  :global(.dark) .score-chip { color: var(--g400); }
+  .exam-now-btn {
+    display: inline-flex; align-items: center; gap: 0.45rem;
+    padding: 0.625rem 1.25rem; background: var(--g600); color: #fff;
+    border-radius: 10px; font-size: 0.83rem; font-weight: 800;
+    text-decoration: none; animation: pulse-btn 2s ease-in-out infinite;
+    white-space: nowrap;
   }
-  .progress-fill {
-    height: 100%; border-radius: 3px;
-    transition: width 0.3s ease;
-  }
-  .remaining-text { font-size: 0.65rem; color: var(--color-muted); }
-  .remaining-text.warning { color: #dc2626; font-weight: 600; }
+  .exam-now-btn:hover { background: var(--g700); animation: none; }
 
-  .limit-warnings {
-    display: flex; flex-wrap: wrap; gap: 0.5rem;
-    padding-top: 0.5rem;
+  /* ── Stats ───────────────────────────────────────────────── */
+  .stats-row {
+    display: grid; grid-template-columns: repeat(4, 1fr); gap: 0.75rem;
   }
-  .warning-chip {
-    display: inline-flex; align-items: center; gap: 0.35rem;
-    font-size: 0.65rem; font-weight: 600;
-    padding: 0.25rem 0.6rem; border-radius: 999px;
-    background: rgba(245,158,11,0.1); color: #b45309;
-  }
-  .warning-chip.error { background: rgba(220,38,38,0.1); color: #dc2626; }
+  @media (max-width: 640px) { .stats-row { grid-template-columns: repeat(2, 1fr); } }
 
-  .stat-cards {
+  .stat-card {
+    background: var(--color-surface); border: 1px solid var(--color-border);
+    border-radius: 14px; padding: 1rem; display: flex; align-items: center; gap: 0.75rem;
+    position: relative; overflow: hidden;
+    transition: border-color 0.15s;
+  }
+  .stat-card.active-card { border-color: rgba(22,163,74,0.4); }
+  .stat-icon {
+    width: 40px; height: 40px; border-radius: 10px; flex-shrink: 0;
+    display: flex; align-items: center; justify-content: center;
+  }
+  .icon-live    { background: rgba(22,163,74,0.12); color: var(--g600); }
+  .icon-neutral { background: var(--color-bg); color: var(--color-muted); }
+  .icon-soon    { background: rgba(14,165,233,0.1); color: #0ea5e9; }
+  .icon-done    { background: rgba(16,185,129,0.1); color: #10b981; }
+  .icon-avg     { background: rgba(168,85,247,0.1); color: #a855f7; }
+  .stat-body { display: flex; flex-direction: column; }
+  .stat-val {
+    font-size: 1.6rem; font-weight: 900; color: var(--color-text);
+    letter-spacing: -0.04em; line-height: 1;
+  }
+  .stat-val.good { color: var(--g600); }
+  .pct { font-size: 0.9rem; font-weight: 600; opacity: 0.6; }
+  .stat-lbl {
+    font-size: 0.68rem; font-weight: 600; text-transform: uppercase;
+    letter-spacing: 0.05em; color: var(--color-muted); margin-top: 0.15rem;
+  }
+  .live-pulse {
+    position: absolute; top: 10px; right: 10px;
+    width: 8px; height: 8px; border-radius: 50%; background: var(--g500);
+    animation: pulse-ring 1.5s ease-in-out infinite;
+  }
+
+  /* ── Main grid ───────────────────────────────────────────── */
+  .main-grid {
     display: grid;
-    grid-template-columns: repeat(3, 1fr);
+    grid-template-columns: 1fr 1fr;
+    grid-template-rows: auto auto;
     gap: 0.875rem;
   }
-  @media (max-width: 640px) {
-    .stat-cards { grid-template-columns: 1fr; }
+  .span-wide { grid-column: 1 / -1; }
+  @media (max-width: 860px) {
+    .main-grid { grid-template-columns: 1fr; }
+    .span-wide { grid-column: 1; }
   }
-  .stat-card {
-    display: flex; align-items: center; gap: 0.875rem;
-    padding: 1rem; border-radius: var(--radius-card);
+
+  /* ── Cards ───────────────────────────────────────────────── */
+  .card {
     background: var(--color-surface); border: 1px solid var(--color-border);
-    text-decoration: none; transition: all 0.15s;
+    border-radius: 14px; overflow: hidden;
   }
-  .stat-card:hover { border-color: var(--green-600); transform: translateY(-1px); box-shadow: 0 4px 12px rgba(0,0,0,0.06); }
-  .stat-card-icon {
-    width: 40px; height: 40px; border-radius: 0.625rem;
-    display: flex; align-items: center; justify-content: center; flex-shrink: 0;
+  .card-head {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 0.875rem 1.125rem; border-bottom: 1px solid var(--color-border);
   }
-  .stat-card-info { flex: 1; min-width: 0; }
-  .stat-card-value { display: block; font-size: 1.25rem; font-weight: 800; color: var(--color-text); }
-  .stat-card-label { display: block; font-size: 0.72rem; color: var(--color-muted); margin-top: 2px; }
-  .stat-card-arrow { color: var(--color-muted); flex-shrink: 0; transition: transform 0.15s; }
-  .stat-card:hover .stat-card-arrow { transform: translateX(2px); color: var(--green-600); }
+  .card-head-l {
+    display: flex; align-items: center; gap: 0.5rem; color: var(--g600);
+  }
+  .card-head-l h2 {
+    font-size: 0.85rem; font-weight: 700; color: var(--color-text); margin: 0;
+  }
+  .live-chip {
+    display: inline-flex; align-items: center; gap: 0.3rem;
+    font-size: 0.6rem; font-weight: 800; text-transform: uppercase;
+    padding: 0.15rem 0.5rem; border-radius: 20px;
+    background: rgba(22,163,74,0.1); color: var(--g700);
+  }
+  :global(.dark) .live-chip { color: var(--g400); }
+  .live-dot {
+    width: 5px; height: 5px; border-radius: 50%; background: var(--g500);
+    animation: pulse 1.5s ease-in-out infinite;
+  }
+  .see-all {
+    display: inline-flex; align-items: center; gap: 0.15rem;
+    font-size: 0.7rem; font-weight: 600; color: var(--g600); text-decoration: none;
+  }
+  .see-all:hover { text-decoration: underline; }
 
-  .dash-grid {
-    display: grid;
-    grid-template-columns: 1.4fr 1fr;
-    gap: 1.25rem;
-  }
-  @media (max-width: 900px) {
-    .dash-grid { grid-template-columns: 1fr; }
-  }
-
-  .dash-section {
-    background: var(--color-surface); border: 1px solid var(--color-border);
-    border-radius: var(--radius-card); overflow: hidden;
-  }
-  .section-head {
-    display: flex; align-items: center; gap: 0.5rem;
-    padding: 1rem 1.125rem; border-bottom: 1px solid var(--color-border);
-    font-size: 0.85rem; font-weight: 700; color: var(--color-text);
-  }
-  .section-link {
-    margin-left: auto;
-    display: inline-flex; align-items: center; gap: 0.25rem;
-    font-size: 0.72rem; font-weight: 600; color: var(--color-muted);
-    text-decoration: none; transition: color 0.12s;
-  }
-  .section-link:hover { color: var(--green-600); }
-
-  .empty-state {
-    display: flex; flex-direction: column; align-items: center; gap: 0.5rem;
-    padding: 2.5rem 1rem; color: var(--color-muted); text-align: center;
-  }
-  .empty-state p { margin: 0; font-size: 0.8rem; }
-  .empty-state a { color: var(--green-600); font-weight: 600; text-decoration: none; font-size: 0.78rem; }
-  .empty-state a:hover { text-decoration: underline; }
-
+  /* ── Exam list ───────────────────────────────────────────── */
   .exam-list { display: flex; flex-direction: column; }
   .exam-row {
-    display: flex; align-items: center; justify-content: space-between;
-    gap: 1rem; padding: 0.875rem 1.125rem;
-    border-bottom: 1px solid var(--color-border);
-    transition: background 0.1s;
+    display: flex; align-items: center; gap: 0.875rem;
+    padding: 0.9rem 1.125rem; border-bottom: 1px solid var(--color-border);
+    transition: background 0.12s;
   }
   .exam-row:last-child { border-bottom: none; }
   .exam-row:hover { background: var(--color-bg); }
-  .exam-row-left { display: flex; align-items: center; gap: 0.625rem; min-width: 0; flex: 1; }
-  .exam-dot { width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; }
-  .exam-row-info { display: flex; flex-direction: column; min-width: 0; }
-  .exam-row-title { font-size: 0.82rem; font-weight: 600; color: var(--color-text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  .exam-row-course { font-size: 0.72rem; color: var(--color-muted); }
-  .exam-row-right { display: flex; align-items: center; gap: 0.625rem; flex-shrink: 0; }
-  .exam-date { font-size: 0.72rem; color: var(--color-muted); display: flex; align-items: center; gap: 0.25rem; }
-  .exam-countdown { font-size: 0.68rem; font-weight: 700; color: #f59e0b; display: flex; align-items: center; gap: 0.25rem; }
-  .exam-btn {
-    padding: 0.35rem 0.75rem; border-radius: 0.4rem; font-size: 0.72rem; font-weight: 700;
-    text-decoration: none; white-space: nowrap; transition: all 0.15s;
-  }
-  .exam-btn.primary { background: var(--green-600); color: white; }
-  .exam-btn.primary:hover { background: var(--green-700); }
-  .exam-btn.disabled {
-    background: var(--color-border);
-    color: var(--color-muted);
-    cursor: not-allowed;
-    opacity: 0.6;
-  }
-  .exam-btn.ghost { background: var(--color-bg); color: var(--color-muted); border: 1px solid var(--color-border); cursor: default; }
 
-  .result-list { display: flex; flex-direction: column; }
+  .exam-status-indicator {
+    width: 3px; height: 36px; border-radius: 2px; flex-shrink: 0;
+    background: var(--color-border);
+  }
+  .ind-active    { background: var(--g500); }
+  .ind-scheduled { background: #38bdf8; }
+
+  .exam-details { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 0.3rem; }
+  .exam-top { display: flex; align-items: center; gap: 0.625rem; }
+  .exam-title {
+    font-size: 0.85rem; font-weight: 700; color: var(--color-text);
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis; flex: 1;
+  }
+  .exam-pill {
+    font-size: 0.6rem; font-weight: 800; text-transform: uppercase;
+    letter-spacing: 0.04em; padding: 0.18rem 0.55rem; border-radius: 20px;
+    flex-shrink: 0;
+  }
+  .pill-active    { background: rgba(22,163,74,0.12);  color: var(--g700); }
+  .pill-scheduled { background: rgba(14,165,233,0.12); color: #0369a1; }
+  :global(.dark) .pill-active    { color: var(--g400); }
+  :global(.dark) .pill-scheduled { color: #38bdf8; }
+
+  .exam-bottom { display: flex; align-items: center; gap: 0.4rem; flex-wrap: wrap; }
+  .exam-course { font-size: 0.7rem; color: var(--color-muted); font-weight: 500; }
+  .exam-dots {
+    display: flex; align-items: center; gap: 0.3rem;
+    font-size: 0.68rem; color: var(--color-muted);
+  }
+  .dot { opacity: 0.4; }
+
+  .exam-cta { flex-shrink: 0; }
+  .btn-start {
+    display: inline-flex; align-items: center; gap: 0.35rem;
+    padding: 0.45rem 0.9rem; background: var(--g600); color: #fff;
+    border-radius: 8px; font-size: 0.75rem; font-weight: 800;
+    text-decoration: none; transition: background 0.15s;
+  }
+  .btn-start:hover { background: var(--g700); }
+  .btn-waiting {
+    display: inline-flex; align-items: center; gap: 0.3rem;
+    padding: 0.45rem 0.75rem;
+    background: var(--color-bg); color: var(--color-muted);
+    border: 1px solid var(--color-border);
+    border-radius: 8px; font-size: 0.72rem; font-weight: 600;
+  }
+
+  /* ── Results ─────────────────────────────────────────────── */
+  .results-list { display: flex; flex-direction: column; }
   .result-row {
-    display: flex; align-items: center; justify-content: space-between;
-    gap: 1rem; padding: 0.875rem 1.125rem;
-    border-bottom: 1px solid var(--color-border);
-    transition: background 0.1s;
+    display: flex; align-items: center; gap: 0.75rem;
+    padding: 0.75rem 1.125rem; border-bottom: 1px solid var(--color-border);
+    text-decoration: none; transition: background 0.12s;
   }
   .result-row:last-child { border-bottom: none; }
   .result-row:hover { background: var(--color-bg); }
-  .result-row-left { display: flex; align-items: center; gap: 0.625rem; min-width: 0; flex: 1; }
-  .result-grade {
-    width: 32px; height: 32px; border-radius: 50%; flex-shrink: 0;
+
+  .grade-badge {
+    width: 34px; height: 34px; border-radius: 9px; flex-shrink: 0;
     display: flex; align-items: center; justify-content: center;
-    font-size: 0.7rem; font-weight: 800; color: white;
-    background: var(--color-border); color: var(--color-muted);
+    font-size: 0.8rem; font-weight: 900;
   }
-  .result-grade.pass { background: var(--green-600); color: white; }
-  .result-grade.fail { background: #dc2626; color: white; }
-  .result-row-info { display: flex; flex-direction: column; min-width: 0; }
-  .result-row-title { font-size: 0.82rem; font-weight: 600; color: var(--color-text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  .result-row-course { font-size: 0.72rem; color: var(--color-muted); }
-  .result-row-right { display: flex; flex-direction: column; align-items: flex-end; flex-shrink: 0; }
-  .result-score { font-size: 0.9rem; font-weight: 800; color: var(--color-text); }
-  .result-date { font-size: 0.68rem; color: var(--color-muted); }
+  .grade-a { background: rgba(22,163,74,0.12); color: #065f46; }
+  .grade-b { background: rgba(14,165,233,0.12); color: #0369a1; }
+  .grade-c { background: rgba(245,158,11,0.12); color: #92400e; }
+  .grade-d { background: rgba(249,115,22,0.12); color: #9a3412; }
+  .grade-f { background: rgba(220,38,38,0.12);  color: #991b1b; }
+  :global(.dark) .grade-a { color: #4ade80; }
+  :global(.dark) .grade-b { color: #38bdf8; }
+  :global(.dark) .grade-c { color: #fbbf24; }
+  :global(.dark) .grade-f { color: #f87171; }
 
-  @keyframes slide-down {
-    from {
-      opacity: 0;
-      transform: translateY(-20px);
-    }
-    to {
-      opacity: 1;
-      transform: translateY(0);
-    }
+  .result-info { flex: 1; min-width: 0; }
+  .result-title {
+    font-size: 0.8rem; font-weight: 600; color: var(--color-text);
+    display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .result-meta { font-size: 0.68rem; color: var(--color-muted); }
+
+  .result-bar-wrap { width: 60px; flex-shrink: 0; }
+  .result-bar { height: 4px; background: var(--color-border); border-radius: 2px; overflow: hidden; }
+  .result-fill { height: 100%; border-radius: 2px; }
+  .grade-a-fill { background: var(--g500); }
+  .grade-b-fill { background: #38bdf8; }
+  .grade-c-fill { background: #f59e0b; }
+  .grade-d-fill { background: #f97316; }
+  .grade-f-fill { background: #ef4444; }
+
+  /* ── Courses ─────────────────────────────────────────────── */
+  .courses-list { display: flex; flex-direction: column; }
+  .course-row {
+    display: flex; align-items: center; gap: 0.625rem;
+    padding: 0.65rem 1.125rem; border-bottom: 1px solid var(--color-border);
+  }
+  .course-row:last-child { border-bottom: none; }
+  .course-icon {
+    width: 28px; height: 28px; border-radius: 7px; flex-shrink: 0;
+    background: var(--g-soft); color: var(--g700);
+    display: flex; align-items: center; justify-content: center;
+  }
+  :global(.dark) .course-icon { color: var(--g400); }
+  .course-info { flex: 1; min-width: 0; }
+  .course-code {
+    display: block; font-size: 0.68rem; font-weight: 800;
+    color: var(--g700); text-transform: uppercase; letter-spacing: 0.04em;
+  }
+  :global(.dark) .course-code { color: var(--g400); }
+  .course-title {
+    display: block; font-size: 0.75rem; color: var(--color-muted);
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .course-credits {
+    font-size: 0.65rem; font-weight: 700;
+    background: var(--color-bg); border: 1px solid var(--color-border);
+    color: var(--color-muted); padding: 0.15rem 0.45rem; border-radius: 6px;
+    flex-shrink: 0;
+  }
+  .courses-more {
+    padding: 0.5rem 1.125rem; border-top: 1px solid var(--color-border);
+    text-align: center;
+  }
+  .courses-more a {
+    font-size: 0.72rem; font-weight: 600; color: var(--g600); text-decoration: none;
+  }
+  .courses-more a:hover { text-decoration: underline; }
+  .register-link {
+    display: inline-block; margin-top: 0.35rem;
+    font-size: 0.75rem; font-weight: 700; color: var(--g600); text-decoration: none;
   }
 
-  @keyframes spin {
-    to { transform: rotate(360deg); }
+  /* ── Empty states ────────────────────────────────────────── */
+  .empty {
+    display: flex; flex-direction: column; align-items: center; gap: 0.5rem;
+    padding: 2rem 1rem; color: var(--color-muted); text-align: center;
+  }
+  .empty p { font-size: 0.82rem; font-weight: 600; margin: 0; color: var(--color-text); }
+  .empty span { font-size: 0.72rem; }
+  .empty.sm { padding: 1.25rem 1rem; }
+  .empty.sm p { font-size: 0.78rem; }
+
+  /* ── Animations ──────────────────────────────────────────── */
+  @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.3; } }
+  @keyframes pulse-ring {
+    0%   { box-shadow: 0 0 0 0 rgba(34,197,94,0.4); }
+    70%  { box-shadow: 0 0 0 8px rgba(34,197,94,0); }
+    100% { box-shadow: 0 0 0 0 rgba(34,197,94,0); }
+  }
+  @keyframes pulse-btn {
+    0%,100% { box-shadow: 0 0 0 0 rgba(22,163,74,0.4); }
+    50%     { box-shadow: 0 4px 20px rgba(22,163,74,0.35); }
   }
 </style>
