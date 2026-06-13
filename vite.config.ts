@@ -3,7 +3,6 @@ import { sveltekit } from '@sveltejs/kit/vite';
 import { defineConfig } from 'vite';
 import basicSsl from '@vitejs/plugin-basic-ssl';
 import { nodePolyfills } from 'vite-plugin-node-polyfills';
-import path from 'path';
 
 export default defineConfig(() => {
   return {
@@ -33,7 +32,6 @@ export default defineConfig(() => {
       },
     },
 
-    // Optimize dependencies for better performance
     optimizeDeps: {
       include: [
         '@vladmandic/human',
@@ -47,7 +45,6 @@ export default defineConfig(() => {
       ]
     },
 
-    // Ensure Node.js modules aren't bundled into client
     ssr: {
       noExternal: ['@vladmandic/human'],
       external: [
@@ -56,28 +53,24 @@ export default defineConfig(() => {
         'crypto', 
         '@tensorflow/tfjs-node', 
         '@tensorflow/tfjs-node-gpu',
-        'sharp' // Often used with human
+        'sharp'
       ],
     },
 
-    // Define global variables for TensorFlow.js
     define: {
       'process.env': {},
       'global': 'globalThis',
     },
 
-    // Resolve aliases - pnpm specific
     resolve: {
       alias: {
-        // Force browser versions for Node-specific imports
         '@tensorflow/tfjs-node': '@tensorflow/tfjs',
         '@tensorflow/tfjs-node-gpu': '@tensorflow/tfjs',
       },
-      // This helps pnpm resolve modules correctly
       preserveSymlinks: false,
     },
 
-    // Build configuration
+    // REMOVED manualChunks - not needed for your case
     build: {
       commonjsOptions: {
         transformMixedEsModules: true,
@@ -85,12 +78,7 @@ export default defineConfig(() => {
       },
       rollupOptions: {
         external: ['@tensorflow/tfjs-node', '@tensorflow/tfjs-node-gpu'],
-        output: {
-          // Help with pnpm's module structure
-          manualChunks: {
-            'tfjs': ['@tensorflow/tfjs', '@tensorflow/tfjs-backend-webgl'],
-          }
-        }
+        // Remove manualChunks entirely
       }
     }
   };
