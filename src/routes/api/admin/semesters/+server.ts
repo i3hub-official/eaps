@@ -10,7 +10,6 @@ import { json }         from '@sveltejs/kit';
 import type { RequestHandler } from '@sveltejs/kit';
 import { prisma }        from '$lib/server/db/index.js';
 import { requireAdmin }  from '$lib/server/auth/guards.js';
-import { advanceSemesterIfDue, semesterLabel } from '$lib/server/academic/semester.js';
 
 // ── GET — list ────────────────────────────────────────────────────────────────
 export const GET: RequestHandler = async ({ locals }) => {

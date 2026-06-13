@@ -124,7 +124,7 @@ export async function advanceSemesterIfDue(): Promise<{ advanced: boolean; curre
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
-function semesterLabel(session: string, semester: number): string {
+export function semesterLabel(session: string, semester: number): string {
   const ordinal = semester === 1 ? 'First' : 'Second';
   return `${ordinal} Semester ${session}`;
 }
