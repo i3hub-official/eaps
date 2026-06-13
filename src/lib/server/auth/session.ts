@@ -1,7 +1,8 @@
 // src/lib/server/auth/session.ts
 import { randomBytes } from 'crypto';
-import { prisma } from '$lib/server/db/index.js';
+import { getPrismaClient } from '$lib/server/db/index.js';
 import type { Cookies } from '@sveltejs/kit';
+
 
 const SESSION_COOKIE = 'etest_session';
 const SESSION_TTL_DAYS = 7;
@@ -13,6 +14,8 @@ export async function createSession(
   ipAddress?: string,
   userAgent?: string
 ): Promise<string> {
+    const prisma = await getPrismaClient();
+
   const token = randomBytes(32).toString('hex');
   const expiresAt = new Date(Date.now() + SESSION_TTL_DAYS * 86_400_000);
 
@@ -25,17 +28,9 @@ export async function createSession(
 
 // ─── Validate ─────────────────────────────────────────────────────────────────
 
-// Use a type that includes the relations we need
-type UserWithRelations = Awaited<ReturnType<typeof prisma.user.findUnique<{
-  include: {
-    level: true;
-    department: true;
-    programme: true;
-    college: true;
-  };
-}>>>;
+export async function validateSession(token: string) {
+  const prisma = await getPrismaClient();
 
-export async function validateSession(token: string): Promise<UserWithRelations | null> {
   const session = await prisma.authSession.findUnique({
     where: { token },
     include: {
@@ -63,10 +58,14 @@ export async function validateSession(token: string): Promise<UserWithRelations 
 // ─── Destroy ──────────────────────────────────────────────────────────────────
 
 export async function destroySession(token: string): Promise<void> {
+  const prisma = await getPrismaClient();
+
   await prisma.authSession.deleteMany({ where: { token } });
 }
 
 export async function destroyAllUserSessions(userId: string): Promise<void> {
+  const prisma = await getPrismaClient();
+
   await prisma.authSession.deleteMany({ where: { userId } });
 }
 
@@ -97,6 +96,8 @@ export async function deleteSession(token: string): Promise<void> {
 // ─── Cleanup job ──────────────────────────────────────────────────────────────
 
 export async function purgeExpiredSessions(): Promise<number> {
+  const prisma = await getPrismaClient();
+
   const { count } = await prisma.authSession.deleteMany({
     where: { expiresAt: { lt: new Date() } },
   });

@@ -1,11 +1,14 @@
 // src/routes/admin/manage/colleges/+page.server.ts
 import type { PageServerLoad, Actions } from './$types';
 import { requireAdmin } from '$lib/server/auth/guards.js';
-import { prisma } from '$lib/server/db/index.js';
+import { getPrismaClient } from '$lib/server/db/index.js';
 import { fail } from '@sveltejs/kit';
 
 export const load: PageServerLoad = async ({ locals }) => {
   requireAdmin(locals.user);
+
+      const prisma = await getPrismaClient();
+
 
   const colleges = await prisma.college.findMany({
     include: {
@@ -20,6 +23,8 @@ export const load: PageServerLoad = async ({ locals }) => {
 export const actions: Actions = {
   create: async ({ request, locals }) => {
     requireAdmin(locals.user);
+        const prisma = await getPrismaClient();
+
     const data = await request.formData();
     const name = data.get('name') as string;
     const code = data.get('code') as string || null;
@@ -44,6 +49,8 @@ export const actions: Actions = {
 
   edit: async ({ request, locals }) => {
     requireAdmin(locals.user);
+        const prisma = await getPrismaClient();
+
     const data = await request.formData();
     const id = parseInt(data.get('id') as string);
     const name = data.get('name') as string;
@@ -70,6 +77,8 @@ export const actions: Actions = {
 
   delete: async ({ request, locals }) => {
     requireAdmin(locals.user);
+        const prisma = await getPrismaClient();
+
     const data = await request.formData();
     const id = parseInt(data.get('id') as string);
 

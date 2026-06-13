@@ -1,5 +1,5 @@
 // src/lib/server/db/audit.ts
-import { prisma } from './index.js';
+import { getPrismaClient } from './index.js';
 import { Prisma } from '@prisma/client';
 
 interface AuditOptions {
@@ -11,6 +11,8 @@ interface AuditOptions {
 }
 
 export async function log(action: string, opts: AuditOptions = {}): Promise<void> {
+  const prisma = await getPrismaClient();
+
   try {
     await prisma.auditLog.create({
       data: {

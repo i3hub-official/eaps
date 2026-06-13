@@ -1,9 +1,12 @@
 // src/lib/server/db/api-keys.ts
 // CRUD + validation helpers for API key management
 
-import { prisma } from './index.js';
+import { getPrismaClient } from './index.js';
 import { randomBytes, createHash } from 'crypto';
+
 import type { ApiScope, ApiKeyStatus } from '@prisma/client';
+
+
 
 // ── Key generation ────────────────────────────────────────────────────────────
 
@@ -27,6 +30,8 @@ export async function createApiKey(params: {
   expiresAt?: Date | null;
   ipWhitelist?: string[];
 }) {
+  const prisma = await getPrismaClient();
+
   const { raw, prefix, hash } = generateRawKey();
 
   const key = await prisma.apiKey.create({
@@ -53,6 +58,8 @@ export async function listApiKeys(opts?: {
   limit?: number;
   offset?: number;
 }) {
+  const prisma = await getPrismaClient();
+
   const where = {
     ...(opts?.status ? { status: opts.status } : {}),
     ...(opts?.createdById ? { createdById: opts.createdById } : {}),
@@ -79,6 +86,8 @@ export async function listApiKeys(opts?: {
 // ── Get one ───────────────────────────────────────────────────────────────────
 
 export async function getApiKey(id: string) {
+  const prisma = await getPrismaClient();
+
   return prisma.apiKey.findUnique({
     where: { id },
     include: {
@@ -99,6 +108,8 @@ export async function validateApiKey(
   raw: string,
   requiredScope?: ApiScope
 ): Promise<{ valid: boolean; keyId?: string; reason?: string }> {
+  const prisma = await getPrismaClient();
+
   const hash = hashKey(raw);
 
   const key = await prisma.apiKey.findUnique({ where: { keyHash: hash } });
@@ -127,6 +138,8 @@ export async function validateApiKey(
 // ── Revoke ────────────────────────────────────────────────────────────────────
 
 export async function revokeApiKey(id: string, revokedById: string) {
+  const prisma = await getPrismaClient();
+
   return prisma.apiKey.update({
     where: { id },
     data: { status: 'revoked', revokedAt: new Date(), revokedById },
@@ -139,6 +152,8 @@ export async function updateApiKey(
   id: string,
   data: { name?: string; scopes?: ApiScope[]; ipWhitelist?: string[] }
 ) {
+  const prisma = await getPrismaClient();
+
   return prisma.apiKey.update({ where: { id }, data });
 }
 
@@ -151,6 +166,8 @@ export async function deleteApiKey(id: string) {
 // ── Stats ─────────────────────────────────────────────────────────────────────
 
 export async function getApiKeyStats() {
+  const prisma = await getPrismaClient();
+
   const [total, active, revoked, expired, recentLogs] = await prisma.$transaction([
     prisma.apiKey.count(),
     prisma.apiKey.count({ where: { status: 'active' } }),
@@ -176,5 +193,7 @@ export async function logApiAccess(params: {
   ipAddress?: string;
   durationMs?: number;
 }) {
+  const prisma = await getPrismaClient();
+
   await prisma.apiAccessLog.create({ data: params }).catch(() => {});
 }

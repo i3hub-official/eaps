@@ -2,10 +2,13 @@
 import type { PageServerLoad, Actions } from './$types';
 import { fail, error } from '@sveltejs/kit';
 import { requireAdmin } from '$lib/server/auth/guards.js';
-import { prisma } from '$lib/server/db/index.js';
+import { getPrismaClient } from '$lib/server/db/index.js';
 
 export const load: PageServerLoad = async ({ locals, params }) => {
   await requireAdmin(locals.user);
+
+      const prisma = await getPrismaClient();
+
 
   const exam = await prisma.exam.findUnique({
     where: { id: params.examId },
@@ -38,6 +41,9 @@ export const actions: Actions = {
   // ── Add a single question ─────────────────────────────────────────────────
   addQuestion: async ({ request, locals, params }) => {
     await requireAdmin(locals.user);
+
+        const prisma = await getPrismaClient();
+
 
     const fd = await request.formData();
     const type = String(fd.get('type') ?? '').trim() as 'mcq' | 'fill_in_the_blank';
@@ -119,6 +125,9 @@ export const actions: Actions = {
   deleteQuestion: async ({ request, locals }) => {
     await requireAdmin(locals.user);
 
+        const prisma = await getPrismaClient();
+
+
     const fd = await request.formData();
     const questionId = String(fd.get('questionId') ?? '').trim();
     if (!questionId) return fail(400, { error: 'Question ID required' });
@@ -130,6 +139,9 @@ export const actions: Actions = {
   // ── Bulk import via JSON payload ──────────────────────────────────────────
   bulkImport: async ({ request, locals, params }) => {
     await requireAdmin(locals.user);
+
+        const prisma = await getPrismaClient();
+
 
     const fd = await request.formData();
     const raw = String(fd.get('questions_json') ?? '').trim();
@@ -246,6 +258,9 @@ export const actions: Actions = {
   // ── Update exam status ────────────────────────────────────────────────────
   updateStatus: async ({ request, locals, params }) => {
     await requireAdmin(locals.user);
+
+        const prisma = await getPrismaClient();
+
 
     const fd = await request.formData();
     const status = String(fd.get('status') ?? '').trim() as

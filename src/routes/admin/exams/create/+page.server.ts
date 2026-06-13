@@ -2,7 +2,7 @@
 import type { PageServerLoad, Actions } from './$types';
 import { fail, redirect } from '@sveltejs/kit';
 import { requireAdmin } from '$lib/server/auth/guards.js';
-import { prisma } from '$lib/server/db/index.js';
+import { getPrismaClient } from '$lib/server/db/index.js';
 
 export const load: PageServerLoad = async ({ locals, url }) => {
   await requireAdmin(locals.user);

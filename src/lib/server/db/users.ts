@@ -1,6 +1,6 @@
 // src/lib/server/db/users.ts
 
-import { prisma } from './index.js';
+import { getPrismaClient } from './index.js';
 import type { User, UserRole } from '@prisma/client';
 
 export type { User, UserRole };
@@ -13,23 +13,33 @@ const safeSelect = {
 } as const;
 
 export async function findUserById(id: string) {
+  const prisma = await getPrismaClient();
+
   return prisma.user.findUnique({ where: { id } });
 }
 
 export async function findUserByEmail(email: string) {
+  const prisma = await getPrismaClient();
+
   return prisma.user.findUnique({ where: { email: email.toLowerCase().trim() } });
 }
 
 export async function findUserByMatric(matricNumber: string) {
+  const prisma = await getPrismaClient();
+
   return prisma.user.findUnique({ where: { matricNumber: matricNumber.toUpperCase().trim() } });
 }
 
 export async function getSafeUser(id: string): Promise<SafeUser | null> {
+  const prisma = await getPrismaClient();
+
   return prisma.user.findUnique({ where: { id }, select: safeSelect });
 }
 
 // ✅ Fixed getUserById - using correct relation names from your schema
 export async function getUserById(id: string) {
+  const prisma = await getPrismaClient();
+
   return prisma.user.findUnique({
     where: { id },
     include: {
@@ -77,6 +87,8 @@ export async function getUserById(id: string) {
 }
 
 export async function listUsers(role?: UserRole): Promise<SafeUser[]> {
+  const prisma = await getPrismaClient();
+
   return prisma.user.findMany({
     where: role ? { role } : undefined,
     select: safeSelect,
@@ -85,6 +97,8 @@ export async function listUsers(role?: UserRole): Promise<SafeUser[]> {
 }
 
 export async function listStudentsByDepartment(departmentId: string): Promise<SafeUser[]> {
+  const prisma = await getPrismaClient();
+
   return prisma.user.findMany({
     where: { role: 'student', departmentId },
     select: safeSelect,
@@ -97,6 +111,8 @@ export async function createUser(input: {
   matricNumber?: string; staffId?: string; departmentId?: string;
   level?: number; photoUrl?: string;
 }) {
+  const prisma = await getPrismaClient();
+
   const data: any = {
     email: input.email.toLowerCase().trim(),
     fullName: input.fullName.trim(),
@@ -115,7 +131,6 @@ export async function createUser(input: {
   if (input.level != null) {
     data.level = { connect: { level: input.level } };  // was: { id: input.level }
   }
-
   return prisma.user.create({ data });
 }
 
@@ -123,6 +138,8 @@ export async function updateUser(id: string, input: {
   fullName?: string; email?: string; departmentId?: string;
   level?: number; photoUrl?: string; isActive?: boolean;
 }): Promise<SafeUser> {
+  const prisma = await getPrismaClient();
+
   const { level, departmentId, ...data } = input;
 
   return prisma.user.update({
@@ -137,24 +154,34 @@ export async function updateUser(id: string, input: {
 }
 
 export async function updatePasswordHash(id: string, passwordHash: string) {
+  const prisma = await getPrismaClient();
+
   await prisma.user.update({ where: { id }, data: { passwordHash } });
 }
 
 export async function deactivateUser(id: string) {
+  const prisma = await getPrismaClient();
+
   await prisma.user.update({ where: { id }, data: { isActive: false } });
 }
 
 export async function emailExists(email: string): Promise<boolean> {
+  const prisma = await getPrismaClient();
+
   const count = await prisma.user.count({ where: { email: email.toLowerCase().trim() } });
   return count > 0;
 }
 
 export async function matricExists(matricNumber: string): Promise<boolean> {
+  const prisma = await getPrismaClient();
+
   const count = await prisma.user.count({ where: { matricNumber: matricNumber.toUpperCase().trim() } });
   return count > 0;
 }
 
 export async function updatePhotoUrl(id: string, photoUrl: string) {
+  const prisma = await getPrismaClient();
+
   await prisma.user.update({ where: { id }, data: { photoUrl } });
 }
 

@@ -1,10 +1,13 @@
 import { redirect } from '@sveltejs/kit';
-import { prisma } from '$lib/server/db/index.js';
+import { getPrismaClient } from '$lib/server/db/index.js';
 import type { Cookies } from '@sveltejs/kit';
+
 
 const VERIFICATION_WINDOW_MS = 5 * 60 * 1000; // 5 minutes
 
 export async function requireFaceVerified(locals: App.Locals, cookies: Cookies, examId?: string) {
+   const prisma = await getPrismaClient();
+
   const user = locals.user;
   if (!user) redirect(302, '/login');
 

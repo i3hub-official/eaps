@@ -2,10 +2,11 @@
 import type { PageServerLoad } from './$types';
 import { error } from '@sveltejs/kit';
 import { requireInvigilatorOrAdmin } from '$lib/server/auth/guards.js';
-import { prisma } from '$lib/server/db/index.js';
+import { getPrismaClient } from '$lib/server/db/index.js';
 
 export const load: PageServerLoad = async ({ locals, params }) => {
   await requireInvigilatorOrAdmin(locals.user);
+          const prisma = await getPrismaClient();
 
   const assignment = await prisma.examInvigilator.findUnique({
     where: {

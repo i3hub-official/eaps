@@ -1,10 +1,11 @@
 // src/routes/invigilator/assignments/+page.server.ts
 import type { PageServerLoad } from './$types';
 import { requireInvigilatorOrAdmin } from '$lib/server/auth/guards.js';
-import { prisma } from '$lib/server/db/index.js';
+import { getPrismaClient } from '$lib/server/db/index.js';
 
 export const load: PageServerLoad = async ({ locals }) => {
   await requireInvigilatorOrAdmin(locals.user);
+          const prisma = await getPrismaClient();
 
   const assignments = await prisma.examInvigilator.findMany({
     where: { invigilatorId: locals.user.id },

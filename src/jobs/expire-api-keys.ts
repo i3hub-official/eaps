@@ -1,6 +1,8 @@
-import { prisma } from '$lib/server/db/index.js';
+import { getPrismaClient } from '$lib/server/db/index.js';
 
 export async function expireApiKeys() {
+    const prisma = await getPrismaClient();
+
   const result = await prisma.apiKey.updateMany({
     where: {
       status: 'active',

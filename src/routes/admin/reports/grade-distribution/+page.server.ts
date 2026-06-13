@@ -1,9 +1,10 @@
 import type { PageServerLoad } from './$types';
-import { prisma } from '$lib/server/db/index.js';
+import { getPrismaClient } from '$lib/server/db/index.js';
 import { requireAdmin } from '$lib/server/auth/guards.js';
 
 export const load: PageServerLoad = async ({ locals }) => {
   requireAdmin(locals.user);
+          const prisma = await getPrismaClient();
 
   const results = await prisma.examResult.findMany({
     select: { score: true },

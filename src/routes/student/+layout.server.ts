@@ -1,11 +1,12 @@
 // src/routes/(student)/+layout.server.ts
 import type { LayoutServerLoad } from './$types';
 import { requireStudent } from '$lib/server/auth/guards.js';
-import { prisma } from '$lib/server/db/index.js';
+import { getPrismaClient } from '$lib/server/db/index.js';
 import { SessionStatus } from '@prisma/client';
 
 export const load: LayoutServerLoad = async ({ locals }) => {
   const user = await requireStudent(locals.user);
+          const prisma = await getPrismaClient();
 
   // Fetch full student profile with all relations
   const fullUser = await prisma.user.findUnique({
@@ -89,7 +90,7 @@ export const load: LayoutServerLoad = async ({ locals }) => {
     prisma.examSession.count({
       where: {
         studentId: user.id,
-        status: SessionStatus.completed,
+        status: SessionStatus.submitted,
       },
     }),
     // Count total courses (through registrations)

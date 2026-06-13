@@ -1,10 +1,11 @@
 // src/routes/student/notifications/+page.server.ts
 import type { PageServerLoad } from './$types';
 import { requireStudent } from '$lib/server/auth/guards.js';
-import { prisma } from '$lib/server/db/index.js';
+import { getPrismaClient } from '$lib/server/db/index.js';
 
 export const load: PageServerLoad = async ({ locals }) => {
   const user = await requireStudent(locals.user);
+          const prisma = await getPrismaClient();
 
   const [notifications, unreadCount] = await Promise.all([
     prisma.notification.findMany({

@@ -1,6 +1,6 @@
 // src/routes/admin/api-keys/playground/+page.server.ts
 import type { PageServerLoad, Actions } from './$types';
-import { prisma } from '$lib/server/db/index.js';
+import { getPrismaClient } from '$lib/server/db/index.js';
 import { requireAdmin } from '$lib/server/auth/guards.js';
 import { randomBytes } from 'crypto';
 import { hashPassword } from '$lib/server/auth/password.js';
@@ -10,6 +10,9 @@ const TEST_KEY_EXPIRY_MINUTES = 60;
 
 export const load: PageServerLoad = async ({ locals }) => {
   requireAdmin(locals.user);
+
+      const prisma = await getPrismaClient();
+
 
   // Load ALL active test keys for this user (not just one)
   const testKeys = await prisma.apiKey.findMany({
@@ -33,8 +36,12 @@ export const load: PageServerLoad = async ({ locals }) => {
 };
 
 export const actions: Actions = {
+  
   createTestKey: async ({ locals }) => {
     requireAdmin(locals.user);
+
+        const prisma = await getPrismaClient();
+
 
     // Revoke any existing test keys for this user
     await prisma.apiKey.updateMany({
@@ -82,6 +89,9 @@ export const actions: Actions = {
 
   revokeKey: async ({ request, locals }) => {
     requireAdmin(locals.user);
+
+        const prisma = await getPrismaClient();
+
 
     const formData = await request.formData();
     const id = formData.get('id') as string;

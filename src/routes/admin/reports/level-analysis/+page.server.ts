@@ -1,10 +1,11 @@
 // src/routes/(admin)/admin/reports/level-analysis/+page.server.ts
 import type { PageServerLoad } from './$types';
-import { prisma } from '$lib/server/db/index.js';
+import { getPrismaClient } from '$lib/server/db/index.js';
 import { requireAdmin } from '$lib/server/auth/guards.js';
 
 export const load: PageServerLoad = async ({ locals }) => {
   requireAdmin(locals.user);
+          const prisma = await getPrismaClient();
 
   // Get all levels that have active students
   const levelsWithStudents = await prisma.level.findMany({

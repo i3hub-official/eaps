@@ -1,10 +1,13 @@
 // src/routes/admin/exams/+page.server.ts
 import type { PageServerLoad } from './$types';
 import { requireAdmin } from '$lib/server/auth/guards.js';
-import { prisma } from '$lib/server/db/index.js';
+import { getPrismaClient } from '$lib/server/db/index.js';
 
 export const load: PageServerLoad = async ({ locals, url }) => {
   await requireAdmin(locals.user);
+
+      const prisma = await getPrismaClient();
+
 
   const status = url.searchParams.get('status') ?? undefined;
   const search = url.searchParams.get('q') ?? undefined;

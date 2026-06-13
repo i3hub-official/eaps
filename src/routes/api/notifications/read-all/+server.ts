@@ -1,7 +1,7 @@
 // src/routes/api/notifications/read-all/+server.ts
 import type { RequestHandler } from './$types';
 import { json, error } from '@sveltejs/kit';
-import { prisma } from '$lib/server/db/index.js';
+import { getPrismaClient } from '$lib/server/db/index.js';
 import { requireAuth } from '$lib/server/auth/guards.js';
 
 /**
@@ -10,6 +10,8 @@ import { requireAuth } from '$lib/server/auth/guards.js';
  */
 export const POST: RequestHandler = async ({ locals }) => {
   const user = requireAuth(locals.user);
+            const prisma = await getPrismaClient();
+  
 
   try {
     const { count } = await prisma.notification.updateMany({

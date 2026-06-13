@@ -1,6 +1,6 @@
 // src/lib/server/db/sessions.ts
 
-import { prisma, sql } from './index.js';
+import { getPrismaClient, sql } from './index.js';
 import type { ExamSession, SessionStatus, StudentAnswer } from '@prisma/client';
 
 export type { ExamSession, SessionStatus, StudentAnswer };
@@ -8,6 +8,8 @@ export type { ExamSession, SessionStatus, StudentAnswer };
 // ─── Prisma: session lifecycle ────────────────────────────────────────────────
 
 export async function getSessionById(id: string) {
+  const prisma = await getPrismaClient();
+
   return prisma.examSession.findUnique({ where: { id } });
 }
 
@@ -15,7 +17,10 @@ export async function getOrCreateSession(
   examId: string, studentId: string,
   ipAddress?: string, deviceInfo?: string
 ) {
+  const prisma = await getPrismaClient();
+
   return prisma.examSession.upsert({
+
     where: { examId_studentId: { examId, studentId } },
     create: { examId, studentId, ipAddress, deviceInfo },
     update: {},
@@ -23,6 +28,8 @@ export async function getOrCreateSession(
 }
 
 export async function startSession(id: string) {
+  const prisma = await getPrismaClient();
+
   return prisma.examSession.update({
     where: { id, status: 'not_started' },
     data: { status: 'in_progress', startedAt: new Date() },
@@ -30,6 +37,8 @@ export async function startSession(id: string) {
 }
 
 export async function saveTimeRemaining(id: string, secs: number) {
+  const prisma = await getPrismaClient();
+
   await prisma.examSession.update({ where: { id }, data: { timeRemainingSecs: secs } });
 }
 
@@ -37,6 +46,8 @@ export async function submitSession(
   id: string,
   status: 'submitted' | 'force_submitted' = 'submitted'
 ) {
+  const prisma = await getPrismaClient();
+
   return prisma.examSession.update({
     where: { id },
     data: { status, submittedAt: new Date() },
@@ -44,10 +55,14 @@ export async function submitSession(
 }
 
 export async function flagSession(id: string) {
+  const prisma = await getPrismaClient();
+
   await prisma.examSession.update({ where: { id }, data: { status: 'flagged' } });
 }
 
 export async function resumeSession(id: string) {
+  const prisma = await getPrismaClient();
+
   await prisma.examSession.updateMany({
     where: { id, status: 'flagged' },
     data: { status: 'in_progress' },
@@ -55,6 +70,8 @@ export async function resumeSession(id: string) {
 }
 
 export async function incrementViolation(id: string): Promise<number> {
+  const prisma = await getPrismaClient();
+
   const updated = await prisma.examSession.update({
     where: { id },
     data: { violationCount: { increment: 1 } },
@@ -70,6 +87,8 @@ export async function saveSessionOrder(
   questionOrder: { questionId: string; displayIndex: number }[],
   optionOrder: { questionId: string; optionId: string; displayIndex: number }[]
 ) {
+  const prisma = await getPrismaClient();
+
   await prisma.$transaction([
     prisma.sessionQuestionOrder.createMany({
       data: questionOrder.map(q => ({ sessionId, ...q })),
@@ -89,6 +108,8 @@ export async function saveAnswer(
   questionId: string,
   answer: { selectedOption?: string; textAnswer?: string; timeSpentSecs?: number }
 ) {
+  const prisma = await getPrismaClient();
+
   return prisma.studentAnswer.upsert({
     where: { sessionId_questionId: { sessionId, questionId } },
     create: { sessionId, questionId, ...answer, answeredAt: new Date() },
@@ -97,10 +118,14 @@ export async function saveAnswer(
 }
 
 export async function getSessionAnswers(sessionId: string) {
+  const prisma = await getPrismaClient();
+
   return prisma.studentAnswer.findMany({ where: { sessionId } });
 }
 
 export async function getStudentSessions(studentId: string) {
+  const prisma = await getPrismaClient();
+
   return prisma.examSession.findMany({
     where: { studentId },
     orderBy: { createdAt: 'desc' },
@@ -171,7 +196,10 @@ export async function getSessionByExamAndStudent(
   examId: string,
   studentId: string
 ): Promise<ExamSession | null> {
+  const prisma = await getPrismaClient();
+
   return prisma.examSession.findUnique({
+    
     where: { examId_studentId: { examId, studentId } },
   });
 }

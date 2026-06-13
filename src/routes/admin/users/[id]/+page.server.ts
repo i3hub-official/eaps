@@ -2,11 +2,12 @@
 import type { PageServerLoad, Actions } from './$types';
 import { error, fail, redirect } from '@sveltejs/kit';
 import { requireAdmin } from '$lib/server/auth/guards.js';
-import { prisma } from '$lib/server/db/index.js';
+import { getPrismaClient } from '$lib/server/db/index.js';
 import { hashPassword } from '$lib/server/auth/password.js';
 
 export const load: PageServerLoad = async ({ locals, params }) => {
 await requireAdmin(locals.user);
+          const prisma = await getPrismaClient();
 
   const user = await prisma.user.findUnique({
     where: { id: params.id },

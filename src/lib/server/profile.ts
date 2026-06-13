@@ -3,15 +3,20 @@
 // Each role's +page.server.ts calls these with its own role guard.
 
 import { fail } from '@sveltejs/kit';
-import { prisma } from '$lib/server/db/index.js';
+import { getPrismaClient } from '$lib/server/db/index.js';
+
 import { hashPassword, verifyPassword } from '$lib/server/auth/password.js';
 import { uploadToCloudinary } from '$lib/server/cloudinary.js';
+
+
 
 export const TITLES = ['', 'Prof.', 'Dr.', 'Mr.', 'Mrs.', 'Ms.', 'Engr.', 'Pharm.', 'Arc.', 'Barr.'];
 
 // ── Load ─────────────────────────────────────────────────────────────────────
 
 export async function loadProfile(userId: string) {
+  const prisma = await getPrismaClient();
+
   const user = await prisma.user.findUnique({
     where: { id: userId },
     select: {
@@ -29,6 +34,7 @@ export async function loadProfile(userId: string) {
   });
 
   const recentActivity = await prisma.auditLog.findMany({
+
     where: { userId },
     orderBy: { createdAt: 'desc' },
     take: 10,
@@ -40,6 +46,8 @@ export async function loadProfile(userId: string) {
 // ── Update profile ────────────────────────────────────────────────────────────
 
 export async function updateProfile(request: Request, userId: string) {
+  const prisma = await getPrismaClient();
+
   const fd = await request.formData();
   const title    = String(fd.get('title')    ?? '').trim();
   const fullName = String(fd.get('fullName') ?? '').trim();
@@ -85,6 +93,8 @@ export async function updateProfile(request: Request, userId: string) {
 // ── Change password ───────────────────────────────────────────────────────────
 
 export async function changePassword(request: Request, userId: string) {
+  const prisma = await getPrismaClient();
+
   const fd      = await request.formData();
   const current = String(fd.get('currentPassword') ?? '');
   const next    = String(fd.get('newPassword')     ?? '');

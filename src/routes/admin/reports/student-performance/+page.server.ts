@@ -1,25 +1,14 @@
 // src/routes/admin/reports/student-performance/+page.server.ts
 import type { PageServerLoad } from './$types';
-import { prisma } from '$lib/server/db/index.js';
+import { getPrismaClient } from '$lib/server/db/index.js';
 import { requireAdmin } from '$lib/server/auth/guards.js';
 
 export const load: PageServerLoad = async ({ locals }) => {
   requireAdmin(locals.user);
+          const prisma = await getPrismaClient();
 
   const [students, summaryRows] = await Promise.all([
-    prisma.$queryRawUnsafe<Array<{
-      id: string;
-      full_name: string;
-      matric_number: string | null;
-      level_name: string | null;
-      level_num: number | null;
-      department: string | null;
-      college: string | null;
-      exams_taken: number;
-      passed: number;
-      avg_pct: number | null;
-      last_exam: Date | null;
-    }>>(`
+    prisma.$queryRawUnsafe(`
       SELECT
         u.id,
         u.full_name,
@@ -41,14 +30,21 @@ export const load: PageServerLoad = async ({ locals }) => {
       GROUP BY u.id, l.name, l.level, d.name, co.name
       ORDER BY avg_pct DESC NULLS LAST
       LIMIT 100
-    `),
-
-    prisma.$queryRawUnsafe<Array<{
-      total_students: number;
+    `) as Array<{
+      id: string;
+      full_name: string;
+      matric_number: string | null;
+      level_name: string | null;
+      level_num: number | null;
+      department: string | null;
+      college: string | null;
+      exams_taken: number;
+      passed: number;
       avg_pct: number | null;
-      total_passed: number;
-      total_attempts: number;
-    }>>(`
+      last_exam: Date | null;
+    }>,
+
+    prisma.$queryRawUnsafe(`
       SELECT
         COUNT(DISTINCT u.id)::int                               AS total_students,
         ROUND(AVG(er.percentage)::numeric, 1)                   AS avg_pct,
@@ -57,7 +53,12 @@ export const load: PageServerLoad = async ({ locals }) => {
       FROM users u
       LEFT JOIN exam_results er ON er.student_id = u.id
       WHERE u.role = 'student'
-    `),
+    `) as Array<{
+      total_students: number;
+      avg_pct: number | null;
+      total_passed: number;
+      total_attempts: number;
+    }>,
   ]);
 
   return {

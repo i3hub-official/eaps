@@ -5,11 +5,12 @@
 // face_descriptors stores them as a plain number[] so any descriptor
 // size is handled transparently — no schema migration needed.
 
-import { prisma } from './index.js';
-
+import { getPrismaClient } from './index.js';
 // ─── Save / update ────────────────────────────────────────────────────────────
 
 export async function saveFaceDescriptor(studentId: string, descriptor: number[], dimension: number) {
+const prisma = await getPrismaClient();
+
   return prisma.faceDescriptor.upsert({
     where: { studentId },
     update: {
@@ -28,6 +29,8 @@ export async function saveFaceDescriptor(studentId: string, descriptor: number[]
 // ─── Read ─────────────────────────────────────────────────────────────────────
 
 export async function getFaceDescriptor(studentId: string): Promise<number[] | null> {
+  const prisma = await getPrismaClient();
+
   const row = await prisma.faceDescriptor.findUnique({
     where:  { studentId },
     select: { descriptor: true },
@@ -42,6 +45,8 @@ export async function getFaceDescriptor(studentId: string): Promise<number[] | n
 }
 
 export async function getFaceDescriptorWithMeta(studentId: string) {
+  const prisma = await getPrismaClient();
+
   const result = await prisma.faceDescriptor.findUnique({
     where: { studentId },
   });
@@ -57,6 +62,8 @@ export async function getFaceDescriptorWithMeta(studentId: string) {
 }
 
 export async function isFaceEnrolled(studentId: string): Promise<boolean> {
+  const prisma = await getPrismaClient();
+
   const count = await prisma.faceDescriptor.count({ where: { studentId } });
   return count > 0;
 }
@@ -64,6 +71,8 @@ export async function isFaceEnrolled(studentId: string): Promise<boolean> {
 // ─── Delete ───────────────────────────────────────────────────────────────────
 
 export async function deleteFaceDescriptor(studentId: string): Promise<void> {
+  const prisma = await getPrismaClient();
+
   await prisma.faceDescriptor.delete({ where: { studentId } }).catch(() => {
     // Silently ignore "record not found" — idempotent delete
   });
@@ -80,6 +89,8 @@ export async function logVerification(opts: {
   ipAddress?:      string | null;
   userAgent?:      string | null;
 }): Promise<void> {
+  const prisma = await getPrismaClient();
+
   await prisma.faceVerificationLog.create({
     data: {
       studentId:       opts.studentId,

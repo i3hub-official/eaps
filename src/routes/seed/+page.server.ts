@@ -2,7 +2,7 @@
 import { fail } from '@sveltejs/kit';
 import type { Actions, PageServerLoad } from './$types';
 import { requireAdmin } from '$lib/server/auth/guards.js';
-import { prisma } from '$lib/server/db/index.js';
+import { getPrismaClient } from '$lib/server/db/index.js';
 import { randomBytes, scrypt } from 'crypto';
 import { promisify } from 'util';
 import { progressBroadcaster } from '$lib/server/progress-broadcaster';

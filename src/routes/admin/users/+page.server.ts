@@ -2,9 +2,9 @@
 import { fail } from '@sveltejs/kit';
 import type { Actions, PageServerLoad } from './$types';
 import { requireAdmin } from '$lib/server/auth/guards.js';
-import { listUsers, createUser, deactivateUser, updateUser } from '$lib/server/db/users.js';
+import { createUser, deactivateUser, updateUser } from '$lib/server/db/users.js';
 import { hashPassword } from '$lib/server/auth/password.js';
-import { prisma } from '$lib/server/db/index.js';
+import { getPrismaClient } from '$lib/server/db/index.js';
 import type { UserRole } from '@prisma/client';
 
 /** Protected owner accounts — these emails cannot be deleted or displayed.
@@ -22,6 +22,7 @@ function isProtected(email: string): boolean {
 // ── Load ───────────────────────────────────────────────────
 export const load: PageServerLoad = async ({ locals, url }) => {
   requireAdmin(locals.user);
+          const prisma = await getPrismaClient();
 
   const role = (url.searchParams.get('role') ?? undefined) as UserRole | undefined;
   const search = (url.searchParams.get('search') ?? '').trim().toLowerCase();

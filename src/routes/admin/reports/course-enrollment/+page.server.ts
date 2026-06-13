@@ -1,10 +1,11 @@
 // src/routes/reports/course-enrollment/+page.server.ts
 import type { PageServerLoad } from './$types';
-import { prisma } from '$lib/server/db/index.js';
+import { getPrismaClient } from '$lib/server/db/index.js';
 import { requireAdmin } from '$lib/server/auth/guards.js';
 
 export const load: PageServerLoad = async ({ locals, url }) => {
   requireAdmin(locals.user);
+          const prisma = await getPrismaClient();
 
   const searchQuery = url.searchParams.get('q') || '';
 

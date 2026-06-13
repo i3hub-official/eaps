@@ -1,11 +1,13 @@
 // src/routes/admin/manage/levels/+page.server.ts
 import type { PageServerLoad, Actions } from './$types';
 import { requireAdmin } from '$lib/server/auth/guards.js';
-import { prisma } from '$lib/server/db/index.js';
+import { getPrismaClient } from '$lib/server/db/index.js';
 import { fail } from '@sveltejs/kit';
 
 export const load: PageServerLoad = async ({ locals }) => {
   requireAdmin(locals.user);
+          const prisma = await getPrismaClient();
+
   
   const levels = await prisma.level.findMany({
     orderBy: [{ level: 'asc' }], // Always sort by level number, not order
@@ -29,6 +31,8 @@ export const load: PageServerLoad = async ({ locals }) => {
 export const actions: Actions = {
   create: async ({ request, locals }) => {
     requireAdmin(locals.user);
+            const prisma = await getPrismaClient();
+
     const data = await request.formData();
     const level = parseInt(data.get('level') as string);
     
@@ -69,6 +73,8 @@ export const actions: Actions = {
   
   edit: async ({ request, locals }) => {
     requireAdmin(locals.user);
+            const prisma = await getPrismaClient();
+
     const data = await request.formData();
     const id = parseInt(data.get('id') as string);
     const newLevel = parseInt(data.get('level') as string);
@@ -125,6 +131,8 @@ export const actions: Actions = {
   
   delete: async ({ request, locals }) => {
     requireAdmin(locals.user);
+            const prisma = await getPrismaClient();
+
     const data = await request.formData();
     const id = parseInt(data.get('id') as string);
     
@@ -172,7 +180,8 @@ export const actions: Actions = {
   
   reset: async ({ locals }) => {
     requireAdmin(locals.user);
-    
+            const prisma = await getPrismaClient();
+
     try {
       const customLevels = await prisma.level.findMany({
         where: { isDefault: false },
@@ -187,7 +196,7 @@ export const actions: Actions = {
         }
       });
       
-      const levelsInUse = customLevels.filter(level => 
+      const levelsInUse = customLevels.filter((level: { _count: { users: number; exams: number; registrations: number }; level: number }) => 
         level._count.users > 0 || 
         level._count.exams > 0 || 
         level._count.registrations > 0

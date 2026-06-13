@@ -1,7 +1,7 @@
 // src/routes/api/notifications/read-all/+server.ts
 import type { RequestHandler } from './$types';
 import { json, error } from '@sveltejs/kit';
-import { prisma } from '$lib/server/db/index.js';
+import { getPrismaClient } from '$lib/server/db/index.js';
 import { requireAuth } from '$lib/server/auth/guards.js';
 
 /**
@@ -11,6 +11,8 @@ import { requireAuth } from '$lib/server/auth/guards.js';
  */
 export const GET: RequestHandler = async ({ url, locals }) => {
   const user = requireAuth(locals.user);
+            const prisma = await getPrismaClient();
+  
 
   const page = Math.max(1, parseInt(url.searchParams.get('page') ?? '1', 10));
   const limit = Math.min(100, Math.max(1, parseInt(url.searchParams.get('limit') ?? '20', 10)));

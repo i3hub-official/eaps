@@ -1,11 +1,12 @@
 // src/routes/student/profile/+page.server.ts
 import type { PageServerLoad, Actions } from './$types';
 import { requireStudent } from '$lib/server/auth/guards.js';
-import { prisma } from '$lib/server/db/index.js';
+import { getPrismaClient } from '$lib/server/db/index.js';
 import { fail } from '@sveltejs/kit';
 
 export const load: PageServerLoad = async ({ locals }) => {
   const user = await requireStudent(locals.user);
+          const prisma = await getPrismaClient();
 
  const fullUser = await prisma.user.findUnique({
   where: { id: user.id },

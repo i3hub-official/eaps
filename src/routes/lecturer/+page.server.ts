@@ -1,10 +1,11 @@
 // src/routes/lecturer/+page.server.ts
 import type { PageServerLoad } from './$types';
 import { requireLecturer } from '$lib/server/auth/guards.js'; 
-import { prisma } from '$lib/server/db/index.js';
+import { getPrismaClient } from '$lib/server/db/index.js';
 
 export const load: PageServerLoad = async ({ locals }) => {
   const user =  await requireLecturer(locals.user);
+          const prisma = await getPrismaClient();
 
   const [
     allExams,

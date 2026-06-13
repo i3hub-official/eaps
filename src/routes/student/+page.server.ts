@@ -1,10 +1,11 @@
 // src/routes/student/+page.server.ts
 import type { PageServerLoad } from './$types';
 import { requireStudent } from '$lib/server/auth/guards.js';
-import { prisma } from '$lib/server/db/index.js';
+import { getPrismaClient } from '$lib/server/db/index.js';
 
 export const load: PageServerLoad = async ({ locals }) => {
   const user = await requireStudent(locals.user);
+          const prisma = await getPrismaClient();
 
   // Current session/semester from active AcademicSemester
   const activeSemester = await prisma.academicSemester.findFirst({

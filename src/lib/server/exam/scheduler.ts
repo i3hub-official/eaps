@@ -1,5 +1,5 @@
 // src/lib/server/exam/scheduler.ts
-import { prisma } from '$lib/server/db/index.js';
+import { getPrismaClient } from '$lib/server/db/index.js';
 
 /**
  * Activate all exams whose scheduled_start has passed and are still 'scheduled'.
@@ -7,6 +7,7 @@ import { prisma } from '$lib/server/db/index.js';
  * Call this on a timer (e.g. every 60s from hooks.server.ts).
  */
 export async function tickExamScheduler(): Promise<void> {
+  const prisma = await getPrismaClient();
   const now = new Date();
 
   // scheduled → active

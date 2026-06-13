@@ -1,7 +1,7 @@
 // src/routes/(admin)/security/violations/+page.server.ts
 import type { PageServerLoad } from './$types';
 import { requireAdmin } from '$lib/server/auth/guards.js';
-import { prisma } from '$lib/server/db/index.js';
+import { getPrismaClient } from '$lib/server/db/index.js';
 
 const SEVERITY_MAP: Record<string, string> = {
   tab_switch:         'medium',
@@ -17,6 +17,7 @@ const SEVERITY_MAP: Record<string, string> = {
 
 export const load: PageServerLoad = async ({ locals, url }) => {
   requireAdmin(locals.user);
+          const prisma = await getPrismaClient();
 
   const searchQuery = url.searchParams.get('q')?.trim() || '';
 

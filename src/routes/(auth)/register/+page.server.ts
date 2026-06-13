@@ -11,7 +11,10 @@ import { getUniConfig }             from '$lib/universities/registry';
 import { hashPassword }             from '$lib/server/auth/password';
 import { createSession, setSessionCookie } from '$lib/server/auth/session';
 import { createUser, emailExists, matricExists } from '$lib/server/db/users';
-import { prisma }                   from '$lib/server/db/index';
+import { getPrismaClient }                   from '$lib/server/db/index';
+
+    const prisma = await getPrismaClient();
+
 
 // ─── MOUAU config (resolved once — both optional fields get typed defaults) ──
 const MOUAU           = getUniConfig('MOUAU')!;

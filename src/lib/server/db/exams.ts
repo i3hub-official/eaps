@@ -1,5 +1,5 @@
 // src/lib/server/db/exams.ts
-import { prisma } from './index.js';
+import { getPrismaClient } from './index.js';
 import type { Exam, ExamStatus } from '@prisma/client';
 
 export type { Exam, ExamStatus };
@@ -9,14 +9,20 @@ const withCourse = {
 } as const;
 
 export async function getExamById(id: string) {
+  const prisma = await getPrismaClient();
+
   return prisma.exam.findUnique({ where: { id } });
 }
 
 export async function getExamWithCourse(id: string) {
+  const prisma = await getPrismaClient();
+
   return prisma.exam.findUnique({ where: { id }, include: withCourse });
 }
 
 export async function listExamsByLecturer(lecturerId: string) {
+  const prisma = await getPrismaClient();
+
   return prisma.exam.findMany({
     where: { createdBy: lecturerId },
     include: withCourse,
@@ -25,6 +31,8 @@ export async function listExamsByLecturer(lecturerId: string) {
 }
 
 export async function listExamsForStudent(studentId: string) {
+  const prisma = await getPrismaClient();
+
   return prisma.exam.findMany({
     where: {
       status: { in: ['scheduled', 'active'] },
@@ -36,6 +44,8 @@ export async function listExamsForStudent(studentId: string) {
 }
 
 export async function listExamsForInvigilator(invigilatorId: string) {
+  const prisma = await getPrismaClient();
+
   return prisma.exam.findMany({
     where: {
       status: { in: ['scheduled', 'active'] },
@@ -68,6 +78,8 @@ export async function createExam(input: {
   levels?: number[];            // level.level values (e.g. 100, 200) — [] = no restriction
   department?: string | null;
 }) {
+  const prisma = await getPrismaClient();
+
   const { levels, department, questionsToPresent, ...rest } = input;
 
   // levels is a many-to-many through ExamLevel joined on level.level (the Int field).
@@ -106,6 +118,8 @@ export async function updateExam(id: string, input: Partial<{
   levels: number[];
   department: string | null;
 }>) {
+  const prisma = await getPrismaClient();
+
   const { levels, ...rest } = input;
 
   const levelConnect =
@@ -126,14 +140,20 @@ export async function updateExam(id: string, input: Partial<{
 }
 
 export async function setExamStatus(id: string, status: ExamStatus) {
+  const prisma = await getPrismaClient();
+
   await prisma.exam.update({ where: { id }, data: { status } });
 }
 
 export async function deleteExam(id: string) {
+  const prisma = await getPrismaClient();
+
   await prisma.exam.deleteMany({ where: { id, status: 'draft' } });
 }
 
 export async function assignInvigilator(examId: string, invigilatorId: string) {
+  const prisma = await getPrismaClient();
+
   await prisma.examInvigilator.upsert({
     where: { examId_invigilatorId: { examId, invigilatorId } },
     create: { examId, invigilatorId },
@@ -142,13 +162,18 @@ export async function assignInvigilator(examId: string, invigilatorId: string) {
 }
 
 export async function removeInvigilator(examId: string, invigilatorId: string) {
+  const prisma = await getPrismaClient();
+
   await prisma.examInvigilator.delete({
     where: { examId_invigilatorId: { examId, invigilatorId } },
   });
 }
 
 export async function getExamInvigilators(examId: string) {
+  const prisma = await getPrismaClient();
+
   return prisma.examInvigilator.findMany({
+
     where: { examId },
     include: {
       invigilator: {
@@ -193,8 +218,10 @@ export function isStudentEligible(
 
 export const getExamsForStudent = listExamsForStudent;
 
-export const getQuestionsByExam = (examId: string) =>
-  prisma.question.findMany({
+export async function getQuestionsByExam(examId: string) {
+  const prisma = await getPrismaClient();
+
+  return prisma.question.findMany({
     where: { examId },
     include: {
       options: { orderBy: { orderIndex: 'asc' } },
@@ -202,3 +229,4 @@ export const getQuestionsByExam = (examId: string) =>
     },
     orderBy: [{ orderIndex: 'asc' }, { createdAt: 'asc' }],
   });
+}

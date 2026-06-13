@@ -1,7 +1,7 @@
 // src/routes/(admin)/security/incidents/+page.server.ts
 import type { PageServerLoad } from './$types';
 import { requireAdmin } from '$lib/server/auth/guards.js';
-import { prisma } from '$lib/server/db/index.js';
+import { getPrismaClient } from '$lib/server/db/index.js';
 
 const SEVERITY_MAP: Record<string, string> = {
   copy_attempt:        'critical',
@@ -23,6 +23,8 @@ const DESCRIPTIONS: Record<string, string> = {
 
 export const load: PageServerLoad = async ({ locals }) => {
   requireAdmin(locals.user);
+            const prisma = await getPrismaClient();
+  
 
   const violations = await prisma.violation.findMany({
     where: {

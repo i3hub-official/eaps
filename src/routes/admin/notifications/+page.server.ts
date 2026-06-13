@@ -2,12 +2,12 @@
 import type { PageServerLoad, Actions } from './$types';
 import { fail } from '@sveltejs/kit';
 import { requireAdmin } from '$lib/server/auth/guards.js';
-import { prisma } from '$lib/server/db/index.js';
+import { getPrismaClient } from '$lib/server/db/index.js';
 
 
 export const load: PageServerLoad = async ({ locals }) => {
   await requireAdmin(locals.user);
-
+          const prisma = await getPrismaClient();
 
   const [notifications, unreadCount] = await prisma.$transaction([
     prisma.notification.findMany({
@@ -24,12 +24,15 @@ export const load: PageServerLoad = async ({ locals }) => {
 };
 
 export const actions: Actions = {
+  
   markRead: async ({ request, locals }) => {
+            const prisma = await getPrismaClient();
+
     if (!locals.user) return fail(403);
     const fd = await request.formData();
     const id = String(fd.get('id') ?? '');
     if (!id) return fail(400);
-    await db.notification.update({
+    await prisma.notification.update({
       where: { id, userId: locals.user.id },
       data: { isRead: true },
     });
@@ -37,6 +40,8 @@ export const actions: Actions = {
   },
 
   markAllRead: async ({ locals }) => {
+            const prisma = await getPrismaClient();
+
     if (!locals.user) return fail(403);
     await prisma.notification.updateMany({
       where: { userId: locals.user.id, isRead: false },
@@ -46,6 +51,8 @@ export const actions: Actions = {
   },
 
   delete: async ({ request, locals }) => {
+            const prisma = await getPrismaClient();
+
     if (!locals.user) return fail(403);
     const fd = await request.formData();
     const id = String(fd.get('id') ?? '');
@@ -54,6 +61,8 @@ export const actions: Actions = {
   },
 
   deleteAll: async ({ locals }) => {
+            const prisma = await getPrismaClient();
+
     if (!locals.user) return fail(403);
     await prisma.notification.deleteMany({ where: { userId: locals.user.id } });
     return { success: true };
@@ -61,6 +70,8 @@ export const actions: Actions = {
 
   // Admin sending a notification to a user
   send: async ({ request, locals }) => {
+            const prisma = await getPrismaClient();
+
     if (!locals.user || locals.user.role !== 'admin') return fail(403);
     const fd = await request.formData();
     const userId  = String(fd.get('userId')  ?? '').trim();

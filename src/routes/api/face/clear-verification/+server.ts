@@ -2,10 +2,11 @@
 import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import { requireStudent } from '$lib/server/auth/guards.js';
-import { prisma } from '$lib/server/db/index.js';
+import { getPrismaClient } from '$lib/server/db/index.js';
 
 export const POST: RequestHandler = async ({ locals, cookies }) => {
   const user = await requireStudent(locals.user);
+          const prisma = await getPrismaClient();
 
   // Invalidate recent verification logs (soft delete approach)
   await prisma.faceVerificationLog.updateMany({

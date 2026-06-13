@@ -1,10 +1,11 @@
 // src/routes/invigilator/+layout.server.ts
 import type { LayoutServerLoad } from './$types';
 import { requireInvigilatorOrAdmin } from '$lib/server/auth/guards.js';
-import { prisma } from '$lib/server/db/index.js';
+import { getPrismaClient } from '$lib/server/db/index.js';
 
 export const load: LayoutServerLoad = async ({ locals }) => {
   const user = await requireInvigilatorOrAdmin(locals.user);
+          const prisma = await getPrismaClient();
 
   const [notifications, liveSessions] = await Promise.all([
     // Latest 30 notifications for this user

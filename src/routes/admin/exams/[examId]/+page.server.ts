@@ -2,10 +2,11 @@
 import type { PageServerLoad, Actions } from './$types';
 import { error, fail, redirect } from '@sveltejs/kit';
 import { requireAdmin } from '$lib/server/auth/guards.js';
-import { prisma } from '$lib/server/db/index.js';
+import { getPrismaClient } from '$lib/server/db/index.js';
 
 export const load: PageServerLoad = async ({ locals, params }) => {
     await requireAdmin(locals.user);
+    const prisma = await getPrismaClient();
 
 
   const exam = await prisma.exam.findUnique({
@@ -53,6 +54,8 @@ export const load: PageServerLoad = async ({ locals, params }) => {
 
 export const actions: Actions = {
   updateStatus: async ({ request, locals, params }) => {
+        const prisma = await getPrismaClient();
+
     if (!locals.user || locals.user.role !== 'admin') return fail(403);
     const fd = await request.formData();
     const status = fd.get('status') as string;
@@ -64,6 +67,8 @@ export const actions: Actions = {
   },
 
   delete: async ({ locals, params }) => {
+        const prisma = await getPrismaClient();
+
     if (!locals.user || locals.user.role !== 'admin') return fail(403);
     await prisma.exam.delete({ where: { id: params.examId } });
     redirect(303, '/admin/exams');

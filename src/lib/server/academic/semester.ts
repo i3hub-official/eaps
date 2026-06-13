@@ -11,7 +11,8 @@
 //   Feb – Jul  → Semester 2
 //   Session    → Sep–Aug academic year boundary
 
-import { prisma } from '$lib/server/db/index.js';
+import { getPrismaClient } from '$lib/server/db/index.js';
+
 
 export interface ActiveSemester {
   session:  string;   // e.g. "2025/2026"
@@ -25,6 +26,8 @@ export interface ActiveSemester {
 // ─── DB lookup ────────────────────────────────────────────────────────────────
 
 export async function getActiveSemester(): Promise<ActiveSemester> {
+      const prisma = await getPrismaClient();
+
   const row = await prisma.academicSemester.findFirst({
     where: { isActive: true },
     select: { session: true, semester: true, label: true, regOpen: true },
@@ -61,6 +64,8 @@ export async function getActiveSemester(): Promise<ActiveSemester> {
 // Safe to call repeatedly — idempotent.
 
 export async function advanceSemesterIfDue(): Promise<{ advanced: boolean; current: ActiveSemester }> {
+      const prisma = await getPrismaClient();
+
   const now = new Date();
 
   // Find the active row

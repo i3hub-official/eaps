@@ -1,5 +1,5 @@
 // src/lib/server/db/results.ts
-import { prisma, sql } from './index.js';
+import { getPrismaClient, sql } from './index.js';
 import type { ExamResult } from '@prisma/client';
 
 export type { ExamResult };
@@ -7,10 +7,14 @@ export type { ExamResult };
 // ─── Prisma: simple reads ─────────────────────────────────────────────────────
 
 export async function getResultBySession(sessionId: string) {
+  const prisma = await getPrismaClient();
+
   return prisma.examResult.findUnique({ where: { sessionId } });
 }
 
 export async function getResultsForExam(examId: string) {
+  const prisma = await getPrismaClient();
+
   return prisma.examResult.findMany({
     where: { examId },
     include: {
@@ -28,6 +32,8 @@ export async function getResultsForExam(examId: string) {
 }
 
 export async function getStudentResults(studentId: string) {
+  const prisma = await getPrismaClient();
+
   return prisma.examResult.findMany({
     where: { studentId },
     include: {

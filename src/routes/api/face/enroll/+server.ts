@@ -3,11 +3,15 @@ import { json, error } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import { requireStudent } from '$lib/server/auth/guards.js';
 import { saveFaceDescriptor, isFaceEnrolled } from '$lib/server/db/faces.js';
-import { prisma } from '$lib/server/db/index.js';
+import { getPrismaClient } from '$lib/server/db/index.js';
 
 export const POST: RequestHandler = async ({ request, locals }) => {
+  
   try {
     const user = await requireStudent(locals.user);
+              const prisma = await getPrismaClient();
+    
+              
     const studentId = String(user.id);
 
     // BLOCK: No dual enrollment

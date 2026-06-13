@@ -2,11 +2,13 @@
 import type { PageServerLoad, Actions } from './$types';
 import { fail } from '@sveltejs/kit';
 import { requireAdmin } from '$lib/server/auth/guards.js';
-import { prisma } from '$lib/server/db/index.js';
+import { getPrismaClient } from '$lib/server/db/index.js';
 import { hashPassword, verifyPassword } from '$lib/server/auth/password.js';
 
 export const load: PageServerLoad = async ({ locals }) => {
   await requireAdmin(locals.user);
+          const prisma = await getPrismaClient();
+
 
   const user = await prisma.user.findUnique({
     where: { id: locals.user.id },
@@ -32,6 +34,8 @@ export const load: PageServerLoad = async ({ locals }) => {
 
 export const actions: Actions = {
   updateProfile: async ({ request, locals }) => {
+            const prisma = await getPrismaClient();
+
     if (!locals.user) return fail(403);
     const fd = await request.formData();
     const fullName = String(fd.get('fullName') ?? '').trim();
@@ -48,6 +52,8 @@ export const actions: Actions = {
   },
 
   changePassword: async ({ request, locals }) => {
+            const prisma = await getPrismaClient();
+
     if (!locals.user) return fail(403);
     const fd = await request.formData();
     const current = String(fd.get('currentPassword') ?? '');

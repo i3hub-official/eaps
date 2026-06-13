@@ -1,10 +1,11 @@
 // src/routes/(admin)/security/+page.server.ts  (or wherever this lives)
 import type { PageServerLoad } from './$types';
 import { requireAdmin } from '$lib/server/auth/guards.js';
-import { prisma } from '$lib/server/db/index.js';
+import { getPrismaClient } from '$lib/server/db/index.js';
 
 export const load: PageServerLoad = async ({ locals }) => {
   requireAdmin(locals.user);
+          const prisma = await getPrismaClient();
 
   const eightDaysAgo = new Date();
   eightDaysAgo.setDate(eightDaysAgo.getDate() - 8);

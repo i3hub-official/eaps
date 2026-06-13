@@ -1,5 +1,6 @@
 // src/lib/server/exam/grader.ts
-import { prisma, sql } from '$lib/server/db/index.js';
+import { getPrismaClient, sql } from '$lib/server/db/index.js';
+
 
 /**
  * Nigerian 5-point grade scale (reference only — raw scores are primary)
@@ -11,6 +12,7 @@ import { prisma, sql } from '$lib/server/db/index.js';
  * F = 0-39%    (0 points) — fail
  */
 export function nigerianGrade(percentage: number): { grade: string; points: number; passed: boolean } {
+  
   if (percentage >= 70) return { grade: 'A', points: 5, passed: true };
   if (percentage >= 60) return { grade: 'B', points: 4, passed: true };
   if (percentage >= 50) return { grade: 'C', points: 3, passed: true };
@@ -28,6 +30,8 @@ export function nigerianGrade(percentage: number): { grade: string; points: numb
  * NOTE: Grading happens regardless of showResultAfter. Visibility is controlled separately.
  */
 export async function gradeSession(sessionId: string): Promise<void> {
+      const prisma = await getPrismaClient();
+
   const answers = await prisma.studentAnswer.findMany({
     where: { sessionId },
     include: {
@@ -87,6 +91,8 @@ export async function gradeSession(sessionId: string): Promise<void> {
  * Re-grade a specific session — useful if questions/answers were corrected post-exam
  */
 export async function regradeSession(sessionId: string): Promise<void> {
+      const prisma = await getPrismaClient();
+
   // Reset all answers first
   await prisma.studentAnswer.updateMany({
     where: { sessionId },
@@ -101,6 +107,8 @@ export async function regradeSession(sessionId: string): Promise<void> {
  * Bulk grade all ungraded sessions for an exam
  */
 export async function gradeAllSessions(examId: string): Promise<{ graded: number; errors: number }> {
+      const prisma = await getPrismaClient();
+
   const sessions = await prisma.examSession.findMany({
     where: { 
       examId,

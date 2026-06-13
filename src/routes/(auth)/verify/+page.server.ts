@@ -3,11 +3,15 @@ import { redirect, error } from '@sveltejs/kit';
 import type { PageServerLoad } from './$types';
 import { requireStudent } from '$lib/server/auth/guards.js';
 import { isFaceEnrolled } from '$lib/server/db/faces.js';
-import { prisma } from '$lib/server/db/index.js';
+import { getPrismaClient } from '$lib/server/db/index.js';
 
 export const load: PageServerLoad = async ({ locals, url }) => {
+  
   // 1. Require authenticated student
   const user = await requireStudent(locals.user);
+
+      const prisma = await getPrismaClient();
+
   
   // 2. Check if student has face enrolled
   const hasFaceEnrolled = await isFaceEnrolled(String(user.id));

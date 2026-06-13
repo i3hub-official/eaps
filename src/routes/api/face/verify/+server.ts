@@ -3,11 +3,14 @@
 import { json, error } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import { requireStudent } from '$lib/server/auth/guards.js';
-import { prisma } from '$lib/server/db/index.js';
+import { getPrismaClient } from '$lib/server/db/index.js';
 import { cosineSimilarity, FACE_THRESHOLDS, logVerification } from '$lib/server/db/faces.js';
 
 export const POST: RequestHandler = async ({ request, locals, getClientAddress }) => {
+  
   const user = await requireStudent(locals.user);
+            const prisma = await getPrismaClient();
+
   const body = await request.json().catch(() => ({}));
   const { descriptor, examId } = body;
 

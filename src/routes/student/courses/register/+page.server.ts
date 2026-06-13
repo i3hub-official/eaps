@@ -1,7 +1,7 @@
 // src/routes/(student)/student/courses/register/+page.server.ts
 import type { PageServerLoad, Actions } from './$types';
 import { requireStudent } from '$lib/server/auth/guards.js';
-import { prisma } from '$lib/server/db/index.js';
+import { getPrismaClient } from '$lib/server/db/index.js';
 import { fail } from '@sveltejs/kit';
 import { getActiveSemester } from '$lib/server/academic/semester.js';
 
@@ -21,21 +21,23 @@ async function getRegPhase(userId: string, key: string): Promise<RegPhase> {
     where: { userId },
     select: { prefs: true },
   });
-  const prefs    = (pref?.prefs ?? {}) as Record<string, unknown>;
+  const prefs = (pref?.prefs ?? {}) as Record<string, unknown>;
   const regState = (prefs.regState ?? {}) as Record<string, string>;
   return (regState[key] as RegPhase) ?? 'draft';
 }
 
 async function setRegPhase(userId: string, key: string, phase: RegPhase) {
+  const prisma = await getPrismaClient();
+
   const pref = await prisma.userPreference.findUnique({
     where: { userId },
     select: { prefs: true },
   });
-  const prefs    = (pref?.prefs ?? {}) as Record<string, unknown>;
+  const prefs = (pref?.prefs ?? {}) as Record<string, unknown>;
   const regState = { ...((prefs.regState ?? {}) as Record<string, string>), [key]: phase };
   const newPrefs = { ...prefs, regState };
   await prisma.userPreference.upsert({
-    where:  { userId },
+    where: { userId },
     update: { prefs: newPrefs },
     create: { userId, prefs: newPrefs },
   });
@@ -46,10 +48,12 @@ async function setRegPhase(userId: string, key: string, phase: RegPhase) {
 // ─────────────────────────────────────────────────────────────────────────────
 export const load: PageServerLoad = async ({ locals, url }) => {
   const user = await requireStudent(locals.user);
+  const prisma = await getPrismaClient();
+
 
   const { session: currentSession, semester: currentSemester, regOpen } = await getActiveSemester();
   const studentCollegeId = user.collegeId ?? null;
-  const regKey           = `${currentSession}_${currentSemester}`;
+  const regKey = `${currentSession}_${currentSemester}`;
 
   const [levelRow, collegeRow, phase] = await Promise.all([
     user.levelId
@@ -66,9 +70,9 @@ export const load: PageServerLoad = async ({ locals, url }) => {
     where: { levelId_semester: { levelId: user.levelId ?? 0, semester: currentSemester } },
     select: { maxCredits: true, maxCarryOver: true, maxBorrowed: true },
   });
-  const MAX_CREDITS    = configRow?.maxCredits   ?? 25;
+  const MAX_CREDITS = configRow?.maxCredits ?? 25;
   const MAX_CARRY_OVER = configRow?.maxCarryOver ?? 6;
-  const MAX_BORROWED   = configRow?.maxBorrowed  ?? 6;
+  const MAX_BORROWED = configRow?.maxBorrowed ?? 6;
 
   const existingRegs = await prisma.courseRegistration.findMany({
     where: { studentId: user.id, session: currentSession, semester: currentSemester },
@@ -83,7 +87,7 @@ export const load: PageServerLoad = async ({ locals, url }) => {
     orderBy: { createdAt: 'asc' },
   });
 
-  const registeredIds  = new Set(existingRegs.map(r => r.courseId));
+  const registeredIds = new Set(existingRegs.map(r => r.courseId));
   const currentCredits = existingRegs.reduce((s, r) => s + r.course.creditUnits, 0);
 
   const deptInclude = {
@@ -98,32 +102,32 @@ export const load: PageServerLoad = async ({ locals, url }) => {
   const [collegeCourses, carryOverCourses, borrowedCourses] = await Promise.all([
     studentCollegeId
       ? prisma.course.findMany({
-          where: { ...notRegistered, level: studentLevel, department: { collegeId: studentCollegeId } },
-          include: { department: deptInclude, _count: { select: { registrations: true } } },
-          orderBy: { code: 'asc' },
-        })
+        where: { ...notRegistered, level: studentLevel, department: { collegeId: studentCollegeId } },
+        include: { department: deptInclude, _count: { select: { registrations: true } } },
+        orderBy: { code: 'asc' },
+      })
       : Promise.resolve([]),
     (studentCollegeId && studentLevel > 100)
       ? prisma.course.findMany({
-          where: { ...notRegistered, level: { lt: studentLevel }, department: { collegeId: studentCollegeId } },
-          include: { department: deptInclude, _count: { select: { registrations: true } } },
-          orderBy: [{ level: 'desc' }, { code: 'asc' }],
-        })
+        where: { ...notRegistered, level: { lt: studentLevel }, department: { collegeId: studentCollegeId } },
+        include: { department: deptInclude, _count: { select: { registrations: true } } },
+        orderBy: [{ level: 'desc' }, { code: 'asc' }],
+      })
       : Promise.resolve([]),
     // Only offer borrowed courses when the student has a known college —
     // otherwise `not: null` would match every course in the DB.
     studentCollegeId
       ? prisma.course.findMany({
-          where: {
-            ...notRegistered,
-            level: studentLevel,
-            department: {
-              collegeId: { not: studentCollegeId },
-            },
+        where: {
+          ...notRegistered,
+          level: studentLevel,
+          department: {
+            collegeId: { not: studentCollegeId },
           },
-          include: { department: deptInclude, _count: { select: { registrations: true } } },
-          orderBy: [{ department: { collegeId: 'asc' } }, { code: 'asc' }],
-        })
+        },
+        include: { department: deptInclude, _count: { select: { registrations: true } } },
+        orderBy: [{ department: { collegeId: 'asc' } }, { code: 'asc' }],
+      })
       : Promise.resolve([]),
   ]);
 
@@ -149,9 +153,9 @@ export const load: PageServerLoad = async ({ locals, url }) => {
       registrationType: r.registrationType, status: r.status,
       registeredAt: r.createdAt,
     })),
-    collegeCourses:   collegeCourses.map(serialize),
+    collegeCourses: collegeCourses.map(serialize),
     carryOverCourses: carryOverCourses.map(serialize),
-    borrowedCourses:  borrowedCourses.map(serialize),
+    borrowedCourses: borrowedCourses.map(serialize),
     meta: {
       session: currentSession, semester: currentSemester,
       maxCredits: MAX_CREDITS, maxCarryOver: MAX_CARRY_OVER, maxBorrowed: MAX_BORROWED,
@@ -166,9 +170,11 @@ export const load: PageServerLoad = async ({ locals, url }) => {
 // Shared context resolver
 // ─────────────────────────────────────────────────────────────────────────────
 async function resolveStudentContext(user: ReturnType<typeof requireStudent>) {
+  const prisma = await getPrismaClient();
+
   const { session: currentSession, semester: currentSemester, regOpen } = await getActiveSemester();
   const studentCollegeId = user.collegeId ?? null;
-  const regKey           = `${currentSession}_${currentSemester}`;
+  const regKey = `${currentSession}_${currentSemester}`;
   const [levelRow, phase] = await Promise.all([
     user.levelId
       ? prisma.level.findUnique({ where: { id: user.levelId }, select: { level: true } })
@@ -186,9 +192,9 @@ async function resolveStudentContext(user: ReturnType<typeof requireStudent>) {
     currentSession, currentSemester, studentCollegeId, regKey,
     studentLevel,
     phase, regOpen,
-    maxCredits:   configRow?.maxCredits   ?? 25,
+    maxCredits: configRow?.maxCredits ?? 25,
     maxCarryOver: configRow?.maxCarryOver ?? 6,
-    maxBorrowed:  configRow?.maxBorrowed  ?? 6,
+    maxBorrowed: configRow?.maxBorrowed ?? 6,
   };
 }
 
@@ -200,6 +206,8 @@ async function validateCourseForStudent(
   type: 'normal' | 'carry_over' | 'borrowed',
   ctx: Awaited<ReturnType<typeof resolveStudentContext>>,
 ) {
+  const prisma = await getPrismaClient();
+
   const course = await prisma.course.findUnique({
     where: { id: courseId },
     include: { department: { select: { collegeId: true } } },
@@ -210,18 +218,18 @@ async function validateCourseForStudent(
   const courseLevel = course.level ?? 0;
 
   if (type === 'normal') {
-    if (!sameCollege)                       return { error: 'Normal registration is only for courses in your own college.' };
-    if (courseLevel !== ctx.studentLevel)   return { error: 'Normal registration is only for courses at your current level.' };
+    if (!sameCollege) return { error: 'Normal registration is only for courses in your own college.' };
+    if (courseLevel !== ctx.studentLevel) return { error: 'Normal registration is only for courses at your current level.' };
   }
   if (type === 'carry_over') {
-    if (!sameCollege)                              return { error: 'Carry-over is only for courses in your own college.' };
-    if (ctx.studentLevel <= 100)                   return { error: '100 Level students cannot register carry-over courses.' };
-    if (courseLevel >= ctx.studentLevel)           return { error: 'Carry-over courses must be from a level below yours.' };
+    if (!sameCollege) return { error: 'Carry-over is only for courses in your own college.' };
+    if (ctx.studentLevel <= 100) return { error: '100 Level students cannot register carry-over courses.' };
+    if (courseLevel >= ctx.studentLevel) return { error: 'Carry-over courses must be from a level below yours.' };
   }
   if (type === 'borrowed') {
     // Can't borrow if own college is unknown — sameCollege would be null === null = true and slip through
-    if (!ctx.studentCollegeId)            return { error: 'Your college is not set. Contact your academic office.' };
-    if (sameCollege)                      return { error: 'Borrowed registration is only for courses from other colleges.' };
+    if (!ctx.studentCollegeId) return { error: 'Your college is not set. Contact your academic office.' };
+    if (sameCollege) return { error: 'Borrowed registration is only for courses from other colleges.' };
     if (courseLevel !== ctx.studentLevel) return { error: 'Borrowed courses must be at your current level.' };
   }
 
@@ -237,9 +245,11 @@ export const actions: Actions = {
   // Replaces the old single `register` action.
   // Receives repeated fields: courseId[], type[]  (parallel arrays)
   batchRegister: async ({ request, locals }) => {
-    const user =  await  requireStudent(locals.user);
-    const fd   = await request.formData();
-    const ctx  = await resolveStudentContext(user);
+    const user = await requireStudent(locals.user);
+    const prisma = await getPrismaClient();
+    const fd = await request.formData();
+    const ctx = await resolveStudentContext(user);
+
 
     if (!ctx.regOpen) {
       return fail(403, { error: 'Course registration is currently closed. Contact your academic office.' });
@@ -252,7 +262,7 @@ export const actions: Actions = {
     }
 
     const courseIds = fd.getAll('courseId').map(v => v.toString());
-    const types     = fd.getAll('type').map(v => v.toString() as 'normal' | 'carry_over' | 'borrowed');
+    const types = fd.getAll('type').map(v => v.toString() as 'normal' | 'carry_over' | 'borrowed');
 
     if (courseIds.length === 0) return fail(400, { error: 'No courses selected.' });
 
@@ -269,7 +279,7 @@ export const actions: Actions = {
 
     for (let i = 0; i < courseIds.length; i++) {
       const courseId = courseIds[i];
-      const type     = types[i] ?? 'normal';
+      const type = types[i] ?? 'normal';
 
       if (registeredSet.has(courseId)) continue; // skip already-registered silently
 
@@ -292,9 +302,9 @@ export const actions: Actions = {
     // Enforce carry-over and borrowed caps
     // Count existing + what we're about to add
     const existingCarryOver = existingRegs.filter((r: any) => r.registrationType === 'carry_over').length;
-    const existingBorrowed  = existingRegs.filter((r: any) => r.registrationType === 'borrowed').length;
-    const addingCarryOver   = toCreate.filter(c => c.type === 'carry_over').length;
-    const addingBorrowed    = toCreate.filter(c => c.type === 'borrowed').length;
+    const existingBorrowed = existingRegs.filter((r: any) => r.registrationType === 'borrowed').length;
+    const addingCarryOver = toCreate.filter(c => c.type === 'carry_over').length;
+    const addingBorrowed = toCreate.filter(c => c.type === 'borrowed').length;
 
     if (existingCarryOver + addingCarryOver > ctx.maxCarryOver) {
       return fail(400, { error: `Carry-over limit is ${ctx.maxCarryOver} courses. You already have ${existingCarryOver}.` });
@@ -322,7 +332,8 @@ export const actions: Actions = {
   // ── Drop one course (draft phase) ─────────────────────────────────────
   drop: async ({ request, locals }) => {
     const user = await requireStudent(locals.user);
-    const fd   = await request.formData();
+              const prisma = await getPrismaClient();
+    const fd = await request.formData();
     const registrationId = fd.get('registrationId')?.toString();
     if (!registrationId) return fail(400, { error: 'Registration ID required.' });
 
@@ -343,7 +354,9 @@ export const actions: Actions = {
   // ── Submit registration (draft → submitted) ───────────────────────────
   submit: async ({ locals }) => {
     const user = await requireStudent(locals.user);
-    const ctx  = await resolveStudentContext(user);
+              const prisma = await getPrismaClient();
+    
+    const ctx = await resolveStudentContext(user);
 
     if (ctx.phase !== 'draft') return fail(400, { error: 'Already submitted.' });
 
@@ -362,8 +375,10 @@ export const actions: Actions = {
   // addCourseId[] + addType[] (parallel) and dropId[] (registration IDs)
   update: async ({ request, locals }) => {
     const user = await requireStudent(locals.user);
-    const fd   = await request.formData();
-    const ctx  = await resolveStudentContext(user);
+              const prisma = await getPrismaClient();
+    
+    const fd = await request.formData();
+    const ctx = await resolveStudentContext(user);
 
     if (ctx.phase === 'draft') {
       return fail(400, { error: 'Submit your registration before using the update window.' });
@@ -373,8 +388,8 @@ export const actions: Actions = {
     }
 
     const addCourseIds = fd.getAll('addCourseId').map(v => v.toString());
-    const addTypes     = fd.getAll('addType').map(v => v.toString() as 'normal' | 'carry_over' | 'borrowed');
-    const dropIds      = fd.getAll('dropId').map(v => v.toString());
+    const addTypes = fd.getAll('addType').map(v => v.toString() as 'normal' | 'carry_over' | 'borrowed');
+    const dropIds = fd.getAll('dropId').map(v => v.toString());
 
     if (addCourseIds.length === 0 && dropIds.length === 0) {
       return fail(400, { error: 'No changes selected.' });
@@ -398,7 +413,7 @@ export const actions: Actions = {
     const toAdd: { courseId: string; creditUnits: number; type: 'normal' | 'carry_over' | 'borrowed'; status: string }[] = [];
     for (let i = 0; i < addCourseIds.length; i++) {
       const courseId = addCourseIds[i];
-      const type     = addTypes[i] ?? 'normal';
+      const type = addTypes[i] ?? 'normal';
 
       const result = await validateCourseForStudent(courseId, type, ctx);
       if (result.error) return fail(400, { error: result.error });
@@ -413,11 +428,11 @@ export const actions: Actions = {
     }
 
     // Enforce carry-over and borrowed caps after accounting for drops
-    const remainingRegs   = existingRegs.filter((r: any) => !dropIds.includes(r.id));
-    const keptCarryOver   = remainingRegs.filter((r: any) => r.registrationType === 'carry_over').length;
-    const keptBorrowed    = remainingRegs.filter((r: any) => r.registrationType === 'borrowed').length;
+    const remainingRegs = existingRegs.filter((r: any) => !dropIds.includes(r.id));
+    const keptCarryOver = remainingRegs.filter((r: any) => r.registrationType === 'carry_over').length;
+    const keptBorrowed = remainingRegs.filter((r: any) => r.registrationType === 'borrowed').length;
     const addingCarryOver = toAdd.filter(c => c.type === 'carry_over').length;
-    const addingBorrowed  = toAdd.filter(c => c.type === 'borrowed').length;
+    const addingBorrowed = toAdd.filter(c => c.type === 'borrowed').length;
 
     if (keptCarryOver + addingCarryOver > ctx.maxCarryOver) {
       return fail(400, { error: `Carry-over limit is ${ctx.maxCarryOver} courses.` });

@@ -2,11 +2,12 @@
 import type { PageServerLoad, Actions } from './$types';
 import { fail, redirect } from '@sveltejs/kit';
 import { requireAdmin } from '$lib/server/auth/guards.js';
-import { prisma } from '$lib/server/db/index.js';
+import { getPrismaClient } from '$lib/server/db/index.js';
 import { hashPassword } from '$lib/server/auth/password.js';
 
 export const load: PageServerLoad = async ({ locals }) => {
   await requireAdmin(locals.user);
+          const prisma = await getPrismaClient();
 
   const [colleges, departments] = await prisma.$transaction([
     prisma.college.findMany({ orderBy: { name: 'asc' } }),

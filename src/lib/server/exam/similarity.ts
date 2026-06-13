@@ -6,8 +6,9 @@
 //
 // Persists results to the `face_similarity` table (see Prisma schema).
 
-import { prisma } from '$lib/server/db/index.js';
+import { getPrismaClient } from '$lib/server/db/index.js';
 import { sql }    from '$lib/server/db/index.js';
+
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -58,6 +59,7 @@ function getRiskLevel(
 // ─── Main analysis ────────────────────────────────────────────────────────────
 
 export async function analyseExamSimilarity(examId: string): Promise<SimilarityReport> {
+    const prisma = await getPrismaClient();
 
   // 1. Exam metadata via Prisma
   const exam = await prisma.exam.findUnique({
@@ -213,6 +215,8 @@ async function persistSimilarityResults(
   examId: string,
   pairs: SimilarityPair[]
 ): Promise<void> {
+      const prisma = await getPrismaClient();
+
   // Wipe previous run for this exam
   await prisma.faceSimilarity.deleteMany({ where: { examId } });
 
@@ -236,6 +240,8 @@ async function persistSimilarityResults(
 // ─── Fetch persisted results ──────────────────────────────────────────────────
 
 export async function getSimilarityReport(examId: string): Promise<SimilarityPair[]> {
+      const prisma = await getPrismaClient();
+
   const rows = await prisma.faceSimilarity.findMany({
     where:   { examId },
     include: {

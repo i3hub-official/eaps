@@ -1,6 +1,6 @@
 // src/lib/server/db/questions.ts
 
-import { prisma, sql } from './index.js';
+import { getPrismaClient, sql } from './index.js';
 import type { Question, QuestionOption, FitbAnswer, QuestionType } from '@prisma/client';
 
 export type { Question, QuestionOption, FitbAnswer, QuestionType };
@@ -8,6 +8,8 @@ export type { Question, QuestionOption, FitbAnswer, QuestionType };
 // ─── Prisma: simple CRUD ──────────────────────────────────────────────────────
 
 export async function getQuestionById(id: string) {
+  const prisma = await getPrismaClient();
+
   return prisma.question.findUnique({
     where: { id },
     include: { options: true, fitbAnswers: true },
@@ -15,6 +17,8 @@ export async function getQuestionById(id: string) {
 }
 
 export async function getQuestionsForExam(examId: string) {
+const prisma = await getPrismaClient();
+
   return prisma.question.findMany({
     where: { examId },
     include: { options: { orderBy: { orderIndex: 'asc' } }, fitbAnswers: true },
@@ -26,6 +30,8 @@ export async function createMCQ(input: {
   examId: string; body: string; imageUrl?: string; marks?: number; orderIndex?: number;
   options: { optionText: string; isCorrect: boolean; orderIndex?: number }[];
 }) {
+const prisma = await getPrismaClient();
+
   return prisma.question.create({
     data: {
       examId: input.examId,
@@ -44,6 +50,8 @@ export async function createFITB(input: {
   examId: string; body: string; imageUrl?: string; marks?: number; orderIndex?: number;
   answers: { acceptedAnswer: string; isPrimary?: boolean }[];
 }) {
+const prisma = await getPrismaClient();
+
   return prisma.question.create({
     data: {
       examId: input.examId,
@@ -61,10 +69,14 @@ export async function createFITB(input: {
 export async function updateQuestion(id: string, input: {
   body?: string; imageUrl?: string; marks?: number; orderIndex?: number;
 }) {
+const prisma = await getPrismaClient();
+
   return prisma.question.update({ where: { id }, data: input });
 }
 
 export async function deleteQuestion(id: string) {
+
+const prisma = await getPrismaClient();
   await prisma.question.delete({ where: { id } });
 }
 
@@ -72,6 +84,8 @@ export async function replaceOptions(
   questionId: string,
   options: { optionText: string; isCorrect: boolean; orderIndex?: number }[]
 ) {
+const prisma = await getPrismaClient();
+
   return prisma.$transaction([
     prisma.questionOption.deleteMany({ where: { questionId } }),
     prisma.questionOption.createMany({
@@ -81,6 +95,8 @@ export async function replaceOptions(
 }
 
 export async function getQuestionCount(examId: string): Promise<number> {
+const prisma = await getPrismaClient();
+
   return prisma.question.count({ where: { examId } });
 }
 

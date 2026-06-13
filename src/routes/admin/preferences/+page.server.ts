@@ -4,11 +4,13 @@ import type { PageServerLoad, Actions } from './$types';
 import type { Prisma } from '@prisma/client';
 import { fail } from '@sveltejs/kit';
 import { requireAdmin } from '$lib/server/auth/guards.js';
-import { prisma } from '$lib/server/db/index.js';
+import { getPrismaClient } from '$lib/server/db/index.js';
 
 
 export const load: PageServerLoad = async ({ locals }) => {
 await requireAdmin(locals.user);
+        const prisma = await getPrismaClient();
+
 
    const row = await prisma.userPreference.findUnique({ where: { userId: locals.user.id } });
   const prefs = (row?.prefs as Record<string, unknown>) ?? {};
@@ -20,7 +22,10 @@ await requireAdmin(locals.user);
 };
 
 export const actions: Actions = {
+  
   save: async ({ request, locals }) => {
+            const prisma = await getPrismaClient();
+
     if (!locals.user) return fail(403);
 
     const fd = await request.formData();

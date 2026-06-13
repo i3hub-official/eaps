@@ -1,7 +1,7 @@
 // src/routes/admin/manage/course-registrations/+page.server.ts
 import type { PageServerLoad, Actions } from './$types';
 import { requireAdmin } from '$lib/server/auth/guards.js';
-import { prisma } from '$lib/server/db/index.js';
+import { getPrismaClient } from '$lib/server/db/index.js';
 import { fail } from '@sveltejs/kit';
 
 // Default fallback values (only used when no config exists)
@@ -11,6 +11,9 @@ const DEFAULT_MAX_CREDITS = 24;
 
 export const load: PageServerLoad = async ({ locals, url }) => {
   requireAdmin(locals.user);
+
+      const prisma = await getPrismaClient();
+
 
   const studentId = url.searchParams.get('studentId') ?? undefined;
   const currentSemester = 1; // fallback semester for config lookup
@@ -215,6 +218,9 @@ export const actions: Actions = {
     requireAdmin(locals.user);
     const data = await request.formData();
 
+            const prisma = await getPrismaClient();
+
+
     const studentId = data.get('studentId') as string;
     const courseId = data.get('courseId') as string;
     const session = data.get('session') as string;
@@ -306,6 +312,9 @@ export const actions: Actions = {
   edit: async ({ request, locals }) => {
     requireAdmin(locals.user);
     const data = await request.formData();
+
+        const prisma = await getPrismaClient();
+
 
     const id = data.get('id') as string;
     const studentId = data.get('studentId') as string;
@@ -402,6 +411,9 @@ export const actions: Actions = {
     requireAdmin(locals.user);
     const data = await request.formData();
     const id = data.get('id') as string;
+
+            const prisma = await getPrismaClient();
+
 
     try {
       await prisma.courseRegistration.delete({ where: { id } });
