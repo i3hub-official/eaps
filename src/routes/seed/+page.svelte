@@ -1,13 +1,14 @@
-<!-- src/routes/(admin)/seed/+page.svelte -->
 <script lang="ts">
   import { enhance } from '$app/forms';
-  import { fade, fly } from 'svelte/transition';
+  import { fade, fly, scale, slide } from 'svelte/transition';
+  import { cubicOut } from 'svelte/easing';
   import type { PageData, ActionData } from './$types';
   import {
     Database, Loader2, CheckCircle2, AlertCircle, Trash2, Sprout,
     GraduationCap, Building2, Users, BookOpen, FileCheck, HelpCircle,
     ChevronRight, RotateCcw, ShieldCheck, Bell, Settings2, CalendarDays,
-    Calendar, BookMarked, Library, Layers, CreditCard,
+    Calendar, BookMarked, Library, Layers, CreditCard, Terminal, Activity,
+    ArrowRight, Sparkles, ShieldAlert, Info, X
   } from 'lucide-svelte';
 
   let { data }: { data: PageData } = $props();
@@ -22,30 +23,27 @@
   let eventSource: EventSource | null = null;
   let seedResults = $state<string[]>([]);
 
-  // ── Step definitions — must match server results.push() order exactly ──
   const seedSteps = [
-    { key: 'levels',        label: 'Levels',          icon: GraduationCap, total: 8,    emoji: '📊' },
-    { key: 'semesters',     label: 'Semesters',       icon: CalendarDays,  total: 2,    emoji: '📅' },
-    { key: 'colleges',      label: 'Colleges',        icon: Building2,     total: 12,   emoji: '🏛️' },
-    { key: 'departments',   label: 'Departments',     icon: Building2,     total: 57,   emoji: '🏢' },
-    { key: 'configs',       label: 'Credit Caps',     icon: CreditCard,    total: 16,   emoji: '🎯' },
-    { key: 'staff',         label: 'Staff',           icon: Users,         total: 62,   emoji: '👥' },
-    { key: 'students',      label: 'Students',        icon: Users,         total: 45,   emoji: '🎓' },
-    { key: 'courses',       label: 'Courses',         icon: BookOpen,      total: 400,  emoji: '📚' },
-    { key: 'registrations', label: 'Registrations',   icon: FileCheck,     total: null, emoji: '📋' },
-    { key: 'exam',          label: 'Exams',           icon: ShieldCheck,   total: 2,    emoji: '📝' },
-    { key: 'questions',     label: 'Questions',       icon: HelpCircle,    total: 28,   emoji: '❓' },
-    { key: 'notifications', label: 'Notifications',   icon: Bell,          total: null, emoji: '🔔' },
-    { key: 'preferences',   label: 'Preferences',     icon: Settings2,     total: null, emoji: '⚙️' },
+    { key: 'levels',        label: 'Levels',          icon: GraduationCap, total: 8,    emoji: '📊', color: '#8b5cf6' },
+    { key: 'semesters',     label: 'Semesters',       icon: CalendarDays,  total: 2,    emoji: '📅', color: '#06b6d4' },
+    { key: 'colleges',      label: 'Colleges',        icon: Building2,     total: 12,   emoji: '🏛️', color: '#f59e0b' },
+    { key: 'departments',   label: 'Departments',     icon: Building2,     total: 57,   emoji: '🏢', color: '#f97316' },
+    { key: 'configs',       label: 'Credit Caps',     icon: CreditCard,    total: 16,   emoji: '🎯', color: '#ec4899' },
+    { key: 'staff',         label: 'Staff',           icon: Users,         total: 62,   emoji: '👥', color: '#6366f1' },
+    { key: 'students',      label: 'Students',        icon: Users,         total: 45,   emoji: '🎓', color: '#3b82f6' },
+    { key: 'courses',       label: 'Courses',         icon: BookOpen,      total: 400,  emoji: '📚', color: '#10b981' },
+    { key: 'registrations', label: 'Registrations',   icon: FileCheck,     total: null, emoji: '📋', color: '#14b8a6' },
+    { key: 'exam',          label: 'Exams',           icon: ShieldCheck,   total: 2,    emoji: '📝', color: '#ef4444' },
+    { key: 'questions',     label: 'Questions',       icon: HelpCircle,    total: 28,   emoji: '❓', color: '#a855f7' },
+    { key: 'notifications', label: 'Notifications',   icon: Bell,          total: null, emoji: '🔔', color: '#eab308' },
+    { key: 'preferences',   label: 'Preferences',     icon: Settings2,     total: null, emoji: '⚙️', color: '#64748b' },
   ];
 
-  // ── Semester display info ──────────────────────────────────────────────
   const semesterDefs = [
-    { name: 'First Semester',  months: 'Sep – Jan', icon: BookMarked, color: '#3b82f6' },
-    { name: 'Second Semester', months: 'Feb – Aug', icon: Library,    color: '#10b981' },
+    { name: 'First Semester',  months: 'September – January', icon: BookMarked, color: '#3b82f6', short: 'Sem 1' },
+    { name: 'Second Semester', months: 'February – August', icon: Library,    color: '#10b981', short: 'Sem 2' },
   ];
 
-  // ── Credit cap table for display ──────────────────────────────────────
   const creditCapRows = [
     { level: '100L', sem1: 20, sem2: 20, carryOver: 0,  borrowed: 6  },
     { level: '200L', sem1: 24, sem2: 24, carryOver: 6,  borrowed: 6  },
@@ -77,7 +75,7 @@
     let reconnectAttempts = 0;
 
     eventSource.onopen = () => {
-      addLog('✅ Connected to real-time progress stream');
+      addLog('Connected to real-time progress stream');
       reconnectAttempts = 0;
     };
 
@@ -90,7 +88,7 @@
           progress.step    = d.message;
           progress.detail  = d.detail || '';
         }
-        addLog(`${d.emoji || '📌'} ${d.message}${d.detail ? ` — ${d.detail}` : ''}`);
+        addLog(`${d.emoji || '●'} ${d.message}${d.detail ? ` — ${d.detail}` : ''}`);
       } else if (d.type === 'complete') {
         progress.current = seedSteps.length;
         addLog(`✨ ${d.message}`);
@@ -98,7 +96,7 @@
         eventSource?.close();
         setTimeout(() => window.location.reload(), 1500);
       } else if (d.type === 'error') {
-        addLog(`❌ ${d.message}`, true);
+        addLog(`Error: ${d.message}`, true);
         seeding = false;
         eventSource?.close();
       }
@@ -107,234 +105,358 @@
     eventSource.onerror = () => {
       if (reconnectAttempts < 3) {
         reconnectAttempts++;
-        addLog(`⚠️ Connection lost, reconnecting... (${reconnectAttempts}/3)`, true);
+        addLog(`Connection lost, reconnecting... (${reconnectAttempts}/3)`, true);
         setTimeout(() => startSSE(), 2000);
       } else {
-        addLog('❌ Failed to maintain progress connection. Please refresh.', true);
+        addLog('Failed to maintain progress connection. Please refresh.', true);
         seeding = false;
         eventSource?.close();
       }
     };
   }
+
+  function getStepStatus(index: number, current: number) {
+    if (index < current) return 'completed';
+    if (index === current) return 'active';
+    return 'pending';
+  }
+
+  function getTotalRecords() {
+    return seedSteps.reduce((acc, step) => acc + (step.total || 0), 0);
+  }
 </script>
 
-<svelte:head><title>Database Seed — MOUAU eTest</title></svelte:head>
+<svelte:head>
+  <title>Database Seed — MOUAU eTest</title>
+</svelte:head>
 
 <div class="page">
-  <div class="card">
-
-    <!-- ── Header ─────────────────────────────────────────────────────── -->
-    <div class="header">
-      <div class="icon-wrap"><Database size={28} strokeWidth={2}/></div>
-      <div>
-        <h1>Database Seed</h1>
-        <p class="sub">
-          {data.isFirstRun
-            ? 'No users found — safe to seed without admin login.'
-            : 'Admin access required to re-seed or reset.'}
+  <div class="container">
+    
+    <!-- Hero Header -->
+    <header class="hero" class:first-run={data.isFirstRun}>
+      <div class="hero-content">
+        <div class="hero-badge">
+          <Database size={20} strokeWidth={2}/>
+          <span>Database Management</span>
+        </div>
+        <h1>Seed Database</h1>
+        <p class="hero-desc">
+          {#if data.isFirstRun}
+            Initialize your database with demo data for the MOUAU eTest platform.
+          {:else}
+            Re-seed or reset your database. Admin privileges required.
+          {/if}
         </p>
       </div>
-    </div>
+      <div class="hero-visual">
+        <div class="hero-ring"></div>
+        <div class="hero-ring ring-2"></div>
+        <Database size={48} strokeWidth={1.5} class="hero-icon"/>
+      </div>
+    </header>
 
-    <!-- ── Current counts ─────────────────────────────────────────────── -->
-    <div class="counts">
-      {#each Object.entries(data.counts) as [key, val]}
-        <div class="count-pill" class:has-data={val > 0}>
-          <span class="count-val">{val}</span>
-          <span class="count-key">{key}</span>
-        </div>
-      {/each}
-    </div>
+    <!-- Stats Overview -->
+    <section class="stats-bar">
+      <div class="stat-item">
+        <span class="stat-value">{Object.values(data.counts).reduce((a, b) => a + b, 0)}</span>
+        <span class="stat-label">Total Records</span>
+      </div>
+      <div class="stat-divider"></div>
+      <div class="stat-item">
+        <span class="stat-value">{Object.values(data.counts).filter(v => v > 0).length}</span>
+        <span class="stat-label">Tables Populated</span>
+      </div>
+      <div class="stat-divider"></div>
+      <div class="stat-item">
+        <span class="stat-value">{getTotalRecords()}</span>
+        <span class="stat-label">Records to Seed</span>
+      </div>
+      <div class="stat-divider"></div>
+      <div class="stat-item">
+        <span class="stat-value" class:live={data.isFirstRun}>{data.isFirstRun ? 'Ready' : 'Locked'}</span>
+        <span class="stat-label">Status</span>
+      </div>
+    </section>
 
-    <!-- ── Progress (while seeding) ───────────────────────────────────── -->
-    {#if seeding}
-      <div class="progress-section" transition:fly={{ y: -10, duration: 200 }}>
-        <div class="progress-header">
-          <span class="progress-label">🌱 Seeding in progress…</span>
-          <span class="progress-fraction">{progress.current}/{progress.total}</span>
-        </div>
-        <div class="progress-track">
-          <div class="progress-fill" style="width:{Math.min((progress.current/progress.total)*100,100)}%"></div>
-        </div>
-        {#if progress.step}
-          <div class="current-step" transition:fade>
-            <Loader2 size={15} class="spin"/>
-            <span>{progress.step}</span>
-            {#if progress.detail}<span class="step-detail">— {progress.detail}</span>{/if}
-          </div>
-        {/if}
-
-        <div class="step-grid">
-          {#each seedSteps as step, i}
-            {@const isDone   = i < progress.current}
-            {@const isActive = i === progress.current}
-            <div class="step-item" class:done={isDone} class:active={isActive}>
-              <div class="step-dot">
-                {#if isDone}
-                  <CheckCircle2 size={13}/>
-                {:else if isActive}
-                  <Loader2 size={13} class="spin"/>
-                {:else}
-                  <svelte:component this={step.icon} size={13}/>
-                {/if}
-              </div>
-              <span class="step-name">{step.label}</span>
-              {#if step.total !== null}
-                <span class="step-count">~{step.total}</span>
-              {/if}
+    <!-- Current Counts Grid -->
+    <section class="counts-section">
+      <h2 class="section-title">
+        <Activity size={16}/>
+        Current Database State
+      </h2>
+      <div class="counts-grid">
+        {#each Object.entries(data.counts) as [key, val]}
+          <div class="count-card" class:populated={val > 0}>
+            <div class="count-indicator" class:active={val > 0}></div>
+            <div class="count-info">
+              <span class="count-number">{val}</span>
+              <span class="count-name">{key}</span>
             </div>
-          {/each}
-        </div>
-
-        <button class="log-toggle" onclick={() => showLogs = !showLogs}>
-          <ChevronRight size={13} class={showLogs ? 'rotated' : ''}/>
-          {showLogs ? 'Hide' : 'Show'} live logs ({logs.length})
-        </button>
-        {#if showLogs}
-          <div class="log-panel" transition:fade>
-            {#if logs.length === 0}
-              <div class="log-line muted">Waiting for server response…</div>
-            {:else}
-              {#each logs as log}<div class="log-line">{log}</div>{/each}
+            {#if val > 0}
+              <CheckCircle2 size={14} class="count-check"/>
             {/if}
           </div>
-        {/if}
+        {/each}
       </div>
-    {/if}
+    </section>
 
-    <!-- ── Result ──────────────────────────────────────────────────────── -->
-    {#if form?.success && form.results && !seeding}
-      <div class="result success" transition:fly={{ y: 10, duration: 200 }}>
-        <div class="result-header"><CheckCircle2 size={18}/><span>Seed complete!</span></div>
-        {#each form.results as line}<p>{line}</p>{/each}
-      </div>
-    {:else if form?.error && !seeding}
-      <div class="result error" transition:fly={{ y: 10, duration: 200 }}>
-        <div class="result-header"><AlertCircle size={18}/><span>Seed failed</span></div>
-        <p>{form.error}</p>
-      </div>
-    {/if}
-
-    <!-- ── Actions ─────────────────────────────────────────────────────── -->
-    <div class="actions">
-      <form method="POST" action="?/seed" use:enhance={() => {
-        resetProgress();
-        seeding = true;
-        addLog('🌱 Starting seed…');
-        startSSE();
-        return async ({ update }) => update();
-      }}>
-        <button class="btn-primary" disabled={seeding || resetting}>
-          {#if seeding}<Loader2 size={15} class="spin"/> Seeding…
-          {:else}<Sprout size={15}/> Seed Database{/if}
-        </button>
-      </form>
-
-      <form method="POST" action="?/reset" use:enhance={() => {
-        if (!confirm(`⚠️ DANGER: This will permanently delete all data. Continue?`)) return () => {};
-        resetting = true;
-        addLog('🗑️ Resetting database…');
-        return async ({ update }) => {
-          const result = await update();
-          resetting = false;
-          setTimeout(() => window.location.reload(), 1500);
-          return result;
-        };
-      }}>
-        <button class="btn-danger" disabled={seeding || resetting}>
-          {#if resetting}<Loader2 size={15} class="spin"/> Resetting…
-          {:else}<Trash2 size={15}/> Reset All Data{/if}
-        </button>
-      </form>
-    </div>
-
-    {#if form?.success && !seeding}
-      <button class="refresh-hint" onclick={() => window.location.reload()}>
-        <RotateCcw size={13}/> Refresh to see updated counts
-      </button>
-    {/if}
-
-    <!-- ── Pre-seed info panels ────────────────────────────────────────── -->
-    {#if !seeding && !form}
-
-      <!-- Academic calendar -->
-      <div class="info-panel" transition:fade>
-        <div class="panel-head">
-          <CalendarDays size={14}/>
-          <span>Academic Calendar — 2025/2026</span>
+    <!-- Progress Section -->
+    {#if seeding}
+      <section class="progress-card" transition:slide={{ duration: 300, easing: cubicOut }}>
+        <div class="progress-header">
+          <div class="progress-title">
+            <div class="progress-pulse"></div>
+            <span>Seeding in Progress</span>
+          </div>
+          <span class="progress-percentage">{Math.round((progress.current / progress.total) * 100)}%</span>
         </div>
-        <div class="sem-grid">
-          {#each semesterDefs as sem}
-            <div class="sem-card" style="--sem-color:{sem.color}">
-              <div class="sem-card-head">
-                <svelte:component this={sem.icon} size={14}/>
-                <span>{sem.name}</span>
+
+        <div class="progress-track">
+          <div class="progress-fill" style="width: {Math.min((progress.current / progress.total) * 100, 100)}%"></div>
+        </div>
+
+        <div class="progress-meta">
+          <span class="progress-step-name">
+            {#if progress.step}
+              <Loader2 size={14} class="spin"/>
+              {progress.step}
+            {:else}
+              Initializing...
+            {/if}
+          </span>
+          {#if progress.detail}
+            <span class="progress-detail">{progress.detail}</span>
+          {/if}
+          <span class="progress-fraction">{progress.current} of {progress.total} steps</span>
+        </div>
+
+        <!-- Step Visualizer -->
+        <div class="step-timeline">
+          {#each seedSteps as step, i}
+            {@const status = getStepStatus(i, progress.current)}
+            <div class="timeline-item {status}">
+              <div class="timeline-connector" class:hidden={i === 0}></div>
+              <div class="timeline-node" style="--step-color: {step.color}">
+                {#if status === 'completed'}
+                  <CheckCircle2 size={14}/>
+                {:else if status === 'active'}
+                  <Loader2 size={14} class="spin"/>
+                {:else}
+                  <svelte:component this={step.icon} size={14}/>
+                {/if}
               </div>
-              <span class="sem-months">{sem.months}</span>
+              <div class="timeline-content">
+                <span class="timeline-label">{step.label}</span>
+                {#if step.total !== null}
+                  <span class="timeline-count">~{step.total}</span>
+                {/if}
+              </div>
             </div>
           {/each}
         </div>
-      </div>
 
-      <!-- Credit caps table -->
-      <div class="info-panel" transition:fade>
-        <div class="panel-head">
-          <CreditCard size={14}/>
-          <span>Credit Caps per Level &amp; Semester</span>
-        </div>
-        <div class="caps-table-wrap">
-          <table class="caps-table">
-            <thead>
-              <tr>
-                <th>Level</th>
-                <th>Sem 1 CU</th>
-                <th>Sem 2 CU</th>
-                <th>Carry-Over</th>
-                <th>Borrowed</th>
-              </tr>
-            </thead>
-            <tbody>
-              {#each creditCapRows as row}
-                <tr>
-                  <td class="level-cell">{row.level}</td>
-                  <td class="num-cell">{row.sem1}</td>
-                  <td class="num-cell">{row.sem2}</td>
-                  <td class="num-cell" class:zero={row.carryOver === 0}>{row.carryOver === 0 ? '—' : row.carryOver}</td>
-                  <td class="num-cell">{row.borrowed}</td>
-                </tr>
-              {/each}
-            </tbody>
-          </table>
-        </div>
-        <p class="panel-note">
-          <AlertCircle size={11}/>
-          100L carry-over is 0 — no previous level to carry from.
-        </p>
-      </div>
-
-      <!-- What gets seeded -->
-      <div class="info-panel" transition:fade>
-        <div class="panel-head">
-          <Layers size={14}/>
-          <span>What will be seeded</span>
-        </div>
-        <div class="summary-grid">
-          {#each seedSteps as step}
-            <div class="summary-row">
-              <svelte:component this={step.icon} size={13}/>
-              <span class="summary-label">{step.label}</span>
-              <span class="summary-val">{step.total !== null ? `~${step.total}` : 'auto'}</span>
+        <!-- Live Logs -->
+        <div class="logs-section">
+          <button class="logs-toggle" onclick={() => showLogs = !showLogs}>
+            <Terminal size={14}/>
+            <span>Live Terminal</span>
+            <span class="logs-badge">{logs.length}</span>
+            <ChevronRight size={14} class={"logs-chevron" + (showLogs ? ' rotated' : '')}/>
+          </button>
+          
+          {#if showLogs}
+            <div class="logs-panel" transition:slide={{ duration: 200 }}>
+              {#if logs.length === 0}
+                <div class="log-empty">Waiting for server response...</div>
+              {:else}
+                {#each logs as log, i}
+                  <div class="log-entry" in:fade={{ delay: i * 20 }}>
+                    {log}
+                  </div>
+                {/each}
+              {/if}
             </div>
-          {/each}
+          {/if}
         </div>
-      </div>
-
+      </section>
     {/if}
 
-    <!-- ── Warning ─────────────────────────────────────────────────────── -->
-    <div class="warning-box">
-      <AlertCircle size={15}/>
-      <span>Remove or protect this route before going to production.</span>
+    <!-- Results -->
+    {#if form?.success && form.results && !seeding}
+      <section class="result-card success" transition:fly={{ y: 20, duration: 300 }}>
+        <div class="result-icon-wrap">
+          <Sparkles size={24}/>
+        </div>
+        <div class="result-content">
+          <h3>Seed Complete!</h3>
+          <div class="result-lines">
+            {#each form.results as line}
+              <p>{line}</p>
+            {/each}
+          </div>
+          <button class="refresh-btn" onclick={() => window.location.reload()}>
+            <RotateCcw size={14}/>
+            Refresh to see updated data
+          </button>
+        </div>
+      </section>
+    {:else if form?.error && !seeding}
+      <section class="result-card error" transition:fly={{ y: 20, duration: 300 }}>
+        <div class="result-icon-wrap error">
+          <ShieldAlert size={24}/>
+        </div>
+        <div class="result-content">
+          <h3>Seed Failed</h3>
+          <p class="error-message">{form.error}</p>
+        </div>
+      </section>
+    {/if}
+
+    <!-- Actions -->
+    <section class="actions-section">
+      <div class="actions-grid">
+        <form method="POST" action="?/seed" use:enhance={() => {
+          resetProgress();
+          seeding = true;
+          addLog('Starting seed process...');
+          startSSE();
+          return async ({ update }) => update();
+        }}>
+          <button class="action-btn seed-btn" disabled={seeding || resetting}>
+            {#if seeding}
+              <Loader2 size={18} class="spin"/>
+              <span>Seeding Database...</span>
+            {:else}
+              <Sprout size={18}/>
+              <span>Seed Database</span>
+              <ArrowRight size={16} class="btn-arrow"/>
+            {/if}
+          </button>
+        </form>
+
+        <form method="POST" action="?/reset" use:enhance={() => {
+          if (!confirm('DANGER: This will permanently delete all data. This action cannot be undone. Continue?')) return () => {};
+          resetting = true;
+          addLog('Resetting database...');
+          return async ({ update }) => {
+            const result = await update();
+            resetting = false;
+            setTimeout(() => window.location.reload(), 1500);
+            return result;
+          };
+        }}>
+          <button class="action-btn reset-btn" disabled={seeding || resetting}>
+            {#if resetting}
+              <Loader2 size={18} class="spin"/>
+              <span>Resetting...</span>
+            {:else}
+              <Trash2 size={18}/>
+              <span>Reset All Data</span>
+            {/if}
+          </button>
+        </form>
+      </div>
+    </section>
+
+    <!-- Info Panels -->
+    {#if !seeding && !form}
+      <div class="info-grid">
+        <!-- Academic Calendar -->
+        <section class="info-card">
+          <div class="info-header">
+            <CalendarDays size={16}/>
+            <h3>Academic Calendar 2025/2026</h3>
+          </div>
+          <div class="semesters-grid">
+            {#each semesterDefs as sem}
+              <div class="semester-card" style="--sem-color: {sem.color}">
+                <div class="semester-icon">
+                  <svelte:component this={sem.icon} size={20}/>
+                </div>
+                <div class="semester-info">
+                  <span class="semester-name">{sem.name}</span>
+                  <span class="semester-months">{sem.months}</span>
+                </div>
+                <span class="semester-badge">{sem.short}</span>
+              </div>
+            {/each}
+          </div>
+        </section>
+
+        <!-- Credit Caps -->
+        <section class="info-card wide">
+          <div class="info-header">
+            <CreditCard size={16}/>
+            <h3>Credit Caps per Level</h3>
+          </div>
+          <div class="caps-grid">
+            {#each creditCapRows as row}
+              <div class="cap-item">
+                <div class="cap-level">{row.level}</div>
+                <div class="cap-details">
+                  <div class="cap-row">
+                    <span class="cap-label">Sem 1</span>
+                    <span class="cap-value">{row.sem1} CU</span>
+                  </div>
+                  <div class="cap-row">
+                    <span class="cap-label">Sem 2</span>
+                    <span class="cap-value">{row.sem2} CU</span>
+                  </div>
+                  <div class="cap-row">
+                    <span class="cap-label">Carry</span>
+                    <span class="cap-value" class:zero={row.carryOver === 0}>
+                      {row.carryOver === 0 ? '—' : `${row.carryOver} CU`}
+                    </span>
+                  </div>
+                  <div class="cap-row">
+                    <span class="cap-label">Borrow</span>
+                    <span class="cap-value">{row.borrowed} CU</span>
+                  </div>
+                </div>
+              </div>
+            {/each}
+          </div>
+          <p class="info-note">
+            <Info size={12}/>
+            100L has no carry-over credits as there is no previous level.
+          </p>
+        </section>
+
+        <!-- What Gets Seeded -->
+        <section class="info-card wide">
+          <div class="info-header">
+            <Layers size={16}/>
+            <h3>Seed Overview</h3>
+            <span class="seed-total">~{getTotalRecords()} records</span>
+          </div>
+          <div class="seed-list">
+            {#each seedSteps as step, i}
+              <div class="seed-item" style="--item-color: {step.color}">
+                <div class="seed-number">{i + 1}</div>
+                <div class="seed-icon">
+                  <svelte:component this={step.icon} size={16}/>
+                </div>
+                <span class="seed-label">{step.label}</span>
+                {#if step.total !== null}
+                  <span class="seed-count">~{step.total}</span>
+                {:else}
+                  <span class="seed-count auto">auto</span>
+                {/if}
+              </div>
+            {/each}
+          </div>
+        </section>
+      </div>
+    {/if}
+
+    <!-- Warning -->
+    <div class="warning-banner">
+      <ShieldAlert size={16}/>
+      <div class="warning-content">
+        <strong>Production Notice</strong>
+        <span>Remove or protect this route before deploying to production.</span>
+      </div>
     </div>
 
   </div>
@@ -342,220 +464,946 @@
 
 <style>
   @keyframes spin { to { transform: rotate(360deg); } }
-  :global(.spin)    { animation: spin 1s linear infinite; }
-  :global(.rotated) { transform: rotate(90deg); }
+  @keyframes pulse { 
+    0%, 100% { opacity: 1; transform: scale(1); }
+    50% { opacity: 0.5; transform: scale(1.1); }
+  }
+  @keyframes ring-pulse {
+    0% { transform: scale(0.8); opacity: 0.8; }
+    100% { transform: scale(1.5); opacity: 0; }
+  }
+  
+  :global(.spin) { animation: spin 1s linear infinite; }
 
   .page {
     min-height: 100vh;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    padding: 2rem;
+    padding: 2rem 1rem;
     background: var(--color-bg);
+    display: flex;
+    justify-content: center;
   }
 
-  .card {
-    background: var(--color-surface);
-    border: 1px solid var(--color-border);
-    border-radius: 1.25rem;
-    padding: 2rem;
-    max-width: 700px;
+  .container {
+    max-width: 800px;
     width: 100%;
     display: flex;
     flex-direction: column;
-    gap: 1.25rem;
-    box-shadow: 0 4px 24px -4px rgba(0,0,0,.12);
+    gap: 1.5rem;
   }
 
-  /* ── Header ───────────────────────────────────────────────────────────── */
-  .header { display: flex; align-items: center; gap: 0.875rem; }
-  .icon-wrap {
-    flex-shrink: 0; width: 52px; height: 52px; border-radius: 14px;
-    background: rgba(59,130,246,.1); color: #3b82f6;
-    display: flex; align-items: center; justify-content: center;
+  /* ── Hero ───────────────────────────────────────────────────────────── */
+  .hero {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 2rem;
+    background: linear-gradient(135deg, var(--color-surface) 0%, rgba(59, 130, 246, 0.03) 100%);
+    border: 1px solid var(--color-border);
+    border-radius: 1.5rem;
+    position: relative;
+    overflow: hidden;
   }
-  h1 { font-size: 1.4rem; font-weight: 700; margin: 0; color: var(--color-text); }
-  .sub { font-size: 0.825rem; color: var(--color-muted); margin: 0.15rem 0 0; }
+
+  .hero.first-run {
+    background: linear-gradient(135deg, var(--color-surface) 0%, rgba(16, 185, 129, 0.05) 100%);
+    border-color: rgba(16, 185, 129, 0.2);
+  }
+
+  .hero-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.35rem 0.875rem;
+    background: rgba(59, 130, 246, 0.1);
+    color: #3b82f6;
+    border-radius: 999px;
+    font-size: 0.75rem;
+    font-weight: 600;
+    margin-bottom: 0.75rem;
+  }
+
+  .hero h1 {
+    font-size: 1.875rem;
+    font-weight: 800;
+    margin: 0;
+    color: var(--color-text);
+    letter-spacing: -0.025em;
+  }
+
+  .hero-desc {
+    margin: 0.5rem 0 0;
+    color: var(--color-muted);
+    font-size: 0.875rem;
+    max-width: 320px;
+    line-height: 1.5;
+  }
+
+  .hero-visual {
+    position: relative;
+    width: 80px;
+    height: 80px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #3b82f6;
+  }
+
+  :global(.hero-icon) {
+    position: relative;
+    z-index: 1;
+  }
+
+  .hero-ring {
+    position: absolute;
+    inset: 0;
+    border: 2px solid rgba(59, 130, 246, 0.2);
+    border-radius: 50%;
+    animation: ring-pulse 3s ease-out infinite;
+  }
+
+  .ring-2 {
+    animation-delay: 1.5s;
+  }
+
+  /* ── Stats Bar ────────────────────────────────────────────────────────── */
+  .stats-bar {
+    display: flex;
+    align-items: center;
+    justify-content: space-around;
+    padding: 1.25rem;
+    background: var(--color-surface);
+    border: 1px solid var(--color-border);
+    border-radius: 1rem;
+  }
+
+  .stat-item {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.25rem;
+  }
+
+  .stat-value {
+    font-size: 1.5rem;
+    font-weight: 800;
+    color: var(--color-text);
+    font-variant-numeric: tabular-nums;
+  }
+
+  .stat-value.live {
+    color: #10b981;
+  }
+
+  .stat-label {
+    font-size: 0.7rem;
+    color: var(--color-muted);
+    font-weight: 500;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+  }
+
+  .stat-divider {
+    width: 1px;
+    height: 2rem;
+    background: var(--color-border);
+  }
 
   /* ── Counts ───────────────────────────────────────────────────────────── */
-  .counts { display: flex; flex-wrap: wrap; gap: 0.5rem; }
-  .count-pill {
-    background: var(--color-bg); border: 1px solid var(--color-border);
-    border-radius: 0.5rem; padding: 0.45rem 0.7rem;
-    display: flex; flex-direction: column; align-items: center; min-width: 68px;
-    transition: border-color 0.15s, background 0.15s;
+  .counts-section {
+    display: flex;
+    flex-direction: column;
+    gap: 0.875rem;
   }
-  .count-pill.has-data { border-color: rgba(59,130,246,.5); background: rgba(59,130,246,.05); }
-  .count-val { font-size: 1.2rem; font-weight: 700; color: var(--color-text); line-height: 1; }
-  .count-pill.has-data .count-val { color: #3b82f6; }
-  .count-key { font-size: 0.67rem; color: var(--color-muted); text-transform: capitalize; margin-top: 0.1rem; }
+
+  .section-title {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    font-size: 0.8rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--color-muted);
+    margin: 0;
+  }
+
+  .counts-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+    gap: 0.625rem;
+  }
+
+  .count-card {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    padding: 0.875rem 1rem;
+    background: var(--color-surface);
+    border: 1px solid var(--color-border);
+    border-radius: 0.875rem;
+    position: relative;
+    transition: all 0.2s ease;
+  }
+
+  .count-card.populated {
+    border-color: rgba(59, 130, 246, 0.3);
+    background: linear-gradient(135deg, var(--color-surface) 0%, rgba(59, 130, 246, 0.03) 100%);
+  }
+
+  .count-indicator {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--color-border);
+    flex-shrink: 0;
+  }
+
+  .count-indicator.active {
+    background: #10b981;
+    box-shadow: 0 0 0 3px rgba(16, 185, 129, 0.2);
+  }
+
+  .count-info {
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+    min-width: 0;
+  }
+
+  .count-number {
+    font-size: 1.125rem;
+    font-weight: 700;
+    color: var(--color-text);
+    line-height: 1;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .count-card.populated .count-number {
+    color: #3b82f6;
+  }
+
+  .count-name {
+    font-size: 0.7rem;
+    color: var(--color-muted);
+    text-transform: capitalize;
+    margin-top: 0.125rem;
+  }
+
+  :global(.count-check) {
+    color: #10b981;
+    flex-shrink: 0;
+  }
 
   /* ── Progress ─────────────────────────────────────────────────────────── */
-  .progress-section {
-    background: var(--color-bg); border: 1px solid var(--color-border);
-    border-radius: 0.875rem; padding: 1rem 1.1rem;
-    display: flex; flex-direction: column; gap: 0.75rem;
+  .progress-card {
+    background: var(--color-surface);
+    border: 1px solid var(--color-border);
+    border-radius: 1.25rem;
+    padding: 1.5rem;
+    display: flex;
+    flex-direction: column;
+    gap: 1.25rem;
   }
-  .progress-header { display: flex; justify-content: space-between; font-size: 0.78rem; font-weight: 600; color: var(--color-text); }
-  .progress-fraction { color: var(--color-muted); font-variant-numeric: tabular-nums; }
-  .progress-track { height: 5px; background: var(--color-border); border-radius: 999px; overflow: hidden; }
+
+  .progress-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+
+  .progress-title {
+    display: flex;
+    align-items: center;
+    gap: 0.625rem;
+    font-weight: 700;
+    color: var(--color-text);
+  }
+
+  .progress-pulse {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    background: #10b981;
+    animation: pulse 2s ease-in-out infinite;
+  }
+
+  .progress-percentage {
+    font-size: 1.25rem;
+    font-weight: 800;
+    color: #3b82f6;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .progress-track {
+    height: 8px;
+    background: var(--color-bg);
+    border-radius: 999px;
+    overflow: hidden;
+    position: relative;
+  }
+
   .progress-fill {
-    height: 100%; border-radius: 999px;
-    background: linear-gradient(90deg, #3b82f6, #6366f1);
-    transition: width 0.45s cubic-bezier(.4,0,.2,1);
+    height: 100%;
+    border-radius: 999px;
+    background: linear-gradient(90deg, #3b82f6, #6366f1, #8b5cf6);
+    background-size: 200% 100%;
+    transition: width 0.5s cubic-bezier(0.4, 0, 0.2, 1);
+    position: relative;
   }
-  .current-step { display: flex; align-items: center; gap: 0.5rem; font-size: 0.78rem; font-weight: 600; color: #3b82f6; }
-  .step-detail { font-weight: 400; color: var(--color-muted); }
 
-  .step-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 0.4rem; }
-  .step-item {
-    display: flex; flex-direction: column; align-items: center; gap: 0.2rem;
-    padding: 0.45rem 0.2rem; border-radius: 0.5rem;
-    font-size: 0.62rem; color: var(--color-muted);
-    transition: all 0.2s ease; border: 1px solid transparent;
+  .progress-fill::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(90deg, transparent, rgba(255,255,255,0.2), transparent);
+    animation: shimmer 2s infinite;
   }
-  .step-item.done  { color: #3b82f6; }
-  .step-item.active {
-    background: rgba(59,130,246,.08); border-color: rgba(59,130,246,.25);
-    color: #3b82f6; font-weight: 600;
-  }
-  .step-dot {
-    width: 22px; height: 22px; border-radius: 50%;
-    display: flex; align-items: center; justify-content: center;
-    background: var(--color-border); color: var(--color-muted); transition: all 0.2s;
-  }
-  .step-item.done .step-dot,
-  .step-item.active .step-dot { background: #3b82f6; color: #fff; }
-  .step-name { text-align: center; line-height: 1.3; }
-  .step-count { font-size: 0.58rem; opacity: 0.65; }
 
-  .log-toggle {
-    display: flex; align-items: center; gap: 0.35rem;
-    font-size: 0.73rem; color: var(--color-muted);
-    background: none; border: none; cursor: pointer; padding: 0;
-    font-weight: 500; transition: color 0.15s;
+  @keyframes shimmer {
+    0% { transform: translateX(-100%); }
+    100% { transform: translateX(100%); }
   }
-  .log-toggle:hover { color: var(--color-text); }
-  .log-panel {
-    max-height: 180px; overflow-y: auto;
-    background: #0d1117; border-radius: 0.5rem;
-    padding: 0.6rem 0.8rem;
-    font-family: 'SF Mono', 'Cascadia Code', Monaco, monospace;
-    font-size: 0.69rem; line-height: 1.65;
-  }
-  .log-panel::-webkit-scrollbar { width: 4px; }
-  .log-panel::-webkit-scrollbar-thumb { background: #30363d; border-radius: 2px; }
-  .log-line { color: #3fb950; }
-  .log-line.muted { color: #484f58; font-style: italic; }
 
-  /* ── Result ───────────────────────────────────────────────────────────── */
-  .result { padding: 0.9rem 1rem; border-radius: 0.625rem; font-size: 0.83rem; }
-  .result-header { display: flex; align-items: center; gap: 0.5rem; font-weight: 700; margin-bottom: 0.5rem; }
-  .result p { margin: 0.2rem 0; padding-left: 1.5rem; font-size: 0.78rem; opacity: 0.9; }
-  .result.success { background: #f0fdf4; color: #15803d; border: 1px solid #bbf7d0; }
-  .result.error   { background: #fef2f2; color: #dc2626; border: 1px solid #fecaca; }
-
-  /* ── Actions ──────────────────────────────────────────────────────────── */
-  .actions { display: flex; gap: 0.75rem; flex-wrap: wrap; }
-  .btn-primary, .btn-danger {
-    display: inline-flex; align-items: center; gap: 0.5rem;
-    padding: 0.65rem 1.4rem; border: none; border-radius: 0.5rem;
-    font-weight: 600; font-size: 0.875rem; cursor: pointer;
-    transition: background 0.15s, transform 0.15s, box-shadow 0.15s;
+  .progress-meta {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    flex-wrap: wrap;
+    font-size: 0.8rem;
   }
-  .btn-primary { background: #3b82f6; color: #fff; }
-  .btn-primary:hover:not(:disabled) { background: #2563eb; transform: translateY(-1px); box-shadow: 0 4px 12px -2px rgba(59,130,246,.4); }
-  .btn-danger  { background: #dc2626; color: #fff; }
-  .btn-danger:hover:not(:disabled)  { background: #b91c1c; transform: translateY(-1px); box-shadow: 0 4px 12px -2px rgba(220,38,38,.4); }
-  .btn-primary:disabled, .btn-danger:disabled { opacity: 0.55; cursor: not-allowed; transform: none; box-shadow: none; }
 
-  .refresh-hint {
-    display: inline-flex; align-items: center; gap: 0.4rem;
-    font-size: 0.78rem; color: #3b82f6;
-    background: rgba(59,130,246,.08); border: 1px solid rgba(59,130,246,.2);
-    border-radius: 0.5rem; padding: 0.45rem 0.9rem;
-    cursor: pointer; font-weight: 500; align-self: flex-start;
-    transition: background 0.15s, transform 0.15s;
+  .progress-step-name {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    font-weight: 600;
+    color: #3b82f6;
   }
-  .refresh-hint:hover { background: rgba(59,130,246,.14); transform: translateY(-1px); }
 
-  /* ── Info panels ──────────────────────────────────────────────────────── */
-  .info-panel {
-    background: var(--color-bg); border: 1px solid var(--color-border);
-    border-radius: 0.875rem; padding: 0.875rem 1rem;
-    display: flex; flex-direction: column; gap: 0.75rem;
-  }
-  .panel-head {
-    display: flex; align-items: center; gap: 0.5rem;
-    font-size: 0.72rem; font-weight: 700;
-    text-transform: uppercase; letter-spacing: 0.05em;
+  .progress-detail {
     color: var(--color-muted);
   }
 
-  /* Semester cards */
-  .sem-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0.75rem; }
-  .sem-card {
-    border: 1.5px solid var(--sem-color);
-    border-radius: 0.625rem; padding: 0.625rem 0.875rem;
-    background: color-mix(in srgb, var(--sem-color) 6%, var(--color-bg));
+  .progress-fraction {
+    margin-left: auto;
+    color: var(--color-muted);
+    font-weight: 500;
+    font-variant-numeric: tabular-nums;
   }
-  .sem-card-head {
-    display: flex; align-items: center; gap: 0.4rem;
-    font-size: 0.8rem; font-weight: 700;
-    color: var(--sem-color); margin-bottom: 0.2rem;
-  }
-  .sem-months { font-size: 0.72rem; color: var(--color-muted); }
 
-  /* Credit caps table */
-  .caps-table-wrap { overflow-x: auto; border-radius: 0.5rem; border: 1px solid var(--color-border); }
-  .caps-table {
-    width: 100%; border-collapse: collapse; font-size: 0.775rem;
+  /* Timeline */
+  .step-timeline {
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+    max-height: 300px;
+    overflow-y: auto;
+    padding-right: 0.5rem;
   }
-  .caps-table thead { background: var(--color-surface); }
-  .caps-table th {
-    padding: 0.45rem 0.75rem; text-align: left;
-    font-size: 0.67rem; font-weight: 700;
-    text-transform: uppercase; letter-spacing: 0.04em;
-    color: var(--color-muted); border-bottom: 1px solid var(--color-border);
-    white-space: nowrap;
+
+  .step-timeline::-webkit-scrollbar { width: 4px; }
+  .step-timeline::-webkit-scrollbar-thumb { background: var(--color-border); border-radius: 2px; }
+
+  .timeline-item {
+    display: flex;
+    align-items: center;
+    gap: 0.875rem;
+    padding: 0.5rem 0;
+    position: relative;
+    padding-left: 1.5rem;
   }
-  .caps-table td {
-    padding: 0.4rem 0.75rem; border-bottom: 1px solid var(--color-border);
+
+  .timeline-connector {
+    position: absolute;
+    left: 7px;
+    top: -0.5rem;
+    bottom: 50%;
+    width: 2px;
+    background: var(--color-border);
+  }
+
+  .timeline-item.completed .timeline-connector {
+    background: #3b82f6;
+  }
+
+  .timeline-node {
+    width: 24px;
+    height: 24px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: var(--color-bg);
+    border: 2px solid var(--color-border);
+    color: var(--color-muted);
+    flex-shrink: 0;
+    position: relative;
+    z-index: 1;
+    transition: all 0.3s ease;
+  }
+
+  .timeline-item.completed .timeline-node {
+    background: #3b82f6;
+    border-color: #3b82f6;
+    color: white;
+  }
+
+  .timeline-item.active .timeline-node {
+    background: var(--step-color);
+    border-color: var(--step-color);
+    color: white;
+    box-shadow: 0 0 0 4px rgba(59, 130, 246, 0.15);
+  }
+
+  .timeline-content {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex: 1;
+    min-width: 0;
+  }
+
+  .timeline-label {
+    font-size: 0.8rem;
+    color: var(--color-text);
+    font-weight: 500;
+  }
+
+  .timeline-item.active .timeline-label {
+    font-weight: 700;
+    color: var(--step-color);
+  }
+
+  .timeline-count {
+    font-size: 0.7rem;
+    color: var(--color-muted);
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+    background: var(--color-bg);
+    padding: 0.125rem 0.5rem;
+    border-radius: 0.25rem;
+  }
+
+  /* Logs */
+  .logs-section {
+    border-top: 1px solid var(--color-border);
+    padding-top: 1rem;
+  }
+
+  .logs-toggle {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    background: none;
+    border: none;
+    color: var(--color-muted);
+    font-size: 0.8rem;
+    font-weight: 600;
+    cursor: pointer;
+    padding: 0;
+    transition: color 0.15s;
+  }
+
+  .logs-toggle:hover {
     color: var(--color-text);
   }
-  .caps-table tbody tr:last-child td { border-bottom: none; }
-  .caps-table tbody tr:hover { background: var(--color-surface); }
-  .level-cell { font-weight: 700; font-family: monospace; font-size: 0.78rem; color: #3b82f6; }
-  .num-cell { font-variant-numeric: tabular-nums; font-weight: 600; text-align: center; }
-  .num-cell.zero { color: var(--color-muted); }
-  .panel-note {
-    display: flex; align-items: center; gap: 0.35rem;
-    font-size: 0.68rem; color: var(--color-muted); margin: 0;
+
+  .logs-badge {
+    background: var(--color-bg);
+    color: var(--color-text);
+    padding: 0.125rem 0.5rem;
+    border-radius: 0.25rem;
+    font-size: 0.7rem;
+    font-weight: 700;
+    border: 1px solid var(--color-border);
   }
 
-  /* What gets seeded */
-  .summary-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0.3rem 1.5rem; }
-  .summary-row { display: flex; align-items: center; gap: 0.45rem; font-size: 0.775rem; color: var(--color-text); }
-  .summary-row :global(svg) { color: var(--color-muted); flex-shrink: 0; }
-  .summary-label { flex: 1; }
-  .summary-val { font-variant-numeric: tabular-nums; font-weight: 600; color: #3b82f6; font-size: 0.73rem; }
-
-  /* ── Warning ──────────────────────────────────────────────────────────── */
-  .warning-box {
-    display: flex; align-items: center; gap: 0.5rem;
-    padding: 0.65rem 0.9rem;
-    background: rgba(245,158,11,.08); border: 1px solid rgba(245,158,11,.22);
-    border-radius: 0.5rem; font-size: 0.73rem; color: #d97706;
+  :global(.logs-chevron) {
+    transition: transform 0.2s ease;
+    margin-left: auto;
   }
 
-  /* ── Mobile ───────────────────────────────────────────────────────────── */
+  :global(.logs-chevron.rotated) {
+    transform: rotate(90deg);
+  }
+
+  .logs-panel {
+    margin-top: 0.75rem;
+    background: #0f172a;
+    border-radius: 0.75rem;
+    padding: 1rem;
+    max-height: 200px;
+    overflow-y: auto;
+    font-family: 'SF Mono', 'Cascadia Code', Monaco, monospace;
+    font-size: 0.75rem;
+    line-height: 1.7;
+  }
+
+  .logs-panel::-webkit-scrollbar { width: 4px; }
+  .logs-panel::-webkit-scrollbar-thumb { background: #334155; border-radius: 2px; }
+
+  .log-empty {
+    color: #64748b;
+    font-style: italic;
+  }
+
+  .log-entry {
+    color: #4ade80;
+    word-break: break-all;
+  }
+
+  /* ── Results ──────────────────────────────────────────────────────────── */
+  .result-card {
+    display: flex;
+    gap: 1.25rem;
+    padding: 1.5rem;
+    border-radius: 1.25rem;
+    border: 1px solid;
+  }
+
+  .result-card.success {
+    background: linear-gradient(135deg, #f0fdf4 0%, #ecfdf5 100%);
+    border-color: #bbf7d0;
+    color: #15803d;
+  }
+
+  .result-card.error {
+    background: linear-gradient(135deg, #fef2f2 0%, #fef2f2 100%);
+    border-color: #fecaca;
+    color: #dc2626;
+  }
+
+  .result-icon-wrap {
+    width: 48px;
+    height: 48px;
+    border-radius: 1rem;
+    background: rgba(21, 128, 61, 0.1);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+  }
+
+  .result-icon-wrap.error {
+    background: rgba(220, 38, 38, 0.1);
+  }
+
+  .result-content h3 {
+    margin: 0 0 0.5rem;
+    font-size: 1.125rem;
+    font-weight: 700;
+  }
+
+  .result-lines {
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+    margin-bottom: 1rem;
+  }
+
+  .result-lines p {
+    margin: 0;
+    font-size: 0.8rem;
+    opacity: 0.9;
+  }
+
+  .error-message {
+    margin: 0;
+    font-size: 0.875rem;
+    opacity: 0.9;
+  }
+
+  .refresh-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.5rem 1rem;
+    background: rgba(21, 128, 61, 0.1);
+    border: 1px solid rgba(21, 128, 61, 0.2);
+    color: #15803d;
+    border-radius: 0.5rem;
+    font-size: 0.8rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.15s;
+  }
+
+  .refresh-btn:hover {
+    background: rgba(21, 128, 61, 0.2);
+    transform: translateY(-1px);
+  }
+
+  /* ── Actions ────────────────────────────────────────────────────────── */
+  .actions-section {
+    margin-top: 0.5rem;
+  }
+
+  .actions-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1rem;
+  }
+
+  .action-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.625rem;
+    width: 100%;
+    padding: 1rem 1.5rem;
+    border: none;
+    border-radius: 1rem;
+    font-size: 0.9375rem;
+    font-weight: 700;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    position: relative;
+    overflow: hidden;
+  }
+
+  .action-btn:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+    transform: none !important;
+  }
+
+  .seed-btn {
+    background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
+    color: white;
+    box-shadow: 0 4px 14px -2px rgba(59, 130, 246, 0.4);
+  }
+
+  .seed-btn:hover:not(:disabled) {
+    transform: translateY(-2px);
+    box-shadow: 0 8px 25px -4px rgba(59, 130, 246, 0.5);
+  }
+
+  .seed-btn:active:not(:disabled) {
+    transform: translateY(0);
+  }
+
+  :global(.btn-arrow) {
+    transition: transform 0.2s ease;
+  }
+
+  .seed-btn:hover:not(:disabled) :global(.btn-arrow) {
+    transform: translateX(3px);
+  }
+
+  .reset-btn {
+    background: var(--color-surface);
+    color: #dc2626;
+    border: 2px solid rgba(220, 38, 38, 0.15);
+  }
+
+  .reset-btn:hover:not(:disabled) {
+    background: #fef2f2;
+    border-color: rgba(220, 38, 38, 0.3);
+    transform: translateY(-2px);
+    box-shadow: 0 4px 14px -2px rgba(220, 38, 38, 0.15);
+  }
+
+  /* ── Info Grid ────────────────────────────────────────────────────────── */
+  .info-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1rem;
+  }
+
+  .info-card {
+    background: var(--color-surface);
+    border: 1px solid var(--color-border);
+    border-radius: 1.25rem;
+    padding: 1.25rem;
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+  }
+
+  .info-card.wide {
+    grid-column: 1 / -1;
+  }
+
+  .info-header {
+    display: flex;
+    align-items: center;
+    gap: 0.625rem;
+    color: var(--color-muted);
+  }
+
+  .info-header h3 {
+    margin: 0;
+    font-size: 0.875rem;
+    font-weight: 700;
+    color: var(--color-text);
+    flex: 1;
+  }
+
+  .seed-total {
+    font-size: 0.75rem;
+    color: #3b82f6;
+    font-weight: 700;
+    background: rgba(59, 130, 246, 0.1);
+    padding: 0.25rem 0.75rem;
+    border-radius: 0.5rem;
+  }
+
+  /* Semesters */
+  .semesters-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 0.75rem;
+  }
+
+  .semester-card {
+    display: flex;
+    align-items: center;
+    gap: 0.875rem;
+    padding: 1rem;
+    border-radius: 1rem;
+    border: 1.5px solid var(--sem-color);
+    background: color-mix(in srgb, var(--sem-color) 5%, var(--color-surface));
+    position: relative;
+  }
+
+  .semester-icon {
+    width: 40px;
+    height: 40px;
+    border-radius: 0.75rem;
+    background: var(--sem-color);
+    color: white;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+  }
+
+  .semester-info {
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+    min-width: 0;
+  }
+
+  .semester-name {
+    font-size: 0.875rem;
+    font-weight: 700;
+    color: var(--sem-color);
+  }
+
+  .semester-months {
+    font-size: 0.75rem;
+    color: var(--color-muted);
+    margin-top: 0.125rem;
+  }
+
+  .semester-badge {
+    position: absolute;
+    top: 0.75rem;
+    right: 0.75rem;
+    font-size: 0.65rem;
+    font-weight: 700;
+    color: var(--sem-color);
+    opacity: 0.5;
+  }
+
+  /* Credit Caps */
+  .caps-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+    gap: 0.75rem;
+  }
+
+  .cap-item {
+    background: var(--color-bg);
+    border: 1px solid var(--color-border);
+    border-radius: 0.875rem;
+    overflow: hidden;
+  }
+
+  .cap-level {
+    padding: 0.5rem 0.875rem;
+    background: rgba(59, 130, 246, 0.08);
+    color: #3b82f6;
+    font-weight: 800;
+    font-size: 0.875rem;
+    font-family: monospace;
+  }
+
+  .cap-details {
+    padding: 0.625rem 0.875rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.375rem;
+  }
+
+  .cap-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 0.75rem;
+  }
+
+  .cap-label {
+    color: var(--color-muted);
+    font-weight: 500;
+  }
+
+  .cap-value {
+    font-weight: 700;
+    color: var(--color-text);
+    font-variant-numeric: tabular-nums;
+  }
+
+  .cap-value.zero {
+    color: var(--color-muted);
+  }
+
+  .info-note {
+    display: flex;
+    align-items: center;
+    gap: 0.375rem;
+    margin: 0;
+    font-size: 0.7rem;
+    color: var(--color-muted);
+  }
+
+  /* Seed List */
+  .seed-list {
+    display: flex;
+    flex-direction: column;
+    gap: 0.375rem;
+  }
+
+  .seed-item {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    padding: 0.625rem 0.875rem;
+    border-radius: 0.625rem;
+    transition: all 0.15s ease;
+    border: 1px solid transparent;
+  }
+
+  .seed-item:hover {
+    background: var(--color-bg);
+    border-color: var(--color-border);
+  }
+
+  .seed-number {
+    width: 22px;
+    height: 22px;
+    border-radius: 0.375rem;
+    background: var(--item-color);
+    color: white;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 0.65rem;
+    font-weight: 800;
+    flex-shrink: 0;
+  }
+
+  .seed-icon {
+    color: var(--item-color);
+    opacity: 0.8;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .seed-label {
+    flex: 1;
+    font-size: 0.8rem;
+    font-weight: 500;
+    color: var(--color-text);
+  }
+
+  .seed-count {
+    font-size: 0.75rem;
+    font-weight: 700;
+    color: var(--item-color);
+    background: color-mix(in srgb, var(--item-color) 10%, transparent);
+    padding: 0.2rem 0.625rem;
+    border-radius: 0.375rem;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .seed-count.auto {
+    color: var(--color-muted);
+    background: var(--color-bg);
+  }
+
+  /* ── Warning ─────────────────────────────────────────────────────────── */
+  .warning-banner {
+    display: flex;
+    align-items: center;
+    gap: 0.875rem;
+    padding: 1rem 1.25rem;
+    background: linear-gradient(135deg, rgba(245, 158, 11, 0.08) 0%, rgba(245, 158, 11, 0.04) 100%);
+    border: 1px solid rgba(245, 158, 11, 0.2);
+    border-radius: 1rem;
+    color: #d97706;
+  }
+
+  .warning-content {
+    display: flex;
+    flex-direction: column;
+    gap: 0.125rem;
+  }
+
+  .warning-content strong {
+    font-size: 0.8rem;
+    font-weight: 700;
+  }
+
+  .warning-content span {
+    font-size: 0.75rem;
+    opacity: 0.9;
+  }
+
+  /* ── Responsive ───────────────────────────────────────────────────────── */
   @media (max-width: 640px) {
     .page { padding: 1rem; }
-    .card { padding: 1.25rem; border-radius: 1rem; }
-    .step-grid { grid-template-columns: repeat(3, 1fr); }
-    .summary-grid { grid-template-columns: 1fr; }
-    .sem-grid { grid-template-columns: 1fr; }
-    .actions { flex-direction: column; }
-    .btn-primary, .btn-danger { justify-content: center; width: 100%; }
+    
+    .hero {
+      flex-direction: column;
+      text-align: center;
+      gap: 1.5rem;
+    }
+    
+    .hero-desc { max-width: none; }
+    
+    .stats-bar {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 1rem;
+    }
+    
+    .stat-divider { display: none; }
+    
+    .counts-grid {
+      grid-template-columns: repeat(2, 1fr);
+    }
+    
+    .actions-grid {
+      grid-template-columns: 1fr;
+    }
+    
+    .info-grid {
+      grid-template-columns: 1fr;
+    }
+    
+    .semesters-grid {
+      grid-template-columns: 1fr;
+    }
+    
+    .caps-grid {
+      grid-template-columns: 1fr 1fr;
+    }
+    
+    .step-timeline {
+      max-height: 250px;
+    }
   }
 </style>
