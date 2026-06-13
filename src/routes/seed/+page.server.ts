@@ -313,7 +313,7 @@ results.push(`✓ ${creditCaps.length} level/semester credit caps`);
         { email: 'admin@mouau.edu.ng', fullName: 'Admin One', staffId: 'SU310449', role: 'admin' },
         { email: 'admin2@mouau.edu.ng', fullName: 'Admin Two', staffId: 'ADM002', role: 'admin' },
         { email: 'admin3@mouau.edu.ng', fullName: 'Admin Three', staffId: 'ADM003', role: 'admin' },
-        { email: 'ogwogp@mmouau.edu.ng', fullName: 'Ogwo GP', staffId: 'ADM310449', role: 'admin'}
+        { email: 'admin_ogwo@mouau.edu.ng', fullName: 'Ogwo Godspower Chinaza', staffId: 'ADM310449', role: 'admin'}
       ];
       
       adminData.forEach(a => {
@@ -336,6 +336,8 @@ results.push(`✓ ${creditCaps.length} level/semester credit caps`);
         { email: 'dr.okoro@mouau.edu.ng', fullName: 'Dr. Chika Okoro', staffId: 'LCT004', deptCode: 'PHY' },
         { email: 'prof.obiora@mouau.edu.ng', fullName: 'Prof. Obiora Kalu', staffId: 'LCT005', deptCode: 'CHM' },
         { email: 'dr.agbo@mouau.edu.ng', fullName: 'Dr. Ifenna Agbo', staffId: 'LCT006', deptCode: 'GLG' },
+                { email: 'lec_ogwo@mouau.edu.ng', fullName: 'Ogwo Godspower Chinaza', staffId: 'PHY310449', deptCode: 'PHY' },
+
         // CEET
         { email: 'dr.adekunle@mouau.edu.ng', fullName: 'Dr. Adekunle Williams', staffId: 'LCT007', deptCode: 'EEE' },
         { email: 'prof.obi@mouau.edu.ng', fullName: 'Prof. Eze Obi', staffId: 'LCT008', deptCode: 'CVE' },
@@ -418,6 +420,7 @@ results.push(`✓ ${creditCaps.length} level/semester credit caps`);
         { email: 'invig8@mouau.edu.ng', fullName: 'Mrs. Adaora Nnaji', staffId: 'INV008', deptCode: 'FST' },
         { email: 'invig9@mouau.edu.ng', fullName: 'Mr. Obinna Eze', staffId: 'INV009', deptCode: 'ACC' },
         { email: 'invig10@mouau.edu.ng', fullName: 'Ms. Amaka Ude', staffId: 'INV010', deptCode: 'VET' },
+         { email: 'invig_ogwo@mouau.edu.ng', fullName: 'Ogwo Godspower Chinaza', staffId: 'INV310449', deptCode: 'PHY' },
       ];
       
       invigilatorData.forEach(i => {
@@ -449,6 +452,8 @@ results.push(`✓ ${creditCaps.length} level/semester credit caps`);
         { email: 'jide.akinyemi90@student.mouau.edu.ng', fullName: 'Jide Akinyemi', deptCode: 'PHY', matric: 'MOUAU/PHY/25/012345', levelNum: 100, session: '2025/2026' },
         { email: 'kemi.adeola11@student.mouau.edu.ng', fullName: 'Kemi Adeola', deptCode: 'PHY', matric: 'MOUAU/PHY/25/112233', levelNum: 100, session: '2025/2026' },
         { email: 'ladi.balogun22@student.mouau.edu.ng', fullName: 'Ladi Balogun', deptCode: 'PHY', matric: 'MOUAU/PHY/25/223344', levelNum: 100, session: '2025/2026' },
+        { email: 'ogwo_phy@mouau.edu.ng', fullName: 'Ogwo Godspower Chinaza', deptCode: 'PHY', matric: 'MOUAU/PHY/25/128468', levelNum: 100, session: '2025/2026' },
+
         // 100L Students - CSC
         { email: 'chinedu.eke33@student.mouau.edu.ng', fullName: 'Chinedu Eke', deptCode: 'CSC', matric: 'MOUAU/CSC/25/334455', levelNum: 100, session: '2025/2026' },
         { email: 'damilola.adebayo44@student.mouau.edu.ng', fullName: 'Damilola Adebayo', deptCode: 'CSC', matric: 'MOUAU/CSC/25/445566', levelNum: 100, session: '2025/2026' },
@@ -461,11 +466,20 @@ results.push(`✓ ${creditCaps.length} level/semester credit caps`);
         { email: 'kayode.oguns02@student.mouau.edu.ng', fullName: 'Kayode Oguns', deptCode: 'CSC', matric: 'MOUAU/CSC/25/111213', levelNum: 100, session: '2025/2026' },
         { email: 'lola.oyedeji03@student.mouau.edu.ng', fullName: 'Lola Oyedeji', deptCode: 'CSC', matric: 'MOUAU/CSC/25/121314', levelNum: 100, session: '2025/2026' },
         { email: 'maureen.ekwu04@student.mouau.edu.ng', fullName: 'Maureen Ekwu', deptCode: 'CSC', matric: 'MOUAU/CSC/25/131415', levelNum: 100, session: '2025/2026' },
+        { email: '8digitskomputers@gmail.com', fullName: 'Prince Odinakachi', deptCode: 'CSC', matric: 'MOUAU/CMP/25/130844', levelNum: 100, session: '2025/2026' },
+        { email: 'chinemeremhumphery@gmail.com', fullName: 'Humphrey Confidence Chinemerem', deptCode: 'CSC', matric: 'MOUAU/CMP/25/130845', levelNum: 100, session: '2025/2026' },
+        { email: 'ogwo_csc@mouau.edu.ng', fullName: 'Ogwo Godspower Chinaza', deptCode: 'CSC', matric: 'MOUAU/PHY/25/128469', levelNum: 100, session: '2025/2026' },
+
         // 100L Students - CHM, MTH, STA, GLG
         { email: 'nnamdi.agu05@student.mouau.edu.ng', fullName: 'Nnamdi Agu', deptCode: 'CHM', matric: 'MOUAU/CHM/25/141516', levelNum: 100, session: '2025/2026' },
         { email: 'obinna.obi06@student.mouau.edu.ng', fullName: 'Obinna Obi', deptCode: 'MTH', matric: 'MOUAU/MTH/25/151617', levelNum: 100, session: '2025/2026' },
         { email: 'patience.aka07@student.mouau.edu.ng', fullName: 'Patience Aka', deptCode: 'STA', matric: 'MOUAU/STA/25/161718', levelNum: 100, session: '2025/2026' },
         { email: 'queen.etuk08@student.mouau.edu.ng', fullName: 'Queen Etuk', deptCode: 'GLG', matric: 'MOUAU/GLG/25/171819', levelNum: 100, session: '2025/2026' },
+        { email: 'ogwo_sta@mouau.edu.ng', fullName: 'Ogwo Godspower Chinaza', deptCode: 'STA', matric: 'MOUAU/PHY/25/128470', levelNum: 100, session: '2025/2026' },
+        { email: 'ogwo_glg@mouau.edu.ng', fullName: 'Ogwo Godspower Chinaza', deptCode: 'GLG', matric: 'MOUAU/PHY/25/128471', levelNum: 100, session: '2025/2026' },
+        { email: 'ogwo_chm@mouau.edu.ng', fullName: 'Ogwo Godspower Chinaza', deptCode: 'CHM', matric: 'MOUAU/PHY/25/128472', levelNum: 100, session: '2025/2026' },
+        { email: 'ogwo_mth@mouau.edu.ng', fullName: 'Ogwo Godspower Chinaza', deptCode: 'MTH', matric: 'MOUAU/PHY/25/128473', levelNum: 100, session: '2025/2026' },
+
         // 200-400L Students - CSC
         { email: 'alice.obi@student.mouau.edu.ng', fullName: 'Alice Obi', deptCode: 'CSC', matric: '2021/CSC/001', levelNum: 300, session: '2025/2026' },
         { email: 'bob.nwachukwu@student.mouau.edu.ng', fullName: 'Bob Nwachukwu', deptCode: 'CSC', matric: '2021/CSC/002', levelNum: 300, session: '2025/2026' },
@@ -514,6 +528,8 @@ results.push(`✓ ${creditCaps.length} level/semester credit caps`);
         { email: 'mark.ibeh@student.mouau.edu.ng', fullName: 'Mark Ibeh', deptCode: 'FAR', matric: '2021/FAR/001', levelNum: 300, session: '2025/2026' },
         { email: 'kenneth.abara@student.mouau.edu.ng', fullName: 'Kenneth Abara', deptCode: 'VET', matric: '2021/VET/015', levelNum: 300, session: '2025/2026' },
         { email: 'lucy.okezie@student.mouau.edu.ng', fullName: 'Lucy Okezie', deptCode: 'VET', matric: '2020/VET/010', levelNum: 400, session: '2025/2026' },
+        { email: 'ogwo_others@mouau.edu.ng', fullName: 'Ogwo Godspower Chinaza', deptCode: 'VET', matric: 'MOUAU/PHY/25/128473', levelNum: 300, session: '2025/2026' },
+
       ];
       
       studentData.forEach(s => {
