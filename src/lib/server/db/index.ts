@@ -1,8 +1,10 @@
 // src/lib/server/db/index.ts
 import { PrismaPg } from '@prisma/adapter-pg';
-import { PrismaClient } from '.prisma/client';
 import pg from 'pg';
 import { DATABASE_URL, DATABASE_URL_UNPOOLED } from '$env/static/private';
+
+// IMPORTANT: Use the package import, NOT a relative path
+import { PrismaClient } from '@prisma/client';
 
 // ─── Prisma pool ──────────────────────────────────────────────────────────────
 const prismaPool = new pg.Pool({
@@ -19,13 +21,14 @@ prismaPool.on('error', (err) => {
 
 const adapter = new PrismaPg(prismaPool);
 
-// Global singleton for PrismaClient
 const globalForPrisma = globalThis as unknown as { prisma?: PrismaClient };
 
-export const prisma = globalForPrisma.prisma ?? new PrismaClient({
-  adapter,
-  log: process.env.NODE_ENV === 'development' ? ['warn', 'error'] : ['error'],
-});
+export const prisma =
+  globalForPrisma.prisma ??
+  new PrismaClient({
+    adapter,
+    log: process.env.NODE_ENV === 'development' ? ['warn', 'error'] : ['error'],
+  });
 
 if (process.env.NODE_ENV !== 'production') {
   globalForPrisma.prisma = prisma;

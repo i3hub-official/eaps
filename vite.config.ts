@@ -2,7 +2,6 @@ import tailwindcss from '@tailwindcss/vite';
 import { sveltekit } from '@sveltejs/kit/vite';
 import { defineConfig } from 'vite';
 import basicSsl from '@vitejs/plugin-basic-ssl';
-import { nodePolyfills } from 'vite-plugin-node-polyfills';
 
 export default defineConfig(() => {
   return {
@@ -10,14 +9,6 @@ export default defineConfig(() => {
       tailwindcss(), 
       sveltekit(), 
       basicSsl(),
-      nodePolyfills({
-        include: ['fs', 'path', 'os', 'crypto', 'stream', 'buffer'],
-        globals: {
-          Buffer: true,
-          global: true,
-          process: true,
-        },
-      })
     ],
 
     server: {
@@ -37,12 +28,29 @@ export default defineConfig(() => {
         '@vladmandic/human',
         '@tensorflow/tfjs',
         '@tensorflow/tfjs-backend-webgl',
-        '@tensorflow/tfjs-core'
+        '@tensorflow/tfjs-core',
       ],
       exclude: [
         '@tensorflow/tfjs-node',
-        '@tensorflow/tfjs-node-gpu'
-      ]
+        '@tensorflow/tfjs-node-gpu',
+      ],
+      // Add esbuild options to handle Node.js modules
+      esbuildOptions: {
+        define: {
+          global: 'globalThis',
+        },
+        plugins: [
+          {
+            name: 'fix-crypto',
+            setup(build) {
+              // Replace crypto require with a mock
+              build.onResolve({ filter: /^crypto$/ }, () => {
+                return { path: 'crypto', external: true };
+              });
+            },
+          },
+        ],
+      },
     },
 
     ssr: {
@@ -50,7 +58,7 @@ export default defineConfig(() => {
       external: [
         'pg', 
         'ws', 
-        'crypto', 
+        'crypto',
         '@tensorflow/tfjs-node', 
         '@tensorflow/tfjs-node-gpu',
         'sharp'
@@ -67,19 +75,6 @@ export default defineConfig(() => {
         '@tensorflow/tfjs-node': '@tensorflow/tfjs',
         '@tensorflow/tfjs-node-gpu': '@tensorflow/tfjs',
       },
-      preserveSymlinks: false,
     },
-
-    // REMOVED manualChunks - not needed for your case
-    build: {
-      commonjsOptions: {
-        transformMixedEsModules: true,
-        include: [/@vladmandic\/human/, /@tensorflow\/tfjs/],
-      },
-      rollupOptions: {
-        external: ['@tensorflow/tfjs-node', '@tensorflow/tfjs-node-gpu'],
-        // Remove manualChunks entirely
-      }
-    }
   };
 });
