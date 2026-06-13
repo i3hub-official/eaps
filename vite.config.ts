@@ -2,6 +2,7 @@ import tailwindcss from '@tailwindcss/vite';
 import { sveltekit } from '@sveltejs/kit/vite';
 import { defineConfig } from 'vite';
 import basicSsl from '@vitejs/plugin-basic-ssl';
+import path from 'path';
 
 export default defineConfig(() => {
   return {
@@ -74,6 +75,7 @@ export default defineConfig(() => {
       alias: {
         '@tensorflow/tfjs-node': '@tensorflow/tfjs',
         '@tensorflow/tfjs-node-gpu': '@tensorflow/tfjs',
+            '@prisma/client': path.resolve(__dirname, 'node_modules/.prisma/client/index.js'),
       },
     },
   };

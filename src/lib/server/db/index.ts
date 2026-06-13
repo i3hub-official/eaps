@@ -3,8 +3,8 @@ import { PrismaPg } from '@prisma/adapter-pg';
 import pg from 'pg';
 import { DATABASE_URL, DATABASE_URL_UNPOOLED } from '$env/static/private';
 
-// IMPORTANT: Use the package import, NOT a relative path
-import { PrismaClient } from '@prisma/client';
+// Import from the generated client - use the index.js file
+import { PrismaClient } from '../../../../node_modules/.prisma/client/index.js';
 
 // ─── Prisma pool ──────────────────────────────────────────────────────────────
 const prismaPool = new pg.Pool({
