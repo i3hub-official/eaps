@@ -2,7 +2,7 @@
 
 <script lang="ts">
   import type { ExamPerformanceData, ReportMeta, ReportParams } from '$lib/types/reports.js';
-  import { BookOpen, Users, CheckCircle, XCircle, Clock, TrendingUp } from '@lucide/svelte';
+  import { BookOpen, Users, CheckCircle, XCircle, ChevronRight, TrendingUp } from '@lucide/svelte';
 
   interface Props {
     meta: ReportMeta;

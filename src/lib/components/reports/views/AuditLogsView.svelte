@@ -1,7 +1,7 @@
 <!-- src/lib/components/reports/views/AuditLogsView.svelte -->
 <script lang="ts">
   import type { AuditLogData, ReportMeta, ReportParams } from '$lib/types/reports.js';
-  import { ShieldCheck, AlertTriangle, Info, XCircle, Search } from '@lucide/svelte';
+  import { ShieldCheck, AlertTriangle, Info, XCircle, Search,ChevronRight } from '@lucide/svelte';
 
   interface Props {
     meta: ReportMeta;

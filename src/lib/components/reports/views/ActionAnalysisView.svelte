@@ -1,7 +1,7 @@
 <!-- src/lib/components/reports/views/ActionAnalysisView.svelte -->
 <script lang="ts">
   import type { ReportMeta, ReportParams } from '$lib/types/reports.js';
-  import { Shield, AlertCircle, CheckCircle2, XCircle, PauseCircle, Eye } from '@lucide/svelte';
+  import { Shield, AlertCircle, CheckCircle2, ChevronRight, PauseCircle, Eye } from '@lucide/svelte';
 
   interface Props {
     meta: ReportMeta;
