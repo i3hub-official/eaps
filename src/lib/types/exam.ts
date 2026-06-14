@@ -2,7 +2,7 @@
 
 export type ExamStatus = 'draft' | 'scheduled' | 'active' | 'completed' | 'cancelled';
 export type SessionStatus = 'not_started' | 'in_progress' | 'submitted' | 'flagged' | 'force_submitted';
-export type QuestionType = 'mcq' | 'fill_in_the_blank';
+import type { QuestionType } from '@prisma/client';
 export type FlagType =
   | 'tab_switch'
   | 'window_blur'
@@ -39,16 +39,6 @@ export interface Exam {
   created_at: Date;
 }
 
-export interface Question {
-  id: string;
-  exam_id: string;
-  type: QuestionType;
-  body: string;
-  image_url: string | null;
-  marks: number;
-  options?: QuestionOption[];   // for MCQ
-  display_index?: number;       // per-student order
-}
 
 export interface QuestionOption {
   id: string;
@@ -110,3 +100,79 @@ export interface SavedAnswer {
   textAnswer: string | null;
 }
  
+
+
+// ── Question (what the server sends) ────────────────────────────────────────
+export interface QuestionOption {
+  id: string;
+  optionText: string;
+}
+
+export interface FitbAnswer {
+  id: string;
+  acceptedAnswer: string;
+  isPrimary: boolean;
+}
+
+export interface Question {
+  id: string;
+  examId: string;
+  type: QuestionType;
+  body: string;
+  topic: string | null;
+  imageUrl: string | null;
+  marks: number;
+  orderIndex: number | null;
+  options: QuestionOption[];
+  fitbAnswers: FitbAnswer[];
+}
+
+// ── Exam config ─────────────────────────────────────────────────────────────
+export interface ExamConfig {
+  id: string;
+  title: string;
+  durationMinutes: number;
+  totalMarks: number;
+  passMark: number;
+  randomizeQuestions: boolean;
+  randomizeOptions: boolean;
+  questionsToPresent: number;
+  showResultAfter: boolean;
+  maxViolations: number;
+}
+
+// ── Session state ───────────────────────────────────────────────────────────
+export interface ExamSessionState {
+  id: string;
+  timeRemainingSecs: number;
+  currentQuestionIndex: number;
+}
+
+// ── Student answer (what we collect) ────────────────────────────────────────
+export interface StudentAnswerInput {
+  questionId: string;
+  selectedOption?: string | null;
+  textAnswer?: string | null;
+}
+
+// ── Timer state ─────────────────────────────────────────────────────────────
+export interface TimerState {
+  total: number;
+  remaining: number;
+  warning: boolean;
+  critical: boolean;
+}
+
+// ── Exam page data ──────────────────────────────────────────────────────────
+export interface ExamPageData {
+  examId: string;
+  config: ExamConfig;
+  session: ExamSessionState | null;
+  questions: Question[];
+  answers: StudentAnswerInput[];
+  faceVerified: boolean;
+  needsStart: boolean;
+}
+
+// ── View mode for questions ─────────────────────────────────────────────────
+export type QuestionViewMode = 'single' | 'overview' | 'review';

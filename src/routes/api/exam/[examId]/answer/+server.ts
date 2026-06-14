@@ -1,22 +1,40 @@
-// src/routes/api/exam/[examId]/answer/+server.ts
-import { json, error } from '@sveltejs/kit';
+// src/routes/api/exam/[examId]/start/+server.ts
+import { error, json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
-import { saveAnswerFlat, updateTimeRemaining } from '$lib/server/db/sessions.js';
+import { getQuestionsByExam } from '$lib/server/db/exams.js';
+import { getSessionAnswers } from '$lib/server/db/sessions.js';
+import { buildStudentQuestionOrder, sanitizeQuestionsForClient } from '$lib/server/exam/randomizer.js';
+import { resolveExamSession } from '$lib/server/exam/session-engine.js';
+import { toClientExam, toClientSession, toClientQuestions, toSavedAnswers } from '$lib/server/exam/transform.js';
+import type { ExamPayload } from '$lib/types/exam.js';
 
-export const POST: RequestHandler = async ({ request, locals }) => {
-  if (!locals.user) error(401, 'Unauthorized');
+export const POST: RequestHandler = async (event) => {
+  const { examId } = event.params;
+  if (!examId) throw error(400, 'Invalid exam id');
 
-  const body = await request.json();
+  const access = await resolveExamSession(event, examId);
+  if (!access.ok) throw error(access.status, access.message);
 
-  if (body.type === 'time_sync') {
-    await updateTimeRemaining(body.session_id, body.remaining);
-    return json({ ok: true });
-  }
+  const { exam, session, remaining, serverTime } = access;
 
-  const { session_id, question_id, selected_option, text_answer, time_spent_secs } = body;
-  if (!session_id || !question_id) error(400, 'Missing fields');
+  const allQuestions = await getQuestionsByExam(examId);
+  const ordered = await buildStudentQuestionOrder(
+    session.id,
+    allQuestions,
+    exam.randomizeQuestions,
+    exam.randomizeOptions,
+    exam.questionsToPresent
+  );
+  const safeQuestions = sanitizeQuestionsForClient(ordered);
+  const savedAnswers = await getSessionAnswers(session.id);
 
-  await saveAnswerFlat(session_id, question_id, selected_option ?? null, text_answer ?? null, time_spent_secs ?? 0);
+  const payload: ExamPayload & { server_time: Date } = {
+    exam: toClientExam(exam),
+    session: toClientSession(session, remaining),
+    questions: toClientQuestions(safeQuestions),
+    saved_answers: toSavedAnswers(savedAnswers),
+    server_time: serverTime,
+  };
 
-  return json({ ok: true });
+  return json(payload);
 };

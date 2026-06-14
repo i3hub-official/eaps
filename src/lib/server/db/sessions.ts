@@ -1,9 +1,10 @@
 // src/lib/server/db/sessions.ts
 
 import { getPrismaClient, sql } from './index.js';
-import type { ExamSession, SessionStatus, StudentAnswer } from '@prisma/client';
+import type { ExamSession, StudentAnswer } from '@prisma/client';
+import type { SessionStatus } from '$lib/types/exam.js';
 
-export type { ExamSession, SessionStatus, StudentAnswer };
+export type { ExamSession, StudentAnswer, SessionStatus };
 
 // ─── Prisma: session lifecycle ────────────────────────────────────────────────
 
@@ -20,18 +21,25 @@ export async function getOrCreateSession(
   const prisma = await getPrismaClient();
 
   return prisma.examSession.upsert({
-
     where: { examId_studentId: { examId, studentId } },
     create: { examId, studentId, ipAddress, deviceInfo },
     update: {},
   });
 }
 
+/**
+ * Starts a session, but only if it's still 'not_started'.
+ * Returns null if it was already started/submitted/flagged — caller should
+ * re-fetch and branch on the actual status rather than assume this ran.
+ */
 export async function startSession(id: string) {
   const prisma = await getPrismaClient();
 
+  const current = await prisma.examSession.findUnique({ where: { id }, select: { status: true } });
+  if (!current || current.status !== 'not_started') return null;
+
   return prisma.examSession.update({
-    where: { id, status: 'not_started' },
+    where: { id },
     data: { status: 'in_progress', startedAt: new Date() },
   });
 }
@@ -189,9 +197,8 @@ export async function getLiveSession(sessionId: string): Promise<LiveSession | n
   return rows[0] ?? null;
 }
 
-// ─── Aliases + missing helpers (compatibility) ────────────────────────────────
+// ─── Aliases + helpers ─────────────────────────────────────────────────────────
 
-/** Find a session by exam + student (used in complete page) */
 export async function getSessionByExamAndStudent(
   examId: string,
   studentId: string
@@ -199,23 +206,17 @@ export async function getSessionByExamAndStudent(
   const prisma = await getPrismaClient();
 
   return prisma.examSession.findUnique({
-    
     where: { examId_studentId: { examId, studentId } },
   });
 }
 
-/** Alias — returns answers for a session */
 export const getSavedAnswers = getSessionAnswers;
-
-/** Alias — saves remaining time */
 export const updateTimeRemaining = saveTimeRemaining;
 
-/** Force-submit a session */
 export async function forceSubmitSession(id: string) {
   return submitSession(id, 'force_submitted');
 }
 
-/** Flat saveAnswer signature used by the API route */
 export async function saveAnswerFlat(
   sessionId: string,
   questionId: string,
@@ -223,16 +224,28 @@ export async function saveAnswerFlat(
   textAnswer: string | null,
   timeSpentSecs: number
 ) {
-  return saveAnswer(sessionId, questionId, { selectedOption: selectedOption ?? undefined, textAnswer: textAnswer ?? undefined, timeSpentSecs });
+  return saveAnswer(sessionId, questionId, {
+    selectedOption: selectedOption ?? undefined,
+    textAnswer: textAnswer ?? undefined,
+    timeSpentSecs,
+  });
 }
 
-/** startSession override that also records ip/ua on the session */
-export async function startSessionWithMeta(
-  id: string,
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  ip?: string,
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  ua?: string
-) {
-  return startSession(id);
+/** startSession variant that also records ip/device on first start. */
+export async function startSessionWithMeta(id: string, ip?: string, ua?: string) {
+  const session = await startSession(id);
+  if (!session) return null;
+
+  if (ip || ua) {
+    const prisma = await getPrismaClient();
+    return prisma.examSession.update({
+      where: { id },
+      data: {
+        ...(ip ? { ipAddress: ip } : {}),
+        ...(ua ? { deviceInfo: ua } : {}),
+      },
+    });
+  }
+
+  return session;
 }

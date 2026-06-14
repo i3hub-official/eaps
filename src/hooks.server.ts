@@ -1,6 +1,7 @@
 import type { Handle } from '@sveltejs/kit';
 import { getWss }                from '$lib/server/ws/server.js';
 import { tickExamScheduler }     from '$lib/server/exam/scheduler.js';
+import { finalizeExpiredSessions } from '$jobs/finalize-expired-sessions.js';
 import { expireApiKeys }         from '$jobs/expire-api-keys.js';
 import { sessionMiddleware }     from '$lib/server/middleware/session.middleware.js';
 import { faceExamMiddleware }    from '$lib/server/middleware/face-exam.middleware.js';
@@ -22,6 +23,10 @@ try {
 } catch (err) {
   console.error('[WS] Failed to initialise WebSocket server:', err);
 }
+
+setInterval(() => {
+  finalizeExpiredSessions().catch((err) => console.error('[jobs] finalize-expired-sessions failed:', err));
+}, 30_000); // exam deadlines need tighter polling than most jobs
 
 console.log('[Cron] Exam scheduler starting');
 safeTick('Scheduler', tickExamScheduler);

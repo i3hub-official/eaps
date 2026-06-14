@@ -4,13 +4,12 @@
   import { browser } from '$app/environment';
 
   interface Props {
-    open: boolean;
     examId: string;
-    onClose: () => void;
-    onVerified: () => void;
+    onSuccess: () => void;
+    onCancel: () => void;
   }
 
-  let { open, examId, onClose, onVerified }: Props = $props();
+  let { examId, onSuccess, onCancel }: Props = $props();
 
   let video: HTMLVideoElement;
   let canvas: HTMLCanvasElement;
@@ -26,7 +25,7 @@
   let faceCount     = $state(0);
   let holdProgress  = $state(0);
   let holdTimer: number | null = null;
-  let holdStartTime: number | null = null;  // FIX: track hold start for accurate progress
+  let holdStartTime: number | null = null;
   let errorMessage  = $state('');
   let loadingProgress = $state(0);
 
@@ -46,7 +45,7 @@
         hand:         { enabled: false },
         body:         { enabled: false },
         object:       { enabled: false },
-        gesture:      { enabled: false },  // not needed for verify
+        gesture:      { enabled: false },
         segmentation: { enabled: false },
         face: {
           enabled:     true,
@@ -131,7 +130,7 @@
       ctx.stroke();
     }
 
-    // Security label (top of oval)
+    // Security label
     if (!securityPass && !multiple) {
       ctx.save();
       ctx.fillStyle    = '#ef4444';
@@ -250,13 +249,11 @@
 
       faceDetected = true;
 
-      // FIX: start hold timer and record start time together
       if (!holdTimer) {
         holdStartTime = Date.now();
         holdTimer = window.setTimeout(() => verify(descriptor), HOLD_DURATION);
       }
 
-      // FIX: derive progress from elapsed time so bar and timer are in sync
       holdProgress = holdStartTime
         ? Math.min((Date.now() - holdStartTime) / HOLD_DURATION, 1)
         : 0;
@@ -278,7 +275,6 @@
     stopCamera();
 
     try {
-      // Step 1: match descriptor
       const res = await fetch('/api/face/verify', {
         method:  'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -288,7 +284,7 @@
       const data = await res.json();
       if (!res.ok || !data.success) throw new Error(data.message || 'Verification failed');
 
-      // Step 2: set session cookies
+      // Set session cookies
       const sessionRes = await fetch('/api/face/verify-session', {
         method:  'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -302,7 +298,7 @@
       status   = 'success';
       headline = 'Verified!';
       subline  = data.warning ?? `Identity confirmed. Match: ${Math.round(data.similarity * 100)}%`;
-      setTimeout(() => onVerified(), 1200);
+      setTimeout(() => onSuccess(), 1200);
     } catch (e: any) {
       console.error('Verification error:', e);
       status       = 'error';
@@ -414,139 +410,121 @@
     }
   }
 
-  onMount(() => () => stopCamera());
-  onDestroy(stopCamera);
-
-  $effect(() => {
-    if (open && status === 'intro') startVerification();
-    if (!open) {
-      stopCamera();
-      status        = 'intro';
-      holdProgress  = 0;
-      holdStartTime = null;
-      faceDetected  = false;
-      faceCount     = 0;
-      errorMessage  = '';
-      loadingProgress = 0;
-    }
+  // Auto-start on mount
+  onMount(() => {
+    startVerification();
+    return () => stopCamera();
   });
+
+  onDestroy(stopCamera);
 </script>
 
-{#if open}
-  <div
-    class="modal-backdrop"
-    onclick={onClose}
-    role="dialog"
-    aria-modal="true"
-    aria-labelledby="verify-title"
-  >
-    <div class="modal" onclick={(e) => e.stopPropagation()}>
+<div
+  class="modal-backdrop"
+  onclick={onCancel}
+  role="dialog"
+  aria-modal="true"
+  aria-labelledby="verify-title"
+>
+  <div class="modal" onclick={(e) => e.stopPropagation()}>
 
-      <header class="modal-header">
-        <h2 id="verify-title">{headline}</h2>
-        <button class="close-btn" onclick={onClose} aria-label="Close">
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
-            <path d="M18 6L6 18M6 6l12 12"/>
-          </svg>
-        </button>
-      </header>
+    <header class="modal-header">
+      <h2 id="verify-title">{headline}</h2>
+      <button class="close-btn" onclick={onCancel} aria-label="Close">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M18 6L6 18M6 6l12 12"/>
+        </svg>
+      </button>
+    </header>
 
-      <div class="cam-wrap">
-        <video bind:this={video} class="feed" autoplay muted playsinline></video>
-        <canvas bind:this={canvas} class="overlay"></canvas>
+    <div class="cam-wrap">
+      <video bind:this={video} class="feed" autoplay muted playsinline></video>
+      <canvas bind:this={canvas} class="overlay"></canvas>
 
-        {#if status === 'loading'}
-          <div class="center-state">
-            <div class="spinner"></div>
-            <p class="state-text">Starting camera…</p>
-            {#if loadingProgress > 0 && loadingProgress < 100}
-              <div class="progress-bar">
-                <div class="progress-fill" style="width: {loadingProgress}%"></div>
-              </div>
-              <p class="state-text">{Math.round(loadingProgress)}%</p>
-            {/if}
-          </div>
-        {/if}
-
-        {#if status === 'processing'}
-          <div class="center-state">
-            <div class="spinner teal"></div>
-            <p class="state-text">Verifying identity…</p>
-          </div>
-        {/if}
-
-        {#if status === 'success'}
-          <div class="center-state success-state">
-            <div class="success-ring">
-              <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#00c9a7" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-                <polyline points="20 6 9 17 4 12"/>
-              </svg>
+      {#if status === 'loading'}
+        <div class="center-state">
+          <div class="spinner"></div>
+          <p class="state-text">Starting camera…</p>
+          {#if loadingProgress > 0 && loadingProgress < 100}
+            <div class="progress-bar">
+              <div class="progress-fill" style="width: {loadingProgress}%"></div>
             </div>
-            <p class="state-text success-text">{headline}</p>
+            <p class="state-text">{Math.round(loadingProgress)}%</p>
+          {/if}
+        </div>
+      {/if}
+
+      {#if status === 'processing'}
+        <div class="center-state">
+          <div class="spinner teal"></div>
+          <p class="state-text">Verifying identity…</p>
+        </div>
+      {/if}
+
+      {#if status === 'success'}
+        <div class="center-state success-state">
+          <div class="success-ring">
+            <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#00c9a7" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+              <polyline points="20 6 9 17 4 12"/>
+            </svg>
           </div>
-        {/if}
+          <p class="state-text success-text">{headline}</p>
+        </div>
+      {/if}
 
-        {#if status === 'error'}
-          <div class="center-state error-state">
-            <div class="error-ring">
-              <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#ef4444" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-                <circle cx="12" cy="12" r="10"/>
-                <line x1="15" y1="9" x2="9" y2="15"/>
-                <line x1="9" y1="9" x2="15" y2="15"/>
-              </svg>
-            </div>
-            <p class="state-text error-text">{headline}</p>
+      {#if status === 'error'}
+        <div class="center-state error-state">
+          <div class="error-ring">
+            <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#ef4444" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+              <circle cx="12" cy="12" r="10"/>
+              <line x1="15" y1="9" x2="9" y2="15"/>
+              <line x1="9" y1="9" x2="15" y2="15"/>
+            </svg>
           </div>
-        {/if}
+          <p class="state-text error-text">{headline}</p>
+        </div>
+      {/if}
 
-        {#if status === 'scanning'}
-          <div class="face-badge" class:bad={faceCount > 1} class:good={faceCount === 1}>
-            {#if faceCount === 0}
-              <span class="badge-dot"></span> No face
-            {:else if faceCount === 1}
-              <span class="badge-dot green"></span> Face detected
-            {:else}
-              <span class="badge-dot red"></span> {faceCount} faces
-            {/if}
-          </div>
-        {/if}
-      </div>
-
-      <div class="bottom">
-        {#if status === 'intro'}
-          <p class="subline">Click below to start face verification</p>
-          <button class="cta" onclick={startVerification}>Start Verification</button>
-
-        {:else if status === 'error'}
-          <p class="subline error-sub">{subline}</p>
-          <button class="cta" onclick={retry}>Try Again</button>
-
-        {:else if status === 'scanning'}
-          <div class="scan-indicator">
-            <div class="scan-dots">
-              <div class="s-dot" class:active={!faceDetected}></div>
-              <div class="s-dot" class:active={faceDetected && holdProgress < 1}></div>
-              <div class="s-dot" class:active={holdProgress >= 1}></div>
-            </div>
-            <p class="subline" class:hold={faceDetected}>{subline}</p>
-            {#if holdProgress > 0}
-              <div class="hold-bar">
-                <div class="hold-fill" style="width: {holdProgress * 100}%"></div>
-              </div>
-            {/if}
-          </div>
-
-        {:else if status === 'success'}
-          <p class="subline success-sub">{subline}</p>
-
-        {:else}
-          <p class="subline">{subline}</p>
-        {/if}
-      </div>
-
+      {#if status === 'scanning'}
+        <div class="face-badge" class:bad={faceCount > 1} class:good={faceCount === 1}>
+          {#if faceCount === 0}
+            <span class="badge-dot"></span> No face
+          {:else if faceCount === 1}
+            <span class="badge-dot green"></span> Face detected
+          {:else}
+            <span class="badge-dot red"></span> {faceCount} faces
+          {/if}
+        </div>
+      {/if}
     </div>
+
+    <div class="bottom">
+      {#if status === 'error'}
+        <p class="subline error-sub">{subline}</p>
+        <button class="cta" onclick={retry}>Try Again</button>
+      {:else if status === 'scanning'}
+        <div class="scan-indicator">
+          <div class="scan-dots">
+            <div class="s-dot" class:active={!faceDetected}></div>
+            <div class="s-dot" class:active={faceDetected && holdProgress < 1}></div>
+            <div class="s-dot" class:active={holdProgress >= 1}></div>
+          </div>
+          <p class="subline" class:hold={faceDetected}>{subline}</p>
+          {#if holdProgress > 0}
+            <div class="hold-bar">
+              <div class="hold-fill" style="width: {holdProgress * 100}%"></div>
+            </div>
+          {/if}
+        </div>
+      {:else if status === 'success'}
+        <p class="subline success-sub">{subline}</p>
+      {:else}
+        <p class="subline">{subline}</p>
+      {/if}
+    </div>
+
   </div>
-{/if}
+</div>
 
 <style>
   .modal-backdrop {

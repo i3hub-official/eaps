@@ -14,6 +14,53 @@ export async function getExamById(id: string) {
   return prisma.exam.findUnique({ where: { id } });
 }
 
+export async function getExamForSession(id: string) {
+  const prisma = await getPrismaClient();
+
+  return prisma.exam.findUnique({
+    where: { id },
+    include: {
+      ...withCourse,
+      levels: { select: { level: true } },
+    },
+  });
+}
+
+/**
+ * Resolves which exam a student should land on when they open /student/exam
+ * with no ?examId — an in-progress session wins (resume), otherwise the
+ * first currently-active exam they're registered for and eligible for.
+ */
+export async function findCurrentExamForStudent(student: {
+  id: string;
+  level: { level: number } | null;
+  department: { name: string } | null;
+}): Promise<string | null> {
+  const prisma = await getPrismaClient();
+
+  const inProgress = await prisma.examSession.findFirst({
+    where: { studentId: student.id, status: 'in_progress' },
+    orderBy: { startedAt: 'desc' },
+    select: { examId: true },
+  });
+  if (inProgress) return inProgress.examId;
+
+  const candidates = await prisma.exam.findMany({
+    where: {
+      status: 'active',
+      course: { registrations: { some: { studentId: student.id } } },
+    },
+    include: { ...withCourse, levels: { select: { level: true } } },
+    orderBy: { scheduledStart: 'asc' },
+  });
+
+  for (const exam of candidates) {
+    if (isStudentEligible(exam, student).eligible) return exam.id;
+  }
+
+  return null;
+}
+
 export async function getExamWithCourse(id: string) {
   const prisma = await getPrismaClient();
 

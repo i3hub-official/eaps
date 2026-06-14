@@ -1,20 +1,51 @@
 // src/routes/api/exam/[examId]/submit/+server.ts
-import { json, error } from '@sveltejs/kit';
+import { error, json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
-import { submitSession } from '$lib/server/db/sessions.js';
-import { gradeSession } from '$lib/server/db/results.js';
-import { broadcastStudentStatus } from '$lib/server/ws/server.js';
+import { getSessionByExamAndStudent } from '$lib/server/db/sessions.js';
+import { finalizeSession, UUID_RE } from '$lib/server/exam/session-engine.js';
 
-export const POST: RequestHandler = async ({ request, params, locals }) => {
-  if (!locals.user) error(401, 'Unauthorized');
+export const POST: RequestHandler = async (event) => {
+  const user = event.locals.user;
+  if (!user) throw error(401, 'Not authenticated');
+  if (user.role !== 'student') throw error(403, 'Only students can submit exams');
 
-  const { session_id } = await request.json();
+  const { examId } = event.params;
+  if (!UUID_RE.test(examId)) throw error(400, 'Invalid exam id');
 
-  const session = await submitSession(session_id);
-  if (!session) return json({ ok: true }); // already submitted
+  const session = await getSessionByExamAndStudent(examId, user.id);
+  if (!session) throw error(404, 'Exam session not found.');
 
-  await gradeSession(session_id);
-  broadcastStudentStatus(params.examId, session_id, 'submitted');
+  if (session.status === 'submitted' || session.status === 'force_submitted') {
+    const { result } = await finalizeSession(session.id, session.status);
+    return json({ ok: true, result: toResultPayload(result) });
+  }
 
-  return json({ ok: true });
+  if (session.status !== 'in_progress') {
+    throw error(409, `Cannot submit — session status is "${session.status}".`);
+  }
+
+  const { result } = await finalizeSession(session.id, 'submitted');
+  return json({ ok: true, result: toResultPayload(result) });
 };
+
+function toResultPayload(result: {
+  totalQuestions: number | null;
+  answered: number | null;
+  correct: number | null;
+  score: unknown;
+  percentage: unknown;
+  passed: boolean | null;
+  grade: string | null;
+  timeTakenSecs: number | null;
+}) {
+  return {
+    total_questions: result.totalQuestions,
+    answered: result.answered,
+    correct: result.correct,
+    score: result.score == null ? null : Number(result.score),
+    percentage: result.percentage == null ? null : Number(result.percentage),
+    passed: result.passed,
+    grade: result.grade,
+    time_taken_secs: result.timeTakenSecs,
+  };
+}

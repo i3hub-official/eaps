@@ -1,60 +1,65 @@
 // src/routes/student/exam/+page.server.ts
+import { error, redirect } from '@sveltejs/kit';
 import type { PageServerLoad } from './$types';
-import { requireStudent } from '$lib/server/auth/guards.js';
-import { getPrismaClient } from '$lib/server/db/index.js';
+import { findCurrentExamForStudent, getQuestionsByExam } from '$lib/server/db/exams.js';
+import { getSessionAnswers } from '$lib/server/db/sessions.js';
+import { buildStudentQuestionOrder, sanitizeQuestionsForClient } from '$lib/server/exam/randomizer.js';
+import { resolveExamSession } from '$lib/server/exam/session-engine.js';
+import { toClientExam, toClientSession, toClientQuestions, toSavedAnswers } from '$lib/server/exam/transform.js';
 
-export const load: PageServerLoad = async ({ locals }) => {
-  const user = requireStudent(locals.user);
-            const prisma = await getPrismaClient();
-  const activeSemester = await prisma.academicSemester.findFirst({
-    where: { isActive: true },
-    select: { session: true, semester: true },
-  });
+export const load: PageServerLoad = async (event) => {
+  const user = event.locals.user;
+  if (!user) throw redirect(303, '/login');
+  if (user.role !== 'student') throw error(403, 'Only students can take exams');
 
-  const [availableExams, mySessionMap] = await Promise.all([
-    // All exams relevant to this student's level + department
-    prisma.exam.findMany({
-      where: {
-        status: { in: ['active', 'scheduled', 'completed'] },
-        OR: [
-          { examLevels:      { some: { levelId: user.levelId ?? -1 } } },
-          { levels:          { some: { id: user.levelId ?? -1 } } },
-          { examDepartments: { some: { departmentId: user.departmentId ?? '' } } },
-          { course:          { departmentId: user.departmentId ?? '' } },
-        ],
-      },
-      orderBy: [{ status: 'asc' }, { scheduledStart: 'asc' }],
-      select: {
-        id: true, title: true, status: true,
-        durationMinutes: true, scheduledStart: true, scheduledEnd: true,
-        questionsToPresent: true, totalMarks: true, passMark: true,
-        randomizeQuestions: true, allowLateEntry: true, lateEntryMinutes: true,
-        session: true, semester: true,
-        course: { select: { code: true, title: true, creditUnits: true } },
-        _count: { select: { questions: true, examSessions: true } },
-      },
-    }),
+  const examId = event.url.searchParams.get('examId') ?? (await findCurrentExamForStudent(user));
 
-    // My sessions: know which exams I've sat / started
-    prisma.examSession.findMany({
-      where: { studentId: user.id },
-      select: {
-        examId: true, status: true, score: true,
-        startedAt: true, submittedAt: true,
-        examResult: { select: { percentage: true, passed: true, grade: true } },
-      },
-    }).then(rows => new Map(rows.map(r => [r.examId, r]))),
-  ]);
+  if (!examId) {
+    throw redirect(303, '/student?notice=' + encodeURIComponent('No exam is currently available for you.'));
+  }
 
-  // Annotate each exam with the student's session state
-  const exams = availableExams.map(exam => ({
-    ...exam,
-    mySession: mySessionMap.get(exam.id) ?? null,
-  }));
+  const access = await resolveExamSession(event, examId);
 
-  const active    = exams.filter(e => e.status === 'active');
-  const scheduled = exams.filter(e => e.status === 'scheduled');
-  const completed = exams.filter(e => e.status === 'completed');
+  if (!access.ok) {
+    switch (access.reason) {
+      case 'face_not_verified':
+        throw redirect(
+          303,
+          `/verify?examId=${examId}&returnTo=${encodeURIComponent(`/student/exam?examId=${examId}`)}`
+        );
+      case 'already_submitted':
+        throw redirect(303, `/student/results?examId=${examId}`);
+      case 'time_up':
+      case 'violation_limit':
+        throw redirect(
+          303,
+          `/student/results?examId=${examId}&notice=${encodeURIComponent(access.message)}`
+        );
+      case 'flagged':
+        throw redirect(303, '/student?notice=' + encodeURIComponent(access.message));
+      default:
+        throw error(access.status, access.message);
+    }
+  }
 
-  return { exams, active, scheduled, completed, activeSemester };
+  const { exam, session, remaining, serverTime } = access;
+
+  const allQuestions = await getQuestionsByExam(examId);
+  const ordered = await buildStudentQuestionOrder(
+    session.id,
+    allQuestions,
+    exam.randomizeQuestions,
+    exam.randomizeOptions,
+    exam.questionsToPresent
+  );
+  const safeQuestions = sanitizeQuestionsForClient(ordered);
+  const savedAnswers = await getSessionAnswers(session.id);
+
+  return {
+    exam: toClientExam(exam),
+    session: toClientSession(session, remaining),
+    questions: toClientQuestions(safeQuestions),
+    saved_answers: toSavedAnswers(savedAnswers),
+    server_time: serverTime,
+  };
 };
