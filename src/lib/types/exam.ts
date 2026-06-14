@@ -101,7 +101,6 @@ export interface SavedAnswer {
 }
  
 
-
 // ── Question (what the server sends) ────────────────────────────────────────
 export interface QuestionOption {
   id: string;
