@@ -49,12 +49,14 @@
 		"prisma": "^7.8.0",
 		"svelte": "^5.55.2",
 		"svelte-check": "^4.4.6",
+		"sveltekit-rate-limiter": "^0.7.0",
 		"tailwindcss": "^4.2.2",
 		"tsx": "^4.22.2",
 		"typescript": "^6.0.2",
 		"typescript-eslint": "^8.58.1",
 		"vite": "^8.0.7",
-		"vite-plugin-node-polyfills": "^0.28.0"
+		"vite-plugin-node-polyfills": "^0.28.0",
+		"zod": "^4.4.3"
 	},
 	"prisma": {
 		"seed": "tsx prisma/seed.ts"
