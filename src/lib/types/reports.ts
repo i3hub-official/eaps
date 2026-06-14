@@ -239,3 +239,20 @@ export interface ChartConfig {
   datasets: ChartDataset[];
   options?: Record<string, unknown>;
 }
+
+export type ViewMode = 'list' | 'grid' | 'card' | 'carousel';
+export type SortDir  = 'asc' | 'desc';
+
+export interface PaginationState {
+  page:     number;
+  pageSize: number;
+  total:    number;
+}
+
+export interface TableColumn {
+  key:      string;
+  label:    string;
+  numeric?: boolean;
+  hidden?:  boolean;   // IDs start hidden
+  format?:  'id' | 'date' | 'percent' | 'number' | 'badge';
+}
