@@ -77,10 +77,10 @@
     saveTimeout = setTimeout(() => saveAnswer(ans), 800);
   }
 
-  async function saveAnswer(ans: StudentAnswerInput) {
+ async function saveAnswer(ans: StudentAnswerInput) {
     if (!session) return;
     try {
-      await fetch(`/api/exam/${examId}/answer`, {
+      const res = await fetch(`/api/exam/${examId}/answer`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -90,6 +90,17 @@
           textAnswer: ans.textAnswer,
         }),
       });
+      if (res.ok) {
+        const result = await res.json();
+        if (typeof result.timeRemainingSecs === 'number') {
+          timerRef?.sync(result.timeRemainingSecs);
+        }
+      } else if (res.status === 410) {
+        // Server says time's up — stop fighting it, submit immediately.
+        await submitExam();
+      } else {
+        queueForRetry(ans);
+      }
     } catch {
       queueForRetry(ans);
     }

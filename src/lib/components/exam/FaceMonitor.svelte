@@ -13,7 +13,7 @@
     sessionId:          string;
     enrolledDescriptor: number[] | null;
     checkInterval?:     number;
-    onViolation:        (type: 'no_face_detected' | 'multiple_faces' | 'face_mismatch') => void;
+    onViolation:        (type: 'no_face_detected' | 'multiple_faces' | 'face_mismatch', meta?: Record<string, unknown>) => void;
     onCameraError?:     (msg: string) => void;
     onForceSubmit?:     () => void;
   }
@@ -135,7 +135,6 @@
         onViolation('no_face_detected');
         totalViolations++;
         checkAutoSubmit();
-        await report('no_face_detected', {});
       }
       return;
     }
@@ -146,7 +145,6 @@
       onViolation('multiple_faces');
       totalViolations++;
       checkAutoSubmit();
-      await report('multiple_faces', {});
       return;
     }
 
@@ -156,10 +154,9 @@
 
     if (!isLive || !isReal) {
       status = 'warning';
-      onViolation('face_mismatch');
+      onViolation('face_mismatch', { reason: 'spoof_attempt' });
       totalViolations++;
       checkAutoSubmit();
-      await report('face_mismatch', { reason: 'spoof_attempt' });
       return;
     }
 
@@ -169,10 +166,9 @@
       const sim = cosine(enrolledDescriptor, Array.from(face.embedding as number[]));
       if (sim < COSINE_SOFT) {
         status = 'warning';
-        onViolation('face_mismatch');
+        onViolation('face_mismatch', { reason: 'identity_mismatch', similarity: sim });
         totalViolations++;
         checkAutoSubmit();
-        await report('face_mismatch', { reason: 'identity_mismatch', sim: sim.toFixed(4) });
         return;
       }
     }
@@ -181,16 +177,6 @@
   }
 
   function checkAutoSubmit() { if (totalViolations >= MAX_VIOLATIONS) onForceSubmit?.(); }
-
-  async function report(flagType: string, meta: object) {
-    try {
-      await fetch(`/api/exam/${examId}/violation`, {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        keepalive: true,
-        body: JSON.stringify({ session_id: sessionId, flag_type: flagType, meta }),
-      });
-    } catch {}
-  }
 
   onMount(async () => {
     if (!browser) return;

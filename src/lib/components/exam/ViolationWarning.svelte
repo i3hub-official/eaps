@@ -19,6 +19,7 @@
     screenshot_attempt: { label: 'Screenshot attempt', icon: '📷', color: '#ef4444' },
     multiple_faces:     { label: 'Multiple faces detected', icon: '👥', color: '#ef4444' },
     no_face_detected:   { label: 'No face detected', icon: '👤', color: '#ef4444' },
+    face_mismatch:      { label: 'Face verification failed', icon: '🪪', color: '#ef4444' },
     invigilator_manual: { label: 'Flagged by invigilator', icon: '🚩', color: '#ef4444' },
   };
 

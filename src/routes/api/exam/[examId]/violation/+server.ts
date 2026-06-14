@@ -1,57 +1,80 @@
 // src/routes/api/exam/[examId]/violation/+server.ts
-import { json, error } from '@sveltejs/kit';
+import { error, json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import { getExamById } from '$lib/server/db/exams.js';
-import { getSessionById, incrementViolation, forceSubmitSession } from '$lib/server/db/sessions.js';
+import { getSessionByExamAndStudent, incrementViolation, flagSession } from '$lib/server/db/sessions.js';
 import { logViolation } from '$lib/server/db/violations.js';
-import { gradeSession } from '$lib/server/db/results.js';
-import { broadcastViolation, broadcastStudentStatus } from '$lib/server/ws/server.js';
-import type { FlagType, ViolationAction } from '@prisma/client';
+import { finalizeSession, UUID_RE } from '$lib/server/exam/session-engine.js';
+import type { FlagType, ViolationAction } from '$lib/types/exam.js';
 
-export const POST: RequestHandler = async ({ request, params, locals }) => {
-  if (!locals.user) error(401, 'Unauthorized');
+const VALID_FLAGS: FlagType[] = [
+  'tab_switch', 'window_blur', 'fullscreen_exit', 'copy_attempt', 'devtools_open',
+  'screenshot_attempt', 'multiple_faces', 'no_face_detected', 'face_mismatch', 'invigilator_manual',
+];
 
-  const { session_id, flag_type }: { session_id: string; flag_type: FlagType } = await request.json();
+// Flags strong enough to pause the session for invigilator review on first occurrence.
+const IMMEDIATE_PAUSE_FLAGS: FlagType[] = ['multiple_faces', 'face_mismatch', 'invigilator_manual'];
 
-  const session = await getSessionById(session_id);
-  if (!session) error(404, 'Session not found');
+export const POST: RequestHandler = async (event) => {
+  const user = event.locals.user;
+  if (!user) throw error(401, 'Not authenticated');
+  if (user.role !== 'student') throw error(403, 'Only students can report violations');
 
+  const { examId } = event.params;
+  if (!examId || !UUID_RE.test(examId)) throw error(400, 'Invalid exam id');
+
+  const body = await event.request.json().catch(() => null);
+  const flagType = body?.flagType as FlagType | undefined;
+  if (!flagType || !VALID_FLAGS.includes(flagType)) {
+    throw error(400, 'Invalid or missing flagType');
+  }
+  const note = typeof body?.note === 'string' ? body.note.slice(0, 500) : undefined;
+
+  const session = await getSessionByExamAndStudent(examId, user.id);
+  if (!session) throw error(404, 'Exam session not found.');
+
+  const exam = await getExamById(examId);
+  if (!exam) throw error(404, 'Exam not found');
+
+  // Already finished — acknowledge without changing anything.
   if (session.status === 'submitted' || session.status === 'force_submitted') {
-    return json({ ok: true, violation_count: session.violationCount, action: null });
+    return json({
+      violationCount: session.violationCount,
+      maxViolations: exam.maxViolations,
+      action: 'auto_submitted' satisfies ViolationAction,
+      flagType,
+      sessionStatus: session.status,
+    });
   }
 
-  const exam = await getExamById(params.examId);
-  if (!exam) error(404, 'Exam not found');
-
-  const violationCount = await incrementViolation(session_id);
+  const violationCount = await incrementViolation(session.id);
 
   let action: ViolationAction;
-  if (violationCount >= exam.maxViolations) {
-    action = 'auto_submitted';
-  } else if (violationCount >= Math.floor(exam.maxViolations * 0.6)) {
+  let sessionStatus: string = session.status;
+
+  if (session.status === 'flagged') {
     action = 'exam_paused';
-  } else if (violationCount >= Math.floor(exam.maxViolations * 0.4)) {
+  } else if (IMMEDIATE_PAUSE_FLAGS.includes(flagType)) {
+    await flagSession(session.id);
+    action = 'exam_paused';
+    sessionStatus = 'flagged';
+  } else if (violationCount >= exam.maxViolations) {
+    await finalizeSession(session.id, 'force_submitted');
+    action = 'auto_submitted';
+    sessionStatus = 'force_submitted';
+  } else if (violationCount >= Math.ceil(exam.maxViolations / 2)) {
     action = 'invigilator_alerted';
   } else {
     action = 'warning';
   }
 
-  await logViolation(session_id, flag_type, action);
+  await logViolation(session.id, flagType, action, note);
 
-  broadcastViolation(exam.id, {
-    session_id,
-    student_name: locals.user.fullName,
-    matric_number: locals.user.matricNumber,
-    flag_type,
+  return json({
+    violationCount,
+    maxViolations: exam.maxViolations,
     action,
-    violation_count: violationCount,
+    flagType,
+    sessionStatus,
   });
-
-  if (action === 'auto_submitted') {
-    await forceSubmitSession(session_id);
-    await gradeSession(session_id);
-    broadcastStudentStatus(exam.id, session_id, 'force_submitted');
-  }
-
-  return json({ ok: true, violation_count: violationCount, action });
 };

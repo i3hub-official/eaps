@@ -1,11 +1,13 @@
 // src/routes/student/exam/+page.server.ts
 import { error, redirect } from '@sveltejs/kit';
 import type { PageServerLoad } from './$types';
+import { getPrismaClient } from '$lib/server/db/index.js';
 import { findCurrentExamForStudent, getQuestionsByExam } from '$lib/server/db/exams.js';
 import { getSessionAnswers } from '$lib/server/db/sessions.js';
 import { buildStudentQuestionOrder, sanitizeQuestionsForClient } from '$lib/server/exam/randomizer.js';
 import { resolveExamSession } from '$lib/server/exam/session-engine.js';
-import { toClientExam, toClientSession, toClientQuestions, toSavedAnswers } from '$lib/server/exam/transform.js';
+import { toExamConfig, toSessionState, toClientQuestions, toAnswerInputs } from '$lib/server/exam/transform.js';
+import type { ExamPayload } from '$lib/types/exam.js';
 
 export const load: PageServerLoad = async (event) => {
   const user = event.locals.user;
@@ -55,11 +57,27 @@ export const load: PageServerLoad = async (event) => {
   const safeQuestions = sanitizeQuestionsForClient(ordered);
   const savedAnswers = await getSessionAnswers(session.id);
 
-  return {
-    exam: toClientExam(exam),
-    session: toClientSession(session, remaining),
+   const prisma = await getPrismaClient();
+  const faceRecord = await prisma.faceDescriptor.findUnique({
+    where: { studentId: user.id },
+    select: { descriptor: true },
+  });
+  const enrolledFaceDescriptor = Array.isArray(faceRecord?.descriptor)
+    ? (faceRecord!.descriptor as number[])
+    : null;
+
+  const watermarkText = `${user.matricNumber ?? user.email} · ${exam.title}`;
+
+  const payload: ExamPayload = {
+    exam: toExamConfig(exam),
+    session: toSessionState(session, remaining),
     questions: toClientQuestions(safeQuestions),
-    saved_answers: toSavedAnswers(savedAnswers),
-    server_time: serverTime,
+    savedAnswers: toAnswerInputs(savedAnswers),
+    serverTime,
+    watermarkText,
+    enrolledFaceDescriptor,
   };
+
+
+  return payload;
 };

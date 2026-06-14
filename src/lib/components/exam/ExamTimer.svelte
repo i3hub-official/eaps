@@ -41,7 +41,7 @@
     if (intervalId) { clearInterval(intervalId); intervalId = null; }
   }
 
-  export function getRemaining() { return remaining; }
+ export function getRemaining() { return remaining; }
   export function pause() { stop(); }
   export function resume() {
     stop();
@@ -49,6 +49,11 @@
       remaining = Math.max(0, remaining - 1);
       if (remaining <= 0 && onTimeUp) { onTimeUp(); stop(); }
     }, 1000);
+  }
+
+    /** Overwrite the local countdown with the server's authoritative value. */
+  export function sync(secs: number) {
+    remaining = Math.max(0, Math.floor(secs));
   }
 </script>
 

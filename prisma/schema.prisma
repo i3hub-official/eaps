@@ -44,6 +44,7 @@ enum FlagType {
   screenshot_attempt
   multiple_faces
   no_face_detected
+  face_mismatch
   invigilator_manual
 }
 

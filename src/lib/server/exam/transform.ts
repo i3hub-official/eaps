@@ -1,10 +1,11 @@
 // src/lib/server/exam/transform.ts
 import type { Exam as PrismaExam, StudentAnswer } from '@prisma/client';
 import type {
-  Exam as ClientExam,
-  ExamSession as ClientExamSession,
-  ClientQuestion,
-  SavedAnswer,
+  ExamConfig,
+  ExamSessionState,
+  Question,
+  StudentAnswerInput,
+  SessionStatus,
 } from '$lib/types/exam.js';
 import type { SafeQuestion } from './randomizer.js';
 
@@ -12,32 +13,26 @@ type ExamWithCourse = PrismaExam & {
   course?: { code: string; title: string; departmentId: string } | null;
 };
 
-export function toClientExam(exam: ExamWithCourse): ClientExam {
+export function toExamConfig(exam: ExamWithCourse): ExamConfig {
   return {
     id: exam.id,
-    course_id: exam.courseId,
-    course_code: exam.course?.code,
-    course_title: exam.course?.title,
-    created_by: exam.createdBy,
+    courseId: exam.courseId,
+    courseCode: exam.course?.code,
+    courseTitle: exam.course?.title,
     title: exam.title,
     instructions: exam.instructions,
-    duration_minutes: exam.durationMinutes,
-    total_marks: exam.totalMarks,
-    pass_mark: exam.passMark,
+    durationMinutes: exam.durationMinutes,
+    totalMarks: exam.totalMarks,
+    passMark: exam.passMark,
     status: exam.status,
-    scheduled_start: exam.scheduledStart,
-    scheduled_end: exam.scheduledEnd,
-    randomize_questions: exam.randomizeQuestions,
-    randomize_options: exam.randomizeOptions,
-    show_result_after: exam.showResultAfter,
-    max_violations: exam.maxViolations,
-    session: exam.session,
-    semester: exam.semester,
-    created_at: exam.createdAt,
+    scheduledStart: exam.scheduledStart,
+    scheduledEnd: exam.scheduledEnd,
+    showResultAfter: exam.showResultAfter,
+    maxViolations: exam.maxViolations,
   };
 }
 
-export function toClientSession(
+export function toSessionState(
   session: {
     id: string;
     examId: string;
@@ -48,46 +43,45 @@ export function toClientSession(
     violationCount: number;
     score: unknown;
   },
-  timeRemainingSecs: number | null
-): ClientExamSession {
+  timeRemainingSecs: number
+): ExamSessionState {
   return {
     id: session.id,
-    exam_id: session.examId,
-    student_id: session.studentId,
-    status: session.status as ClientExamSession['status'],
-    started_at: session.startedAt,
-    submitted_at: session.submittedAt,
-    time_remaining_secs: timeRemainingSecs,
-    violation_count: session.violationCount,
+    examId: session.examId,
+    studentId: session.studentId,
+    status: session.status as SessionStatus,
+    startedAt: session.startedAt,
+    submittedAt: session.submittedAt,
+    timeRemainingSecs,
+    violationCount: session.violationCount,
     score: session.score == null ? null : Number(session.score),
+    currentQuestionIndex: 0,
   };
 }
 
-export function toClientQuestions(questions: SafeQuestion[]): ClientQuestion[] {
+export function toClientQuestions(questions: SafeQuestion[]): Question[] {
   return questions.map((q) => ({
     id: q.id,
-    exam_id: q.examId,
-    type: q.type,
+    examId: q.examId,
+    type: q.type as Question['type'],
     body: q.body,
-    image_url: q.imageUrl,
+    topic: q.topic,
+    imageUrl: q.imageUrl,
     marks: q.marks,
-    display_index: q.displayIndex ?? 0,
+    displayIndex: q.displayIndex ?? 0,
     options: (q.options ?? []).map((o) => ({
       id: o.id,
-      option_text: o.optionText,
-      display_index: o.orderIndex ?? 0,
+      optionText: o.optionText,
+      displayIndex: o.orderIndex ?? 0,
     })),
+    fitbAnswers: [], // never sent during a live exam
   }));
 }
 
-export function toSavedAnswers(answers: StudentAnswer[]): Record<string, SavedAnswer> {
-  const map: Record<string, SavedAnswer> = {};
-  for (const a of answers) {
-    map[a.questionId] = {
-      questionId: a.questionId,
-      selectedOption: a.selectedOption ?? null,
-      textAnswer: a.textAnswer ?? null,
-    };
-  }
-  return map;
+export function toAnswerInputs(answers: StudentAnswer[]): StudentAnswerInput[] {
+  return answers.map((a) => ({
+    questionId: a.questionId,
+    selectedOption: a.selectedOption ?? null,
+    textAnswer: a.textAnswer ?? null,
+  }));
 }
