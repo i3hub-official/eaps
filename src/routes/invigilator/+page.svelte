@@ -6,7 +6,7 @@
     ArrowUpRight, PlayCircle, CheckCircle,
     AlertCircle, Eye, RefreshCw, Zap,
     Monitor, Users, BookOpen, ChevronRight
-  } from 'lucide-svelte';
+  } from '@lucide/svelte';
 
   let { data }: { data: PageData } = $props();
 

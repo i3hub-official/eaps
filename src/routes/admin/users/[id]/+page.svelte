@@ -6,7 +6,7 @@
     User, Mail, Phone, GraduationCap, BookOpen, Shield, ShieldCheck,
     AlertTriangle, CheckCircle, Edit, Lock, UserX, UserCheck,
     Trash2, Eye, ClipboardList, Bell, Activity, Calendar, Hash
-  } from 'lucide-svelte';
+  } from '@lucide/svelte';
 
   let { data, form }: { data: PageData; form: ActionData } = $props();
   const { user } = data;

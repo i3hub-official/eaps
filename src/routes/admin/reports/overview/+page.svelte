@@ -4,7 +4,7 @@
     Users, GraduationCap, BookOpen, ShieldCheck, ClipboardList,
     AlertTriangle, TrendingUp, Award, Clock, Activity,
     ArrowUpRight, ArrowDownRight, Layers, Building2
-  } from 'lucide-svelte';
+  } from '@lucide/svelte';
 
   // Mock data — replace with actual API calls
   let stats = $state({});

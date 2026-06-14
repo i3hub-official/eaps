@@ -11,7 +11,7 @@
     TrendingUp, TrendingDown, Minus, Download, RefreshCcw,
     ArrowUpRight, ArrowDownRight, Layers, ShieldCheck,
     Info, XCircle, Loader2, ChevronRight, Sparkles, Sun, Moon
-  } from 'lucide-svelte';
+  } from '@lucide/svelte';
   import { getTheme } from '$lib/index.js';
 
   let { data, form }: { data: PageData; form: ActionData } = $props();

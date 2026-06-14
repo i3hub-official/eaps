@@ -1,7 +1,7 @@
 <!-- src/routes/admin/reports/system-activity/+page.svelte -->
 <script lang="ts">
   import type { PageData } from './$types';
-  import { Monitor, Activity, Clock, AlertTriangle, CheckCircle2, Server, Database, Wifi } from 'lucide-svelte';
+  import { Monitor, Activity, Clock, AlertTriangle, CheckCircle2, Server, Database, Wifi } from '@lucide/svelte';
 
   let { data }: { data: PageData } = $props();
 

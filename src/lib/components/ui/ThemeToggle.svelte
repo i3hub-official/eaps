@@ -1,6 +1,6 @@
 <!-- src/lib/components/ui/ThemeToggle.svelte -->
 <script lang="ts">
-  import { Sun, Moon } from 'lucide-svelte';
+  import { Sun, Moon } from '@lucide/svelte';
   import { toggleTheme, getTheme } from '$lib/index.js';
 
   let theme = $derived(getTheme());

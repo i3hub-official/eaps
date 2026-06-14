@@ -3,7 +3,7 @@
   import type { PageData, ActionData } from './$types';
   import { enhance } from '$app/forms';
   import { invalidate } from '$app/navigation';
-  import { GraduationCap, Plus, Pencil, Trash2, X, Check, AlertCircle, Search, Loader2, RotateCcw } from 'lucide-svelte';
+  import { GraduationCap, Plus, Pencil, Trash2, X, Check, AlertCircle, Search, Loader2, RotateCcw } from '@lucide/svelte';
 
   let { data, form }: { data: PageData; form: ActionData } = $props();
 

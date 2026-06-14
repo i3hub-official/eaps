@@ -10,7 +10,7 @@
   then lets the invigilator pause, resume, or force-submit.
 -->
 <script lang="ts">
-  import { X, Shield, AlertTriangle, Play, Pause, LogOut, RefreshCw } from 'lucide-svelte';
+  import { X, Shield, AlertTriangle, Play, Pause, LogOut, RefreshCw } from '@lucide/svelte';
 
   let {
     sessionId,

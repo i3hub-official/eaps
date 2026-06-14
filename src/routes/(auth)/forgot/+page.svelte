@@ -8,7 +8,7 @@
   import {
     Mail, ArrowRight, ArrowLeft, AlertCircle,
     ShieldCheck, KeyRound, ExternalLink, Copy, Check,
-  } from 'lucide-svelte';
+  } from '@lucide/svelte';
 
   onMount(() => initTheme());
 

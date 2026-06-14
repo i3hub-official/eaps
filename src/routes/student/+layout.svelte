@@ -10,7 +10,7 @@
     ClipboardList, UserCircle, Menu, Target, BookMarked,
     AlertTriangle, ArrowRight, Sparkles, Zap, Clock, Activity,
     PanelLeftClose, PanelLeftOpen
-  } from 'lucide-svelte';
+  } from '@lucide/svelte';
 
   let { data, children }: { data: LayoutData; children: import('svelte').Snippet } = $props();
 

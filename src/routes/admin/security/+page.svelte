@@ -8,7 +8,7 @@
     Server, Database, Wifi, Shield, FileText, ShieldCheck,
     KeyRound, Fingerprint, Bell, Clock, Globe, Smartphone,
     ChevronRight, Info, Ban, FileLock, BadgeCheck
-  } from 'lucide-svelte';
+  } from '@lucide/svelte';
   import { tick } from 'svelte';
 
   let { data }: { data: PageData } = $props();

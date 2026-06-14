@@ -3,7 +3,7 @@
     Bell, CheckCheck, Trash2, CheckCircle2, AlertCircle,
     Info, AlertTriangle, XCircle, Loader2, Inbox, X, Clock,
     ArrowRight, MailOpen, Mail, Sparkles, ChevronRight
-  } from 'lucide-svelte';
+  } from '@lucide/svelte';
   import type { PageData } from './$types';
 
   let { data }: { data: PageData } = $props();

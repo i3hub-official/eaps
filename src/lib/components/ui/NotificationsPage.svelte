@@ -2,7 +2,7 @@
 <!-- Reusable notifications page UI. Pass accentColor for role branding. -->
 <script lang="ts">
   import { enhance } from '$app/forms';
-  import { Bell, CheckCheck, Trash2, X, CheckCircle, BellOff } from 'lucide-svelte';
+  import { Bell, CheckCheck, Trash2, X, CheckCircle, BellOff } from '@lucide/svelte';
 
   let {
     notifications,

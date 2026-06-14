@@ -1,7 +1,7 @@
 <!-- src/routes/admin/reports/grade-distribution/+page.svelte -->
 <script lang="ts">
   import type { PageData } from './$types';
-  import { Award, TrendingUp, GraduationCap } from 'lucide-svelte';
+  import { Award, TrendingUp, GraduationCap } from '@lucide/svelte';
 
   let { data }: { data: PageData } = $props();
 

@@ -1,7 +1,7 @@
 <!-- src/routes/admin/reports/audit-logs/+page.svelte -->
 <script lang="ts">
   import type { PageData } from './$types';
-  import { Search, Shield } from 'lucide-svelte';
+  import { Search, Shield } from '@lucide/svelte';
 
   let { data }: { data: PageData } = $props();
 

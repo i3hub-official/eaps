@@ -11,7 +11,7 @@
     LoaderCircle, ShieldCheck, CheckCheck, Activity,
     FileText, Mail, Phone, Building2, BookOpen, Hash,
     Calendar, ArrowRight
-  } from 'lucide-svelte';
+  } from '@lucide/svelte';
 
   let { data, children }: { data: LayoutData; children: import('svelte').Snippet } = $props();
 

@@ -7,7 +7,7 @@
     BarChart2, ChevronRight, BookOpen, FileText, Zap,
     TrendingUp, Calendar, Eye, PlayCircle, XCircle,
     MoreVertical, ArrowUpRight, Layers, Award
-  } from 'lucide-svelte';
+  } from '@lucide/svelte';
 
   let { data }: { data: PageData } = $props();
 

@@ -1,7 +1,7 @@
 <!-- src/routes/(admin)/security/+page.svelte -->
 <script lang="ts">
   import type { PageData } from './$types';
-  import { AlertTriangle, BarChart3, Calendar } from 'lucide-svelte';
+  import { AlertTriangle, BarChart3, Calendar } from '@lucide/svelte';
 
   let { data }: { data: PageData } = $props();
 

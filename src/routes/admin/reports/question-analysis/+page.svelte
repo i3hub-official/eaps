@@ -1,7 +1,7 @@
 <!-- src/routes/admin/reports/question-analysis/+page.svelte -->
 <script lang="ts">
   import type { PageData } from './$types';
-  import { BrainCircuit, Search, ArrowUpDown } from 'lucide-svelte';
+  import { BrainCircuit, Search, ArrowUpDown } from '@lucide/svelte';
 
   let { data }: { data: PageData } = $props();
 

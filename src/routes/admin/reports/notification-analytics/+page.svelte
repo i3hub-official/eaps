@@ -1,7 +1,7 @@
 <!-- src/routes/admin/reports/notification-analytics/+page.svelte -->
 <script lang="ts">
   import type { PageData } from './$types';
-  import { Bell, TrendingDown, Eye, Clock, Send } from 'lucide-svelte';
+  import { Bell, TrendingDown, Eye, Clock, Send } from '@lucide/svelte';
 
   let { data }: { data: PageData } = $props();
 </script>

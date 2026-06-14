@@ -6,7 +6,7 @@
     User, Mail, Phone, Lock, Shield, Activity,
     Calendar, CheckCircle, AlertCircle, Edit, Key,
     Building2, BookOpen, Hash, Clock
-  } from 'lucide-svelte';
+  } from '@lucide/svelte';
 
   let { data, form }: { data: PageData; form: ActionData } = $props();
   const { user, recentActivity } = data;

@@ -3,7 +3,7 @@
   import type { LayoutData } from './$types';
   import { page } from '$app/stores';
   import { goto } from '$app/navigation';
-  import { Shield, Building2, Layers, BookMarked, GraduationCap, UserPlus } from 'lucide-svelte';
+  import { Shield, Building2, Layers, BookMarked, GraduationCap, UserPlus } from '@lucide/svelte';
 
   let { data, children }: { data: LayoutData; children: import('svelte').Snippet } = $props();
 

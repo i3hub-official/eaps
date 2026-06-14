@@ -6,7 +6,7 @@
     UserPlus, AlertCircle, BookOpen, ShieldCheck, Shield,
     Copy, Check, RefreshCw, Eye, EyeOff, ChevronDown,
     Search, X, Building2, Layers, GraduationCap
-  } from 'lucide-svelte';
+  } from '@lucide/svelte';
 
   let { data, form }: { data: PageData; form: ActionData } = $props();
 

@@ -60,6 +60,7 @@
 		"seed": "tsx prisma/seed.ts"
 	},
 	"dependencies": {
+		"@lucide/svelte": "^1.18.0",
 		"@node-rs/argon2": "^2.0.2",
 		"@prisma/adapter-pg": "^7.8.0",
 		"@prisma/client": "^7.8.0",
@@ -78,7 +79,6 @@
 		"jspdf": "^4.2.1",
 		"jsqr": "^1.4.0",
 		"lru-cache": "^11.5.0",
-		"lucide-svelte": "^1.0.1",
 		"nanoid": "^5.1.11",
 		"node-cron": "^4.2.1",
 		"nodemailer": "^8.0.7",

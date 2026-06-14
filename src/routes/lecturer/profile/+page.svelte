@@ -5,7 +5,7 @@
   import {
     User, Mail, Phone, Key, Building2, BookOpen,
     Hash, Calendar, CheckCircle, AlertCircle, Camera, Edit
-  } from 'lucide-svelte';
+  } from '@lucide/svelte';
 
   let { data, form }: { data: PageData; form: ActionData } = $props();
   const { user, recentActivity, titles } = data;

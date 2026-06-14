@@ -1,7 +1,7 @@
 <!-- src/routes/+error.svelte -->
 <script lang="ts">
   import { page } from '$app/stores';
-  import { Home, ArrowLeft, SearchX, ShieldAlert, Bug, Frown } from 'lucide-svelte';
+  import { Home, ArrowLeft, SearchX, ShieldAlert, Bug, Frown } from '@lucide/svelte';
   import { onMount } from 'svelte';
 
   const messagePools = {

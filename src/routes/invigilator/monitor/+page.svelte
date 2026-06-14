@@ -5,7 +5,7 @@
   import {
     Monitor, Clock, Users, CheckCircle, AlertTriangle,
     ArrowRight, Calendar, BookOpen, Activity, FileText
-  } from 'lucide-svelte';
+  } from '@lucide/svelte';
 
   let { data }: { data: PageData } = $props();
 

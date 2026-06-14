@@ -8,7 +8,7 @@
   import {
     Lock, Eye, EyeOff, ArrowRight, ArrowLeft,
     KeyRound, CheckCircle, AlertCircle, ShieldCheck,
-  } from 'lucide-svelte';
+  } from '@lucide/svelte';
 
   onMount(() => initTheme());
 

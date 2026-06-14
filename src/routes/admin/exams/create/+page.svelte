@@ -8,7 +8,7 @@
     Building2, AlertCircle, Plus, Loader2, X, ChevronLeft, ChevronDown,
     Search, Calendar, Check, ShieldAlert, FileText, Timer, BarChart3,
     Info, Sparkles, Eye,Layers,
-  } from 'lucide-svelte';
+  } from '@lucide/svelte';
 
   let { data, form }: { data: PageData; form: ActionData } = $props();
 

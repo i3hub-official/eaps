@@ -1,6 +1,6 @@
 <script lang="ts">
   import type { PageData } from './$types';
-  import { Building2, Award, Users, TrendingUp, TrendingDown, Minus, Target, GraduationCap } from 'lucide-svelte';
+  import { Building2, Award, Users, TrendingUp, TrendingDown, Minus, Target, GraduationCap } from '@lucide/svelte';
 
   let { data }: { data: PageData } = $props();
   const { colleges } = data;

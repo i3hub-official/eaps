@@ -6,7 +6,7 @@
     ArrowRight, AlertTriangle, CheckCircle2, PlayCircle,
     Calendar, Zap, TrendingUp, Award, BookOpen, Activity,
     ArrowUpRight, Sparkles, Lock, BarChart3
-  } from 'lucide-svelte';
+  } from '@lucide/svelte';
 
   let { data }: { data: PageData } = $props();
 

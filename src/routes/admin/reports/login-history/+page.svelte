@@ -1,7 +1,7 @@
 <!-- src/routes/admin/reports/login-history/+page.svelte -->
 <script lang="ts">
   import type { PageData } from './$types';
-  import { Search, Monitor, MapPin } from 'lucide-svelte';
+  import { Search, Monitor, MapPin } from '@lucide/svelte';
 
   let { data }: { data: PageData } = $props();
 

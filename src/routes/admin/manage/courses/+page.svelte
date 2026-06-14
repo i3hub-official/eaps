@@ -2,7 +2,7 @@
 <script lang="ts">
   import type { PageData } from './$types';
   import { enhance } from '$app/forms';
-  import { BookMarked, Plus, Pencil, Trash2, X, Check, AlertCircle, Search, Loader2 } from 'lucide-svelte';
+  import { BookMarked, Plus, Pencil, Trash2, X, Check, AlertCircle, Search, Loader2 } from '@lucide/svelte';
 
   let { data, form }: { data: PageData; form: any } = $props();
 

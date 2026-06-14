@@ -1,6 +1,6 @@
 <!-- src/lib/components/ui/Navbar.svelte -->
 <script lang="ts">
-  import { Sun, Moon, Menu, X, ChevronDown, LogOut } from 'lucide-svelte';
+  import { Sun, Moon, Menu, X, ChevronDown, LogOut } from '@lucide/svelte';
   import { toggleTheme, getTheme } from '$lib/index.js';
   import type { User } from '@prisma/client';
 

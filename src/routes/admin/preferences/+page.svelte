@@ -5,7 +5,7 @@
   import {
     Settings, Monitor, Bell, Shield, Layout, Palette,
     CheckCircle, Save, RefreshCw, Sun, Moon
-  } from 'lucide-svelte';
+  } from '@lucide/svelte';
 
   let { data }: { data: PageData } = $props();
 

@@ -5,7 +5,7 @@
     ClipboardList, Users, CheckCircle, AlertTriangle, XCircle,
     Shield, Clock, PlayCircle, ChevronDown, BookOpen,
     TrendingUp, Activity, Flag
-  } from 'lucide-svelte';
+  } from '@lucide/svelte';
 
   let { data }: { data: PageData } = $props();
   const { exam, sessions, flaggedSessions, violationBreakdown, stats } = data;

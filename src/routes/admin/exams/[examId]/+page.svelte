@@ -6,7 +6,7 @@
     ClipboardList, BookOpen, Users, Clock, Hash, CheckCircle,
     AlertTriangle, Eye, Calendar, User, ChevronLeft,
     Trash2, BarChart3, Target, Shield, Loader2, X
-  } from 'lucide-svelte';
+  } from '@lucide/svelte';
 
   let { data }: { data: PageData } = $props();
   const { exam, scoreStats, passCount } = data;

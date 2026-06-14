@@ -1,7 +1,7 @@
 <!-- src/routes/admin/reports/users/+page.svelte -->
 <script lang="ts">
   import type { PageData } from './$types';
-  import { Users, GraduationCap, BookOpen, ShieldCheck, UserPlus, UserCheck, UserX, TrendingUp } from 'lucide-svelte';
+  import { Users, GraduationCap, BookOpen, ShieldCheck, UserPlus, UserCheck, UserX, TrendingUp } from '@lucide/svelte';
 
   let { data }: { data: PageData } = $props();
   const { stats, roleDistribution } = data;

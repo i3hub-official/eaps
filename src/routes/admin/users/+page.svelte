@@ -11,7 +11,7 @@
     Award, BookMarked, FileText, Activity,
     Download, RefreshCw, Filter, ChevronDown,
     Edit3, Eye, Ban, CheckCircle, Phone, Briefcase
-  } from 'lucide-svelte';
+  } from '@lucide/svelte';
   import { tick } from 'svelte';
 
   let { data, form }: { data: PageData; form: ActionData } = $props();

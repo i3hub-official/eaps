@@ -5,7 +5,7 @@
   import {
     ClipboardList, Plus, Search, Filter, X, CheckCircle, AlertCircle,
     Calendar, PlayCircle, PauseCircle, FileText, ChevronRight, Loader2
-  } from 'lucide-svelte';
+  } from '@lucide/svelte';
 
   let { data }: { data: PageData } = $props();
 

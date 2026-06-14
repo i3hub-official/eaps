@@ -1,6 +1,6 @@
 <script lang="ts">
   import type { PageData } from './$types';
-  import { Target, TrendingUp, TrendingDown, Award, AlertTriangle, Building2, ChevronLeft, ChevronRight } from 'lucide-svelte';
+  import { Target, TrendingUp, TrendingDown, Award, AlertTriangle, Building2, ChevronLeft, ChevronRight } from '@lucide/svelte';
 
   let { data }: { data: PageData } = $props();
 

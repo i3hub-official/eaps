@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { BookMarked, Search, ArrowUpDown, TrendingUp, Users, Award, Clock, AlertTriangle } from 'lucide-svelte';
+  import { BookMarked, Search, ArrowUpDown, TrendingUp, Users, Award, Clock, AlertTriangle } from '@lucide/svelte';
 
   let courses = $state([]);
 

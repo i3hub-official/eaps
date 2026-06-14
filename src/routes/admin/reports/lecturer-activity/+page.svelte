@@ -1,6 +1,6 @@
 <script lang="ts">
   import type { PageData } from './$types';
-  import { BookOpen, TrendingUp, TrendingDown, Minus } from 'lucide-svelte';
+  import { BookOpen, TrendingUp, TrendingDown, Minus } from '@lucide/svelte';
 
   let { data }: { data: PageData } = $props();
 

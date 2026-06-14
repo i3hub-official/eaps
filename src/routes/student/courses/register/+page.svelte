@@ -6,7 +6,7 @@
     Building2, RotateCcw, Globe, Lock,
     Send, RefreshCw, ShieldAlert,
     ChevronDown, ChevronUp
-  } from 'lucide-svelte';
+  } from '@lucide/svelte';
   import type { PageData, ActionData } from './$types';
   import { enhance } from '$app/forms';
 

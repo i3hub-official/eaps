@@ -10,7 +10,7 @@
     Printer, Building2, Layers, UserCheck, XCircle,
     MinusCircle, Award, Hash, Percent, UserX,
     School, DoorOpen, Flag, Fingerprint, Lock
-  } from 'lucide-svelte';
+  } from '@lucide/svelte';
   import { tick, onMount } from 'svelte';
 
   let { data }: { data: PageData } = $props();

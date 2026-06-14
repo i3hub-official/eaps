@@ -3,7 +3,7 @@
   import type { PageData } from './$types';
   import {
     EyeOff, Shield, AlertTriangle, UserX, CheckCircle2
-  } from 'lucide-svelte';
+  } from '@lucide/svelte';
 
   let { data }: { data: PageData } = $props();
 

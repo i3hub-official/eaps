@@ -3,7 +3,7 @@
 <script lang="ts">
   import { onMount } from 'svelte';
   import { initTheme } from '$lib/index.js';
-  import { CheckCircle, XCircle, Copy, Check, ShieldCheck, ArrowRight } from 'lucide-svelte';
+  import { CheckCircle, XCircle, Copy, Check, ShieldCheck, ArrowRight } from '@lucide/svelte';
   import ThemeToggle from '$lib/components/ui/ThemeToggle.svelte';
   import type { PageData } from './$types';
 

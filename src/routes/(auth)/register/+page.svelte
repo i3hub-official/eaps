@@ -13,7 +13,7 @@
     Mail, Phone, Building2, BookOpen, Briefcase, QrCode,
     Camera, Upload, X, Check, Scan, UserPlus, AlertCircle,
     RefreshCw, ChevronLeft, ChevronRight
-  } from 'lucide-svelte';
+  } from '@lucide/svelte';
 
   import type { PageData, ActionData } from './$types';
 

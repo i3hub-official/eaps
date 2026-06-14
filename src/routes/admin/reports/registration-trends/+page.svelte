@@ -1,6 +1,6 @@
 <script lang="ts">
   import type { PageData } from './$types';
-  import { BookOpen, Calendar } from 'lucide-svelte';
+  import { BookOpen, Calendar } from '@lucide/svelte';
 
   let { data }: { data: PageData } = $props();
   const { monthlyData, courseRegistrations, maxCount } = data;

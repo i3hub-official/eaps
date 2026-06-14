@@ -9,7 +9,7 @@
     GraduationCap, Building2, Hash, Users, Search,
     RefreshCw, ArrowRightLeft, CheckCircle2, AlertCircle,
     LoaderCircle, Filter, Eye, LayersIcon, Layers,
-  } from 'lucide-svelte';
+  } from '@lucide/svelte';
   import { fly, slide, fade } from 'svelte/transition';
 
   let { data, form }: { data: PageData; form: ActionData } = $props();

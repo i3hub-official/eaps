@@ -1,6 +1,6 @@
 <script lang="ts">
   import type { PageData } from './$types';
-  import { GraduationCap, Building2, Layers } from 'lucide-svelte';
+  import { GraduationCap, Building2, Layers } from '@lucide/svelte';
 
   let { data }: { data: PageData } = $props();
   const { byLevel, byCollege, byDepartment } = data;

@@ -10,7 +10,7 @@
     Sun, Moon, LogOut, ChevronRight, LoaderCircle,
     PlusCircle, BarChart2, ChevronDown, Bell, CheckCheck,
     FileText, Clock, Menu, User, PanelLeftClose, PanelLeftOpen
-  } from 'lucide-svelte';
+  } from '@lucide/svelte';
 
   let { data, children }: { data: LayoutData; children: import('svelte').Snippet } = $props();
 

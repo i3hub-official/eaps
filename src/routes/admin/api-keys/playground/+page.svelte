@@ -7,7 +7,7 @@
     Key, AlertTriangle, Plus, Trash2, Loader2, FlaskConical,
     ShieldOff, ChevronDown, Terminal, Send, Globe, Lock,
     FileJson, ArrowRight, Sparkles, History, Bookmark
-  } from 'lucide-svelte';
+  } from '@lucide/svelte';
 
   let { data, form: formResult }: { data: PageData; form: ActionData } = $props();
 

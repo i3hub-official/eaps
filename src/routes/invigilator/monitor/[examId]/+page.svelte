@@ -7,7 +7,7 @@
     Play, Pause, Eye, GraduationCap, Building2,
     ArrowUpDown, ChevronDown, UserX, UserCheck,
     Timer, BarChart3, TrendingUp, Award, Lock
-  } from 'lucide-svelte';
+  } from '@lucide/svelte';
   import { fly, slide } from 'svelte/transition';
 
   let { data }: { data: PageData } = $props();

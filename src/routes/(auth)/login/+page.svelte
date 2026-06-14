@@ -1,7 +1,7 @@
 <!-- src/routes/(auth)/login/+page.svelte -->
 <script lang="ts">
   import type { ActionData } from './$types';
-  import { Mail, Lock, Eye, EyeOff, LogIn, AlertCircle, ShieldCheck, ArrowRight, ArrowLeft, Sparkles, Fingerprint } from 'lucide-svelte';
+  import { Mail, Lock, Eye, EyeOff, LogIn, AlertCircle, ShieldCheck, ArrowRight, ArrowLeft, Sparkles, Fingerprint } from '@lucide/svelte';
   import ThemeToggle from '$lib/components/ui/ThemeToggle.svelte';
 
   let { form }: { form: ActionData } = $props();

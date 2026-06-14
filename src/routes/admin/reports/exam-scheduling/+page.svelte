@@ -1,7 +1,7 @@
 <!-- src/routes/admin/reports/exam-scheduling/+page.svelte -->
 
 <script lang="ts">
-  import { Calendar, Clock, CheckCircle2, Users, BookOpen } from 'lucide-svelte';
+  import { Calendar, Clock, CheckCircle2, Users, BookOpen } from '@lucide/svelte';
   import { page } from '$app/stores';
 
   // State with proper initialization

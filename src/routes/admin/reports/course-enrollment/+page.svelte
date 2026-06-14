@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { BookMarked, Users, TrendingUp, TrendingDown, GraduationCap, Award, Search } from 'lucide-svelte';
+  import { BookMarked, Users, TrendingUp, TrendingDown, GraduationCap, Award, Search } from '@lucide/svelte';
 
   let courses = $state([]);
 

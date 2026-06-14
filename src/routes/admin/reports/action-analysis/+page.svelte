@@ -3,7 +3,7 @@
   import type { PageData } from './$types';
   import {
     AlertTriangle, Shield, PauseCircle, Send, FileBarChart
-  } from 'lucide-svelte';
+  } from '@lucide/svelte';
 
   let { data }: { data: PageData } = $props();
 

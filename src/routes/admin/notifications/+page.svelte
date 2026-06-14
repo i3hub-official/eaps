@@ -5,7 +5,7 @@
   import {
     Bell, CheckCheck, Trash2, Send, X, Plus,
     CheckCircle, AlertCircle, BellOff, Filter
-  } from 'lucide-svelte';
+  } from '@lucide/svelte';
 
   let { data, form }: { data: PageData; form: ActionData } = $props();
 

@@ -84,7 +84,7 @@
     SoupIcon, SandwichIcon, PizzaIcon, CookieIcon,
     CandyIcon, IceCreamIcon, CakeIcon, DonutIcon,
     CupSodaIcon, MugIcon, WineGlassIcon
-  } from 'lucide-svelte';
+  } from '@lucide/svelte';
 
   let { data }: { data: PageData } = $props();
   let form = $state<ActionData | null>(null);

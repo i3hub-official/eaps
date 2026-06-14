@@ -8,7 +8,7 @@
     Pencil, Save, X, Camera, Sparkles, Mail, Globe,
     MapPinned, Activity, ArrowRight, Lock, AlertTriangle,
     CameraOff, RefreshCw, ShieldAlert, MailWarning
-  } from 'lucide-svelte';
+  } from '@lucide/svelte';
   import type { PageData, ActionData } from './$types';
   import { enhance } from '$app/forms';
   import FaceEnrollmentModal from '$lib/components/exam/FaceEnrollmentModal.svelte';

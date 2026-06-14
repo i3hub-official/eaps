@@ -4,7 +4,7 @@
   import {
     ClipboardList, Calendar, Clock, Users, BookOpen,
     CheckCircle, PlayCircle, AlertTriangle, ChevronRight
-  } from 'lucide-svelte';
+  } from '@lucide/svelte';
   import { goto } from '$app/navigation';
 
   let { data }: { data: PageData } = $props();

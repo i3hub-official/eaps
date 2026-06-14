@@ -1,6 +1,6 @@
 <script lang="ts">
   import type { PageData } from './$types';
-  import { ShieldCheck, ClipboardList, AlertTriangle } from 'lucide-svelte';
+  import { ShieldCheck, ClipboardList, AlertTriangle } from '@lucide/svelte';
 
   let { data }: { data: PageData } = $props();
 

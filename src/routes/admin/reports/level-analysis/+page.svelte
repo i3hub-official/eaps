@@ -5,7 +5,7 @@
     GraduationCap, Users, BookOpen, Award,
     TrendingUp, TrendingDown, Minus, Target,
     Building2, CheckCircle, XCircle
-  } from 'lucide-svelte';
+  } from '@lucide/svelte';
 
   let { data }: { data: PageData } = $props();
 

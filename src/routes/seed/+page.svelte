@@ -9,7 +9,7 @@
     ChevronRight, RotateCcw, ShieldCheck, Bell, Settings2, CalendarDays,
     Calendar, BookMarked, Library, Layers, CreditCard, Terminal, Activity,
     ArrowRight, Sparkles, ShieldAlert, Info, X
-  } from 'lucide-svelte';
+  } from '@lucide/svelte';
 
   let { data }: { data: PageData } = $props();
   let form = $state<ActionData | null>(null);

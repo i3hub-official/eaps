@@ -14,7 +14,7 @@
     Shield, FileBarChart, BrainCircuit, BookMarked, Monitor,
     EyeOff, Fingerprint, Command, Search, Home,
     ChevronRight, Settings, Pin, Key, PlayCircle, Plus, User, Hash, Database, PlusCircle
-  } from 'lucide-svelte';
+  } from '@lucide/svelte';
 
   let { data, children }: { data: LayoutData; children: import('svelte').Snippet } = $props();
 

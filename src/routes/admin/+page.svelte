@@ -10,7 +10,7 @@
     Shield, Server, Wifi, Fingerprint,
     Calendar, ChevronRight, Eye, CheckCircle,
     Sparkles, Target, Award, Coffee
-  } from 'lucide-svelte';
+  } from '@lucide/svelte';
   import { tick, onMount } from 'svelte';
 
   let { data }: { data: PageData } = $props();

@@ -1,6 +1,6 @@
 <script lang="ts">
   import type { PageData } from './$types';
-  import { Clock, Target, Zap } from 'lucide-svelte';
+  import { Clock, Target, Zap } from '@lucide/svelte';
 
   let { data }: { data: PageData } = $props();
 

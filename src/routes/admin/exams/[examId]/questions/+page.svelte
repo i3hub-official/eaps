@@ -10,7 +10,7 @@
     ChevronUp, AlertCircle, Info, BookOpen, Loader2,
     Users, Building2, ClipboardList, ShieldCheck,
     ToggleLeft, CheckCircle2, Clock, Layers
-  } from 'lucide-svelte';
+  } from '@lucide/svelte';
 
   let { data, form }: { data: PageData; form: ActionData } = $props();
 
