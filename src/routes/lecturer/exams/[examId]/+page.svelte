@@ -3,7 +3,7 @@
 <script lang="ts">
   import type { ActionData, PageData } from './$types';
   import { enhance } from '$app/forms';
-  import { toDatetimeLocal } from '$lib/server/exam/exam-form.js';
+  import { toDatetimeLocal } from '$lib/lib/utils/datetime.ts';
 
   let { data, form }: { data: PageData; form: ActionData } = $props();
 
