@@ -108,3 +108,30 @@ export interface ExamPayload {
     /** The student's enrolled face descriptor, for FaceMonitor's live comparison. */
   enrolledFaceDescriptor: number[] | null;
 }
+
+export interface ExamFormValues {
+  courseId: string;
+  title: string;
+  instructions: string | null;
+  durationMinutes: number;
+  totalMarks: number;
+  passMark: number;
+  session: string;
+  semester: number;
+  scheduledStart: Date | null;
+  scheduledEnd: Date | null;
+  allowLateEntry: boolean;
+  lateEntryMinutes: number;
+  randomizeQuestions: boolean;
+  randomizeOptions: boolean;
+  questionsToPresent: number;
+  showResultAfter: boolean;
+  maxViolations: number;
+  levels: number[];
+  department: string | null;
+}
+
+export interface ExamFormResult {
+  values: ExamFormValues;
+  errors: Record<string, string>;
+}

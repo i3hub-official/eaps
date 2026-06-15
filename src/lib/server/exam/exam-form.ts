@@ -1,32 +1,5 @@
 // src/lib/server/exam/exam-form.ts
 
-export interface ExamFormValues {
-  courseId: string;
-  title: string;
-  instructions: string | null;
-  durationMinutes: number;
-  totalMarks: number;
-  passMark: number;
-  session: string;
-  semester: number;
-  scheduledStart: Date | null;
-  scheduledEnd: Date | null;
-  allowLateEntry: boolean;
-  lateEntryMinutes: number;
-  randomizeQuestions: boolean;
-  randomizeOptions: boolean;
-  questionsToPresent: number;
-  showResultAfter: boolean;
-  maxViolations: number;
-  levels: number[];
-  department: string | null;
-}
-
-export interface ExamFormResult {
-  values: ExamFormValues;
-  errors: Record<string, string>;
-}
-
 function num(formData: FormData, key: string, fallback: number): number {
   const raw = formData.get(key);
   if (raw === null || raw === '') return fallback;
