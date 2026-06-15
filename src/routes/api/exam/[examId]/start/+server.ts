@@ -1,5 +1,5 @@
 // src/routes/api/exam/[examId]/start/+server.ts
-import { error, json } from '@sveltejs/kit';
+import { error, json, type Cookies } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import { getPrismaClient } from '$lib/server/db/index.js';
 import { getExamForSession, getQuestionsByExam, isStudentEligible } from '$lib/server/db/exams.js';
@@ -11,7 +11,7 @@ import type { ExamPayload } from '$lib/types/exam.js';
 
 const FACE_REVALIDATION_MS = 5 * 60 * 1000;
 
-function hasFreshFaceVerification(cookies: App.Cookies extends never ? any : import('@sveltejs/kit').Cookies): boolean {
+function hasFreshFaceVerification(cookies: Cookies): boolean {
   const verified = cookies.get('face_verified');
   const verifiedAt = cookies.get('face_verified_at');
   return verified === 'true' && !!verifiedAt && Date.now() - parseInt(verifiedAt, 10) < FACE_REVALIDATION_MS;
@@ -118,8 +118,8 @@ export const POST: RequestHandler = async (event) => {
     exam: toClientExam(exam),
     session: toClientSession(session, remaining),
     questions: toClientQuestions(safeQuestions),
-    saved_answers: toSavedAnswers(savedAnswers),
-    server_time: now,
+    savedAnswers: toSavedAnswers(savedAnswers),
+    serverTime: now,
   };
 
   return json(payload);

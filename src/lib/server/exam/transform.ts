@@ -85,3 +85,24 @@ export function toAnswerInputs(answers: StudentAnswer[]): StudentAnswerInput[] {
     textAnswer: a.textAnswer ?? null,
   }));
 }
+
+export function toClientExam(exam: ExamWithCourse) {
+  return toExamConfig(exam);
+}
+
+export function toClientSession(session: {
+  id: string;
+  examId: string;
+  studentId: string;
+  status: string;
+  startedAt: Date | null;
+  submittedAt: Date | null;
+  violationCount: number;
+  score: unknown;
+}, timeRemainingSecs: number) {
+  return toSessionState(session, timeRemainingSecs);
+}
+
+export function toSavedAnswers(answers: StudentAnswer[]): StudentAnswerInput[] {
+  return toAnswerInputs(answers);
+}
