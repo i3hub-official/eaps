@@ -8,7 +8,10 @@
     FileText, Timer, BarChart3, ShieldAlert, Layers
   } from '@lucide/svelte';
 
-  let { data, form }: { data: PageData & { departments: Array<{ id: string; name: string; code: string }> }; form: ActionData } = $props();
+  let { data, form }: {
+    data: PageData & { departments: Array<{ id: string; name: string; code: string }> };
+    form: ActionData
+  } = $props();
 
   // ── Levels ──────────────────────────────────────────────────────────────────
   const LEVELS = [100, 200, 300, 400, 500, 600] as const;
@@ -23,9 +26,6 @@
   function toggleAll() {
     selectedLevels = allLevels ? new Set() : new Set(LEVELS);
   }
-  const levelsValue = $derived(
-    allLevels ? 'all' : [...selectedLevels].sort((a, b) => a - b).join(',')
-  );
 
   // ── Departments ──────────────────────────────────────────────────────────────
   const departments = data.departments;
@@ -49,11 +49,6 @@
     next.delete(id);
     selectedDepartments = next;
   }
-  const departmentValue = $derived(
-    [...selectedDepartments]
-      .map(id => departments.find(d => d.id === id)?.name ?? '')
-      .filter(Boolean).join(',')
-  );
 
   // ── Course dropdown ──────────────────────────────────────────────────────────
   let selectedCourse = $state('');
@@ -72,32 +67,35 @@
     { value: '1', label: 'First Semester' },
     { value: '2', label: 'Second Semester' },
   ];
-  let selectedSemester = $state('1');
+  let selectedSemester = $state(String(data.defaultSemester ?? 1));
   let semesterOpen = $state(false);
   const selectedSemesterLabel = $derived(
     SEMESTERS.find(s => s.value === selectedSemester)?.label ?? ''
   );
 
   // ── Questions to present ─────────────────────────────────────────────────────
-  // 0 = present all questions (no limit)
   let questionsToPresent = $state(0);
+
+  // ── Allow late entry ─────────────────────────────────────────────────────────
+  let allowLateEntry = $state(false);
+  let lateEntryMinutes = $state(10);
 
   // ── DateTime picker ──────────────────────────────────────────────────────────
   let startDate = $state('');
   let startTime = $state('09:00');
-  let endDate = $state('');
-  let endTime = $state('11:00');
+  let endDate   = $state('');
+  let endTime   = $state('11:00');
   let startOpen = $state(false);
-  let endOpen = $state(false);
+  let endOpen   = $state(false);
 
-  let startCalYear = $state(new Date().getFullYear());
+  let startCalYear  = $state(new Date().getFullYear());
   let startCalMonth = $state(new Date().getMonth());
-  let endCalYear = $state(new Date().getFullYear());
-  let endCalMonth = $state(new Date().getMonth());
+  let endCalYear    = $state(new Date().getFullYear());
+  let endCalMonth   = $state(new Date().getMonth());
 
   const MONTH_NAMES = ['January','February','March','April','May','June','July','August','September','October','November','December'];
   const MONTH_SHORT = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
-  const DAY_NAMES = ['Su','Mo','Tu','We','Th','Fr','Sa'];
+  const DAY_NAMES   = ['Su','Mo','Tu','We','Th','Fr','Sa'];
 
   function calDays(year: number, month: number) {
     const first = new Date(year, month, 1).getDay();
@@ -109,10 +107,14 @@
   function fmtDate(y: number, m: number, d: number) {
     return `${y}-${String(m + 1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
   }
-  const todayStr = $derived(fmtDate(new Date().getFullYear(), new Date().getMonth(), new Date().getDate()));
+  const todayStr = $derived(
+    fmtDate(new Date().getFullYear(), new Date().getMonth(), new Date().getDate())
+  );
 
   function selectStartDay(day: number) { startDate = fmtDate(startCalYear, startCalMonth, day); }
   function selectEndDay(day: number)   { endDate   = fmtDate(endCalYear,   endCalMonth,   day); }
+
+  // ✅ Keys must match parseExamForm: scheduledStart / scheduledEnd
   const startValue = $derived(startDate ? `${startDate}T${startTime}` : '');
   const endValue   = $derived(endDate   ? `${endDate}T${endTime}`     : '');
 
@@ -129,7 +131,7 @@
     }
   }
 
-  // ── Click outside action ─────────────────────────────────────────────────────
+  // ── Click outside ─────────────────────────────────────────────────────────────
   function clickOutside(node: HTMLElement, handler: () => void) {
     function handle(e: MouseEvent) {
       if (!node.contains(e.target as Node)) handler();
@@ -143,6 +145,15 @@
   function openSemester() { semesterOpen = true; courseOpen = false; deptOpen = false; startOpen = false; endOpen = false; }
   function openStart()    { startOpen = true;    endOpen = false; courseOpen = false; deptOpen = false; semesterOpen = false; }
   function openEnd()      { endOpen = true;      startOpen = false; courseOpen = false; deptOpen = false; semesterOpen = false; }
+
+  // ── Preview helpers ───────────────────────────────────────────────────────────
+  const levelPreview = $derived(
+    allLevels ? 'All' :
+    selectedLevels.size > 0 ? [...selectedLevels].sort((a,b)=>a-b).join(', ') : 'All'
+  );
+  const deptPreview = $derived(
+    selectedDepartments.size === 0 ? 'All' : selectedDepartments.size + ' selected'
+  );
 </script>
 
 <svelte:head><title>Create Exam — MOUAU eTest</title></svelte:head>
@@ -175,7 +186,8 @@
   {/if}
 
   <form method="POST" id="exam-form" class="exam-grid">
-    <!-- ══ COLUMN 1: Basic + Scope ═══════════════════════════════════════════ -->
+
+    <!-- ══ COLUMN 1: Basic + Scope ══════════════════════════════════════════ -->
     <div class="col">
 
       <!-- Basic Info Card -->
@@ -194,13 +206,18 @@
             <input
               id="title" name="title" type="text" required
               placeholder="e.g. CSC301 First Semester Examination 2025/2026"
+              value={form?.values?.title ?? ''}
             />
+            {#if form?.errors?.title}
+              <span class="field-error">{form.errors.title}</span>
+            {/if}
           </div>
 
           <!-- Course dropdown -->
           <div class="field">
             <label>Course <span class="req">*</span></label>
-            <input type="hidden" name="course_id" value={selectedCourse} />
+            <!-- ✅ name="courseId" matches parseExamForm -->
+            <input type="hidden" name="courseId" value={selectedCourse} />
             <div class="dd-wrap" use:clickOutside={() => { courseOpen = false; courseSearch = ''; }}>
               <button
                 type="button" class="dd-trigger" class:open={courseOpen}
@@ -218,7 +235,12 @@
                 <div class="dd-panel">
                   <div class="dd-search">
                     <Search size={13} />
-                    <input type="text" placeholder="Search by code or name…" bind:value={courseSearch} autofocus />
+                    <input
+                      type="text"
+                      placeholder="Search by code or name…"
+                      bind:value={courseSearch}
+                      autofocus
+                    />
                   </div>
                   <div class="dd-list">
                     {#if filteredCourses.length === 0}
@@ -231,7 +253,9 @@
                         >
                           <span class="item-code">{c.code}</span>
                           <span class="item-label">{c.title}</span>
-                          {#if selectedCourse === c.id}<Check size={13} class="item-check" />{/if}
+                          {#if selectedCourse === c.id}
+                            <Check size={13} class="item-check" />
+                          {/if}
                         </button>
                       {/each}
                     {/if}
@@ -239,6 +263,9 @@
                 </div>
               {/if}
             </div>
+            {#if form?.errors?.courseId}
+              <span class="field-error">{form.errors.courseId}</span>
+            {/if}
           </div>
 
           <div class="field">
@@ -246,7 +273,7 @@
             <textarea
               id="instructions" name="instructions" rows="3"
               placeholder="Answer all questions. No external resources allowed. Time shown is exam time."
-            ></textarea>
+            >{form?.values?.instructions ?? ''}</textarea>
           </div>
 
         </div>
@@ -271,14 +298,19 @@
                 <span>Student Levels</span>
               </div>
               <button
-                type="button" class="pill-btn" class:active={allLevels} onclick={toggleAll}
+                type="button" class="pill-btn" class:active={allLevels}
+                onclick={toggleAll}
               >{allLevels ? '✓ All Selected' : 'Select All'}</button>
             </div>
+
             <div class="level-grid">
               {#each LEVELS as level}
                 <button
-                  type="button" class="level-chip" class:selected={selectedLevels.has(level)}
-                  onclick={() => toggleLevel(level)} aria-pressed={selectedLevels.has(level)}
+                  type="button"
+                  class="level-chip"
+                  class:selected={selectedLevels.has(level)}
+                  onclick={() => toggleLevel(level)}
+                  aria-pressed={selectedLevels.has(level)}
                 >
                   <span class="level-num">{level}</span>
                   <span class="level-lbl">Level</span>
@@ -288,6 +320,12 @@
                 </button>
               {/each}
             </div>
+
+            <!-- ✅ One hidden input per level so getAll('levels') returns an array -->
+            {#each [...selectedLevels] as level}
+              <input type="hidden" name="levels" value={level} />
+            {/each}
+
             <div class="scope-note" class:active={selectedLevels.size > 0 || allLevels}>
               {allLevels
                 ? '✓ All levels (100–600) can sit this exam.'
@@ -295,7 +333,6 @@
                   ? `✓ ${[...selectedLevels].sort((a,b)=>a-b).map(l=>l+'L').join(', ')} students eligible.`
                   : 'No level selected — all levels will be allowed by default.'}
             </div>
-            <input type="hidden" name="levels" value={levelsValue} />
           </div>
 
           <div class="divider"></div>
@@ -309,7 +346,12 @@
               </div>
               <span class="opt-badge">Optional</span>
             </div>
-            <input type="hidden" name="department" value={departmentValue} />
+
+            <!-- ✅ One hidden input per selected dept ID so getAll('departments') works -->
+            {#each [...selectedDepartments] as id}
+              <input type="hidden" name="departments" value={id} />
+            {/each}
+
             <div class="dd-wrap" use:clickOutside={() => { deptOpen = false; deptSearch = ''; }}>
               <button
                 type="button" class="dd-trigger multi" class:open={deptOpen}
@@ -324,7 +366,8 @@
                       {#if d}
                         <span class="tag">
                           {d.code}
-                          <button type="button" class="tag-x"
+                          <button
+                            type="button" class="tag-x"
                             onclick={(e) => { e.stopPropagation(); removeDept(id); }}
                           ><X size={9} strokeWidth={3} /></button>
                         </span>
@@ -338,7 +381,12 @@
                 <div class="dd-panel">
                   <div class="dd-search">
                     <Search size={13} />
-                    <input type="text" placeholder="Search departments…" bind:value={deptSearch} autofocus />
+                    <input
+                      type="text"
+                      placeholder="Search departments…"
+                      bind:value={deptSearch}
+                      autofocus
+                    />
                   </div>
                   <div class="dd-list">
                     {#if filteredDepts.length === 0}
@@ -351,7 +399,9 @@
                         >
                           <span class="item-code">{d.code}</span>
                           <span class="item-label">{d.name}</span>
-                          {#if selectedDepartments.has(d.id)}<Check size={13} class="item-check" />{/if}
+                          {#if selectedDepartments.has(d.id)}
+                            <Check size={13} class="item-check" />
+                          {/if}
                         </button>
                       {/each}
                     {/if}
@@ -367,7 +417,7 @@
 
     </div>
 
-    <!-- ══ COLUMN 2: Timing + Scoring ════════════════════════════════════════ -->
+    <!-- ══ COLUMN 2: Timing + Scoring ══════════════════════════════════════ -->
     <div class="col">
 
       <!-- Timing Card -->
@@ -381,8 +431,9 @@
         </div>
         <div class="card-body">
 
-          <input type="hidden" name="scheduled_start" value={startValue} />
-          <input type="hidden" name="scheduled_end"   value={endValue}   />
+          <!-- ✅ scheduledStart / scheduledEnd match parseExamForm -->
+          <input type="hidden" name="scheduledStart" value={startValue} />
+          <input type="hidden" name="scheduledEnd"   value={endValue} />
 
           <!-- Scheduled Start -->
           <div class="field">
@@ -404,17 +455,24 @@
                 <div class="dd-panel dt-panel">
                   <div class="cal-nav">
                     <button type="button" class="cal-arr"
-                      onclick={() => { if (startCalMonth === 0) { startCalMonth = 11; startCalYear--; } else startCalMonth--; }}>‹</button>
+                      onclick={() => {
+                        if (startCalMonth === 0) { startCalMonth = 11; startCalYear--; }
+                        else startCalMonth--;
+                      }}>‹</button>
                     <span class="cal-month-lbl">{MONTH_NAMES[startCalMonth]} {startCalYear}</span>
                     <button type="button" class="cal-arr"
-                      onclick={() => { if (startCalMonth === 11) { startCalMonth = 0; startCalYear++; } else startCalMonth++; }}>›</button>
+                      onclick={() => {
+                        if (startCalMonth === 11) { startCalMonth = 0; startCalYear++; }
+                        else startCalMonth++;
+                      }}>›</button>
                   </div>
                   <div class="cal-grid">
                     {#each DAY_NAMES as dn}<span class="cal-dn">{dn}</span>{/each}
                     {#each calDays(startCalYear, startCalMonth) as day}
                       {#if day === null}<span></span>
                       {:else}
-                        <button type="button" class="cal-day"
+                        <button
+                          type="button" class="cal-day"
                           class:today={fmtDate(startCalYear, startCalMonth, day) === todayStr}
                           class:selected={startDate === fmtDate(startCalYear, startCalMonth, day)}
                           onclick={() => selectStartDay(day)}
@@ -428,7 +486,9 @@
                       {#each TIME_OPTIONS as t}<option value={t}>{t}</option>{/each}
                     </select>
                     {#if startDate}
-                      <button type="button" class="dt-done-btn" onclick={() => startOpen = false}>Done</button>
+                      <button type="button" class="dt-done-btn" onclick={() => startOpen = false}>
+                        Done
+                      </button>
                     {/if}
                   </div>
                 </div>
@@ -456,17 +516,24 @@
                 <div class="dd-panel dt-panel">
                   <div class="cal-nav">
                     <button type="button" class="cal-arr"
-                      onclick={() => { if (endCalMonth === 0) { endCalMonth = 11; endCalYear--; } else endCalMonth--; }}>‹</button>
+                      onclick={() => {
+                        if (endCalMonth === 0) { endCalMonth = 11; endCalYear--; }
+                        else endCalMonth--;
+                      }}>‹</button>
                     <span class="cal-month-lbl">{MONTH_NAMES[endCalMonth]} {endCalYear}</span>
                     <button type="button" class="cal-arr"
-                      onclick={() => { if (endCalMonth === 11) { endCalMonth = 0; endCalYear++; } else endCalMonth++; }}>›</button>
+                      onclick={() => {
+                        if (endCalMonth === 11) { endCalMonth = 0; endCalYear++; }
+                        else endCalMonth++;
+                      }}>›</button>
                   </div>
                   <div class="cal-grid">
                     {#each DAY_NAMES as dn}<span class="cal-dn">{dn}</span>{/each}
                     {#each calDays(endCalYear, endCalMonth) as day}
                       {#if day === null}<span></span>
                       {:else}
-                        <button type="button" class="cal-day"
+                        <button
+                          type="button" class="cal-day"
                           class:today={fmtDate(endCalYear, endCalMonth, day) === todayStr}
                           class:selected={endDate === fmtDate(endCalYear, endCalMonth, day)}
                           onclick={() => selectEndDay(day)}
@@ -480,22 +547,35 @@
                       {#each TIME_OPTIONS as t}<option value={t}>{t}</option>{/each}
                     </select>
                     {#if endDate}
-                      <button type="button" class="dt-done-btn" onclick={() => endOpen = false}>Done</button>
+                      <button type="button" class="dt-done-btn" onclick={() => endOpen = false}>
+                        Done
+                      </button>
                     {/if}
                   </div>
                 </div>
               {/if}
             </div>
+            {#if form?.errors?.scheduledEnd}
+              <span class="field-error">{form.errors.scheduledEnd}</span>
+            {/if}
           </div>
 
           <!-- Session + Semester row -->
           <div class="two-col">
             <div class="field">
               <label for="session">Academic Session <span class="req">*</span></label>
-              <input id="session" name="session" type="text" value="2025/2026" required placeholder="2024/2025" />
+              <input
+                id="session" name="session" type="text" required
+                value={form?.values?.session ?? data.defaultSession ?? '2025/2026'}
+                placeholder="2025/2026"
+              />
+              {#if form?.errors?.session}
+                <span class="field-error">{form.errors.session}</span>
+              {/if}
             </div>
             <div class="field">
               <label>Semester <span class="req">*</span></label>
+              <!-- ✅ name="semester" matches parseExamForm -->
               <input type="hidden" name="semester" value={selectedSemester} />
               <div class="dd-wrap" use:clickOutside={() => semesterOpen = false}>
                 <button
@@ -514,13 +594,18 @@
                           onclick={() => { selectedSemester = s.value; semesterOpen = false; }}
                         >
                           <span class="item-label">{s.label}</span>
-                          {#if selectedSemester === s.value}<Check size={13} class="item-check" />{/if}
+                          {#if selectedSemester === s.value}
+                            <Check size={13} class="item-check" />
+                          {/if}
                         </button>
                       {/each}
                     </div>
                   </div>
                 {/if}
               </div>
+              {#if form?.errors?.semester}
+                <span class="field-error">{form.errors.semester}</span>
+              {/if}
             </div>
           </div>
 
@@ -537,69 +622,86 @@
           </div>
         </div>
         <div class="card-body">
+
           <div class="score-grid">
+            <!-- ✅ durationMinutes matches parseExamForm -->
             <div class="score-field">
-              <label for="duration_minutes">
+              <label for="durationMinutes">
                 <Timer size={13} strokeWidth={2} /> Duration
               </label>
               <div class="score-input-wrap">
-                <input id="duration_minutes" name="duration_minutes" type="number" value="60" min="5" max="300" required />
+                <input
+                  id="durationMinutes" name="durationMinutes"
+                  type="number"
+                  value={form?.values?.durationMinutes ?? 60}
+                  min="5" max="300" required
+                />
                 <span class="score-unit">min</span>
               </div>
+              {#if form?.errors?.durationMinutes}
+                <span class="field-error">{form.errors.durationMinutes}</span>
+              {/if}
             </div>
+
+            <!-- ✅ totalMarks matches parseExamForm -->
             <div class="score-field">
-              <label for="total_marks">
+              <label for="totalMarks">
                 <FileText size={13} strokeWidth={2} /> Total Marks
               </label>
               <div class="score-input-wrap">
-                <input id="total_marks" name="total_marks" type="number" value="100" min="1" required />
+                <input
+                  id="totalMarks" name="totalMarks"
+                  type="number"
+                  value={form?.values?.totalMarks ?? 100}
+                  min="1" required
+                />
                 <span class="score-unit">pts</span>
               </div>
+              {#if form?.errors?.totalMarks}
+                <span class="field-error">{form.errors.totalMarks}</span>
+              {/if}
             </div>
+
+            <!-- ✅ passMark matches parseExamForm -->
             <div class="score-field">
-              <label for="pass_mark">
+              <label for="passMark">
                 <Check size={13} strokeWidth={2.5} /> Pass Mark
               </label>
               <div class="score-input-wrap">
-                <input id="pass_mark" name="pass_mark" type="number" value="40" min="1" required />
+                <input
+                  id="passMark" name="passMark"
+                  type="number"
+                  value={form?.values?.passMark ?? 40}
+                  min="1" required
+                />
                 <span class="score-unit">pts</span>
               </div>
+              {#if form?.errors?.passMark}
+                <span class="field-error">{form.errors.passMark}</span>
+              {/if}
             </div>
-           <div class="score-field">
-              <label for="max_violations">
+
+            <!-- ✅ maxViolations matches parseExamForm -->
+            <div class="score-field">
+              <label for="maxViolations">
                 <ShieldAlert size={13} strokeWidth={2} /> Max Violations
               </label>
               <div class="score-input-wrap">
-                <input id="max_violations" name="max_violations" type="number" value="5" min="1" max="20" />
+                <input
+                  id="maxViolations" name="maxViolations"
+                  type="number"
+                  value={form?.values?.maxViolations ?? 5}
+                  min="1" max="20"
+                />
                 <span class="score-unit">×</span>
               </div>
-            </div>
-            <!-- NEW -->
-            <div class="score-field" style="grid-column: 1 / -1;">
-              <label for="questions_to_present">
-                <Layers size={13} strokeWidth={2} /> Questions to Present
-              </label>
-              <div class="score-input-wrap">
-                <input
-                  id="questions_to_present"
-                  name="questions_to_present"
-                  type="number"
-                  bind:value={questionsToPresent}
-                  min="0"
-                  max="999"
-                  placeholder="0"
-                />
-                <span class="score-unit">qs</span>
-              </div>
-              <p class="field-hint" style="margin-top: 0.25rem;">
-                {questionsToPresent > 0
-                  ? `Each student receives ${questionsToPresent} question${questionsToPresent !== 1 ? 's' : ''} drawn from the full pool.`
-                  : 'Set to 0 to present all questions in the pool.'}
-              </p>
+              {#if form?.errors?.maxViolations}
+                <span class="field-error">{form.errors.maxViolations}</span>
+              {/if}
             </div>
           </div>
 
-          <!-- ── Questions to present ─────────────────────────────────────── -->
+          <!-- Questions to present — single instance, ✅ questionsToPresent -->
           <div class="qtp-wrap">
             <div class="qtp-header">
               <div class="qtp-label-group">
@@ -608,15 +710,14 @@
               </div>
               <span class="opt-badge">Optional</span>
             </div>
-
             <div class="qtp-row">
               <div class="score-input-wrap qtp-input-wrap">
                 <input
-                  id="questions_to_present"
-                  name="questions_to_present"
+                  id="questionsToPresent"
+                  name="questionsToPresent"
                   type="number"
-                  min="0"
                   bind:value={questionsToPresent}
+                  min="0"
                   placeholder="0"
                 />
                 <span class="score-unit">Qs</span>
@@ -629,19 +730,21 @@
                 {/if}
               </div>
             </div>
-
             <p class="field-hint">
-              Set to 0 to present every question. Set e.g. 40 to randomly sample 40 from your full question pool — each student gets a different subset.
+              Set to 0 to present every question. Set e.g. 40 to randomly sample 40
+              from your full question pool — each student gets a different subset.
             </p>
+            {#if form?.errors?.questionsToPresent}
+              <span class="field-error">{form.errors.questionsToPresent}</span>
+            {/if}
           </div>
-          <!-- ──────────────────────────────────────────────────────────────── -->
 
         </div>
       </div>
 
     </div>
 
-    <!-- ══ COLUMN 3: Options + Info ══════════════════════════════════════════ -->
+    <!-- ══ COLUMN 3: Options + Info ════════════════════════════════════════ -->
     <div class="col">
 
       <!-- Options Card -->
@@ -654,45 +757,93 @@
           </div>
         </div>
         <div class="toggles">
+
+          <!-- ✅ randomizeQuestions -->
           <label class="toggle-row">
             <div>
               <span class="toggle-label">Randomize Questions</span>
               <span class="toggle-desc">Shuffle question order per student</span>
             </div>
             <div class="toggle-track">
-              <input type="checkbox" name="randomize_questions" checked class="toggle-cb" />
+              <input type="checkbox" name="randomizeQuestions" checked class="toggle-cb" />
               <span class="toggle-knob"></span>
             </div>
           </label>
+
+          <!-- ✅ randomizeOptions -->
           <label class="toggle-row">
             <div>
               <span class="toggle-label">Randomize Options</span>
               <span class="toggle-desc">Shuffle MCQ choices per student</span>
             </div>
             <div class="toggle-track">
-              <input type="checkbox" name="randomize_options" checked class="toggle-cb" />
+              <input type="checkbox" name="randomizeOptions" checked class="toggle-cb" />
               <span class="toggle-knob"></span>
             </div>
           </label>
+
+          <!-- ✅ showResultAfter -->
           <label class="toggle-row">
             <div>
               <span class="toggle-label">Show Result Immediately</span>
               <span class="toggle-desc">Display score after submission</span>
             </div>
             <div class="toggle-track">
-              <input type="checkbox" name="show_result_after" class="toggle-cb" />
+              <input type="checkbox" name="showResultAfter" class="toggle-cb" />
               <span class="toggle-knob"></span>
             </div>
           </label>
+
+          <!-- ✅ allowLateEntry — was missing entirely -->
+          <label class="toggle-row">
+            <div>
+              <span class="toggle-label">Allow Late Entry</span>
+              <span class="toggle-desc">Students can join after exam starts</span>
+            </div>
+            <div class="toggle-track">
+              <input
+                type="checkbox"
+                name="allowLateEntry"
+                bind:checked={allowLateEntry}
+                class="toggle-cb"
+              />
+              <span class="toggle-knob"></span>
+            </div>
+          </label>
+
         </div>
+
+        <!-- ✅ lateEntryMinutes — only shown + submitted when allowLateEntry is on -->
+        {#if allowLateEntry}
+          <div class="field" style="padding: 0.75rem 1.25rem 1rem;">
+            <label for="lateEntryMinutes">Grace period</label>
+            <div class="score-input-wrap" style="max-width: 140px;">
+              <input
+                id="lateEntryMinutes"
+                name="lateEntryMinutes"
+                type="number"
+                bind:value={lateEntryMinutes}
+                min="1"
+                max="60"
+              />
+              <span class="score-unit">min</span>
+            </div>
+            <p class="field-hint">
+              How long after the start time students may still join.
+            </p>
+          </div>
+        {/if}
       </div>
 
-      <!-- Info card -->
+      <!-- Info box -->
       <div class="info-box">
         <div class="info-dot"><Info size={15} /></div>
         <div>
           <strong>Next: Question Builder</strong>
-          <p>After creating the exam you'll be redirected to add MCQ and fill-in-the-blank questions with marks per question.</p>
+          <p>
+            After creating the exam you'll be redirected to add MCQ and
+            fill-in-the-blank questions with marks per question.
+          </p>
         </div>
       </div>
 
@@ -702,18 +853,22 @@
         <div class="summary-rows">
           <div class="sum-row">
             <span>Course</span>
-            <span class="sum-val">{selectedCourseObj ? selectedCourseObj.code : '—'}</span>
-          </div>
-          <div class="sum-row">
-            <span>Eligible Levels</span>
             <span class="sum-val">
-              {allLevels ? 'All' : selectedLevels.size > 0 ? [...selectedLevels].sort((a,b)=>a-b).join(', ') : 'All'}
+              {selectedCourseObj ? selectedCourseObj.code : '—'}
             </span>
           </div>
           <div class="sum-row">
+            <span>Eligible Levels</span>
+            <span class="sum-val">{levelPreview}</span>
+          </div>
+          <div class="sum-row">
             <span>Departments</span>
+            <span class="sum-val">{deptPreview}</span>
+          </div>
+          <div class="sum-row">
+            <span>Session</span>
             <span class="sum-val">
-              {selectedDepartments.size === 0 ? 'All' : selectedDepartments.size + ' selected'}
+              {form?.values?.session ?? data.defaultSession ?? '2025/2026'}
             </span>
           </div>
           <div class="sum-row">
@@ -722,14 +877,23 @@
           </div>
           <div class="sum-row">
             <span>Start</span>
-            <span class="sum-val">{startDate ? fmtDisplay(startDate, startTime) : '—'}</span>
+            <span class="sum-val">
+              {startDate ? fmtDisplay(startDate, startTime) : '—'}
+            </span>
           </div>
           <div class="sum-row">
             <span>End</span>
-            <span class="sum-val">{endDate ? fmtDisplay(endDate, endTime) : '—'}</span>
+            <span class="sum-val">
+              {endDate ? fmtDisplay(endDate, endTime) : '—'}
+            </span>
           </div>
-          <!-- ── Questions to present preview row ── -->
-        <div class="sum-row">
+          <div class="sum-row">
+            <span>Late Entry</span>
+            <span class="sum-val">
+              {allowLateEntry ? `Yes · ${lateEntryMinutes} min grace` : 'No'}
+            </span>
+          </div>
+          <div class="sum-row">
             <span>Pool size</span>
             <span class="sum-val">
               {questionsToPresent > 0 ? questionsToPresent + ' / pool' : 'All questions'}
@@ -741,9 +905,12 @@
       <!-- Mobile submit -->
       <div class="form-footer">
         <a href="/lecturer" class="btn ghost">Cancel</a>
-        <button type="submit" class="btn primary">Create Exam &amp; Add Questions →</button>
+        <button type="submit" class="btn primary">
+          Create Exam &amp; Add Questions →
+        </button>
       </div>
-  </div>
+
+    </div>
   </form>
 </div>
 

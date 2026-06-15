@@ -1,7 +1,7 @@
 <!-- src/routes/+error.svelte -->
 <script lang="ts">
   import { page } from '$app/stores';
-  import { Home, ArrowLeft, SearchX, ShieldAlert, Bug, Frown } from '@lucide/svelte';
+  import { Home, ArrowLeft, SearchX, ShieldAlert, Bug, Frown, Clock } from '@lucide/svelte';
   import { onMount } from 'svelte';
 
   const messagePools = {
@@ -67,7 +67,28 @@
         "This is fine. (It's not fine. Send help.)",
         "Bug report submitted. Someone will look at it... eventually.",
       ]
-    }
+    },
+    429: {
+      main: [
+        "Whoa there, speed racer! You're going faster than the campus shuttle. Slow down a bit.",
+        "Too many requests! Even the server needs a breather. Give it a moment.",
+        "You're hitting us harder than a fresher hitting the cafeteria on day one. Pace yourself!",
+        "Rate limit reached. Our server is like a strict lecturer — it needs time between questions.",
+        "Chill! You're sending more requests than assignment deadline reminders.",
+        "Our server is overwhelmed. It's currently in a corner doing breathing exercises.",
+        "429: Too many requests. Have you tried... not doing that?",
+        "You're going at this like it's a 100m sprint. This is a marathon, friend.",
+        "The server is giving you the side-eye. Maybe take a 14-minute break?",
+        "Easy there! Even the Wi-Fi at the library has limits, and so do we.",
+      ],
+      footer: [
+        "Take a deep breath. Maybe grab some water. The server will be ready soon.",
+        "Patience is a virtue. And also required by our rate limiter.",
+        "Try again after the cooldown. Use the time to stretch or something.",
+        "Pro tip: batch your requests like you batch your laundry.",
+        "The countdown is on. Use this time to plan your next move wisely.",
+      ]
+    },
   };
 
   function getTimeBlock() {
@@ -87,16 +108,29 @@
     return Math.floor(seededRandom(seed) * poolLength);
   }
 
+  function formatCountdown(seconds: number): string {
+    const m = Math.floor(seconds / 60);
+    const s = seconds % 60;
+    if (m > 0) return `${m}m ${s}s`;
+    return `${s}s`;
+  }
+
   let mainMessage = $state('');
   let footerMessage = $state('');
   let currentStatus = $state(500);
   let mounted = $state(false);
+  let retryAfter = $state(0);
+  let countdownText = $state('');
+  let countdownInterval: ReturnType<typeof setInterval> | null = null;
 
   onMount(() => {
     const status = $page.status;
     currentStatus = status;
 
-    const statusKey = status === 404 ? 404 : status === 403 ? 403 : 500;
+    const statusKey = status === 404 ? 404 
+                      : status === 403 ? 403 
+                      : status === 429 ? 429
+                      : 500;
     const pool = messagePools[statusKey];
 
     const mainIdx = getMessageIndex(pool.main.length, statusKey, 'main');
@@ -125,10 +159,33 @@
       footer: footerMessage
     }));
 
+    // Handle retryAfter countdown for 429 errors
+    const rawRetry = ($page.error as any)?.retryAfter;
+    if (status === 429 && rawRetry) {
+      retryAfter = typeof rawRetry === 'number' ? rawRetry : parseInt(rawRetry, 10);
+      if (!isNaN(retryAfter) && retryAfter > 0) {
+        let remaining = retryAfter;
+        countdownText = formatCountdown(remaining);
+        countdownInterval = setInterval(() => {
+          remaining--;
+          if (remaining <= 0) {
+            countdownText = 'Ready!';
+            if (countdownInterval) clearInterval(countdownInterval);
+          } else {
+            countdownText = formatCountdown(remaining);
+          }
+        }, 1000);
+      }
+    }
+
     // Trigger entrance animations after a tiny delay
     requestAnimationFrame(() => {
       mounted = true;
     });
+
+    return () => {
+      if (countdownInterval) clearInterval(countdownInterval);
+    };
   });
 </script>
 
@@ -203,6 +260,40 @@
           </g>
         </svg>
 
+      {:else if currentStatus === 429}
+        <svg viewBox="0 0 200 180" class="error-svg" aria-hidden="true">
+          <!-- Clock/timer -->
+          <circle cx="100" cy="90" r="55" fill="none" stroke="var(--color-border)" stroke-width="4" class="clock-ring"/>
+          <circle cx="100" cy="90" r="50" fill="var(--color-surface)" stroke="var(--color-focus)" stroke-width="2" opacity="0.1"/>
+          <!-- Clock hands -->
+          <line x1="100" y1="90" x2="100" y2="55" stroke="var(--color-focus)" stroke-width="3" stroke-linecap="round" class="hand-min"/>
+          <line x1="100" y1="90" x2="125" y2="90" stroke="var(--color-focus)" stroke-width="2" stroke-linecap="round" class="hand-hour"/>
+          <!-- Center dot -->
+          <circle cx="100" cy="90" r="4" fill="var(--color-focus)"/>
+          <!-- Ticks -->
+          {#each [0, 30, 60, 90, 120, 150, 180, 210, 240, 270, 300, 330] as deg}
+            <line 
+              x1="100" y1="45" 
+              x2="100" y2="50" 
+              stroke="var(--color-muted)" 
+              stroke-width="2"
+              transform="rotate({deg} 100 90)"
+            />
+          {/each}
+          <!-- Snail / slow character -->
+          <g class="snail">
+            <path d="M140 135 Q140 120 150 115 Q160 110 165 120 Q170 130 160 135 Q150 140 140 135Z" fill="var(--color-text)"/>
+            <circle cx="155" cy="118" r="2" fill="var(--color-bg)"/>
+            <path d="M165 120 Q175 115 178 110" stroke="var(--color-text)" stroke-width="2" fill="none" stroke-linecap="round" class="antenna"/>
+            <circle cx="178" cy="110" r="2" fill="var(--color-text)" class="antenna"/>
+          </g>
+          <!-- "429" text -->
+          <text x="100" y="160" text-anchor="middle" font-size="14" font-weight="bold" fill="var(--color-focus)">429</text>
+          <!-- Zzz bubbles -->
+          <text x="185" y="105" font-size="10" fill="var(--color-muted)" class="zzz z1">z</text>
+          <text x="192" y="98" font-size="8" fill="var(--color-muted)" class="zzz z2">z</text>
+        </svg>
+
       {:else}
         <svg viewBox="0 0 200 180" class="error-svg" aria-hidden="true">
           <!-- Shaking screen -->
@@ -247,6 +338,8 @@
         <SearchX size={18} />
       {:else if currentStatus === 403}
         <ShieldAlert size={18} />
+      {:else if currentStatus === 429}
+        <Clock size={18} />
       {:else}
         <Bug size={18} />
       {/if}
@@ -258,12 +351,21 @@
         Page Not Found
       {:else if currentStatus === 403}
         Access Denied
+      {:else if currentStatus === 429}
+        Too Many Requests
       {:else}
         Something Went Wrong
       {/if}
     </h1>
 
     <p class="message">{mainMessage}</p>
+
+    {#if currentStatus === 429 && countdownText}
+      <div class="countdown-badge">
+        <Clock size={14} />
+        <span>Retry in: {countdownText}</span>
+      </div>
+    {/if}
 
     <div class="actions">
       <a href="/" class="btn-primary">
@@ -368,6 +470,7 @@
   .error-card.mounted > *:nth-child(4) { transition-delay: 0.35s; }
   .error-card.mounted > *:nth-child(5) { transition-delay: 0.42s; }
   .error-card.mounted > *:nth-child(6) { transition-delay: 0.5s; }
+  .error-card.mounted > *:nth-child(7) { transition-delay: 0.56s; }
 
   /* ── Illustration float ───────────────────────────────────────── */
   .illustration {
@@ -478,6 +581,55 @@
     to   { transform: scale(1.06); opacity: 0.85; }
   }
 
+  /* 429 — clock hands spin */
+  .hand-min {
+    transform-origin: 100px 90px;
+    animation: spin-min 2s linear infinite;
+  }
+  .hand-hour {
+    transform-origin: 100px 90px;
+    animation: spin-hour 24s linear infinite;
+  }
+  @keyframes spin-min {
+    from { transform: rotate(0deg); }
+    to   { transform: rotate(360deg); }
+  }
+  @keyframes spin-hour {
+    from { transform: rotate(0deg); }
+    to   { transform: rotate(360deg); }
+  }
+
+  /* 429 — clock ring pulse */
+  .clock-ring {
+    animation: ring-pulse 1.5s ease-in-out infinite alternate;
+  }
+  @keyframes ring-pulse {
+    from { stroke: var(--color-border); opacity: 1; }
+    to   { stroke: var(--color-focus); opacity: 0.6; }
+  }
+
+  /* 429 — snail crawl */
+  .snail {
+    animation: crawl 3s ease-in-out infinite alternate;
+  }
+  @keyframes crawl {
+    from { transform: translateX(0); }
+    to   { transform: translateX(-8px); }
+  }
+
+  /* 429 — zzz float */
+  .zzz {
+    animation: zzz-rise 2s ease-in-out infinite;
+    opacity: 0;
+  }
+  .z1 { animation-delay: 0s; }
+  .z2 { animation-delay: 0.6s; }
+  @keyframes zzz-rise {
+    0%   { opacity: 0; transform: translateY(0); }
+    30%  { opacity: 0.8; }
+    100% { opacity: 0; transform: translateY(-10px) translateX(5px); }
+  }
+
   /* 500 — screen shake */
   .screen-shake {
     animation: shake 0.4s ease-in-out infinite;
@@ -570,6 +722,21 @@
 
   .status-code {
     font-weight: 900;
+  }
+
+  /* ── Countdown badge (429 only) ───────────────────────────────── */
+  .countdown-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    padding: 0.35rem 1rem;
+    background: var(--color-primary-subtle);
+    border: 1.5px solid var(--color-focus);
+    color: var(--color-focus);
+    border-radius: 999px;
+    font-weight: 700;
+    font-size: 0.9rem;
+    animation: badge-pulse 2.4s ease-in-out infinite;
   }
 
   /* ── Typography ───────────────────────────────────────────────── */

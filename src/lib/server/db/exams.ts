@@ -26,6 +26,13 @@ export async function getExamForSession(id: string) {
   });
 }
 
+// ─── Active semester ────────────────────────────────────────────────────────
+
+export async function getActiveAcademicSemester() {
+  const prisma = await getPrismaClient();
+  return prisma.academicSemester.findFirst({ where: { isActive: true } });
+}
+
 /**
  * Resolves which exam a student should land on when they open /student/exam
  * with no ?examId — an in-progress session wins (resume), otherwise the
@@ -45,10 +52,24 @@ export async function findCurrentExamForStudent(student: {
   });
   if (inProgress) return inProgress.examId;
 
+  const active = await getActiveAcademicSemester();
+  if (!active) return null;
+
   const candidates = await prisma.exam.findMany({
     where: {
       status: 'active',
-      course: { registrations: { some: { studentId: student.id } } },
+      session: active.session,
+      semester: active.semester,
+      course: {
+        registrations: {
+          some: {
+            studentId: student.id,
+            session: active.session,
+            semester: active.semester,
+            status: { notIn: ['rejected', 'withdrawn'] },
+          },
+        },
+      },
     },
     include: { ...withCourse, levels: { select: { level: true } } },
     orderBy: { scheduledStart: 'asc' },
@@ -60,6 +81,7 @@ export async function findCurrentExamForStudent(student: {
 
   return null;
 }
+
 
 export async function getExamWithCourse(id: string) {
   const prisma = await getPrismaClient();
@@ -80,10 +102,24 @@ export async function listExamsByLecturer(lecturerId: string) {
 export async function listExamsForStudent(studentId: string) {
   const prisma = await getPrismaClient();
 
+  const active = await getActiveAcademicSemester();
+  if (!active) return [];
+
   return prisma.exam.findMany({
     where: {
       status: { in: ['scheduled', 'active'] },
-      course: { registrations: { some: { studentId } } },
+      session: active.session,
+      semester: active.semester,
+      course: {
+        registrations: {
+          some: {
+            studentId,
+            session: active.session,
+            semester: active.semester,
+            status: { notIn: ['rejected', 'withdrawn'] },
+          },
+        },
+      },
     },
     include: withCourse,
     orderBy: { scheduledStart: 'asc' },
@@ -100,6 +136,92 @@ export async function listExamsForInvigilator(invigilatorId: string) {
     },
     include: withCourse,
     orderBy: { scheduledStart: 'asc' },
+  });
+}
+
+// ─── Eligible-student counting (shared by lecturer + reports) ─────────────────
+
+export async function countEligibleStudents(exam: {
+  courseId: string;
+  session: string;
+  semester: number;
+  levels: { level: number }[];
+  department: string | null;
+}): Promise<number> {
+  const prisma = await getPrismaClient();
+
+  const registrations = await prisma.courseRegistration.findMany({
+    where: {
+      courseId: exam.courseId,
+      session: exam.session,
+      semester: exam.semester,
+      status: { notIn: ['rejected', 'withdrawn'] },
+    },
+    select: {
+      student: {
+        select: {
+          level: { select: { level: true } },
+          department: { select: { name: true } },
+        },
+      },
+    },
+  });
+
+  let count = 0;
+  for (const r of registrations) {
+    if (isStudentEligible(exam, r.student).eligible) count++;
+  }
+  return count;
+}
+
+// ─── Lecturer-facing queries ────────────────────────────────────────────────
+
+export async function getCoursesForLecturer(lecturer: { departmentId: string | null }) {
+  const prisma = await getPrismaClient();
+
+  return prisma.course.findMany({
+    where: lecturer.departmentId ? { departmentId: lecturer.departmentId } : undefined,
+    orderBy: { code: 'asc' },
+    select: { id: true, code: true, title: true, level: true, semester: true, creditUnits: true },
+  });
+}
+
+export async function getExamsByLecturerWithStats(lecturerId: string) {
+  const prisma = await getPrismaClient();
+
+  const exams = await prisma.exam.findMany({
+    where: { createdBy: lecturerId },
+    include: {
+      ...withCourse,
+      levels: { select: { level: true } },
+      _count: { select: { questions: true, examSessions: true } },
+    },
+    orderBy: { createdAt: 'desc' },
+  });
+
+  return Promise.all(
+    exams.map(async (exam) => ({
+      ...exam,
+      questionCount: exam._count.questions,
+      sessionCount: exam._count.examSessions,
+      eligibleCount: await countEligibleStudents(exam),
+    }))
+  );
+}
+
+export async function getExamForLecturer(examId: string, lecturerId: string) {
+  const prisma = await getPrismaClient();
+
+  return prisma.exam.findFirst({
+    where: { id: examId, createdBy: lecturerId },
+    include: {
+      ...withCourse,
+      levels: { select: { level: true } },
+      invigilators: {
+        include: { invigilator: { select: { id: true, fullName: true, email: true, staffId: true } } },
+      },
+      _count: { select: { questions: true, examSessions: true } },
+    },
   });
 }
 

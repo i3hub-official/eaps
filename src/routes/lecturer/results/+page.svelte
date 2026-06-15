@@ -4,304 +4,829 @@
   import { goto } from '$app/navigation';
   import { page } from '$app/stores';
   import {
-    BarChart2, TrendingUp, CheckCircle2, XCircle,
-    Clock, Calendar, Users, AlertTriangle, Target,
-    ChevronUp, ChevronDown, Search, Download
+    BarChart2, Users, CheckCircle, XCircle, TrendingUp,
+    Search, Filter, Download, Grid3X3, List, ChevronDown,
+    BookOpen, Clock, Award, AlertTriangle, FileText,
+    GraduationCap, Building2, Layers, ArrowUpDown,
+    ChevronRight, ChevronLeft, X
   } from '@lucide/svelte';
 
   let { data }: { data: PageData } = $props();
 
-  const results  = $derived(data.results  ?? []);
-  const myExams  = $derived(data.myExams  ?? []);
-  const summary  = $derived(data.summary  ?? {});
-  const selExam  = $derived(data.selectedExamId ?? 'all');
+  // ── View & sort state ─────────────────────────────────────────
+  let viewMode   = $state<'grid' | 'list'>('list');
+  let sortField  = $state<'name' | 'score' | 'grade' | 'date' | 'course'>('date');
+  let sortDir    = $state<'asc' | 'desc'>('desc');
+  let groupBy    = $state<'none' | 'exam' | 'college' | 'department'>('none');
+  let showFilters = $state(false);
 
-  let search  = $state('');
-  let sortKey = $state<'name' | 'score' | 'submitted'>('score');
-  let sortAsc = $state(false);
+  // ── Filters (local, applied via URL) ─────────────────────────
+  let localSearch   = $state(data.filters.search);
+  let searchTimer: ReturnType<typeof setTimeout>;
 
-  const filtered = $derived((() => {
-    let r = results.filter(res => {
-      if (!search) return true;
-      const s = search.toLowerCase();
-      return res.student?.fullName?.toLowerCase().includes(s)
-          || res.student?.matricNumber?.toLowerCase().includes(s)
-          || res.exam?.title?.toLowerCase().includes(s);
-    });
-    r = [...r].sort((a, b) => {
-      let av: any, bv: any;
-      if (sortKey === 'name')      { av = a.student?.fullName ?? ''; bv = b.student?.fullName ?? ''; }
-      else if (sortKey === 'score'){ av = Number(a.percentage ?? 0); bv = Number(b.percentage ?? 0); }
-      else                         { av = a.submittedAt ?? ''; bv = b.submittedAt ?? ''; }
-      if (av < bv) return sortAsc ? -1 : 1;
-      if (av > bv) return sortAsc ? 1 : -1;
-      return 0;
+  function pushFilter(key: string, value: string) {
+    const p = new URLSearchParams($page.url.searchParams);
+    if (value === 'all' || value === '') p.delete(key);
+    else p.set(key, value);
+    goto(`?${p.toString()}`, { replaceState: true, keepFocus: true });
+  }
+
+  function onSearchInput(e: Event) {
+    localSearch = (e.target as HTMLInputElement).value;
+    clearTimeout(searchTimer);
+    searchTimer = setTimeout(() => pushFilter('q', localSearch), 380);
+  }
+
+  function clearAllFilters() {
+    localSearch = '';
+    goto('/lecturer/results', { replaceState: true });
+  }
+
+  const hasActiveFilters = $derived(
+    data.filters.filterSemester !== 'all' ||
+    data.filters.filterCourse   !== 'all' ||
+    data.filters.filterCollege  !== 'all' ||
+    data.filters.filterDept     !== 'all' ||
+    data.filters.filterGrade    !== 'all' ||
+    data.filters.search         !== ''
+  );
+
+  // ── Sorted results ────────────────────────────────────────────
+  const sorted = $derived((() => {
+    const r = [...data.results];
+    r.sort((a, b) => {
+      let v = 0;
+      if (sortField === 'name')   v = a.student.fullName.localeCompare(b.student.fullName);
+      if (sortField === 'score')  v = (a.percentage ?? 0) - (b.percentage ?? 0);
+      if (sortField === 'grade')  v = (a.grade ?? '').localeCompare(b.grade ?? '');
+      if (sortField === 'date')   v = new Date(a.submittedAt ?? 0).getTime() - new Date(b.submittedAt ?? 0).getTime();
+      if (sortField === 'course') v = a.exam.course.code.localeCompare(b.exam.course.code);
+      return sortDir === 'asc' ? v : -v;
     });
     return r;
   })());
 
-  function setSort(key: typeof sortKey) {
-    if (sortKey === key) sortAsc = !sortAsc;
-    else { sortKey = key; sortAsc = false; }
+  // ── Grouped results ───────────────────────────────────────────
+  const grouped = $derived((() => {
+    if (groupBy === 'none') return [{ key: 'all', label: '', items: sorted }];
+
+    const map = new Map<string, { key: string; label: string; items: typeof sorted }>();
+    for (const r of sorted) {
+      let key = '';
+      let label = '';
+      if (groupBy === 'exam') {
+        key   = r.exam.id;
+        label = `${r.exam.course.code} — ${r.exam.title} (${r.exam.session}, Sem ${r.exam.semester})`;
+      } else if (groupBy === 'college') {
+        key   = r.student.college?.id?.toString() ?? '__none__';
+        label = r.student.college?.name ?? 'No College';
+      } else if (groupBy === 'department') {
+        key   = r.student.department?.id ?? '__none__';
+        label = r.student.department?.name ?? 'No Department';
+      }
+      if (!map.has(key)) map.set(key, { key, label, items: [] });
+      map.get(key)!.items.push(r);
+    }
+    return Array.from(map.values());
+  })());
+
+  // ── Pagination ────────────────────────────────────────────────
+  let currentPage = $state(1);
+  const pageSize  = 25;
+
+  $effect(() => { sorted; currentPage = 1; });   // reset on filter/sort change
+
+  const pagedSorted = $derived(
+    groupBy === 'none'
+      ? sorted.slice((currentPage - 1) * pageSize, currentPage * pageSize)
+      : sorted
+  );
+  const totalPages = $derived(Math.max(1, Math.ceil(sorted.length / pageSize)));
+
+  // ── Sort toggle ───────────────────────────────────────────────
+  function toggleSort(field: typeof sortField) {
+    if (sortField === field) sortDir = sortDir === 'asc' ? 'desc' : 'asc';
+    else { sortField = field; sortDir = 'desc'; }
   }
 
-  function setExam(id: string) {
-    const p = new URLSearchParams($page.url.searchParams);
-    if (id === 'all') p.delete('examId'); else p.set('examId', id);
-    goto(`?${p}`, { replaceState: true });
-  }
+  // ── Helpers ───────────────────────────────────────────────────
+  function pct(n: number) { return `${n.toFixed(1)}%`; }
 
-  function formatDate(d: string | null | undefined) {
+  function fmtDate(d: string | null) {
     if (!d) return '—';
-    return new Intl.DateTimeFormat('en-NG', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }).format(new Date(d));
-  }
-  function formatTime(s: number | null | undefined) {
-    if (!s) return '—';
-    return `${Math.floor(s / 60)}m ${s % 60}s`;
-  }
-  function gradeColor(pct: number) {
-    if (pct >= 70) return 'grade-a'; if (pct >= 60) return 'grade-b';
-    if (pct >= 50) return 'grade-c'; if (pct >= 45) return 'grade-d';
-    return 'grade-f';
+    return new Date(d).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
   }
 
-  function SortIcon(key: string) {
-    if (sortKey !== key) return null;
-    return sortAsc ? ChevronUp : ChevronDown;
+  function fmtTime(secs: number | null) {
+    if (!secs) return '—';
+    const m = Math.floor(secs / 60), s = secs % 60;
+    return `${m}m ${s}s`;
+  }
+
+  function initials(name: string) {
+    return name.trim().split(/\s+/).filter(Boolean)
+      .reduce((a, w, i, arr) => (i === 0 || i === arr.length - 1) ? a + w[0] : a, '')
+      .toUpperCase().slice(0, 2);
+  }
+
+  type Grade = 'A' | 'B' | 'C' | 'D' | 'E' | 'F';
+  const GRADE_META: Record<string, { color: string; bg: string; label: string }> = {
+    'A':  { color: '#16a34a', bg: 'rgba(22,163,74,0.1)',   label: 'Excellent' },
+    'B':  { color: '#2563eb', bg: 'rgba(37,99,235,0.08)',  label: 'Good' },
+    'C':  { color: '#7c3aed', bg: 'rgba(124,58,237,0.08)', label: 'Average' },
+    'D':  { color: '#d97706', bg: 'rgba(217,119,6,0.08)',  label: 'Below Avg' },
+    'E':  { color: '#ea580c', bg: 'rgba(234,88,12,0.08)',  label: 'Poor' },
+    'F':  { color: '#dc2626', bg: 'rgba(220,38,38,0.1)',   label: 'Fail' },
+    'N/A':{ color: '#64748b', bg: 'rgba(100,116,139,0.1)', label: 'N/A' },
+  };
+  function gradeMeta(g: string | null) { return GRADE_META[g ?? 'N/A'] ?? GRADE_META['N/A']; }
+
+  const GRADE_OPTIONS = ['A', 'B', 'C', 'D', 'E', 'F'];
+
+  function groupStats(items: typeof sorted) {
+    const gPass = items.filter(r => r.passed).length;
+    const gAvg  = items.length
+      ? items.reduce((s, r) => s + (r.percentage ?? 0), 0) / items.length
+      : 0;
+    return { gPass, gAvg, gFail: items.length - gPass };
+  }
+
+  // ── CSV Export ────────────────────────────────────────────────
+  function exportCSV() {
+    const rows = [
+      ['Student', 'Matric No.', 'College', 'Department', 'Level', 'Course', 'Exam', 'Session', 'Sem', 'Score', '%', 'Grade', 'Passed', 'Correct', 'Violations', 'Time Taken', 'Submitted'],
+      ...sorted.map(r => [
+        r.student.fullName,
+        r.student.matricNumber ?? '',
+        r.student.college?.name ?? '',
+        r.student.department?.name ?? '',
+        r.student.level?.level ?? '',
+        r.exam.course.code,
+        r.exam.title,
+        r.exam.session,
+        r.exam.semester,
+        r.score,
+        r.percentage,
+        r.grade ?? '',
+        r.passed ? 'Yes' : 'No',
+        r.correct ?? '',
+        r.violationCount,
+        fmtTime(r.timeTakenSecs),
+        fmtDate(r.submittedAt),
+      ])
+    ];
+    const csv = rows.map(r => r.map(c => `"${c}"`).join(',')).join('\n');
+    const blob = new Blob([csv], { type: 'text/csv' });
+    const a = document.createElement('a'); a.href = URL.createObjectURL(blob);
+    a.download = `results-${Date.now()}.csv`; a.click();
   }
 </script>
 
-<div class="page">
+<svelte:head><title>Results — MOUAU eTest Lecturer</title></svelte:head>
 
-  <div class="page-header">
+<div class="lc-page results-page">
+
+  <!-- ── Page header ────────────────────────────────────────── -->
+  <div class="lc-head">
     <div>
-      <h1 class="page-title">Results</h1>
-      <p class="page-sub">{filtered.length} result{filtered.length !== 1 ? 's' : ''}</p>
+      <h1>Student Results</h1>
+      <p>All submissions across your exams · {data.summary.total} total records</p>
+    </div>
+    <div class="lc-actions">
+      <button class="lc-btn" onclick={() => showFilters = !showFilters} type="button">
+        <Filter size={14} />
+        Filters
+        {#if hasActiveFilters}<span class="filter-dot"></span>{/if}
+      </button>
+      <button class="lc-btn" onclick={exportCSV} type="button" disabled={!data.results.length}>
+        <Download size={14} /> Export CSV
+      </button>
     </div>
   </div>
 
-  <!-- Summary row -->
-  {#if summary.total > 0}
-    <div class="summary-row">
-      <div class="sum-card"><div class="si avg"><BarChart2 size={15} /></div><div><span class="sv">{summary.avgPct}%</span><span class="sl">Average</span></div></div>
-      <div class="sum-card"><div class="si best"><TrendingUp size={15} /></div><div><span class="sv good">{summary.bestPct}%</span><span class="sl">Best</span></div></div>
-      <div class="sum-card"><div class="si pass"><CheckCircle2 size={15} /></div><div><span class="sv good">{summary.passed}</span><span class="sl">Passed</span></div></div>
-      <div class="sum-card"><div class="si fail"><XCircle size={15} /></div><div><span class="sv" class:bad={summary.failed > 0}>{summary.failed}</span><span class="sl">Failed</span></div></div>
-      <div class="sum-card"><div class="si rate"><Target size={15} /></div><div><span class="sv">{summary.passRate}%</span><span class="sl">Pass rate</span></div></div>
+  <!-- ── Summary stat cards ──────────────────────────────────── -->
+  <div class="lc-stats stats-5">
+    <div class="lc-stat">
+      <span class="lc-stat-label">Total Submissions</span>
+      <span class="lc-stat-value">{data.summary.total}</span>
+      <span class="lc-stat-sub">across {data.exams.length} exam{data.exams.length !== 1 ? 's' : ''}</span>
+    </div>
+    <div class="lc-stat green">
+      <span class="lc-stat-label">Passed</span>
+      <span class="lc-stat-value">{data.summary.passed}</span>
+      <span class="lc-stat-sub">{data.summary.passRate}% pass rate</span>
+    </div>
+    <div class="lc-stat red">
+      <span class="lc-stat-label">Failed</span>
+      <span class="lc-stat-value">{data.summary.failed}</span>
+      <span class="lc-stat-sub">{data.summary.total ? (100 - data.summary.passRate) : 0}% fail rate</span>
+    </div>
+    <div class="lc-stat accent">
+      <span class="lc-stat-label">Avg Score</span>
+      <span class="lc-stat-value">{data.summary.avgPct}%</span>
+      <span class="lc-stat-sub">class average</span>
+    </div>
+    <div class="lc-stat">
+      <span class="lc-stat-label">Grade Spread</span>
+      <div class="grade-mini-strip">
+        {#each data.gradeDistribution as g}
+          <div class="grade-mini-bar" title="{g.grade}: {g.count}" style="height:{Math.max(8, g.pct * 0.5)}px; background:{gradeMeta(g.grade).color}; opacity:0.8;"></div>
+        {/each}
+      </div>
+      <span class="lc-stat-sub">{data.gradeDistribution.length} grade{data.gradeDistribution.length !== 1 ? 's' : ''} active</span>
+    </div>
+  </div>
+
+  <!-- ── Grade distribution row ─────────────────────────────── -->
+  {#if data.gradeDistribution.length > 0}
+    <div class="lc-card grade-dist-card">
+      <div class="lc-card-head">
+        <div>
+          <h2>Grade Distribution</h2>
+          <p>Overall across filtered results</p>
+        </div>
+      </div>
+      <div class="grade-dist-bars">
+        {#each data.gradeDistribution as g}
+          {@const m = gradeMeta(g.grade)}
+          <div class="grade-dist-item">
+            <div class="grade-label-row">
+              <span class="grade-pill" style="background:{m.bg}; color:{m.color};">{g.grade}</span>
+              <span class="grade-desc">{m.label}</span>
+              <span class="grade-count">{g.count}</span>
+            </div>
+            <div class="lc-bar">
+              <div class="lc-bar-fill" style="width:{g.pct}%; background:{m.color};"></div>
+            </div>
+            <span class="grade-pct-label">{g.pct}%</span>
+          </div>
+        {/each}
+      </div>
     </div>
   {/if}
 
-  <!-- Filters -->
-  <div class="controls">
-    <select class="exam-select" onchange={e => setExam(e.currentTarget.value)} value={selExam}>
-      <option value="all">All exams</option>
-      {#each myExams as ex}
-        <option value={ex.id}>{ex.course?.code} — {ex.title}</option>
-      {/each}
-    </select>
-    <div class="search-wrap">
-      <Search size={13} class="search-ico" />
-      <input class="search-input" type="text" placeholder="Search student or exam…" bind:value={search} />
+  <!-- ── Filter panel ────────────────────────────────────────── -->
+  {#if showFilters}
+    <div class="filter-panel lc-card">
+      <div class="filter-panel-head">
+        <span class="filter-panel-title"><Filter size={14} /> Filters</span>
+        {#if hasActiveFilters}
+          <button class="lc-btn lc-btn-sm lc-btn-ghost" onclick={clearAllFilters} type="button">
+            <X size={12} /> Clear all
+          </button>
+        {/if}
+      </div>
+      <div class="filter-grid">
+        <!-- Semester -->
+        <div class="lc-field">
+          <label class="lc-label" for="f-semester">Semester</label>
+          <select id="f-semester" class="lc-select"
+            value={data.filters.filterSemester}
+            onchange={e => pushFilter('semester', (e.target as HTMLSelectElement).value)}>
+            <option value="all">All semesters</option>
+            {#each data.semesters as s}
+              <option value={s.value}>{s.label}</option>
+            {/each}
+          </select>
+        </div>
+
+        <!-- Course -->
+        <div class="lc-field">
+          <label class="lc-label" for="f-course">Course</label>
+          <select id="f-course" class="lc-select"
+            value={data.filters.filterCourse}
+            onchange={e => pushFilter('course', (e.target as HTMLSelectElement).value)}>
+            <option value="all">All courses</option>
+            {#each data.courses as c}
+              <option value={c.id}>{c.code} — {c.title}</option>
+            {/each}
+          </select>
+        </div>
+
+        <!-- College -->
+        <div class="lc-field">
+          <label class="lc-label" for="f-college">College</label>
+          <select id="f-college" class="lc-select"
+            value={data.filters.filterCollege}
+            onchange={e => pushFilter('college', (e.target as HTMLSelectElement).value)}>
+            <option value="all">All colleges</option>
+            {#each data.colleges as c}
+              <option value={c.id}>{c.abbreviation ?? c.name}</option>
+            {/each}
+          </select>
+        </div>
+
+        <!-- Department -->
+        <div class="lc-field">
+          <label class="lc-label" for="f-dept">Department</label>
+          <select id="f-dept" class="lc-select"
+            value={data.filters.filterDept}
+            onchange={e => pushFilter('dept', (e.target as HTMLSelectElement).value)}>
+            <option value="all">All departments</option>
+            {#each data.departments as d}
+              <option value={d.id}>{d.name}</option>
+            {/each}
+          </select>
+        </div>
+
+        <!-- Grade -->
+        <div class="lc-field">
+          <label class="lc-label" for="f-grade">Grade</label>
+          <select id="f-grade" class="lc-select"
+            value={data.filters.filterGrade}
+            onchange={e => pushFilter('grade', (e.target as HTMLSelectElement).value)}>
+            <option value="all">All grades</option>
+            {#each GRADE_OPTIONS as g}
+              <option value={g}>{g}</option>
+            {/each}
+          </select>
+        </div>
+      </div>
+    </div>
+  {/if}
+
+  <!-- ── Toolbar: search · group · view mode ─────────────────── -->
+  <div class="results-toolbar">
+    <div class="lc-search" style="flex:1; min-width:220px; max-width:380px;">
+      <Search size={14} />
+      <input
+        class="lc-input"
+        type="search"
+        placeholder="Search student name or matric no."
+        value={localSearch}
+        oninput={onSearchInput}
+      />
+    </div>
+
+    <div class="toolbar-right">
+      <!-- Group by -->
+      <div class="lc-field" style="flex-direction:row; align-items:center; gap:0.5rem;">
+        <label class="lc-label" style="white-space:nowrap;" for="group-select">Group by</label>
+        <select id="group-select" class="lc-select" style="min-width:130px;"
+          bind:value={groupBy}>
+          <option value="none">No grouping</option>
+          <option value="exam">Exam / Course</option>
+          <option value="college">College</option>
+          <option value="department">Department</option>
+        </select>
+      </div>
+
+      <!-- View toggle -->
+      <div class="view-toggle">
+        <button
+          class="view-btn" class:active={viewMode === 'list'}
+          onclick={() => viewMode = 'list'} type="button" title="List view"
+        ><List size={15} /></button>
+        <button
+          class="view-btn" class:active={viewMode === 'grid'}
+          onclick={() => viewMode = 'grid'} type="button" title="Grid view"
+        ><Grid3X3 size={15} /></button>
+      </div>
     </div>
   </div>
 
-  <!-- Table -->
-  {#if filtered.length === 0}
-    <div class="empty">
-      <BarChart2 size={36} strokeWidth={1.2} />
-      <h3>No results yet</h3>
-      <p>Results will appear here after students complete exams.</p>
+  <!-- ── Result count / active filter chips ─────────────────── -->
+  {#if hasActiveFilters || data.results.length !== sorted.length}
+    <div class="result-meta-row">
+      <span class="result-count">
+        {sorted.length} result{sorted.length !== 1 ? 's' : ''}
+        {#if hasActiveFilters} — filtered{/if}
+      </span>
+      {#if data.filters.filterSemester !== 'all'}
+        <span class="active-chip">
+          Sem: {data.semesters.find(s => s.value === data.filters.filterSemester)?.label ?? data.filters.filterSemester}
+          <button onclick={() => pushFilter('semester', 'all')} type="button"><X size={10} /></button>
+        </span>
+      {/if}
+      {#if data.filters.filterCourse !== 'all'}
+        <span class="active-chip">
+          Course: {data.courses.find(c => c.id === data.filters.filterCourse)?.code ?? ''}
+          <button onclick={() => pushFilter('course', 'all')} type="button"><X size={10} /></button>
+        </span>
+      {/if}
+      {#if data.filters.filterGrade !== 'all'}
+        <span class="active-chip">
+          Grade: {data.filters.filterGrade}
+          <button onclick={() => pushFilter('grade', 'all')} type="button"><X size={10} /></button>
+        </span>
+      {/if}
     </div>
-  {:else}
-    <div class="table-wrap">
-      <table class="results-table">
-        <thead>
-          <tr>
-            <th><button class="sort-btn" onclick={() => setSort('name')} type="button">Student {#if sortKey==='name'}{#if sortAsc}<ChevronUp size={11} />{:else}<ChevronDown size={11} />{/if}{/if}</button></th>
-            <th>Exam</th>
-            <th><button class="sort-btn" onclick={() => setSort('score')} type="button">Score {#if sortKey==='score'}{#if sortAsc}<ChevronUp size={11} />{:else}<ChevronDown size={11} />{/if}{/if}</button></th>
-            <th>Grade</th>
-            <th>Time</th>
-            <th>Violations</th>
-            <th><button class="sort-btn" onclick={() => setSort('submitted')} type="button">Submitted {#if sortKey==='submitted'}{#if sortAsc}<ChevronUp size={11} />{:else}<ChevronDown size={11} />{/if}{/if}</button></th>
-            <th>Status</th>
-          </tr>
-        </thead>
-        <tbody>
-          {#each filtered as r}
-            {@const pct = Math.round(Number(r.percentage ?? 0))}
-            <tr class:row-fail={!r.passed}>
-              <td>
-                <div class="student-cell">
-                  <div class="student-avatar">{(r.student?.fullName?.[0] ?? '?').toUpperCase()}</div>
-                  <div>
-                    <div class="student-name">{r.student?.fullName}</div>
-                    <div class="student-matric">{r.student?.matricNumber ?? '—'}</div>
-                  </div>
-                </div>
-              </td>
-              <td>
-                <div class="exam-cell">
-                  <span class="ec-code">{r.exam?.course?.code}</span>
-                  <span class="ec-title">{r.exam?.title}</span>
-                </div>
-              </td>
-              <td>
-                <div class="score-cell">
-                  <span class="score-num {gradeColor(pct)}">{pct}%</span>
-                  <div class="score-bar"><div class="score-fill {gradeColor(pct)}-fill" style="width:{pct}%"></div></div>
-                </div>
-              </td>
-              <td>
-                <span class="grade-badge {gradeColor(pct)}">{r.grade ?? '?'}</span>
-              </td>
-              <td><span class="td-muted">{formatTime(r.timeTakenSecs)}</span></td>
-              <td>
-                {#if r.violationCount > 0}
-                  <span class="violation-chip"><AlertTriangle size={10} />{r.violationCount}</span>
-                {:else}
-                  <span class="td-muted">—</span>
-                {/if}
-              </td>
-              <td><span class="td-muted">{formatDate(r.submittedAt)}</span></td>
-              <td>
-                <span class="status-chip" class:chip-pass={r.passed} class:chip-fail={!r.passed}>
-                  {r.passed ? 'Passed' : 'Failed'}
-                </span>
-              </td>
+  {/if}
+
+  <!-- ── Empty state ────────────────────────────────────────── -->
+  {#if sorted.length === 0}
+    <div class="lc-empty lc-card" style="border-style: dashed;">
+      {#if data.exams.length === 0}
+        <BarChart2 size={40} strokeWidth={1.2} />
+        <h3>No exams created yet</h3>
+        <p>Create an exam first, then results will appear here once students submit.</p>
+        <a href="/lecturer/exams/create" class="lc-btn lc-btn-primary">
+          <FileText size={14} /> Create Exam
+        </a>
+      {:else}
+        <Search size={40} strokeWidth={1.2} />
+        <h3>No results match your filters</h3>
+        <p>Try adjusting your search or filter criteria.</p>
+        <button class="lc-btn" onclick={clearAllFilters} type="button">Clear filters</button>
+      {/if}
+    </div>
+
+  <!-- ── LIST VIEW ──────────────────────────────────────────── -->
+  {:else if viewMode === 'list'}
+    {#each grouped as group}
+      {#if groupBy !== 'none'}
+        <div class="group-header">
+          <div class="group-header-inner">
+            {#if groupBy === 'exam'}<BookOpen size={14} />{/if}
+            {#if groupBy === 'college'}<Building2 size={14} />{/if}
+            {#if groupBy === 'department'}<Layers size={14} />{/if}
+            <span>{group.label}</span>
+            <span class="group-count">{group.items.length}</span>
+          </div>
+          <div class="group-mini-stats">
+            <span class="gms green">{groupStats(group.items).gPass} passed</span>
+            <span class="gms red">{groupStats(group.items).gFail} failed</span>
+            <span class="gms">avg {groupStats(group.items).gAvg.toFixed(1)}%</span>
+          </div>
+        </div>
+      {/if}
+
+      <div class="lc-table-wrap">
+        <table class="lc-table">
+          <thead>
+            <tr>
+              <th>
+                <button class="sort-btn" onclick={() => toggleSort('name')} type="button">
+                  Student <ArrowUpDown size={11} />
+                </button>
+              </th>
+              {#if groupBy !== 'exam'}
+                <th>
+                  <button class="sort-btn" onclick={() => toggleSort('course')} type="button">
+                    Course <ArrowUpDown size={11} />
+                  </button>
+                </th>
+              {/if}
+              {#if groupBy === 'none'}<th>College / Dept</th>{/if}
+              <th>Level</th>
+              <th class="num">
+                <button class="sort-btn" onclick={() => toggleSort('score')} type="button">
+                  Score <ArrowUpDown size={11} />
+                </button>
+              </th>
+              <th class="num">
+                <button class="sort-btn" onclick={() => toggleSort('grade')} type="button">
+                  Grade <ArrowUpDown size={11} />
+                </button>
+              </th>
+              <th class="num">Correct</th>
+              <th class="num">Violations</th>
+              <th class="num">Time</th>
+              <th>
+                <button class="sort-btn" onclick={() => toggleSort('date')} type="button">
+                  Submitted <ArrowUpDown size={11} />
+                </button>
+              </th>
             </tr>
+          </thead>
+          <tbody>
+            {#each (groupBy === 'none' ? pagedSorted : group.items) as r (r.id)}
+              {@const gm = gradeMeta(r.grade)}
+              <tr>
+                <!-- Student -->
+                <td>
+                  <div class="student-cell">
+                    <div class="student-avatar">{initials(r.student.fullName)}</div>
+                    <div class="student-info">
+                      <span class="student-name">{r.student.fullName}</span>
+                      <span class="student-sub">{r.student.matricNumber ?? '—'}</span>
+                    </div>
+                    {#if r.passed}
+                      <CheckCircle size={14} class="pass-icon" />
+                    {:else if r.passed === false}
+                      <XCircle size={14} class="fail-icon" />
+                    {/if}
+                  </div>
+                </td>
+
+                <!-- Course (when not grouped by exam) -->
+                {#if groupBy !== 'exam'}
+                  <td>
+                    <div class="course-cell">
+                      <span class="course-code-badge">{r.exam.course.code}</span>
+                      <span class="muted" style="font-size:0.75rem;">{r.exam.session} · S{r.exam.semester}</span>
+                    </div>
+                  </td>
+                {/if}
+
+                <!-- College / Dept -->
+                {#if groupBy === 'none'}
+                  <td>
+                    <div style="display:flex; flex-direction:column; gap:0.1rem;">
+                      <span style="font-size:0.75rem; font-weight:600; color:var(--color-text);">{r.student.college?.abbreviation ?? r.student.college?.name ?? '—'}</span>
+                      <span class="muted" style="font-size:0.7rem;">{r.student.department?.name ?? '—'}</span>
+                    </div>
+                  </td>
+                {/if}
+
+                <!-- Level -->
+                <td>
+                  {#if r.student.level}
+                    <span class="level-chip">{r.student.level.level}L</span>
+                  {:else}
+                    <span class="muted">—</span>
+                  {/if}
+                </td>
+
+                <!-- Score -->
+                <td class="num">
+                  <div class="score-cell">
+                    <span class="score-pct" class:score-good={r.percentage >= 50} class:score-bad={r.percentage < 50}>
+                      {pct(r.percentage ?? 0)}
+                    </span>
+                    <div class="score-bar-mini">
+                      <div class="score-bar-fill"
+                        style="width:{r.percentage ?? 0}%; background:{(r.percentage ?? 0) >= 70 ? '#16a34a' : (r.percentage ?? 0) >= 50 ? '#4f46e5' : '#dc2626'};">
+                      </div>
+                    </div>
+                  </div>
+                </td>
+
+                <!-- Grade -->
+                <td class="num">
+                  <span class="grade-badge" style="background:{gm.bg}; color:{gm.color};">{r.grade ?? '—'}</span>
+                </td>
+
+                <!-- Correct -->
+                <td class="num muted">
+                  {#if r.correct !== null && r.totalQuestions}
+                    {r.correct}/{r.totalQuestions}
+                  {:else}—{/if}
+                </td>
+
+                <!-- Violations -->
+                <td class="num">
+                  {#if r.violationCount > 0}
+                    <span class="violation-badge">
+                      <AlertTriangle size={11} /> {r.violationCount}
+                    </span>
+                  {:else}
+                    <span class="muted">0</span>
+                  {/if}
+                </td>
+
+                <!-- Time -->
+                <td class="num muted">{fmtTime(r.timeTakenSecs)}</td>
+
+                <!-- Submitted -->
+                <td class="muted" style="font-size:0.75rem; white-space:nowrap;">{fmtDate(r.submittedAt)}</td>
+              </tr>
+            {/each}
+          </tbody>
+        </table>
+      </div>
+    {/each}
+
+    <!-- Pagination (only in non-grouped mode) -->
+    {#if groupBy === 'none' && totalPages > 1}
+      <div class="lc-pagination">
+        <span>Showing {(currentPage - 1) * pageSize + 1}–{Math.min(currentPage * pageSize, sorted.length)} of {sorted.length}</span>
+        <div class="lc-page-btns">
+          <button class="lc-btn lc-btn-sm" onclick={() => currentPage--} disabled={currentPage === 1} type="button">
+            <ChevronLeft size={13} /> Prev
+          </button>
+          {#each Array.from({ length: Math.min(totalPages, 5) }, (_, i) => {
+            const offset = Math.max(0, Math.min(currentPage - 3, totalPages - 5));
+            return i + 1 + offset;
+          }) as p}
+            <button
+              class="lc-btn lc-btn-sm"
+              class:lc-btn-primary={p === currentPage}
+              onclick={() => currentPage = p}
+              type="button"
+            >{p}</button>
           {/each}
-        </tbody>
-      </table>
-    </div>
+          <button class="lc-btn lc-btn-sm" onclick={() => currentPage++} disabled={currentPage === totalPages} type="button">
+            Next <ChevronRight size={13} />
+          </button>
+        </div>
+      </div>
+    {/if}
+
+  <!-- ── GRID VIEW ───────────────────────────────────────────── -->
+  {:else}
+    {#each grouped as group}
+      {#if groupBy !== 'none'}
+        <div class="group-header">
+          <div class="group-header-inner">
+            {#if groupBy === 'exam'}<BookOpen size={14} />{/if}
+            {#if groupBy === 'college'}<Building2 size={14} />{/if}
+            {#if groupBy === 'department'}<Layers size={14} />{/if}
+            <span>{group.label}</span>
+            <span class="group-count">{group.items.length}</span>
+          </div>
+        </div>
+      {/if}
+
+      <div class="results-grid">
+        {#each (groupBy === 'none' ? pagedSorted : group.items) as r (r.id)}
+          {@const gm = gradeMeta(r.grade)}
+          <div class="result-card" class:result-card-pass={r.passed} class:result-card-fail={r.passed === false}>
+            <!-- Grade accent stripe -->
+            <div class="card-stripe" style="background:{gm.color};"></div>
+
+            <div class="rc-top">
+              <div class="student-avatar lg">{initials(r.student.fullName)}</div>
+              <div class="rc-top-info">
+                <span class="student-name">{r.student.fullName}</span>
+                <span class="student-sub">{r.student.matricNumber ?? '—'}</span>
+                {#if r.student.department}
+                  <span class="student-sub" style="margin-top:0.1rem;">{r.student.department.name}</span>
+                {/if}
+              </div>
+              <div class="rc-grade" style="background:{gm.bg}; color:{gm.color};">{r.grade ?? '?'}</div>
+            </div>
+
+            <div class="rc-course-row">
+              <span class="course-code-badge">{r.exam.course.code}</span>
+              <span class="rc-exam-title">{r.exam.title}</span>
+            </div>
+
+            <div class="rc-score-block">
+              <div class="rc-pct" class:score-good={r.percentage >= 50} class:score-bad={r.percentage < 50}>
+                {pct(r.percentage ?? 0)}
+              </div>
+              <div class="lc-bar" style="margin-top:0.4rem;">
+                <div class="lc-bar-fill" style="width:{r.percentage ?? 0}%; background:{gm.color};"></div>
+              </div>
+              <div class="rc-score-sub">
+                {r.score?.toFixed(1) ?? '—'} / {r.exam.totalMarks} marks
+                · pass ≥ {r.exam.passMark}
+              </div>
+            </div>
+
+            <div class="rc-stats">
+              <div class="rc-stat">
+                <CheckCircle size={12} />
+                <span>{r.correct ?? '—'}/{r.totalQuestions ?? '—'}</span>
+                <span class="rc-stat-label">Correct</span>
+              </div>
+              <div class="rc-stat">
+                <Clock size={12} />
+                <span>{fmtTime(r.timeTakenSecs)}</span>
+                <span class="rc-stat-label">Time</span>
+              </div>
+              {#if r.violationCount > 0}
+                <div class="rc-stat" style="color:#dc2626;">
+                  <AlertTriangle size={12} />
+                  <span>{r.violationCount}</span>
+                  <span class="rc-stat-label">Flags</span>
+                </div>
+              {/if}
+            </div>
+
+            <div class="rc-footer">
+              {#if r.passed}
+                <span class="pass-chip"><CheckCircle size={11} /> Passed</span>
+              {:else if r.passed === false}
+                <span class="fail-chip"><XCircle size={11} /> Failed</span>
+              {:else}
+                <span class="muted" style="font-size:0.72rem;">Ungraded</span>
+              {/if}
+              <span class="muted" style="font-size:0.7rem;">{fmtDate(r.submittedAt)}</span>
+            </div>
+          </div>
+        {/each}
+      </div>
+    {/each}
+
+    <!-- Pagination (non-grouped) -->
+    {#if groupBy === 'none' && totalPages > 1}
+      <div class="lc-pagination">
+        <span>Showing {(currentPage - 1) * pageSize + 1}–{Math.min(currentPage * pageSize, sorted.length)} of {sorted.length}</span>
+        <div class="lc-page-btns">
+          <button class="lc-btn lc-btn-sm" onclick={() => currentPage--} disabled={currentPage === 1} type="button">
+            <ChevronLeft size={13} /> Prev
+          </button>
+          <button class="lc-btn lc-btn-sm" onclick={() => currentPage++} disabled={currentPage === totalPages} type="button">
+            Next <ChevronRight size={13} />
+          </button>
+        </div>
+      </div>
+    {/if}
   {/if}
+
 </div>
 
 <style>
-  .page { display: flex; flex-direction: column; gap: 1.5rem; }
-  .page-header { display: flex; align-items: flex-end; justify-content: space-between; }
-  .page-title { font-size: 1.5rem; font-weight: 900; color: var(--color-text); letter-spacing: -0.03em; margin: 0 0 0.2rem; }
-  .page-sub   { font-size: 0.8rem; color: var(--color-muted); margin: 0; }
+  @import '$lib/styles/lecturer.css';
 
-  .summary-row { display: grid; grid-template-columns: repeat(5, 1fr); gap: 0.625rem; }
-  @media (max-width: 700px) { .summary-row { grid-template-columns: repeat(3, 1fr); } }
-  .sum-card {
-    background: var(--color-surface); border: 1px solid var(--color-border);
-    border-radius: 12px; padding: 0.75rem; display: flex; align-items: center; gap: 0.625rem;
-  }
-  .si {
-    width: 32px; height: 32px; border-radius: 8px; flex-shrink: 0;
-    display: flex; align-items: center; justify-content: center;
-  }
-  .avg  { background: rgba(99,102,241,0.1);  color: #6366f1; }
-  .best { background: rgba(16,185,129,0.1);  color: #10b981; }
-  .pass { background: rgba(22,163,74,0.1);   color: var(--lc600); }
-  .fail { background: rgba(220,38,38,0.06);  color: #dc2626; }
-  .rate { background: rgba(168,85,247,0.1);  color: #a855f7; }
-  .sv { display: block; font-size: 1.25rem; font-weight: 900; color: var(--color-text); letter-spacing: -0.04em; line-height: 1; }
-  .sv.good { color: var(--lc600); }
-  .sv.bad  { color: #dc2626; }
-  .sl { display: block; font-size: 0.6rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; color: var(--color-muted); margin-top: 0.1rem; }
+  /* ── Page-specific overrides ─────────────────────────────────── */
+  .results-page { max-width: 1400px; }
 
-  .controls { display: flex; gap: 0.625rem; align-items: center; flex-wrap: wrap; }
-  .exam-select {
-    padding: 0.45rem 0.75rem; border: 1px solid var(--color-border); border-radius: 8px;
-    background: var(--color-surface); color: var(--color-text); font-size: 0.8rem;
-    font-family: inherit; cursor: pointer; min-width: 200px;
-  }
-  .exam-select:focus { outline: none; border-color: var(--lc600); }
-  .search-wrap { position: relative; display: flex; align-items: center; }
-  :global(.search-ico) { position: absolute; left: 0.6rem; color: var(--color-muted); pointer-events: none; }
-  .search-input {
-    padding: 0.45rem 0.75rem 0.45rem 2rem; width: 220px;
-    border: 1px solid var(--color-border); border-radius: 8px;
-    background: var(--color-surface); color: var(--color-text); font-size: 0.8rem; font-family: inherit;
-  }
-  .search-input:focus { outline: none; border-color: var(--lc600); }
+  /* ── 5-col stats grid ────────────────────────────────────────── */
+  .stats-5 { grid-template-columns: repeat(5, 1fr); }
+  @media (max-width: 1100px) { .stats-5 { grid-template-columns: repeat(3, 1fr); } }
+  @media (max-width: 640px)  { .stats-5 { grid-template-columns: repeat(2, 1fr); } }
 
-  .table-wrap { overflow-x: auto; border-radius: 14px; border: 1px solid var(--color-border); }
-  .results-table { width: 100%; border-collapse: collapse; font-size: 0.8rem; }
-  .results-table thead tr { background: var(--color-bg); }
-  .results-table th {
-    padding: 0.75rem 1rem; text-align: left; font-size: 0.7rem; font-weight: 700;
-    text-transform: uppercase; letter-spacing: 0.05em; color: var(--color-muted);
-    border-bottom: 1px solid var(--color-border); white-space: nowrap;
-  }
-  .results-table td {
-    padding: 0.75rem 1rem; border-bottom: 1px solid var(--color-border);
-    background: var(--color-surface);
-  }
-  .results-table tr:last-child td { border-bottom: none; }
-  .results-table tr.row-fail td { background: rgba(220,38,38,0.015); }
-  .results-table tbody tr:hover td { background: var(--color-bg); }
+  /* ── Mini grade sparkbar (inside stat card) ──────────────────── */
+  .grade-mini-strip { display: flex; align-items: flex-end; gap: 3px; height: 24px; margin: 0.25rem 0 0.1rem; }
+  .grade-mini-bar { width: 14px; border-radius: 3px 3px 0 0; transition: height 0.3s; }
 
-  .sort-btn {
-    display: inline-flex; align-items: center; gap: 0.25rem;
-    background: none; border: none; cursor: pointer; color: inherit;
-    font: inherit; font-size: 0.7rem; font-weight: 700; text-transform: uppercase;
-    letter-spacing: 0.05em; padding: 0;
-  }
+  /* ── Grade distribution card ─────────────────────────────────── */
+  .grade-dist-card { padding: 1.125rem; }
+  .grade-dist-bars { display: flex; flex-direction: column; gap: 0.55rem; }
+  .grade-dist-item { display: grid; grid-template-columns: 200px 1fr 48px; align-items: center; gap: 0.75rem; }
+  @media (max-width: 640px) { .grade-dist-item { grid-template-columns: 120px 1fr 40px; } }
+  .grade-label-row { display: flex; align-items: center; gap: 0.5rem; }
+  .grade-pill { display: inline-flex; padding: 0.15rem 0.55rem; border-radius: 20px; font-size: 0.72rem; font-weight: 800; flex-shrink: 0; }
+  .grade-desc { font-size: 0.72rem; color: var(--color-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .grade-count { font-size: 0.72rem; font-weight: 700; color: var(--color-text); margin-left: auto; }
+  .grade-pct-label { font-size: 0.72rem; color: var(--color-muted); text-align: right; font-variant-numeric: tabular-nums; }
 
-  .student-cell { display: flex; align-items: center; gap: 0.625rem; }
-  .student-avatar {
-    width: 30px; height: 30px; border-radius: 50%; flex-shrink: 0;
-    background: linear-gradient(135deg, var(--lc700), var(--lc500));
-    color: #fff; display: flex; align-items: center; justify-content: center;
-    font-size: 0.7rem; font-weight: 800;
-  }
-  .student-name   { font-size: 0.8rem; font-weight: 600; color: var(--color-text); white-space: nowrap; }
-  .student-matric { font-size: 0.65rem; color: var(--color-muted); }
+  /* ── Filter panel ────────────────────────────────────────────── */
+  .filter-panel { padding: 1rem 1.125rem; }
+  .filter-panel-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 0.875rem; }
+  .filter-panel-title { display: flex; align-items: center; gap: 0.4rem; font-size: 0.83rem; font-weight: 700; color: var(--color-text); }
+  .filter-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 0.75rem; }
+  .filter-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--lc600); flex-shrink: 0; }
 
-  .exam-cell { display: flex; flex-direction: column; gap: 0.15rem; }
-  .ec-code  { font-size: 0.62rem; font-weight: 800; text-transform: uppercase; color: var(--lc700); }
-  :global(.dark) .ec-code { color: var(--lc400); }
-  .ec-title { font-size: 0.78rem; font-weight: 600; color: var(--color-text); white-space: nowrap; max-width: 180px; overflow: hidden; text-overflow: ellipsis; }
+  /* ── Toolbar ─────────────────────────────────────────────────── */
+  .results-toolbar { display: flex; align-items: center; gap: 0.75rem; flex-wrap: wrap; }
+  .toolbar-right { display: flex; align-items: center; gap: 0.75rem; flex-wrap: wrap; margin-left: auto; }
+  .view-toggle { display: flex; border: 1px solid var(--color-border); border-radius: 8px; overflow: hidden; }
+  .view-btn { display: flex; align-items: center; justify-content: center; width: 34px; height: 34px; background: var(--color-bg); border: none; cursor: pointer; color: var(--color-muted); transition: background 0.15s, color 0.15s; }
+  .view-btn + .view-btn { border-left: 1px solid var(--color-border); }
+  .view-btn.active { background: var(--lc-soft); color: var(--lc600); }
+  .view-btn:hover:not(.active) { background: var(--color-surface); color: var(--color-text); }
 
-  .score-cell { display: flex; flex-direction: column; gap: 0.25rem; min-width: 80px; }
-  .score-num { font-size: 0.85rem; font-weight: 800; }
-  .score-bar { height: 4px; background: var(--color-bg); border-radius: 2px; overflow: hidden; }
-  .score-fill { height: 100%; border-radius: 2px; }
-  .grade-a { color: #065f46; } .grade-a-fill { background: #22c55e; }
-  .grade-b { color: #0369a1; } .grade-b-fill { background: #38bdf8; }
-  .grade-c { color: #92400e; } .grade-c-fill { background: #f59e0b; }
-  .grade-d { color: #9a3412; } .grade-d-fill { background: #f97316; }
-  .grade-f { color: #991b1b; } .grade-f-fill { background: #ef4444; }
-  :global(.dark) .grade-a { color: #4ade80; }
-  :global(.dark) .grade-b { color: #38bdf8; }
-  :global(.dark) .grade-f { color: #f87171; }
+  /* ── Active filter chips row ─────────────────────────────────── */
+  .result-meta-row { display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap; font-size: 0.78rem; }
+  .result-count { color: var(--color-muted); font-weight: 600; }
+  .active-chip { display: inline-flex; align-items: center; gap: 0.3rem; padding: 0.2rem 0.5rem 0.2rem 0.65rem; background: var(--lc-soft); border: 1px solid rgba(79,70,229,0.2); border-radius: 20px; font-size: 0.7rem; font-weight: 600; color: var(--lc600); }
+  .active-chip button { display: flex; align-items: center; justify-content: center; background: none; border: none; cursor: pointer; color: var(--lc600); padding: 0; width: 14px; height: 14px; }
 
-  .grade-badge {
-    width: 28px; height: 28px; border-radius: 7px;
-    display: flex; align-items: center; justify-content: center;
-    font-size: 0.75rem; font-weight: 900;
-  }
-  .grade-a { background: rgba(22,163,74,0.12); }
-  .grade-b { background: rgba(14,165,233,0.12); }
-  .grade-c { background: rgba(245,158,11,0.12); }
-  .grade-d { background: rgba(249,115,22,0.12); }
-  .grade-f { background: rgba(220,38,38,0.12); }
+  /* ── Sortable column buttons ─────────────────────────────────── */
+  .sort-btn { display: inline-flex; align-items: center; gap: 0.3rem; background: none; border: none; cursor: pointer; font-size: 0.68rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; color: var(--color-muted); font-family: inherit; padding: 0; white-space: nowrap; }
+  .sort-btn:hover { color: var(--color-text); }
 
-  .violation-chip {
-    display: inline-flex; align-items: center; gap: 0.25rem;
-    font-size: 0.65rem; font-weight: 700; color: #f59e0b;
-    background: rgba(245,158,11,0.1); padding: 0.15rem 0.45rem; border-radius: 6px;
-  }
-  .td-muted { font-size: 0.75rem; color: var(--color-muted); }
+  /* ── Table cell components ───────────────────────────────────── */
+  .student-cell { display: flex; align-items: center; gap: 0.6rem; }
+  .student-avatar { width: 32px; height: 32px; border-radius: 50%; flex-shrink: 0; background: linear-gradient(135deg, var(--lc700), var(--lc500)); color: #fff; font-size: 0.62rem; font-weight: 800; display: flex; align-items: center; justify-content: center; }
+  .student-avatar.lg { width: 42px; height: 42px; font-size: 0.75rem; }
+  .student-info { display: flex; flex-direction: column; gap: 0.05rem; min-width: 0; }
+  .student-name { font-size: 0.82rem; font-weight: 700; color: var(--color-text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .student-sub  { font-size: 0.68rem; color: var(--color-muted); }
+  :global(.pass-icon) { color: #16a34a; flex-shrink: 0; }
+  :global(.fail-icon) { color: #dc2626; flex-shrink: 0; }
 
-  .status-chip {
-    font-size: 0.62rem; font-weight: 800; text-transform: uppercase;
-    letter-spacing: 0.05em; padding: 0.2rem 0.55rem; border-radius: 20px;
-    white-space: nowrap;
-  }
-  .chip-pass { background: rgba(22,163,74,0.12);  color: #065f46; }
-  .chip-fail { background: rgba(220,38,38,0.1);   color: #991b1b; }
-  :global(.dark) .chip-pass { color: #4ade80; }
-  :global(.dark) .chip-fail { color: #f87171; }
+  .course-cell { display: flex; flex-direction: column; gap: 0.15rem; }
+  .course-code-badge { display: inline-block; font-size: 0.68rem; font-weight: 800; padding: 0.15rem 0.5rem; border-radius: 20px; background: var(--lc-soft); color: var(--lc600); letter-spacing: 0.03em; width: fit-content; }
+  .level-chip { display: inline-block; font-size: 0.68rem; font-weight: 700; padding: 0.15rem 0.45rem; border-radius: 6px; background: var(--color-bg); border: 1px solid var(--color-border); color: var(--color-muted); }
 
-  .empty {
-    display: flex; flex-direction: column; align-items: center; gap: 0.75rem;
-    padding: 4rem 1rem; color: var(--color-muted); text-align: center;
-  }
-  .empty h3 { font-size: 1.05rem; font-weight: 800; color: var(--color-text); margin: 0; }
-  .empty p  { font-size: 0.8rem; margin: 0; }
+  .score-cell { display: flex; flex-direction: column; align-items: flex-end; gap: 0.2rem; }
+  .score-pct { font-size: 0.85rem; font-weight: 800; font-variant-numeric: tabular-nums; }
+  .score-good { color: var(--lc600); }
+  .score-bad  { color: #dc2626; }
+  .score-bar-mini { width: 60px; height: 4px; background: var(--color-bg); border: 1px solid var(--color-border); border-radius: 4px; overflow: hidden; }
+  .score-bar-fill { height: 100%; border-radius: 4px; transition: width 0.3s; }
+
+  .grade-badge { display: inline-flex; align-items: center; justify-content: center; min-width: 28px; height: 24px; padding: 0 0.4rem; border-radius: 6px; font-size: 0.78rem; font-weight: 800; }
+  .violation-badge { display: inline-flex; align-items: center; gap: 0.25rem; padding: 0.15rem 0.45rem; border-radius: 6px; background: rgba(220,38,38,0.08); color: #dc2626; font-size: 0.72rem; font-weight: 700; }
+
+  /* ── Group headers ───────────────────────────────────────────── */
+  .group-header { display: flex; align-items: center; justify-content: space-between; gap: 1rem; padding: 0.5rem 0; flex-wrap: wrap; border-bottom: 2px solid var(--color-border); margin-top: 0.5rem; }
+  .group-header-inner { display: flex; align-items: center; gap: 0.5rem; font-size: 0.88rem; font-weight: 700; color: var(--color-text); }
+  .group-header-inner :global(svg) { color: var(--lc600); flex-shrink: 0; }
+  .group-count { font-size: 0.65rem; font-weight: 700; padding: 0.1rem 0.5rem; background: var(--lc-soft); color: var(--lc600); border-radius: 20px; }
+  .group-mini-stats { display: flex; gap: 0.625rem; }
+  .gms { font-size: 0.72rem; font-weight: 600; color: var(--color-muted); }
+  .gms.green { color: #16a34a; }
+  .gms.red   { color: #dc2626; }
+
+  /* ── Grid view cards ─────────────────────────────────────────── */
+  .results-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 0.875rem; }
+
+  .result-card { background: var(--color-surface); border: 1px solid var(--color-border); border-radius: 14px; padding: 1rem; display: flex; flex-direction: column; gap: 0.75rem; position: relative; overflow: hidden; transition: border-color 0.15s, box-shadow 0.15s, transform 0.15s; }
+  .result-card:hover { border-color: rgba(79,70,229,0.25); box-shadow: 0 4px 20px rgba(0,0,0,0.06); transform: translateY(-1px); }
+  .result-card-pass { border-color: rgba(22,163,74,0.15); }
+  .result-card-fail { border-color: rgba(220,38,38,0.12); }
+  .card-stripe { position: absolute; top: 0; left: 0; right: 0; height: 3px; border-radius: 3px 3px 0 0; opacity: 0.8; }
+
+  .rc-top { display: flex; align-items: flex-start; gap: 0.625rem; margin-top: 0.25rem; }
+  .rc-top-info { display: flex; flex-direction: column; gap: 0.1rem; flex: 1; min-width: 0; }
+  .rc-grade { flex-shrink: 0; width: 36px; height: 36px; border-radius: 9px; display: flex; align-items: center; justify-content: center; font-size: 1rem; font-weight: 900; }
+  .rc-course-row { display: flex; align-items: center; gap: 0.5rem; }
+  .rc-exam-title { font-size: 0.72rem; color: var(--color-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; flex: 1; }
+  .rc-score-block { display: flex; flex-direction: column; }
+  .rc-pct { font-size: 1.6rem; font-weight: 900; line-height: 1; letter-spacing: -0.04em; }
+  .rc-score-sub { font-size: 0.68rem; color: var(--color-muted); margin-top: 0.3rem; }
+  .rc-stats { display: flex; gap: 0.75rem; padding: 0.5rem 0.625rem; background: var(--color-bg); border-radius: 8px; border: 1px solid var(--color-border); }
+  .rc-stat { display: flex; align-items: center; gap: 0.3rem; font-size: 0.75rem; font-weight: 600; color: var(--color-text); }
+  .rc-stat :global(svg) { color: var(--color-muted); flex-shrink: 0; }
+  .rc-stat-label { font-size: 0.65rem; color: var(--color-muted); margin-left: 0.1rem; }
+  .rc-footer { display: flex; align-items: center; justify-content: space-between; gap: 0.5rem; padding-top: 0.25rem; border-top: 1px solid var(--color-border); margin-top: auto; }
+
+  .pass-chip { display: inline-flex; align-items: center; gap: 0.3rem; font-size: 0.7rem; font-weight: 700; color: #16a34a; background: rgba(22,163,74,0.1); padding: 0.2rem 0.55rem; border-radius: 20px; }
+  .fail-chip { display: inline-flex; align-items: center; gap: 0.3rem; font-size: 0.7rem; font-weight: 700; color: #dc2626; background: rgba(220,38,38,0.08); padding: 0.2rem 0.55rem; border-radius: 20px; }
 </style>

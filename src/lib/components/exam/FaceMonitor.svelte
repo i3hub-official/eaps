@@ -2,7 +2,9 @@
 <!--
   Compact top-right monitor — video thumbnail + coloured status dot.
   No expand. Sits inline in .bar-right of the top bar.
-  Strict 10s face checks, immediate flag on first miss, auto-submit at MAX_VIOLATIONS.
+  Strict 10s face checks, immediate flag on first miss.
+  Violation counting and auto-submit thresholds are server-authoritative
+  (see /api/exam/[examId]/violation) — this component just reports.
 -->
 <script lang="ts">
   import { onMount, onDestroy } from 'svelte';
@@ -15,7 +17,6 @@
     checkInterval?:     number;
     onViolation:        (type: 'no_face_detected' | 'multiple_faces' | 'face_mismatch', meta?: Record<string, unknown>) => void;
     onCameraError?:     (msg: string) => void;
-    onForceSubmit?:     () => void;
   }
 
   let {
@@ -25,7 +26,6 @@
     checkInterval = 10_000,
     onViolation,
     onCameraError,
-    onForceSubmit,
   }: Props = $props();
 
   let videoEl: HTMLVideoElement;
@@ -40,11 +40,9 @@
   const NO_FACE_GRACE   = 1;
   const EAR_OPEN        = 0.25;
   const EAR_CLOSED      = 0.18;
-  const MAX_VIOLATIONS  = 3;
 
   type Status = 'loading' | 'ok' | 'warning' | 'error';
-  let status          = $state<Status>('loading');
-  let totalViolations = $state(0);
+  let status            = $state<Status>('loading');
   let livenessConfirmed = false;
   let eyeHistory: number[] = [];
 
@@ -59,7 +57,7 @@
     status === 'error'   ? 'Camera error — monitoring offline' :
     status === 'warning' ? 'Face issue detected!' :
     status === 'loading' ? 'Starting camera…' :
-    `Monitoring active · ${totalViolations}/${MAX_VIOLATIONS} flags`
+    'Monitoring active'
   );
 
   // Singleton model promise
@@ -133,8 +131,6 @@
       if (consecutiveNoFace >= NO_FACE_GRACE) {
         consecutiveNoFace = 0;
         onViolation('no_face_detected');
-        totalViolations++;
-        checkAutoSubmit();
       }
       return;
     }
@@ -143,8 +139,6 @@
     if (count > 1) {
       status = 'warning';
       onViolation('multiple_faces');
-      totalViolations++;
-      checkAutoSubmit();
       return;
     }
 
@@ -155,8 +149,6 @@
     if (!isLive || !isReal) {
       status = 'warning';
       onViolation('face_mismatch', { reason: 'spoof_attempt' });
-      totalViolations++;
-      checkAutoSubmit();
       return;
     }
 
@@ -167,16 +159,12 @@
       if (sim < COSINE_SOFT) {
         status = 'warning';
         onViolation('face_mismatch', { reason: 'identity_mismatch', similarity: sim });
-        totalViolations++;
-        checkAutoSubmit();
         return;
       }
     }
 
     status = 'ok';
   }
-
-  function checkAutoSubmit() { if (totalViolations >= MAX_VIOLATIONS) onForceSubmit?.(); }
 
   onMount(async () => {
     if (!browser) return;

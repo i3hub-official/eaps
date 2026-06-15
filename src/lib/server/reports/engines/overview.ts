@@ -1,5 +1,3 @@
-// engines/overview.ts
-
 import type { ReportEngine, ReportParams, ReportResult } from '../schemas.js';
 import { sql } from '$lib/server/db/index.js';
 
@@ -10,27 +8,28 @@ const OverviewEngine: ReportEngine = {
       totalExams, activeExams, completedExams,
       totalViolations, flaggedSessions, avgScore, passedCount,
     ] = await Promise.all([
-      sql`SELECT COUNT(*)::int as count FROM "User"`,
-      sql`SELECT COUNT(*)::int as count FROM "User" WHERE role = 'student'`,
-      sql`SELECT COUNT(*)::int as count FROM "User" WHERE role = 'lecturer'`,
-      sql`SELECT COUNT(*)::int as count FROM "User" WHERE role = 'invigilator'`,
-      sql`SELECT COUNT(*)::int as count FROM "Exam"`,
-      sql`SELECT COUNT(*)::int as count FROM "Exam" WHERE status = 'active'`,
-      sql`SELECT COUNT(*)::int as count FROM "Exam" WHERE status = 'completed'`,
-      sql`SELECT COUNT(*)::int as count FROM "Violation"`,
-      sql`SELECT COUNT(*)::int as count FROM "ExamSession" WHERE status = 'flagged'`,
-      sql`SELECT AVG(score)::numeric(10,1) as avg FROM "ExamResult"`,
-      sql`SELECT COUNT(*)::int as count FROM "ExamResult" WHERE passed = true`,
+      sql(`SELECT COUNT(*)::int as count FROM "User"`, []),
+      sql(`SELECT COUNT(*)::int as count FROM "User" WHERE role = 'student'`, []),
+      sql(`SELECT COUNT(*)::int as count FROM "User" WHERE role = 'lecturer'`, []),
+      sql(`SELECT COUNT(*)::int as count FROM "User" WHERE role = 'invigilator'`, []),
+      sql(`SELECT COUNT(*)::int as count FROM "Exam"`, []),
+      sql(`SELECT COUNT(*)::int as count FROM "Exam" WHERE status = 'active'`, []),
+      sql(`SELECT COUNT(*)::int as count FROM "Exam" WHERE status = 'completed'`, []),
+      sql(`SELECT COUNT(*)::int as count FROM "Violation"`, []),
+      sql(`SELECT COUNT(*)::int as count FROM "ExamSession" WHERE status = 'flagged'`, []),
+      sql(`SELECT AVG(score)::numeric(10,1) as avg FROM "ExamResult"`, []),
+      sql(`SELECT COUNT(*)::int as count FROM "ExamResult" WHERE passed = true`, []),
     ]);
 
     const [totalResults, recentActivity] = await Promise.all([
-      sql`SELECT COUNT(*)::int as count FROM "ExamResult"`,
-      sql`
+      sql(`SELECT COUNT(*)::int as count FROM "ExamResult"`, []),
+      sql(`
         SELECT al.id, al.action, al.entity, al."createdAt", u."fullName"
         FROM "AuditLog" al
         LEFT JOIN "User" u ON al."userId" = u.id
-        ORDER BY al."createdAt" DESC LIMIT 10
-      `,
+        ORDER BY al."createdAt" DESC
+        LIMIT 10
+      `, []),
     ]);
 
     const total  = totalResults[0]?.count || 0;

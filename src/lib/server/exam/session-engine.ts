@@ -115,12 +115,23 @@ export async function resolveExamSession(
   const exam = await getExamForSession(examId);
   if (!exam) return { ok: false, reason: 'not_found', message: 'Exam not found', status: 404 };
 
-  const registered = await prisma.courseRegistration.findFirst({
-    where: { studentId: user.id, courseId: exam.courseId },
+const registered = await prisma.courseRegistration.findFirst({
+    where: {
+      studentId: user.id,
+      courseId: exam.courseId,
+      session: exam.session,
+      semester: exam.semester,
+      status: { notIn: ['rejected', 'withdrawn'] },
+    },
     select: { id: true },
   });
   if (!registered) {
-    return { ok: false, reason: 'not_registered', message: 'You are not registered for this course.', status: 403 };
+    return {
+      ok: false,
+      reason: 'not_registered',
+      message: `You are not registered for ${exam.course?.code ?? 'this course'} in ${exam.session}, semester ${exam.semester}.`,
+      status: 403,
+    };
   }
 
   const eligibility = isStudentEligible(exam, user);

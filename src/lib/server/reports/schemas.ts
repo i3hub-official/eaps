@@ -93,3 +93,16 @@ export function buildFilters(params: ValidatedReportParams) {
     paramIndex: paramIndex - 1,
   };
 }
+
+
+/** Simplified params type used by engine fetch functions */
+export type ReportParams = ValidatedReportParams;
+
+/** Every engine returns a plain object */
+export type ReportResult = Record<string, unknown>;
+
+/** Interface every engine file must implement */
+export interface ReportEngine {
+  fetch(params: ReportParams): Promise<ReportResult>;
+}
+

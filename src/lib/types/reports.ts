@@ -256,3 +256,14 @@ export interface TableColumn {
   hidden?:  boolean;   // IDs start hidden
   format?:  'id' | 'date' | 'percent' | 'number' | 'badge';
 }
+
+/** Report metadata stored in the registry */
+export interface ReportMeta {
+  id:                string;
+  label:             string;
+  description:       string;
+  engine:            () => Promise<{ default: ReportEngine }>;
+  supportsSearch:    boolean;
+  supportsDateRange: boolean;
+  exportable:        boolean;
+}
