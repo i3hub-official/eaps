@@ -114,12 +114,12 @@ export const POST: RequestHandler = async (event) => {
   const safeQuestions = sanitizeQuestionsForClient(ordered);
   const savedAnswers = await getSessionAnswers(session.id);
 
-  const payload: ExamPayload & { server_time: Date } = {
+  const payload = {
     exam: toClientExam(exam),
     session: toClientSession(session, remaining),
     questions: toClientQuestions(safeQuestions),
     savedAnswers: toSavedAnswers(savedAnswers),
-    serverTime: now,
+    server_time: now,
   };
 
   return json(payload);
