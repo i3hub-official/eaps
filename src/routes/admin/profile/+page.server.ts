@@ -5,14 +5,6 @@ import { requireAdmin } from '$lib/server/auth/guards.js';
 import { getPrismaClient } from '$lib/server/db/index.js';
 import { hashPassword, verifyPassword } from '$lib/server/auth/password.js';
 
-import { redirect } from '@sveltejs/kit';
-import type { PageServerLoad } from './$types';
-
-export const load: PageServerLoad = async ({ locals }) => {
-  if (!locals.user) throw redirect(303, '/login');
-  throw redirect(303, '/shared/profile');
-};
-
 export const load: PageServerLoad = async ({ locals }) => {
   await requireAdmin(locals.user);
           const prisma = await getPrismaClient();
