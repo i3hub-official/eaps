@@ -248,6 +248,7 @@ model User {
   nationality   String?
   stateoforigin String?
   lga           String?
+  
 
   // ── Receipt audit trail ───────────────────────────────────────────────────
   receiptNo     String? @map("receipt_no")

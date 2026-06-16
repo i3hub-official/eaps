@@ -47,3 +47,28 @@ export interface SessionUser {
   department_id: string | null;
   photo_url: string | null;
 }
+
+export interface ProfileData {
+  id: string;
+  name: string;
+  email: string;
+  phone?: string;
+  avatar?: string;
+  bio?: string;
+  title?: string;
+  address?: string;
+  state?: string;
+  lga?: string;
+  department?: string;
+  college?: string;      // "College" for students, "Faculty" for staff
+  level?: string;
+  matricNumber?: string;
+  staffId?: string;
+  joinDate?: string;
+  courses?: { id: string; title: string; code: string }[];
+  stats?: { label: string; value: string | number; icon: string }[];
+  socialLinks?: { linkedin?: string; github?: string; twitter?: string; website?: string };
+  isVerified?: boolean;
+  isActive?: boolean;
+  lastActive?: string;
+}

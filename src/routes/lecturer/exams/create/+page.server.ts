@@ -1,3 +1,4 @@
+// src/routes/lecturer/exams/create/+page.server.ts
 import { error, fail, redirect } from '@sveltejs/kit';
 import type { Actions, PageServerLoad } from './$types';
 import { getPrismaClient } from '$lib/server/db/index.js';
@@ -14,14 +15,22 @@ export const load: PageServerLoad = async (event) => {
   const [courses, levels, departments, activeSemester] = await Promise.all([
     getCoursesForLecturer(user),
     prisma.level.findMany({ orderBy: { order: 'asc' } }),
-    prisma.department.findMany({ orderBy: { name: 'asc' }, select: { id: true, name: true } }),
+    // ✅ Fix: Include department code in the select
+    prisma.department.findMany({ 
+      orderBy: { name: 'asc' }, 
+      select: { 
+        id: true, 
+        name: true,
+        code: true 
+      } 
+    }),
     getActiveAcademicSemester(),
   ]);
 
   return {
     courses,
     levels,
-    departments,
+    departments, // Now departments has id, name, code
     defaultSession: activeSemester?.session ?? '',
     defaultSemester: activeSemester?.semester ?? 1,
   };

@@ -927,148 +927,361 @@ results.push(`✓ ${creditCaps.length} level/semester credit caps`);
       results.push(`✓ ${registrationData.length} course registrations`);
       progressBroadcaster.broadcastProgress('registrations', 'Registrations completed', `${registrationData.length} registrations`, '📋✅');
 
-      // ============================================
-      // 8. EXAM - Create exam records
-      // ============================================
-      progressBroadcaster.broadcastProgress('exam', 'Creating exam records...', 'Setting up exams', '📝');
-      
-      const EXAM_ID = '00000000-0000-0000-0000-000000000001';
-      const cscLecturer = lecturers.find(l => l.departmentId === getDept('CSC').id) || lecturers[0];
-      
-      const exam = await prisma.exam.upsert({
-        where: { id: EXAM_ID },
-        update: {},
-        create: {
-          id: EXAM_ID,
-          courseId: getCourse('CSC301').id,
-          createdBy: cscLecturer.id,
-          title: 'CSC301 — First Semester Examination',
-          instructions: 'Answer all questions. No external resources. Time limit strictly enforced.',
-          durationMinutes: 60,
-          totalMarks: 40,
-          passMark: 20,
-          status: 'active',
-          scheduledStart: new Date(),
-          scheduledEnd: new Date(Date.now() + 2 * 60 * 60 * 1000),
-          randomizeQuestions: true,
-          randomizeOptions: true,
-          questionsToPresent: 12,
-          showResultAfter: true,
-          maxViolations: 5,
-          session: '2025/2026',
-          semester: 1,
-          levels: {
-            connect: [getLevel(300), getLevel(400)].map(l => ({ id: l.id })),
+     // ============================================
+// 8. EXAMS - Create exam records with specific dates
+// ============================================
+progressBroadcaster.broadcastProgress('exam', 'Creating exam records...', 'Setting up exams', '📝');
+
+// Helper to get current date with specific time
+function createDate(day: number, month: number, year: number, hour: number, minute: number): Date {
+  return new Date(year, month - 1, day, hour, minute, 0, 0);
+}
+
+// Exam 1: For ALL levels (100-600) - CSC301
+const EXAM_ID_1 = '00000000-0000-0000-0000-000000000001';
+const cscLecturer = lecturers.find(l => l.departmentId === getDept('CSC').id) || lecturers[0];
+
+// Start: 2026-06-16 23:00, End: 2026-06-20 23:59
+const startDate1 = createDate(16, 6, 2026, 23, 0);
+const endDate1 = createDate(20, 6, 2026, 23, 59);
+
+const exam1 = await prisma.exam.upsert({
+  where: { id: EXAM_ID_1 },
+  update: {},
+  create: {
+    id: EXAM_ID_1,
+    courseId: getCourse('CSC301').id,
+    createdBy: cscLecturer.id,
+    title: 'CSC301 — Comprehensive Examination (All Levels)',
+    instructions: 'Answer all questions. No external resources. Time limit strictly enforced.',
+    durationMinutes: 120,
+    totalMarks: 100,
+    passMark: 40,
+    status: 'scheduled',
+    scheduledStart: startDate1,
+    scheduledEnd: endDate1,
+    randomizeQuestions: true,
+    randomizeOptions: true,
+    questionsToPresent: 20,
+    showResultAfter: true,
+    maxViolations: 5,
+    session: '2025/2026',
+    semester: 2,
+    // ALL levels (100-600)
+    levels: {
+      connect: [
+        getLevel(100), getLevel(200), getLevel(300),
+        getLevel(400), getLevel(500), getLevel(600)
+      ].map(l => ({ id: l.id })),
+    },
+  },
+});
+
+// Exam 2: For ONLY 100 and 200 levels - PHY101
+const EXAM_ID_2 = '00000000-0000-0000-0000-000000000002';
+const phyLecturer = lecturers.find(l => l.departmentId === getDept('PHY').id) || lecturers[0];
+
+// Same dates: 2026-06-16 23:00 to 2026-06-20 23:59
+const startDate2 = createDate(16, 6, 2026, 23, 0);
+const endDate2 = createDate(20, 6, 2026, 23, 59);
+
+const exam2 = await prisma.exam.upsert({
+  where: { id: EXAM_ID_2 },
+  update: {},
+  create: {
+    id: EXAM_ID_2,
+    courseId: getCourse('PHY101').id,
+    createdBy: phyLecturer.id,
+    title: 'PHY101 — General Physics Examination',
+    instructions: 'Answer all questions. Show your working where applicable.',
+    durationMinutes: 90,
+    totalMarks: 60,
+    passMark: 24,
+    status: 'scheduled',
+    scheduledStart: startDate2,
+    scheduledEnd: endDate2,
+    randomizeQuestions: true,
+    randomizeOptions: true,
+    questionsToPresent: 15,
+    showResultAfter: true,
+    maxViolations: 3,
+    session: '2025/2026',
+    semester: 2,
+    // ONLY 100 and 200 levels
+    levels: {
+      connect: [
+        getLevel(100), getLevel(200)
+      ].map(l => ({ id: l.id })),
+    },
+  },
+});
+
+// Exam 3: For ONLY 100 and 200 levels - MTH101
+const EXAM_ID_3 = '00000000-0000-0000-0000-000000000003';
+const mthLecturer = lecturers.find(l => l.departmentId === getDept('MTH').id) || lecturers[0];
+
+const exam3 = await prisma.exam.upsert({
+  where: { id: EXAM_ID_3 },
+  update: {},
+  create: {
+    id: EXAM_ID_3,
+    courseId: getCourse('MTH101').id,
+    createdBy: mthLecturer.id,
+    title: 'MTH101 — Calculus I Examination',
+    instructions: 'Answer all questions. Scientific calculators are NOT permitted.',
+    durationMinutes: 90,
+    totalMarks: 70,
+    passMark: 28,
+    status: 'scheduled',
+    scheduledStart: startDate2, // Same dates
+    scheduledEnd: endDate2,
+    randomizeQuestions: true,
+    randomizeOptions: false, // Math questions shouldn't be randomized
+    questionsToPresent: 10,
+    showResultAfter: true,
+    maxViolations: 3,
+    session: '2025/2026',
+    semester: 2,
+    // ONLY 100 and 200 levels
+    levels: {
+      connect: [
+        getLevel(100), getLevel(200)
+      ].map(l => ({ id: l.id })),
+    },
+  },
+});
+
+// Exam 4: For ALL levels - GST101 (General Studies)
+const EXAM_ID_4 = '00000000-0000-0000-0000-000000000004';
+const engLecturer = lecturers.find(l => l.departmentId === getDept('ENG').id) || lecturers[0];
+
+const exam4 = await prisma.exam.upsert({
+  where: { id: EXAM_ID_4 },
+  update: {},
+  create: {
+    id: EXAM_ID_4,
+    courseId: getCourse('GST101').id,
+    createdBy: engLecturer.id,
+    title: 'GST101 — Communication in English Examination',
+    instructions: 'Answer all questions. Pay attention to grammar and punctuation.',
+    durationMinutes: 60,
+    totalMarks: 40,
+    passMark: 16,
+    status: 'scheduled',
+    scheduledStart: startDate1, // Same dates
+    scheduledEnd: endDate1,
+    randomizeQuestions: true,
+    randomizeOptions: true,
+    questionsToPresent: 12,
+    showResultAfter: true,
+    maxViolations: 5,
+    session: '2025/2026',
+    semester: 2,
+    // ALL levels
+    levels: {
+      connect: [
+        getLevel(100), getLevel(200), getLevel(300),
+        getLevel(400), getLevel(500), getLevel(600)
+      ].map(l => ({ id: l.id })),
+    },
+  },
+});
+
+// Assign invigilators to exams
+if (invigilators.length > 0) {
+  // Assign invigilators to exam 1
+  const invig1 = invigilators[0];
+  const invig2 = invigilators[1] || invigilators[0];
+  
+  await prisma.examInvigilator.createMany({
+    data: [
+      { examId: exam1.id, invigilatorId: invig1.id },
+      { examId: exam2.id, invigilatorId: invig2.id },
+      { examId: exam3.id, invigilatorId: invig1.id },
+      { examId: exam4.id, invigilatorId: invig2.id },
+    ],
+    skipDuplicates: true,
+  });
+}
+
+results.push(`✓ 4 exams created (${exam1.title}, ${exam2.title}, ${exam3.title}, ${exam4.title})`);
+progressBroadcaster.broadcastProgress('exam', 'Exams created', '4 exams with invigilators', '📝✅');
+
+// ============================================
+// 9. QUESTIONS - Bulk insert for all exams (MCQ only)
+// ============================================
+progressBroadcaster.broadcastProgress('questions', 'Creating exam questions...', 'Generating MCQ questions', '❓');
+
+// Questions for Exam 1 (CSC301 - All levels)
+const mcqDataExam1 = [
+  { body: 'Which data structure uses LIFO (Last In First Out) ordering?', topic: 'Data Structures', options: ['Queue', 'Stack', 'Linked List', 'Binary Tree'], correct: 1, marks: 5 },
+  { body: 'What is the time complexity of binary search on a sorted array?', topic: 'Algorithms', options: ['O(n)', 'O(n²)', 'O(log n)', 'O(1)'], correct: 2, marks: 5 },
+  { body: 'Which sorting algorithm has the best average-case time complexity?', topic: 'Sorting', options: ['Bubble Sort', 'Insertion Sort', 'Merge Sort', 'Selection Sort'], correct: 2, marks: 5 },
+  { body: 'A graph with no cycles is called a ___.', topic: 'Graph Theory', options: ['Complete Graph', 'Tree', 'Bipartite Graph', 'Directed Graph'], correct: 1, marks: 5 },
+  { body: 'Which traversal visits nodes in Left → Root → Right order?', topic: 'Trees', options: ['Preorder', 'Postorder', 'Inorder', 'Level Order'], correct: 2, marks: 5 },
+  { body: 'What is the worst-case time complexity of QuickSort?', topic: 'Sorting', options: ['O(n log n)', 'O(n)', 'O(n²)', 'O(log n)'], correct: 2, marks: 5 },
+  { body: 'Which data structure is used for implementing BFS?', topic: 'Graph Theory', options: ['Stack', 'Queue', 'Heap', 'Priority Queue'], correct: 1, marks: 5 },
+  { body: 'In a max-heap, the root node contains the ___ element.', topic: 'Data Structures', options: ['Smallest', 'Median', 'Largest', 'Random'], correct: 2, marks: 5 },
+  { body: 'What is the space complexity of merge sort?', topic: 'Sorting', options: ['O(1)', 'O(log n)', 'O(n)', 'O(n log n)'], correct: 2, marks: 5 },
+  { body: 'Which of these is a self-balancing binary search tree?', topic: 'Trees', options: ['Red-Black Tree', 'Complete Binary Tree', 'Min Heap', 'Trie'], correct: 0, marks: 5 },
+  { body: 'What is the purpose of the "finally" block in exception handling?', topic: 'Programming', options: ['Handle exceptions', 'Clean up resources', 'Throw exceptions', 'Return values'], correct: 1, marks: 5 },
+  { body: 'Which database model uses tables with rows and columns?', topic: 'Databases', options: ['Relational', 'NoSQL', 'Graph', 'Key-Value'], correct: 0, marks: 5 },
+  { body: 'What does the acronym HTML stand for?', topic: 'Web', options: ['High Tech Markup Language', 'Hypertext Markup Language', 'Hyper Transfer Markup Language', 'High Text Markup Language'], correct: 1, marks: 5 },
+  { body: 'Which layer of the OSI model handles routing?', topic: 'Networking', options: ['Physical', 'Data Link', 'Network', 'Transport'], correct: 2, marks: 5 },
+  { body: 'What is polymorphism in OOP?', topic: 'Programming', options: ['Multiple inheritance', 'One interface, multiple implementations', 'Data hiding', 'Encapsulation'], correct: 1, marks: 5 },
+];
+
+// Questions for Exam 2 (PHY101 - Only 100 & 200 levels)
+const mcqDataExam2 = [
+  { body: 'What is the SI unit of force?', topic: 'Mechanics', options: ['Newton', 'Joule', 'Watt', 'Pascal'], correct: 0, marks: 4 },
+  { body: 'Which of the following is a scalar quantity?', topic: 'Mechanics', options: ['Velocity', 'Force', 'Speed', 'Acceleration'], correct: 2, marks: 4 },
+  { body: 'What is the acceleration due to gravity on Earth approximately?', topic: 'Mechanics', options: ['8.9 m/s²', '9.8 m/s²', '10.8 m/s²', '7.8 m/s²'], correct: 1, marks: 4 },
+  { body: 'The first law of thermodynamics is a statement of:', topic: 'Thermodynamics', options: ['Energy conservation', 'Entropy', 'Heat transfer', 'Work'], correct: 0, marks: 4 },
+  { body: 'Which type of wave requires a medium to travel?', topic: 'Waves', options: ['Light wave', 'Sound wave', 'Radio wave', 'X-ray'], correct: 1, marks: 4 },
+  { body: 'What is the wavelength of a wave with frequency 50 Hz and speed 340 m/s?', topic: 'Waves', options: ['6.8 m', '7.8 m', '8.8 m', '5.8 m'], correct: 0, marks: 4 },
+  { body: 'An object at rest will remain at rest unless acted upon by an external force. This is:', topic: 'Mechanics', options: ['Newton\'s First Law', 'Newton\'s Second Law', 'Newton\'s Third Law', 'Law of Gravitation'], correct: 0, marks: 4 },
+  { body: 'What is the power of a device that uses 100 J of energy in 5 seconds?', topic: 'Mechanics', options: ['5 W', '20 W', '50 W', '100 W'], correct: 1, marks: 4 },
+  { body: 'The process of converting solid directly to gas is called:', topic: 'Thermodynamics', options: ['Condensation', 'Evaporation', 'Sublimation', 'Melting'], correct: 2, marks: 4 },
+  { body: 'Which particle has a negative charge?', topic: 'Physics', options: ['Proton', 'Neutron', 'Electron', 'Photon'], correct: 2, marks: 4 },
+];
+
+// Questions for Exam 3 (MTH101 - Only 100 & 200 levels)
+const mcqDataExam3 = [
+  { body: 'What is the derivative of x²?', topic: 'Calculus', options: ['2x', 'x', '2x²', 'x²/2'], correct: 0, marks: 5 },
+  { body: 'The integral of 1/x is:', topic: 'Calculus', options: ['ln x', 'e^x', 'x', '1/x²'], correct: 0, marks: 5 },
+  { body: 'What is the slope of the line y = 3x + 2?', topic: 'Algebra', options: ['2', '3', '5', '1'], correct: 1, marks: 5 },
+  { body: 'Solve for x: 2x + 5 = 13', topic: 'Algebra', options: ['2', '3', '4', '5'], correct: 2, marks: 5 },
+  { body: 'What is the value of sin(90°)?', topic: 'Trigonometry', options: ['0', '0.5', '1', 'Undefined'], correct: 2, marks: 5 },
+  { body: 'The area of a circle with radius r is:', topic: 'Geometry', options: ['πr', '2πr', 'πr²', '2πr²'], correct: 2, marks: 5 },
+  { body: 'What is the logarithm of 100 to base 10?', topic: 'Algebra', options: ['1', '2', '10', '100'], correct: 1, marks: 5 },
+  { body: 'The derivative of e^x is:', topic: 'Calculus', options: ['e^x', 'x e^x', 'e^{x-1}', 'ln x'], correct: 0, marks: 5 },
+  { body: 'What is the sum of angles in a triangle?', topic: 'Geometry', options: ['90°', '180°', '270°', '360°'], correct: 1, marks: 5 },
+  { body: 'The factorial of 5 is:', topic: 'Algebra', options: ['60', '100', '120', '24'], correct: 2, marks: 5 },
+];
+
+// Questions for Exam 4 (GST101 - All levels)
+const mcqDataExam4 = [
+  { body: 'Which of the following is a complete sentence?', topic: 'Grammar', options: ['Running fast.', 'She runs fast.', 'Fast running.', 'Run fast.'], correct: 1, marks: 4 },
+  { body: 'What is the plural of "child"?', topic: 'Grammar', options: ['Childs', 'Children', 'Childrens', 'Child'], correct: 1, marks: 4 },
+  { body: 'Which word is a synonym for "happy"?', topic: 'Vocabulary', options: ['Sad', 'Angry', 'Joyful', 'Tired'], correct: 2, marks: 4 },
+  { body: 'The correct spelling is:', topic: 'Spelling', options: ['Accomodate', 'Acommodate', 'Accommodate', 'Acomodate'], correct: 2, marks: 4 },
+  { body: 'Which punctuation mark is used to show possession?', topic: 'Punctuation', options: ['Comma', 'Apostrophe', 'Period', 'Question mark'], correct: 1, marks: 4 },
+  { body: 'Identify the adverb in: "She sings beautifully."', topic: 'Grammar', options: ['She', 'Sings', 'Beautifully', 'The'], correct: 2, marks: 4 },
+  { body: 'Which of these is a conjunction?', topic: 'Grammar', options: ['And', 'Run', 'Beautiful', 'Quickly'], correct: 0, marks: 4 },
+  { body: 'The correct article to use before "hour" is:', topic: 'Grammar', options: ['a', 'an', 'the', 'none'], correct: 1, marks: 4 },
+  { body: 'What is the past tense of "go"?', topic: 'Grammar', options: ['Goed', 'Gone', 'Went', 'Going'], correct: 2, marks: 4 },
+  { body: 'Which word is an antonym of "difficult"?', topic: 'Vocabulary', options: ['Hard', 'Easy', 'Tough', 'Complex'], correct: 1, marks: 4 },
+];
+
+// Function to create questions for an exam
+async function createQuestionsForExam(examId: string, mcqData: any[]) {
+  let qCount = 0;
+  for (let i = 0; i < mcqData.length; i++) {
+    const q = mcqData[i];
+    const exists = await prisma.question.findFirst({
+      where: { examId: examId, body: q.body }
+    });
+    
+    if (!exists) {
+      await prisma.question.create({
+        data: {
+          examId: examId,
+          type: 'mcq',
+          body: q.body,
+          marks: q.marks,
+          topic: q.topic,
+          orderIndex: i,
+          options: {
+            create: q.options.map((text: string, j: number) => ({
+              optionText: text,
+              isCorrect: j === q.correct,
+              orderIndex: j
+            })),
           },
         },
       });
-      
-      // Second exam
-      const EXAM_ID_2 = '00000000-0000-0000-0000-000000000002';
-      const accLecturer = lecturers.find(l => l.departmentId === getDept('ACC').id) || lecturers[0];
-      
-      await prisma.exam.upsert({
-        where: { id: EXAM_ID_2 },
-        update: {},
-        create: {
-          id: EXAM_ID_2,
-          courseId: getCourse('ACC201').id,
-          createdBy: accLecturer.id,
-          title: 'ACC201 — Management Accounting Mid-Semester',
-          instructions: 'Answer all questions. Calculators not permitted.',
-          durationMinutes: 45,
-          totalMarks: 30,
-          passMark: 15,
-          status: 'scheduled',
-          scheduledStart: new Date(Date.now() + 24 * 60 * 60 * 1000),
-          scheduledEnd: new Date(Date.now() + 26 * 60 * 60 * 1000),
-          randomizeQuestions: true,
-          randomizeOptions: true,
-          questionsToPresent: 10,
-          showResultAfter: false,
-          maxViolations: 3,
-          session: '2025/2026',
-          semester: 1,
-          levels: {
-            connect: [getLevel(200)].map(l => ({ id: l.id })),
-          },
-        },
-      });
-      
-      if (invigilators.length > 0) {
-        await prisma.examInvigilator.upsert({
-          where: { examId_invigilatorId: { examId: exam.id, invigilatorId: invigilators[0].id } },
-          update: {},
-          create: { examId: exam.id, invigilatorId: invigilators[0].id },
-        });
-      }
-      
-      progressBroadcaster.broadcastProgress('exam', 'Exams created', '2 exams', '📝✅');
+      qCount++;
+    }
+  }
+  return qCount;
+}
 
-      // ============================================
-      // 9. QUESTIONS - Bulk insert for exam
-      // ============================================
-      progressBroadcaster.broadcastProgress('questions', 'Creating exam questions...', 'Generating questions', '❓');
-      
-      const mcqData = [
-        { body: 'Which data structure uses LIFO (Last In First Out) ordering?', topic: 'Data Structures', options: ['Queue', 'Stack', 'Linked List', 'Binary Tree'], correct: 1, marks: 3 },
-        { body: 'What is the time complexity of binary search on a sorted array?', topic: 'Algorithms', options: ['O(n)', 'O(n²)', 'O(log n)', 'O(1)'], correct: 2, marks: 3 },
-        { body: 'Which sorting algorithm has the best average-case time complexity?', topic: 'Sorting', options: ['Bubble Sort', 'Insertion Sort', 'Merge Sort', 'Selection Sort'], correct: 2, marks: 3 },
-        { body: 'A graph with no cycles is called a ___.', topic: 'Graph Theory', options: ['Complete Graph', 'Tree', 'Bipartite Graph', 'Directed Graph'], correct: 1, marks: 3 },
-        { body: 'Which traversal visits nodes in Left → Root → Right order?', topic: 'Trees', options: ['Preorder', 'Postorder', 'Inorder', 'Level Order'], correct: 2, marks: 3 },
-        { body: 'What is the worst-case time complexity of QuickSort?', topic: 'Sorting', options: ['O(n log n)', 'O(n)', 'O(n²)', 'O(log n)'], correct: 2, marks: 3 },
-        { body: 'Which data structure is used for implementing BFS?', topic: 'Graph Theory', options: ['Stack', 'Queue', 'Heap', 'Priority Queue'], correct: 1, marks: 3 },
-        { body: 'In a max-heap, the root node contains the ___ element.', topic: 'Data Structures', options: ['Smallest', 'Median', 'Largest', 'Random'], correct: 2, marks: 3 },
-        { body: 'What is the space complexity of merge sort?', topic: 'Sorting', options: ['O(1)', 'O(log n)', 'O(n)', 'O(n log n)'], correct: 2, marks: 3 },
-        { body: 'Which of these is a self-balancing binary search tree?', topic: 'Trees', options: ['Red-Black Tree', 'Complete Binary Tree', 'Min Heap', 'Trie'], correct: 0, marks: 3 },
-      ];
-      
-      let qCount = 0;
-      for (let i = 0; i < mcqData.length; i++) {
-        const q = mcqData[i];
-        const exists = await prisma.question.findFirst({
-          where: { examId: exam.id, body: q.body }
-        });
-        
-        if (!exists) {
-          await prisma.question.create({
-            data: {
-              examId: exam.id,
-              type: 'mcq',
-              body: q.body,
-              marks: q.marks,
-              topic: q.topic,
-              orderIndex: i,
-              options: {
-                create: q.options.map((text, j) => ({
-                  optionText: text,
-                  isCorrect: j === q.correct,
-                  orderIndex: j
-                })),
-              },
-            },
-          });
-          qCount++;
-        }
-      }
-      
-      results.push(`✓ ${qCount} questions`);
-      progressBroadcaster.broadcastProgress('questions', 'Questions created', `${qCount} questions`, '❓✅');
+// Create questions for all exams
+const qCount1 = await createQuestionsForExam(exam1.id, mcqDataExam1);
+const qCount2 = await createQuestionsForExam(exam2.id, mcqDataExam2);
+const qCount3 = await createQuestionsForExam(exam3.id, mcqDataExam3);
+const qCount4 = await createQuestionsForExam(exam4.id, mcqDataExam4);
 
-      // ============================================
-      // 10. NOTIFICATIONS - Bulk insert
-      // ============================================
-      progressBroadcaster.broadcastProgress('notifications', 'Creating welcome notifications...', 'For all users', '🔔');
-      
-      const notificationData = allUsers.map(user => ({
-        userId: user.id,
-        title: 'Welcome to MOUAU eTest',
-        message: `Welcome, ${user.fullName}! Your account is ready. Log in to get started.`,
-      }));
-      
-      await prisma.notification.createMany({ data: notificationData, skipDuplicates: true });
-      results.push(`✓ ${notificationData.length} welcome notifications`);
-      progressBroadcaster.broadcastProgress('notifications', 'Notifications created', `${notificationData.length} notifications`, '🔔✅');
+const totalQuestions = qCount1 + qCount2 + qCount3 + qCount4;
+results.push(`✓ ${totalQuestions} questions created across 4 exams`);
+progressBroadcaster.broadcastProgress('questions', 'Questions created', `${totalQuestions} questions`, '❓✅');
+
+// ============================================
+// 10. NOTIFICATIONS - Create exam notifications
+// ============================================
+progressBroadcaster.broadcastProgress('notifications', 'Creating exam notifications...', 'For all students', '🔔');
+
+// Notify students about the exams
+const examNotifications = [];
+
+// For Exam 1 (All levels)
+const allLevelStudents = students.filter(s => {
+  const level = levels.find(l => l.id === s.levelId);
+  return level && level.level >= 100 && level.level <= 600;
+});
+
+// For Exam 2 & 3 (Only 100 & 200 levels)
+const level100_200Students = students.filter(s => {
+  const level = levels.find(l => l.id === s.levelId);
+  return level && (level.level === 100 || level.level === 200);
+});
+
+// For Exam 4 (All levels)
+const allLevelStudents2 = students.filter(s => {
+  const level = levels.find(l => l.id === s.levelId);
+  return level && level.level >= 100 && level.level <= 600;
+});
+
+// Create notifications
+const notificationPromises = [
+  // Exam 1 notification
+  ...allLevelStudents.map(student => ({
+    userId: student.id,
+    title: '📝 CSC301 Examination Scheduled',
+    message: `CSC301 Comprehensive Examination has been scheduled for ${startDate1.toLocaleDateString()} at ${startDate1.toLocaleTimeString()}. Please check your dashboard for details.`,
+    isRead: false,
+  })),
+  // Exam 2 notification (100 & 200 only)
+  ...level100_200Students.map(student => ({
+    userId: student.id,
+    title: '📝 PHY101 Examination Scheduled',
+    message: `PHY101 General Physics Examination has been scheduled for ${startDate2.toLocaleDateString()} at ${startDate2.toLocaleTimeString()}. Please check your dashboard for details.`,
+    isRead: false,
+  })),
+  // Exam 3 notification (100 & 200 only)
+  ...level100_200Students.map(student => ({
+    userId: student.id,
+    title: '📝 MTH101 Examination Scheduled',
+    message: `MTH101 Calculus I Examination has been scheduled for ${startDate2.toLocaleDateString()} at ${startDate2.toLocaleTimeString()}. Please check your dashboard for details.`,
+    isRead: false,
+  })),
+  // Exam 4 notification (All levels)
+  ...allLevelStudents2.map(student => ({
+    userId: student.id,
+    title: '📝 GST101 Examination Scheduled',
+    message: `GST101 Communication in English Examination has been scheduled for ${startDate1.toLocaleDateString()} at ${startDate1.toLocaleTimeString()}. Please check your dashboard for details.`,
+    isRead: false,
+  })),
+];
+
+// Bulk create notifications
+await prisma.notification.createMany({ 
+  data: notificationPromises, 
+  skipDuplicates: true 
+});
+
+results.push(`✓ ${notificationPromises.length} exam notifications created`);
+progressBroadcaster.broadcastProgress('notifications', 'Notifications created', `${notificationPromises.length} notifications`, '🔔✅');
 
       // ============================================
       // 11. USER PREFERENCES - Bulk insert

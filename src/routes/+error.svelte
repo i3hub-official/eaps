@@ -1,23 +1,140 @@
 <!-- src/routes/+error.svelte -->
 <script lang="ts">
   import { page } from '$app/stores';
-  import { Home, ArrowLeft, SearchX, ShieldAlert, Bug, Frown, Clock } from '@lucide/svelte';
+  import { getContext } from 'svelte';
+  import { ROLE_CONTEXT_KEY } from '$lib/constants/context';
+  import { Home, ArrowLeft, SearchX, ShieldAlert, Bug, Frown, Clock, User, Users, GraduationCap, UserCog } from '@lucide/svelte';
   import { onMount } from 'svelte';
+
+  // Get role from context (set in layout files)
+  const contextRole = getContext<string | undefined>(ROLE_CONTEXT_KEY);
+  
+  // Fallback to route detection
+  let currentRole = $derived.by(() => {
+    if (contextRole) return contextRole;
+    const path = $page.url.pathname;
+    if (path.startsWith('/admin')) return 'admin';
+    if (path.startsWith('/lecturer')) return 'lecturer';
+    if (path.startsWith('/invigilator')) return 'invigilator';
+    if (path.startsWith('/student')) return 'student';
+    return 'default';
+  });
+
+  // Role-specific configurations
+  const roleConfig = {
+    admin: {
+      icon: UserCog,
+      label: 'Admin',
+      color: '#6366f1',
+      colorVar: 'var(--admin-accent, #6366f1)',
+      bgVar: 'var(--admin-accent-bg, rgba(99,102,241,0.1))',
+      homeRoute: '/admin',
+      titlePrefix: 'Administrator'
+    },
+    lecturer: {
+      icon: Users,
+      label: 'Lecturer',
+      color: '#8b5cf6',
+      colorVar: 'var(--lecturer-accent, #8b5cf6)',
+      bgVar: 'var(--lecturer-accent-bg, rgba(139,92,246,0.1))',
+      homeRoute: '/lecturer',
+      titlePrefix: 'Lecturer'
+    },
+    invigilator: {
+      icon: User,
+      label: 'Invigilator',
+      color: '#f59e0b',
+      colorVar: 'var(--invigilator-accent, #f59e0b)',
+      bgVar: 'var(--invigilator-accent-bg, rgba(245,158,11,0.1))',
+      homeRoute: '/invigilator',
+      titlePrefix: 'Invigilator'
+    },
+    student: {
+      icon: GraduationCap,
+      label: 'Student',
+      color: '#10b981',
+      colorVar: 'var(--student-accent, #10b981)',
+      bgVar: 'var(--student-accent-bg, rgba(16,185,129,0.1))',
+      homeRoute: '/student',
+      titlePrefix: 'Student'
+    },
+    default: {
+      icon: Home,
+      label: 'Home',
+      color: '#22c55e',
+      colorVar: 'var(--g500, #22c55e)',
+      bgVar: 'rgba(34,197,94,0.1)',
+      homeRoute: '/',
+      titlePrefix: ''
+    }
+  };
+
+  const role = $derived(roleConfig[currentRole] || roleConfig.default);
 
   const messagePools = {
     404: {
-      main: [
-        "Looks like this page pulled a Houdini and vanished into thin air. Maybe it never existed, or maybe it's just playing hide and seek.",
-        "This page is like your ex — gone, not coming back, and you're better off without it.",
-        "We searched high and low, under the couch, behind the server rack... nowhere to be found.",
-        "This URL leads to a dimension where pages don't exist. Try another portal.",
-        "Oops! This page must have graduated and left the university. No forwarding address.",
-        "You know that feeling when you walk into a room and forget why? This page had the same problem.",
-        "404: Page not found. Have you tried turning the internet off and on again?",
-        "This page is currently on sabbatical. Please check back in 2050.",
-        "We asked the server about this page. It just shrugged and said 'IDK bro'.",
-        "This page is like a ghost — people claim they've seen it, but there's no proof.",
-      ],
+      main: {
+        admin: [
+          "Looks like this page pulled a Houdini and vanished into thin air. Maybe it never existed, or maybe it's just playing hide and seek with the admin panel.",
+          "This page is like your ex — gone, not coming back, and you're better off without it. Even admin privileges can't bring it back.",
+          "We searched high and low, under the server rack, behind the database... nowhere to be found. This one's beyond even admin powers.",
+          "This URL leads to a dimension where pages don't exist. Try another portal, oh mighty admin.",
+          "Oops! This page must have graduated and left the university. No forwarding address. Admin override not available.",
+          "You know that feeling when you walk into a room and forget why? This page had the same problem. Except it's permanent.",
+          "404: Page not found. Have you tried turning the internet off and on again? We have, didn't help.",
+          "This page is currently on sabbatical. Please check back in 2050. We'll mark it on your admin calendar.",
+          "We asked the server about this page. It just shrugged and said 'IDK bro'. Even the admin can't force it.",
+          "This page is like a ghost — people claim they've seen it, but there's no proof. Admin ghost hunters report.",
+        ],
+        lecturer: [
+          "Looks like this page pulled a Houdini and vanished into thin air. Maybe it never existed, or maybe it's just playing hide and seek with the lecturer portal.",
+          "This page is like your ex — gone, not coming back, and you're better off without it. Even your lecturer powers can't save it.",
+          "We searched high and low, under the podium, behind the whiteboard... nowhere to be found.",
+          "This URL leads to a dimension where pages don't exist. Try another portal, professor.",
+          "Oops! This page must have graduated and left the university. No forwarding address.",
+          "You know that feeling when you walk into a classroom and forget your lesson plan? This page had the same problem.",
+          "404: Page not found. Have you tried turning the projector off and on again?",
+          "This page is currently on sabbatical. Please check back in 2050.",
+          "We asked the server about this page. It just shrugged and said 'IDK bro'.",
+          "This page is like a ghost — people claim they've seen it, but there's no proof.",
+        ],
+        invigilator: [
+          "Looks like this page pulled a Houdini and vanished into thin air. Even with your invigilator eyes, you can't spot it.",
+          "This page is like a student who skipped the exam — gone, not coming back, and you're better off without it.",
+          "We searched high and low, under the desks, behind the exam hall... nowhere to be found.",
+          "This URL leads to a dimension where pages don't exist. Try another portal, chief invigilator.",
+          "Oops! This page must have graduated and left the university. No forwarding address.",
+          "You know that feeling when you're invigilating and a student disappears? This page had the same problem.",
+          "404: Page not found. Have you tried turning the exam hall lights off and on again?",
+          "This page is currently on sabbatical. Please check back in 2050.",
+          "We asked the server about this page. It just shrugged and said 'IDK bro'.",
+          "This page is like a ghost — people claim they've seen it, but there's no proof.",
+        ],
+        student: [
+          "Looks like this page pulled a Houdini and vanished into thin air. Maybe it never existed, or maybe it's just playing hide and seek.",
+          "This page is like your ex — gone, not coming back, and you're better off without it.",
+          "We searched high and low, under the library desk, behind the lecture hall... nowhere to be found.",
+          "This URL leads to a dimension where pages don't exist. Try another portal, student.",
+          "Oops! This page must have graduated and left the university. No forwarding address.",
+          "You know that feeling when you walk into a lecture hall and forget your seat? This page had the same problem.",
+          "404: Page not found. Have you tried turning your phone off and on again?",
+          "This page is currently on sabbatical. Please check back in 2050.",
+          "We asked the server about this page. It just shrugged and said 'IDK bro'.",
+          "This page is like a ghost — people claim they've seen it, but there's no proof.",
+        ],
+        default: [
+          "Looks like this page pulled a Houdini and vanished into thin air. Maybe it never existed, or maybe it's just playing hide and seek.",
+          "This page is like your ex — gone, not coming back, and you're better off without it.",
+          "We searched high and low, under the couch, behind the server rack... nowhere to be found.",
+          "This URL leads to a dimension where pages don't exist. Try another portal.",
+          "Oops! This page must have graduated and left the university. No forwarding address.",
+          "You know that feeling when you walk into a room and forget why? This page had the same problem.",
+          "404: Page not found. Have you tried turning the internet off and on again?",
+          "This page is currently on sabbatical. Please check back in 2050.",
+          "We asked the server about this page. It just shrugged and said 'IDK bro'.",
+          "This page is like a ghost — people claim they've seen it, but there's no proof.",
+        ]
+      },
       footer: [
         "Don't worry, even GPS gets lost sometimes.",
         "Maybe try shouting the page name three times into your screen.",
@@ -27,18 +144,68 @@
       ]
     },
     403: {
-      main: [
-        "Nope, not happening! This area is more restricted than the dean's office. You don't have the magic key for this one.",
-        "This page is VIP-only, and your name is not on the list. Sorry, not sorry.",
-        "Access denied! It's like trying to enter a final year project defense as a fresher. Bold, but no.",
-        "You shall not pass! — Gandalf (and also this server)",
-        "This page requires clearance level: 'Professor Emeritus'. You currently have: 'Student'.",
-        "We'd let you in, but then we'd have to let EVERYONE in. And we can't have that kind of chaos.",
-        "This is a restricted zone. If you proceed, campus security WILL be called. And they don't play.",
-        "Your permissions are like your CGPA — not high enough for this level.",
-        "Nice try, but this page is behind a firewall thicker than the school library walls.",
-        "Unauthorized access attempt logged. The IT department is judging you right now.",
-      ],
+      main: {
+        admin: [
+          "Nope, not happening! Even admin powers have limits. This area is more restricted than the dean's office.",
+          "This page is VIP-only, and your admin badge isn't enough. Sorry, not sorry.",
+          "Access denied! It's like trying to enter the server room without a key. Bold, but no.",
+          "You shall not pass! — Gandalf (and also this server, despite your admin role)",
+          "This page requires clearance level: 'Super Admin'. You currently have: 'Admin'.",
+          "We'd let you in, but even as an admin, you're not on the list. And we can't have that kind of chaos.",
+          "This is a restricted zone. Even admins need special permission. The system has spoken.",
+          "Your permissions are like your admin powers — not high enough for this level.",
+          "Nice try, but this page is behind a firewall thicker than your admin dashboard.",
+          "Unauthorized access attempt logged. The IT department is judging you right now, admin.",
+        ],
+        lecturer: [
+          "Nope, not happening! This area is more restricted than the exam office. Your lecturer pass doesn't work here.",
+          "This page is VIP-only, and your name is not on the list. Sorry, not sorry, professor.",
+          "Access denied! It's like trying to enter the exam hall without an invigilator pass. Bold, but no.",
+          "You shall not pass! — Gandalf (and also this server)",
+          "This page requires clearance level: 'Admin'. You currently have: 'Lecturer'.",
+          "We'd let you in, but then we'd have to let every lecturer in. And we can't have that.",
+          "This is a restricted zone. Only admin can access this area. Your lecturer privileges won't cut it.",
+          "Your permissions are like your course load — not enough for this level.",
+          "Nice try, but this page is behind a firewall thicker than the university library walls.",
+          "Unauthorized access attempt logged. The IT department is watching you, lecturer.",
+        ],
+        invigilator: [
+          "Nope, not happening! This area is more restricted than the exam vault. Your invigilator badge doesn't open this.",
+          "This page is VIP-only, and your name is not on the list. Sorry, not sorry.",
+          "Access denied! It's like trying to enter the dean's office without an appointment. Bold, but no.",
+          "You shall not pass! — Gandalf (and also this server)",
+          "This page requires clearance level: 'Lecturer' or higher. You currently have: 'Invigilator'.",
+          "We'd let you in, but then we'd have to let ALL invigilators in. Can't have that kind of chaos.",
+          "This is a restricted zone. If you proceed, campus security WILL be called. And they don't play.",
+          "Your permissions are like your invigilation schedule — not high enough for this level.",
+          "Nice try, but this page is behind a firewall thicker than the exam hall walls.",
+          "Unauthorized access attempt logged. The IT department is judging you right now.",
+        ],
+        student: [
+          "Nope, not happening! This area is more restricted than the dean's office. You don't have the magic key for this one.",
+          "This page is VIP-only, and your name is not on the list. Sorry, not sorry.",
+          "Access denied! It's like trying to enter a final year project defense as a fresher. Bold, but no.",
+          "You shall not pass! — Gandalf (and also this server)",
+          "This page requires clearance level: 'Professor Emeritus'. You currently have: 'Student'.",
+          "We'd let you in, but then we'd have to let EVERYONE in. And we can't have that kind of chaos.",
+          "This is a restricted zone. If you proceed, campus security WILL be called. And they don't play.",
+          "Your permissions are like your CGPA — not high enough for this level.",
+          "Nice try, but this page is behind a firewall thicker than the school library walls.",
+          "Unauthorized access attempt logged. The IT department is judging you right now.",
+        ],
+        default: [
+          "Nope, not happening! This area is more restricted than the dean's office. You don't have the magic key for this one.",
+          "This page is VIP-only, and your name is not on the list. Sorry, not sorry.",
+          "Access denied! It's like trying to enter a final year project defense as a fresher. Bold, but no.",
+          "You shall not pass! — Gandalf (and also this server)",
+          "This page requires clearance level: 'Professor Emeritus'. You currently have: 'Unknown'.",
+          "We'd let you in, but then we'd have to let EVERYONE in. And we can't have that kind of chaos.",
+          "This is a restricted zone. If you proceed, campus security WILL be called. And they don't play.",
+          "Your permissions are like your CGPA — not high enough for this level.",
+          "Nice try, but this page is behind a firewall thicker than the school library walls.",
+          "Unauthorized access attempt logged. The IT department is judging you right now.",
+        ]
+      },
       footer: [
         "If you think this is a mistake, contact the admin. Or bribe them with jollof.",
         "Have you tried being more... authorized?",
@@ -48,18 +215,68 @@
       ]
     },
     500: {
-      main: [
-        "Oops! Our servers are having a bit of a meltdown. It's not you, it's us. Probably a rogue semicolon somewhere.",
-        "Something exploded on our end. Don't panic, we have a guy. He's currently crying into his keyboard.",
-        "Error 500: Our code did a backflip and landed on its face. We're applying ice packs now.",
-        "The server encountered an internal error, which is tech speak for 'we have no idea what happened'.",
-        "Our backend just had an existential crisis. It's questioning its purpose in life.",
-        "Houston, we have a problem. And by Houston, we mean our server room. And by problem, we mean fire.",
-        "A wild bug appeared! Our developers used 'fix bug'... it's not very effective.",
-        "The hamster powering our server just fell off the wheel. We're getting a new hamster.",
-        "Our database took a coffee break and forgot to come back. We're negotiating its return.",
-        "This error is so rare, we might frame it. Thanks for being part of history!",
-      ],
+      main: {
+        admin: [
+          "Oops! Our servers are having a bit of a meltdown. Even the admin dashboard can't fix this one.",
+          "Something exploded on our end. Don't panic, we have a guy. He's currently crying into his keyboard. Even admin can't help.",
+          "Error 500: Our code did a backflip and landed on its face. We're applying ice packs now. Admin override not available.",
+          "The server encountered an internal error, which is tech speak for 'we have no idea what happened'. Even the admin is clueless.",
+          "Our backend just had an existential crisis. It's questioning its purpose in life. Admin, send help.",
+          "Houston, we have a problem. And by Houston, we mean our server room. And by problem, we mean fire. Admin, evacuate.",
+          "A wild bug appeared! Our developers used 'fix bug'... it's not very effective. Even admin debug can't catch it.",
+          "The hamster powering our server just fell off the wheel. We're getting a new hamster. Admin, fetch one.",
+          "Our database took a coffee break and forgot to come back. We're negotiating its return. Admin, negotiate.",
+          "This error is so rare, we might frame it. Thanks for being part of history, admin!",
+        ],
+        lecturer: [
+          "Oops! Our servers are having a bit of a meltdown. It's not you, it's us. Probably a rogue semicolon somewhere.",
+          "Something exploded on our end. Don't panic, we have a guy. He's currently crying into his keyboard.",
+          "Error 500: Our code did a backflip and landed on its face. We're applying ice packs now.",
+          "The server encountered an internal error, which is tech speak for 'we have no idea what happened'.",
+          "Our backend just had an existential crisis. It's questioning its purpose in life.",
+          "Houston, we have a problem. And by Houston, we mean our server room. And by problem, we mean fire.",
+          "A wild bug appeared! Our developers used 'fix bug'... it's not very effective.",
+          "The hamster powering our server just fell off the wheel. We're getting a new hamster.",
+          "Our database took a coffee break and forgot to come back. We're negotiating its return.",
+          "This error is so rare, we might frame it. Thanks for being part of history!",
+        ],
+        invigilator: [
+          "Oops! Our servers are having a bit of a meltdown. It's not you, it's us. Probably a rogue semicolon somewhere.",
+          "Something exploded on our end. Don't panic, we have a guy. He's currently crying into his keyboard.",
+          "Error 500: Our code did a backflip and landed on its face. We're applying ice packs now.",
+          "The server encountered an internal error, which is tech speak for 'we have no idea what happened'.",
+          "Our backend just had an existential crisis. It's questioning its purpose in life.",
+          "Houston, we have a problem. And by Houston, we mean our server room. And by problem, we mean fire.",
+          "A wild bug appeared! Our developers used 'fix bug'... it's not very effective.",
+          "The hamster powering our server just fell off the wheel. We're getting a new hamster.",
+          "Our database took a coffee break and forgot to come back. We're negotiating its return.",
+          "This error is so rare, we might frame it. Thanks for being part of history!",
+        ],
+        student: [
+          "Oops! Our servers are having a bit of a meltdown. It's not you, it's us. Probably a rogue semicolon somewhere.",
+          "Something exploded on our end. Don't panic, we have a guy. He's currently crying into his keyboard.",
+          "Error 500: Our code did a backflip and landed on its face. We're applying ice packs now.",
+          "The server encountered an internal error, which is tech speak for 'we have no idea what happened'.",
+          "Our backend just had an existential crisis. It's questioning its purpose in life.",
+          "Houston, we have a problem. And by Houston, we mean our server room. And by problem, we mean fire.",
+          "A wild bug appeared! Our developers used 'fix bug'... it's not very effective.",
+          "The hamster powering our server just fell off the wheel. We're getting a new hamster.",
+          "Our database took a coffee break and forgot to come back. We're negotiating its return.",
+          "This error is so rare, we might frame it. Thanks for being part of history!",
+        ],
+        default: [
+          "Oops! Our servers are having a bit of a meltdown. It's not you, it's us. Probably a rogue semicolon somewhere.",
+          "Something exploded on our end. Don't panic, we have a guy. He's currently crying into his keyboard.",
+          "Error 500: Our code did a backflip and landed on its face. We're applying ice packs now.",
+          "The server encountered an internal error, which is tech speak for 'we have no idea what happened'.",
+          "Our backend just had an existential crisis. It's questioning its purpose in life.",
+          "Houston, we have a problem. And by Houston, we mean our server room. And by problem, we mean fire.",
+          "A wild bug appeared! Our developers used 'fix bug'... it's not very effective.",
+          "The hamster powering our server just fell off the wheel. We're getting a new hamster.",
+          "Our database took a coffee break and forgot to come back. We're negotiating its return.",
+          "This error is so rare, we might frame it. Thanks for being part of history!",
+        ]
+      },
       footer: [
         "Our developers have been notified. They're probably crying already.",
         "Refresh if you dare. No promises though.",
@@ -69,18 +286,68 @@
       ]
     },
     429: {
-      main: [
-        "Whoa there, speed racer! You're going faster than the campus shuttle. Slow down a bit.",
-        "Too many requests! Even the server needs a breather. Give it a moment.",
-        "You're hitting us harder than a fresher hitting the cafeteria on day one. Pace yourself!",
-        "Rate limit reached. Our server is like a strict lecturer — it needs time between questions.",
-        "Chill! You're sending more requests than assignment deadline reminders.",
-        "Our server is overwhelmed. It's currently in a corner doing breathing exercises.",
-        "429: Too many requests. Have you tried... not doing that?",
-        "You're going at this like it's a 100m sprint. This is a marathon, friend.",
-        "The server is giving you the side-eye. Maybe take a 14-minute break?",
-        "Easy there! Even the Wi-Fi at the library has limits, and so do we.",
-      ],
+      main: {
+        admin: [
+          "Whoa there, speed racer! Even admins need to slow down sometimes.",
+          "Too many requests! Even the server needs a breather. Give it a moment.",
+          "You're hitting us harder than a fresher hitting the cafeteria on day one. Pace yourself, admin!",
+          "Rate limit reached. Our server is like a strict lecturer — it needs time between questions. Even the admin can't rush it.",
+          "Chill! You're sending more requests than assignment deadline reminders. Admin, take a break.",
+          "Our server is overwhelmed. It's currently in a corner doing breathing exercises. Admin, give it space.",
+          "429: Too many requests. Have you tried... not doing that? Admin, stop it.",
+          "You're going at this like it's a 100m sprint. This is a marathon, admin.",
+          "The server is giving you the side-eye. Maybe take a 14-minute break? Admin, relax.",
+          "Easy there! Even the admin dashboard has limits, and so do you.",
+        ],
+        lecturer: [
+          "Whoa there, speed racer! You're going faster than the campus shuttle. Slow down a bit.",
+          "Too many requests! Even the server needs a breather. Give it a moment.",
+          "You're hitting us harder than a fresher hitting the cafeteria on day one. Pace yourself!",
+          "Rate limit reached. Our server is like a strict lecturer — it needs time between questions.",
+          "Chill! You're sending more requests than assignment deadline reminders.",
+          "Our server is overwhelmed. It's currently in a corner doing breathing exercises.",
+          "429: Too many requests. Have you tried... not doing that?",
+          "You're going at this like it's a 100m sprint. This is a marathon, friend.",
+          "The server is giving you the side-eye. Maybe take a 14-minute break?",
+          "Easy there! Even the Wi-Fi at the library has limits, and so do we.",
+        ],
+        invigilator: [
+          "Whoa there, speed racer! You're going faster than the campus shuttle. Slow down a bit.",
+          "Too many requests! Even the server needs a breather. Give it a moment.",
+          "You're hitting us harder than a fresher hitting the cafeteria on day one. Pace yourself!",
+          "Rate limit reached. Our server is like a strict lecturer — it needs time between questions.",
+          "Chill! You're sending more requests than assignment deadline reminders.",
+          "Our server is overwhelmed. It's currently in a corner doing breathing exercises.",
+          "429: Too many requests. Have you tried... not doing that?",
+          "You're going at this like it's a 100m sprint. This is a marathon, friend.",
+          "The server is giving you the side-eye. Maybe take a 14-minute break?",
+          "Easy there! Even the Wi-Fi at the library has limits, and so do we.",
+        ],
+        student: [
+          "Whoa there, speed racer! You're going faster than the campus shuttle. Slow down a bit.",
+          "Too many requests! Even the server needs a breather. Give it a moment.",
+          "You're hitting us harder than a fresher hitting the cafeteria on day one. Pace yourself!",
+          "Rate limit reached. Our server is like a strict lecturer — it needs time between questions.",
+          "Chill! You're sending more requests than assignment deadline reminders.",
+          "Our server is overwhelmed. It's currently in a corner doing breathing exercises.",
+          "429: Too many requests. Have you tried... not doing that?",
+          "You're going at this like it's a 100m sprint. This is a marathon, friend.",
+          "The server is giving you the side-eye. Maybe take a 14-minute break?",
+          "Easy there! Even the Wi-Fi at the library has limits, and so do we.",
+        ],
+        default: [
+          "Whoa there, speed racer! You're going faster than the campus shuttle. Slow down a bit.",
+          "Too many requests! Even the server needs a breather. Give it a moment.",
+          "You're hitting us harder than a fresher hitting the cafeteria on day one. Pace yourself!",
+          "Rate limit reached. Our server is like a strict lecturer — it needs time between questions.",
+          "Chill! You're sending more requests than assignment deadline reminders.",
+          "Our server is overwhelmed. It's currently in a corner doing breathing exercises.",
+          "429: Too many requests. Have you tried... not doing that?",
+          "You're going at this like it's a 100m sprint. This is a marathon, friend.",
+          "The server is giving you the side-eye. Maybe take a 14-minute break?",
+          "Easy there! Even the Wi-Fi at the library has limits, and so do we.",
+        ]
+      },
       footer: [
         "Take a deep breath. Maybe grab some water. The server will be ready soon.",
         "Patience is a virtue. And also required by our rate limiter.",
@@ -133,13 +400,16 @@
                       : 500;
     const pool = messagePools[statusKey];
 
-    const mainIdx = getMessageIndex(pool.main.length, statusKey, 'main');
+    // Get role-specific messages
+    const roleMessages = pool.main[currentRole] || pool.main.default || pool.main[Object.keys(pool.main)[0]];
+    
+    const mainIdx = getMessageIndex(roleMessages.length, statusKey, 'main');
     const footerIdx = getMessageIndex(pool.footer.length, statusKey, 'footer');
 
-    mainMessage = pool.main[mainIdx];
+    mainMessage = roleMessages[mainIdx];
     footerMessage = pool.footer[footerIdx];
 
-    const storageKey = `error-msg-${statusKey}`;
+    const storageKey = `error-msg-${statusKey}-${currentRole}`;
     const stored = localStorage.getItem(storageKey);
     const currentBlock = getTimeBlock();
 
@@ -193,15 +463,21 @@
   <title>{$page.status} — MOUAU eTest</title>
 </svelte:head>
 
-<div class="error-page">
-  <!-- Floating background particles -->
+<div class="error-page" style="--role-color: {role.colorVar}; --role-bg: {role.bgVar};">
+  <!-- Floating background particles with role color -->
   <div class="particles" aria-hidden="true">
     {#each Array(12) as _, i}
-      <div class="particle" style="--i: {i}"></div>
+      <div class="particle" style="--i: {i}; background: {role.colorVar};"></div>
     {/each}
   </div>
 
   <div class="error-card" class:mounted>
+    <!-- Role Badge -->
+    <div class="role-badge" style="--role-color: {role.colorVar};">
+      <svelte:component this={role.icon} size={14} />
+      <span>{role.label}</span>
+    </div>
+
     <!-- Illustration -->
     <div class="illustration">
       {#if currentStatus === 404}
@@ -221,9 +497,9 @@
             <line x1="60" y1="155" x2="70" y2="170" stroke="var(--color-text)" stroke-width="3" stroke-linecap="round"/>
           </g>
           <!-- Bouncing question marks -->
-          <text x="35" y="95" font-size="14" fill="var(--color-focus)" font-weight="bold" class="q-mark q1">?</text>
-          <text x="85" y="100" font-size="12" fill="var(--color-focus)" font-weight="bold" class="q-mark q2">?</text>
-          <text x="120" y="88" font-size="11" fill="var(--color-focus)" font-weight="bold" class="q-mark q3">?</text>
+          <text x="35" y="95" font-size="14" fill="{role.colorVar}" font-weight="bold" class="q-mark q1">?</text>
+          <text x="85" y="100" font-size="12" fill="{role.colorVar}" font-weight="bold" class="q-mark q2">?</text>
+          <text x="120" y="88" font-size="11" fill="{role.colorVar}" font-weight="bold" class="q-mark q3">?</text>
           <!-- Spinning map/note -->
           <g class="spin-note">
             <rect x="130" y="80" width="16" height="20" rx="1" fill="var(--color-surface)" stroke="var(--color-border)" stroke-width="1" transform="rotate(15 138 90)"/>
@@ -236,7 +512,7 @@
       {:else if currentStatus === 403}
         <svg viewBox="0 0 200 180" class="error-svg" aria-hidden="true">
           <!-- Pulsing door -->
-          <rect x="70" y="30" width="60" height="120" rx="2" fill="none" stroke="var(--color-border)" stroke-width="4" class="door-pulse"/>
+          <rect x="70" y="30" width="60" height="120" rx="2" fill="none" stroke="{role.colorVar}" stroke-width="4" class="door-pulse"/>
           <rect x="74" y="34" width="52" height="116" rx="1" fill="var(--color-surface-hover)"/>
           <!-- Animated X cross -->
           <line x1="78" y1="40" x2="122" y2="140" stroke="#ef4444" stroke-width="4" opacity="0.8" class="cross-line"/>
@@ -254,22 +530,22 @@
           </g>
           <!-- Pulsing shield -->
           <g class="shield-pulse">
-            <path d="M40 85 L40 110 Q40 125 55 130 Q70 125 70 110 L70 85 Q55 90 40 85Z" fill="var(--color-focus)" opacity="0.2"/>
-            <path d="M40 85 L40 110 Q40 125 55 130 Q70 125 70 110 L70 85 Q55 90 40 85Z" fill="none" stroke="var(--color-focus)" stroke-width="2"/>
-            <text x="55" y="112" text-anchor="middle" font-size="10" fill="var(--color-focus)" font-weight="bold">403</text>
+            <path d="M40 85 L40 110 Q40 125 55 130 Q70 125 70 110 L70 85 Q55 90 40 85Z" fill="{role.colorVar}" opacity="0.2"/>
+            <path d="M40 85 L40 110 Q40 125 55 130 Q70 125 70 110 L70 85 Q55 90 40 85Z" fill="none" stroke="{role.colorVar}" stroke-width="2"/>
+            <text x="55" y="112" text-anchor="middle" font-size="10" fill="{role.colorVar}" font-weight="bold">403</text>
           </g>
         </svg>
 
       {:else if currentStatus === 429}
         <svg viewBox="0 0 200 180" class="error-svg" aria-hidden="true">
           <!-- Clock/timer -->
-          <circle cx="100" cy="90" r="55" fill="none" stroke="var(--color-border)" stroke-width="4" class="clock-ring"/>
-          <circle cx="100" cy="90" r="50" fill="var(--color-surface)" stroke="var(--color-focus)" stroke-width="2" opacity="0.1"/>
+          <circle cx="100" cy="90" r="55" fill="none" stroke="{role.colorVar}" stroke-width="4" class="clock-ring"/>
+          <circle cx="100" cy="90" r="50" fill="var(--color-surface)" stroke="{role.colorVar}" stroke-width="2" opacity="0.1"/>
           <!-- Clock hands -->
-          <line x1="100" y1="90" x2="100" y2="55" stroke="var(--color-focus)" stroke-width="3" stroke-linecap="round" class="hand-min"/>
-          <line x1="100" y1="90" x2="125" y2="90" stroke="var(--color-focus)" stroke-width="2" stroke-linecap="round" class="hand-hour"/>
+          <line x1="100" y1="90" x2="100" y2="55" stroke="{role.colorVar}" stroke-width="3" stroke-linecap="round" class="hand-min"/>
+          <line x1="100" y1="90" x2="125" y2="90" stroke="{role.colorVar}" stroke-width="2" stroke-linecap="round" class="hand-hour"/>
           <!-- Center dot -->
-          <circle cx="100" cy="90" r="4" fill="var(--color-focus)"/>
+          <circle cx="100" cy="90" r="4" fill="{role.colorVar}"/>
           <!-- Ticks -->
           {#each [0, 30, 60, 90, 120, 150, 180, 210, 240, 270, 300, 330] as deg}
             <line 
@@ -288,7 +564,7 @@
             <circle cx="178" cy="110" r="2" fill="var(--color-text)" class="antenna"/>
           </g>
           <!-- "429" text -->
-          <text x="100" y="160" text-anchor="middle" font-size="14" font-weight="bold" fill="var(--color-focus)">429</text>
+          <text x="100" y="160" text-anchor="middle" font-size="14" font-weight="bold" fill="{role.colorVar}">429</text>
           <!-- Zzz bubbles -->
           <text x="185" y="105" font-size="10" fill="var(--color-muted)" class="zzz z1">z</text>
           <text x="192" y="98" font-size="8" fill="var(--color-muted)" class="zzz z2">z</text>
@@ -298,7 +574,7 @@
         <svg viewBox="0 0 200 180" class="error-svg" aria-hidden="true">
           <!-- Shaking screen -->
           <g class="screen-shake">
-            <rect x="45" y="30" width="110" height="80" rx="6" fill="var(--color-surface)" stroke="var(--color-border)" stroke-width="3"/>
+            <rect x="45" y="30" width="110" height="80" rx="6" fill="var(--color-surface)" stroke="{role.colorVar}" stroke-width="3"/>
             <rect x="50" y="35" width="100" height="65" rx="3" fill="#0f172a"/>
             <text x="100" y="55" text-anchor="middle" font-size="8" fill="#ef4444" font-family="monospace">ERROR {currentStatus}</text>
             <line x1="60" y1="65" x2="140" y2="65" stroke="#334155" stroke-width="1"/>
@@ -309,22 +585,22 @@
           <rect x="70" y="118" width="60" height="6" rx="3" fill="var(--color-border)"/>
           <!-- Bug character with leg wiggle -->
           <g class="bug-body">
-            <ellipse cx="155" cy="100" rx="14" ry="10" fill="var(--color-focus)"/>
+            <ellipse cx="155" cy="100" rx="14" ry="10" fill="{role.colorVar}"/>
             <circle cx="150" cy="96" r="2" fill="white"/>
             <circle cx="160" cy="96" r="2" fill="white"/>
             <circle cx="150" cy="96" r="1" fill="var(--color-text)"/>
             <circle cx="160" cy="96" r="1" fill="var(--color-text)"/>
           </g>
           <!-- Wiggling antennae -->
-          <line x1="148" y1="92" x2="143" y2="82" stroke="var(--color-focus)" stroke-width="2" stroke-linecap="round" class="antenna-l"/>
-          <line x1="162" y1="92" x2="167" y2="82" stroke="var(--color-focus)" stroke-width="2" stroke-linecap="round" class="antenna-r"/>
-          <circle cx="143" cy="82" r="2" fill="var(--color-focus)" class="antenna-l"/>
-          <circle cx="167" cy="82" r="2" fill="var(--color-focus)" class="antenna-r"/>
+          <line x1="148" y1="92" x2="143" y2="82" stroke="{role.colorVar}" stroke-width="2" stroke-linecap="round" class="antenna-l"/>
+          <line x1="162" y1="92" x2="167" y2="82" stroke="{role.colorVar}" stroke-width="2" stroke-linecap="round" class="antenna-r"/>
+          <circle cx="143" cy="82" r="2" fill="{role.colorVar}" class="antenna-l"/>
+          <circle cx="167" cy="82" r="2" fill="{role.colorVar}" class="antenna-r"/>
           <!-- Wiggling legs -->
-          <line x1="145" y1="104" x2="138" y2="110" stroke="var(--color-focus)" stroke-width="2" stroke-linecap="round" class="leg leg-a"/>
-          <line x1="165" y1="104" x2="172" y2="110" stroke="var(--color-focus)" stroke-width="2" stroke-linecap="round" class="leg leg-b"/>
-          <line x1="148" y1="108" x2="142" y2="115" stroke="var(--color-focus)" stroke-width="2" stroke-linecap="round" class="leg leg-b"/>
-          <line x1="162" y1="108" x2="168" y2="115" stroke="var(--color-focus)" stroke-width="2" stroke-linecap="round" class="leg leg-a"/>
+          <line x1="145" y1="104" x2="138" y2="110" stroke="{role.colorVar}" stroke-width="2" stroke-linecap="round" class="leg leg-a"/>
+          <line x1="165" y1="104" x2="172" y2="110" stroke="{role.colorVar}" stroke-width="2" stroke-linecap="round" class="leg leg-b"/>
+          <line x1="148" y1="108" x2="142" y2="115" stroke="{role.colorVar}" stroke-width="2" stroke-linecap="round" class="leg leg-b"/>
+          <line x1="162" y1="108" x2="168" y2="115" stroke="{role.colorVar}" stroke-width="2" stroke-linecap="round" class="leg leg-a"/>
           <!-- Smoke puffs -->
           <path d="M55 25 Q60 15 65 20 Q70 10 75 18" fill="none" stroke="#94a3b8" stroke-width="2" opacity="0.6" class="smoke s1"/>
           <path d="M125 22 Q130 12 135 18 Q140 8 145 16" fill="none" stroke="#94a3b8" stroke-width="2" opacity="0.6" class="smoke s2"/>
@@ -333,7 +609,7 @@
     </div>
 
     <!-- Status badge -->
-    <div class="status-badge">
+    <div class="status-badge" style="--badge-color: {role.colorVar};">
       {#if currentStatus === 404}
         <SearchX size={18} />
       {:else if currentStatus === 403}
@@ -361,24 +637,24 @@
     <p class="message">{mainMessage}</p>
 
     {#if currentStatus === 429 && countdownText}
-      <div class="countdown-badge">
+      <div class="countdown-badge" style="--badge-color: {role.colorVar};">
         <Clock size={14} />
         <span>Retry in: {countdownText}</span>
       </div>
     {/if}
 
     <div class="actions">
-      <a href="/" class="btn-primary">
+      <a href={role.homeRoute} class="btn-primary" style="--btn-bg: {role.colorVar};">
         <Home size={16} />
-        Go Home
+        Go {role.label} Home
       </a>
-      <button onclick={() => history.back()} class="btn-outline" type="button">
+      <button onclick={() => history.back()} class="btn-outline" style="--btn-color: {role.colorVar};" type="button">
         <ArrowLeft size={16} />
         Go Back
       </button>
     </div>
 
-    <div class="fun-note">
+    <div class="fun-note" style="--note-color: {role.colorVar};">
       <Frown size={14} />
       <span>{footerMessage}</span>
     </div>
@@ -410,7 +686,7 @@
     width: calc(4px + var(--i) * 2px);
     height: calc(4px + var(--i) * 2px);
     border-radius: 50%;
-    background: var(--color-focus);
+    background: var(--role-color);
     opacity: 0.08;
     left: calc(5% + var(--i) * 8%);
     top: calc(10% + (var(--i) * 37% + 13%) % 80%);
@@ -464,19 +740,43 @@
     transform: translateY(0);
   }
 
-  .error-card.mounted > *:nth-child(1) { transition-delay: 0.1s; }
-  .error-card.mounted > *:nth-child(2) { transition-delay: 0.2s; }
-  .error-card.mounted > *:nth-child(3) { transition-delay: 0.28s; }
-  .error-card.mounted > *:nth-child(4) { transition-delay: 0.35s; }
-  .error-card.mounted > *:nth-child(5) { transition-delay: 0.42s; }
-  .error-card.mounted > *:nth-child(6) { transition-delay: 0.5s; }
-  .error-card.mounted > *:nth-child(7) { transition-delay: 0.56s; }
+  .error-card.mounted > *:nth-child(1) { transition-delay: 0.05s; }
+  .error-card.mounted > *:nth-child(2) { transition-delay: 0.1s; }
+  .error-card.mounted > *:nth-child(3) { transition-delay: 0.18s; }
+  .error-card.mounted > *:nth-child(4) { transition-delay: 0.25s; }
+  .error-card.mounted > *:nth-child(5) { transition-delay: 0.32s; }
+  .error-card.mounted > *:nth-child(6) { transition-delay: 0.4s; }
+  .error-card.mounted > *:nth-child(7) { transition-delay: 0.47s; }
+  .error-card.mounted > *:nth-child(8) { transition-delay: 0.54s; }
+
+  /* ── Role Badge ────────────────────────────────────────────────── */
+  .role-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    padding: 0.25rem 0.75rem;
+    background: var(--role-bg);
+    color: var(--role-color);
+    border: 1.5px solid var(--role-color);
+    border-radius: 999px;
+    font-size: 0.7rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    opacity: 0.7;
+    animation: badge-enter 0.6s ease;
+  }
+
+  @keyframes badge-enter {
+    from { opacity: 0; transform: scale(0.8); }
+    to { opacity: 0.7; transform: scale(1); }
+  }
 
   /* ── Illustration float ───────────────────────────────────────── */
   .illustration {
     width: 200px;
     height: 180px;
-    margin-bottom: 0.5rem;
+    margin-bottom: 0.25rem;
     animation: float 4s ease-in-out infinite;
   }
 
@@ -531,8 +831,8 @@
   }
 
   @keyframes door-glow {
-    from { stroke: var(--color-border); }
-    to   { stroke: #ef4444; opacity: 0.7; }
+    from { stroke: var(--role-color); opacity: 0.5; }
+    to   { stroke: var(--role-color); opacity: 1; }
   }
 
   /* 403 — cross lines draw in */
@@ -604,8 +904,8 @@
     animation: ring-pulse 1.5s ease-in-out infinite alternate;
   }
   @keyframes ring-pulse {
-    from { stroke: var(--color-border); opacity: 1; }
-    to   { stroke: var(--color-focus); opacity: 0.6; }
+    from { stroke: var(--role-color); opacity: 0.5; }
+    to   { stroke: var(--role-color); opacity: 1; }
   }
 
   /* 429 — snail crawl */
@@ -706,7 +1006,7 @@
     align-items: center;
     gap: 0.5rem;
     padding: 0.4rem 1rem;
-    background: var(--color-focus);
+    background: var(--badge-color);
     color: white;
     border-radius: 999px;
     font-weight: 800;
@@ -716,8 +1016,8 @@
   }
 
   @keyframes badge-pulse {
-    0%, 100% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--color-focus) 40%, transparent); }
-    50%       { box-shadow: 0 0 0 8px color-mix(in srgb, var(--color-focus) 0%, transparent); }
+    0%, 100% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--badge-color) 40%, transparent); }
+    50%       { box-shadow: 0 0 0 8px color-mix(in srgb, var(--badge-color) 0%, transparent); }
   }
 
   .status-code {
@@ -730,9 +1030,9 @@
     align-items: center;
     gap: 0.4rem;
     padding: 0.35rem 1rem;
-    background: var(--color-primary-subtle);
-    border: 1.5px solid var(--color-focus);
-    color: var(--color-focus);
+    background: var(--role-bg);
+    border: 1.5px solid var(--badge-color);
+    color: var(--badge-color);
     border-radius: 999px;
     font-weight: 700;
     font-size: 0.9rem;
@@ -781,7 +1081,7 @@
   }
 
   .btn-primary {
-    background: var(--color-focus);
+    background: var(--btn-bg);
     color: #fff;
     border: none;
     animation: btn-breathe 3s ease-in-out infinite;
@@ -793,9 +1093,9 @@
   }
 
   .btn-primary:hover {
-    background: #15803d;
+    filter: brightness(0.9);
     transform: translateY(-2px) scale(1.04);
-    box-shadow: 0 6px 16px rgb(22 163 74 / 0.35);
+    box-shadow: 0 6px 16px color-mix(in srgb, var(--btn-bg) 35%, transparent);
     animation: none;
   }
 
@@ -806,9 +1106,9 @@
   }
 
   .btn-outline:hover {
-    border-color: var(--color-focus);
-    color: var(--color-focus);
-    background: var(--color-primary-subtle);
+    border-color: var(--btn-color);
+    color: var(--btn-color);
+    background: var(--role-bg);
     transform: translateX(-2px);
   }
 
@@ -819,7 +1119,7 @@
     gap: 0.4rem;
     margin-top: 0.75rem;
     padding: 0.5rem 1rem;
-    background: var(--color-primary-subtle);
+    background: var(--role-bg);
     border-radius: 999px;
     color: var(--color-muted);
     font-size: 0.8rem;
@@ -835,6 +1135,7 @@
   .fun-note :global(svg) {
     flex-shrink: 0;
     opacity: 0.7;
+    color: var(--note-color);
     animation: frown-bob 2s ease-in-out infinite;
   }
 
@@ -854,6 +1155,9 @@
     }
     h1 {
       font-size: 1.25rem;
+    }
+    .role-badge {
+      font-size: 0.6rem;
     }
   }
 

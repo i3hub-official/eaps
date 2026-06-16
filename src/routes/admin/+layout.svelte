@@ -16,6 +16,12 @@
     ChevronRight, Settings, Pin, Key, PlayCircle, Plus, User, Hash, Database, PlusCircle
   } from '@lucide/svelte';
 
+   import { setContext } from 'svelte';
+  import { ROLE_CONTEXT_KEY } from '$lib/constants/context';
+  
+  // Set the role context for all child components
+  setContext(ROLE_CONTEXT_KEY, 'admin');
+  
   let { data, children }: { data: LayoutData; children: import('svelte').Snippet } = $props();
 
   // ── Persistent state via localStorage ───────────────────────────

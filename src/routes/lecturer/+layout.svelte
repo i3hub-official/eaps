@@ -10,6 +10,10 @@
     PlusCircle, BarChart2, ChevronDown, Bell, CheckCheck,
     FileText, Clock, Menu, User, PanelLeftClose, PanelLeftOpen
   } from '@lucide/svelte';
+   import { setContext } from 'svelte';
+  import { ROLE_CONTEXT_KEY } from '$lib/constants/context';
+  
+  setContext(ROLE_CONTEXT_KEY, 'lecturer');
 
   let { data, children }: { data: LayoutData; children: import('svelte').Snippet } = $props();
 

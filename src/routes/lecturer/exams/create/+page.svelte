@@ -7,13 +7,14 @@
     Calendar, Search, X, GraduationCap, Building2,
     FileText, Timer, BarChart3, ShieldAlert, Layers
   } from '@lucide/svelte';
+  import { fly, fade } from 'svelte/transition';
 
   let { data, form }: {
     data: PageData & { departments: Array<{ id: string; name: string; code: string }> };
-    form: ActionData
+    form: ActionData;
   } = $props();
 
-  // ── Levels ──────────────────────────────────────────────────────────────────
+  // ── Levels ─────────────────────────────────────────────────────────────
   const LEVELS = [100, 200, 300, 400, 500, 600] as const;
   let selectedLevels = $state<Set<number>>(new Set());
   let allLevels = $derived(selectedLevels.size === LEVELS.length);
@@ -23,34 +24,36 @@
     next.has(level) ? next.delete(level) : next.add(level);
     selectedLevels = next;
   }
+
   function toggleAll() {
     selectedLevels = allLevels ? new Set() : new Set(LEVELS);
   }
 
-  // ── Departments ──────────────────────────────────────────────────────────────
-  const departments = data.departments;
+  // ── Departments (Fixed + Reactive) ─────────────────────────────────────
   let selectedDepartments = $state<Set<string>>(new Set());
   let deptOpen = $state(false);
   let deptSearch = $state('');
 
   const filteredDepts = $derived(
-    departments.filter(d =>
+    data.departments.filter(d =>
       d.name.toLowerCase().includes(deptSearch.toLowerCase()) ||
-      d.code.toLowerCase().includes(deptSearch.toLowerCase())
+      (d.code?.toLowerCase() ?? '').includes(deptSearch.toLowerCase())
     )
   );
+
   function toggleDept(id: string) {
     const next = new Set(selectedDepartments);
     next.has(id) ? next.delete(id) : next.add(id);
     selectedDepartments = next;
   }
+
   function removeDept(id: string) {
     const next = new Set(selectedDepartments);
     next.delete(id);
     selectedDepartments = next;
   }
 
-  // ── Course dropdown ──────────────────────────────────────────────────────────
+  // ── Course ─────────────────────────────────────────────────────────────
   let selectedCourse = $state('');
   let courseOpen = $state(false);
   let courseSearch = $state('');
@@ -62,7 +65,7 @@
   );
   const selectedCourseObj = $derived(data.courses.find(c => c.id === selectedCourse));
 
-  // ── Semester dropdown ────────────────────────────────────────────────────────
+  // ── Semester ───────────────────────────────────────────────────────────
   const SEMESTERS = [
     { value: '1', label: 'First Semester' },
     { value: '2', label: 'Second Semester' },
@@ -73,29 +76,26 @@
     SEMESTERS.find(s => s.value === selectedSemester)?.label ?? ''
   );
 
-  // ── Questions to present ─────────────────────────────────────────────────────
+  // ── Other form state ───────────────────────────────────────────────────
   let questionsToPresent = $state(0);
-
-  // ── Allow late entry ─────────────────────────────────────────────────────────
   let allowLateEntry = $state(false);
   let lateEntryMinutes = $state(10);
 
-  // ── DateTime picker ──────────────────────────────────────────────────────────
   let startDate = $state('');
   let startTime = $state('09:00');
-  let endDate   = $state('');
-  let endTime   = $state('11:00');
+  let endDate = $state('');
+  let endTime = $state('11:00');
   let startOpen = $state(false);
-  let endOpen   = $state(false);
+  let endOpen = $state(false);
 
-  let startCalYear  = $state(new Date().getFullYear());
+  let startCalYear = $state(new Date().getFullYear());
   let startCalMonth = $state(new Date().getMonth());
-  let endCalYear    = $state(new Date().getFullYear());
-  let endCalMonth   = $state(new Date().getMonth());
+  let endCalYear = $state(new Date().getFullYear());
+  let endCalMonth = $state(new Date().getMonth());
 
   const MONTH_NAMES = ['January','February','March','April','May','June','July','August','September','October','November','December'];
   const MONTH_SHORT = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
-  const DAY_NAMES   = ['Su','Mo','Tu','We','Th','Fr','Sa'];
+  const DAY_NAMES = ['Su','Mo','Tu','We','Th','Fr','Sa'];
 
   function calDays(year: number, month: number) {
     const first = new Date(year, month, 1).getDay();
@@ -104,17 +104,16 @@
     for (let i = 1; i <= total; i++) days.push(i);
     return days;
   }
+
   function fmtDate(y: number, m: number, d: number) {
     return `${y}-${String(m + 1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
   }
-  const todayStr = $derived(
-    fmtDate(new Date().getFullYear(), new Date().getMonth(), new Date().getDate())
-  );
+
+  const todayStr = $derived(fmtDate(new Date().getFullYear(), new Date().getMonth(), new Date().getDate()));
 
   function selectStartDay(day: number) { startDate = fmtDate(startCalYear, startCalMonth, day); }
-  function selectEndDay(day: number)   { endDate   = fmtDate(endCalYear,   endCalMonth,   day); }
+  function selectEndDay(day: number)   { endDate   = fmtDate(endCalYear, endCalMonth, day); }
 
-  // ✅ Keys must match parseExamForm: scheduledStart / scheduledEnd
   const startValue = $derived(startDate ? `${startDate}T${startTime}` : '');
   const endValue   = $derived(endDate   ? `${endDate}T${endTime}`     : '');
 
@@ -131,7 +130,7 @@
     }
   }
 
-  // ── Click outside ─────────────────────────────────────────────────────────────
+  // Click outside helper
   function clickOutside(node: HTMLElement, handler: () => void) {
     function handle(e: MouseEvent) {
       if (!node.contains(e.target as Node)) handler();
@@ -140,27 +139,24 @@
     return { destroy() { document.removeEventListener('mousedown', handle, true); } };
   }
 
-  function openCourse()   { courseOpen = true;   deptOpen = false; semesterOpen = false; startOpen = false; endOpen = false; }
-  function openDept()     { deptOpen = true;     courseOpen = false; semesterOpen = false; startOpen = false; endOpen = false; }
-  function openSemester() { semesterOpen = true; courseOpen = false; deptOpen = false; startOpen = false; endOpen = false; }
-  function openStart()    { startOpen = true;    endOpen = false; courseOpen = false; deptOpen = false; semesterOpen = false; }
-  function openEnd()      { endOpen = true;      startOpen = false; courseOpen = false; deptOpen = false; semesterOpen = false; }
+  function openCourse()   { courseOpen = true;   deptOpen = semesterOpen = startOpen = endOpen = false; }
+  function openDept()     { deptOpen = true;     courseOpen = semesterOpen = startOpen = endOpen = false; }
+  function openSemester() { semesterOpen = true; courseOpen = deptOpen = startOpen = endOpen = false; }
+  function openStart()    { startOpen = true;    endOpen = courseOpen = deptOpen = semesterOpen = false; }
+  function openEnd()      { endOpen = true;      startOpen = courseOpen = deptOpen = semesterOpen = false; }
 
-  // ── Preview helpers ───────────────────────────────────────────────────────────
+  // Preview helpers
   const levelPreview = $derived(
-    allLevels ? 'All' :
-    selectedLevels.size > 0 ? [...selectedLevels].sort((a,b)=>a-b).join(', ') : 'All'
+    allLevels ? 'All' : selectedLevels.size > 0 ? [...selectedLevels].sort((a,b)=>a-b).join(', ') : 'All'
   );
   const deptPreview = $derived(
-    selectedDepartments.size === 0 ? 'All' : selectedDepartments.size + ' selected'
+    selectedDepartments.size === 0 ? 'All' : `${selectedDepartments.size} selected`
   );
 </script>
 
 <svelte:head><title>Create Exam — MOUAU eTest</title></svelte:head>
 
 <div class="page">
-
-  <!-- Page header -->
   <div class="page-header">
     <a href="/lecturer" class="back-link">
       <ChevronLeft size={14} strokeWidth={2.5} /> Back to Dashboard
@@ -187,10 +183,9 @@
 
   <form method="POST" id="exam-form" class="exam-grid">
 
-    <!-- ══ COLUMN 1: Basic + Scope ══════════════════════════════════════════ -->
+    <!-- COLUMN 1 -->
     <div class="col">
-
-      <!-- Basic Info Card -->
+      <!-- Basic Information -->
       <div class="card">
         <div class="card-header">
           <span class="card-icon"><BookOpen size={16} strokeWidth={2} /></span>
@@ -200,29 +195,18 @@
           </div>
         </div>
         <div class="card-body">
-
           <div class="field">
             <label for="title">Exam Title <span class="req">*</span></label>
-            <input
-              id="title" name="title" type="text" required
-              placeholder="e.g. CSC301 First Semester Examination 2025/2026"
-              value={form?.values?.title ?? ''}
-            />
-            {#if form?.errors?.title}
-              <span class="field-error">{form.errors.title}</span>
-            {/if}
+            <input id="title" name="title" type="text" required placeholder="e.g. CSC301 First Semester Examination 2025/2026" value={form?.values?.title ?? ''} />
+            {#if form?.errors?.title}<span class="field-error">{form.errors.title}</span>{/if}
           </div>
 
-          <!-- Course dropdown -->
+          <!-- Course -->
           <div class="field">
             <label>Course <span class="req">*</span></label>
-            <!-- ✅ name="courseId" matches parseExamForm -->
             <input type="hidden" name="courseId" value={selectedCourse} />
             <div class="dd-wrap" use:clickOutside={() => { courseOpen = false; courseSearch = ''; }}>
-              <button
-                type="button" class="dd-trigger" class:open={courseOpen}
-                onclick={() => courseOpen ? (courseOpen = false) : openCourse()}
-              >
+              <button type="button" class="dd-trigger" class:open={courseOpen} onclick={() => courseOpen ? (courseOpen = false) : openCourse()}>
                 {#if selectedCourseObj}
                   <span class="dd-badge">{selectedCourseObj.code}</span>
                   <span class="dd-val">{selectedCourseObj.title}</span>
@@ -232,30 +216,20 @@
                 <ChevronDown size={15} class="dd-chevron" />
               </button>
               {#if courseOpen}
-                <div class="dd-panel">
+                <div class="dd-panel" transition:fade>
                   <div class="dd-search">
                     <Search size={13} />
-                    <input
-                      type="text"
-                      placeholder="Search by code or name…"
-                      bind:value={courseSearch}
-                      autofocus
-                    />
+                    <input type="text" placeholder="Search by code or name…" bind:value={courseSearch} autofocus />
                   </div>
                   <div class="dd-list">
                     {#if filteredCourses.length === 0}
                       <div class="dd-empty">No courses found</div>
                     {:else}
                       {#each filteredCourses as c}
-                        <button
-                          type="button" class="dd-item" class:active={selectedCourse === c.id}
-                          onclick={() => { selectedCourse = c.id; courseOpen = false; courseSearch = ''; }}
-                        >
+                        <button type="button" class="dd-item" class:active={selectedCourse === c.id} onclick={() => { selectedCourse = c.id; courseOpen = false; courseSearch = ''; }}>
                           <span class="item-code">{c.code}</span>
                           <span class="item-label">{c.title}</span>
-                          {#if selectedCourse === c.id}
-                            <Check size={13} class="item-check" />
-                          {/if}
+                          {#if selectedCourse === c.id}<Check size={13} class="item-check" />{/if}
                         </button>
                       {/each}
                     {/if}
@@ -263,23 +237,17 @@
                 </div>
               {/if}
             </div>
-            {#if form?.errors?.courseId}
-              <span class="field-error">{form.errors.courseId}</span>
-            {/if}
+            {#if form?.errors?.courseId}<span class="field-error">{form.errors.courseId}</span>{/if}
           </div>
 
           <div class="field">
             <label for="instructions">Instructions <span class="opt">Optional</span></label>
-            <textarea
-              id="instructions" name="instructions" rows="3"
-              placeholder="Answer all questions. No external resources allowed. Time shown is exam time."
-            >{form?.values?.instructions ?? ''}</textarea>
+            <textarea id="instructions" name="instructions" rows="3" placeholder="Answer all questions. No external resources allowed.">{form?.values?.instructions ?? ''}</textarea>
           </div>
-
         </div>
       </div>
 
-      <!-- Exam Scope Card -->
+      <!-- Exam Scope -->
       <div class="card">
         <div class="card-header">
           <span class="card-icon"><Users size={16} strokeWidth={2} /></span>
@@ -289,7 +257,6 @@
           </div>
         </div>
         <div class="card-body">
-
           <!-- Levels -->
           <div class="scope-section">
             <div class="scope-row">
@@ -297,47 +264,33 @@
                 <GraduationCap size={14} />
                 <span>Student Levels</span>
               </div>
-              <button
-                type="button" class="pill-btn" class:active={allLevels}
-                onclick={toggleAll}
-              >{allLevels ? '✓ All Selected' : 'Select All'}</button>
+              <button type="button" class="pill-btn" class:active={allLevels} onclick={toggleAll}>
+                {allLevels ? '✓ All Selected' : 'Select All'}
+              </button>
             </div>
 
             <div class="level-grid">
               {#each LEVELS as level}
-                <button
-                  type="button"
-                  class="level-chip"
-                  class:selected={selectedLevels.has(level)}
-                  onclick={() => toggleLevel(level)}
-                  aria-pressed={selectedLevels.has(level)}
-                >
+                <button type="button" class="level-chip" class:selected={selectedLevels.has(level)} onclick={() => toggleLevel(level)}>
                   <span class="level-num">{level}</span>
                   <span class="level-lbl">Level</span>
-                  {#if selectedLevels.has(level)}
-                    <span class="level-check"><Check size={10} strokeWidth={3} /></span>
-                  {/if}
+                  {#if selectedLevels.has(level)}<span class="level-check"><Check size={10} strokeWidth={3} /></span>{/if}
                 </button>
               {/each}
             </div>
 
-            <!-- ✅ One hidden input per level so getAll('levels') returns an array -->
             {#each [...selectedLevels] as level}
               <input type="hidden" name="levels" value={level} />
             {/each}
 
             <div class="scope-note" class:active={selectedLevels.size > 0 || allLevels}>
-              {allLevels
-                ? '✓ All levels (100–600) can sit this exam.'
-                : selectedLevels.size > 0
-                  ? `✓ ${[...selectedLevels].sort((a,b)=>a-b).map(l=>l+'L').join(', ')} students eligible.`
-                  : 'No level selected — all levels will be allowed by default.'}
+              {allLevels ? '✓ All levels (100–600) can sit this exam.' : selectedLevels.size > 0 ? `✓ ${[...selectedLevels].sort((a,b)=>a-b).map(l=>l+'L').join(', ')} students eligible.` : 'No level selected — all levels will be allowed by default.'}
             </div>
           </div>
 
           <div class="divider"></div>
 
-          <!-- Departments -->
+          <!-- Departments - Reactive -->
           <div class="scope-section">
             <div class="scope-row">
               <div class="scope-label-group">
@@ -347,29 +300,24 @@
               <span class="opt-badge">Optional</span>
             </div>
 
-            <!-- ✅ One hidden input per selected dept ID so getAll('departments') works -->
             {#each [...selectedDepartments] as id}
               <input type="hidden" name="departments" value={id} />
             {/each}
 
             <div class="dd-wrap" use:clickOutside={() => { deptOpen = false; deptSearch = ''; }}>
-              <button
-                type="button" class="dd-trigger multi" class:open={deptOpen}
-                onclick={() => deptOpen ? (deptOpen = false) : openDept()}
-              >
+              <button type="button" class="dd-trigger multi" class:open={deptOpen} onclick={() => deptOpen ? (deptOpen = false) : openDept()}>
                 {#if selectedDepartments.size === 0}
                   <span class="dd-placeholder">All departments (no restriction)…</span>
                 {:else}
                   <div class="tag-row">
-                    {#each [...selectedDepartments] as id}
-                      {@const d = departments.find(x => x.id === id)}
+                    {#each [...selectedDepartments] as id (id)}
+                      {@const d = data.departments.find(x => x.id === id)}
                       {#if d}
-                        <span class="tag">
+                        <span class="tag" transition:fly={{ duration: 180, x: 20 }}>
                           {d.code}
-                          <button
-                            type="button" class="tag-x"
-                            onclick={(e) => { e.stopPropagation(); removeDept(id); }}
-                          ><X size={9} strokeWidth={3} /></button>
+                          <button type="button" class="tag-x" onclick={(e) => { e.stopPropagation(); removeDept(id); }}>
+                            <X size={9} strokeWidth={3} />
+                          </button>
                         </span>
                       {/if}
                     {/each}
@@ -377,31 +325,22 @@
                 {/if}
                 <ChevronDown size={15} class="dd-chevron" />
               </button>
+
               {#if deptOpen}
-                <div class="dd-panel">
+                <div class="dd-panel" transition:fade={{ duration: 120 }}>
                   <div class="dd-search">
                     <Search size={13} />
-                    <input
-                      type="text"
-                      placeholder="Search departments…"
-                      bind:value={deptSearch}
-                      autofocus
-                    />
+                    <input type="text" placeholder="Search departments…" bind:value={deptSearch} autofocus />
                   </div>
                   <div class="dd-list">
                     {#if filteredDepts.length === 0}
                       <div class="dd-empty">No departments found</div>
                     {:else}
                       {#each filteredDepts as d}
-                        <button
-                          type="button" class="dd-item" class:active={selectedDepartments.has(d.id)}
-                          onclick={() => toggleDept(d.id)}
-                        >
+                        <button type="button" class="dd-item" class:active={selectedDepartments.has(d.id)} onclick={() => toggleDept(d.id)}>
                           <span class="item-code">{d.code}</span>
                           <span class="item-label">{d.name}</span>
-                          {#if selectedDepartments.has(d.id)}
-                            <Check size={13} class="item-check" />
-                          {/if}
+                          {#if selectedDepartments.has(d.id)}<Check size={13} class="item-check" />{/if}
                         </button>
                       {/each}
                     {/if}
@@ -411,10 +350,8 @@
             </div>
             <p class="field-hint">Leave empty to allow all departments.</p>
           </div>
-
         </div>
       </div>
-
     </div>
 
     <!-- ══ COLUMN 2: Timing + Scoring ══════════════════════════════════════ -->
@@ -431,7 +368,6 @@
         </div>
         <div class="card-body">
 
-          <!-- ✅ scheduledStart / scheduledEnd match parseExamForm -->
           <input type="hidden" name="scheduledStart" value={startValue} />
           <input type="hidden" name="scheduledEnd"   value={endValue} />
 
@@ -575,7 +511,6 @@
             </div>
             <div class="field">
               <label>Semester <span class="req">*</span></label>
-              <!-- ✅ name="semester" matches parseExamForm -->
               <input type="hidden" name="semester" value={selectedSemester} />
               <div class="dd-wrap" use:clickOutside={() => semesterOpen = false}>
                 <button
@@ -624,7 +559,6 @@
         <div class="card-body">
 
           <div class="score-grid">
-            <!-- ✅ durationMinutes matches parseExamForm -->
             <div class="score-field">
               <label for="durationMinutes">
                 <Timer size={13} strokeWidth={2} /> Duration
@@ -643,7 +577,6 @@
               {/if}
             </div>
 
-            <!-- ✅ totalMarks matches parseExamForm -->
             <div class="score-field">
               <label for="totalMarks">
                 <FileText size={13} strokeWidth={2} /> Total Marks
@@ -662,7 +595,6 @@
               {/if}
             </div>
 
-            <!-- ✅ passMark matches parseExamForm -->
             <div class="score-field">
               <label for="passMark">
                 <Check size={13} strokeWidth={2.5} /> Pass Mark
@@ -681,7 +613,6 @@
               {/if}
             </div>
 
-            <!-- ✅ maxViolations matches parseExamForm -->
             <div class="score-field">
               <label for="maxViolations">
                 <ShieldAlert size={13} strokeWidth={2} /> Max Violations
@@ -701,7 +632,6 @@
             </div>
           </div>
 
-          <!-- Questions to present — single instance, ✅ questionsToPresent -->
           <div class="qtp-wrap">
             <div class="qtp-header">
               <div class="qtp-label-group">
@@ -758,7 +688,6 @@
         </div>
         <div class="toggles">
 
-          <!-- ✅ randomizeQuestions -->
           <label class="toggle-row">
             <div>
               <span class="toggle-label">Randomize Questions</span>
@@ -770,7 +699,6 @@
             </div>
           </label>
 
-          <!-- ✅ randomizeOptions -->
           <label class="toggle-row">
             <div>
               <span class="toggle-label">Randomize Options</span>
@@ -782,7 +710,6 @@
             </div>
           </label>
 
-          <!-- ✅ showResultAfter -->
           <label class="toggle-row">
             <div>
               <span class="toggle-label">Show Result Immediately</span>
@@ -794,7 +721,6 @@
             </div>
           </label>
 
-          <!-- ✅ allowLateEntry — was missing entirely -->
           <label class="toggle-row">
             <div>
               <span class="toggle-label">Allow Late Entry</span>
@@ -813,9 +739,8 @@
 
         </div>
 
-        <!-- ✅ lateEntryMinutes — only shown + submitted when allowLateEntry is on -->
         {#if allowLateEntry}
-          <div class="field" style="padding: 0.75rem 1.25rem 1rem;">
+          <div class="late-entry-field" transition:fly={{ y: -8, duration: 200 }}>
             <label for="lateEntryMinutes">Grace period</label>
             <div class="score-input-wrap" style="max-width: 140px;">
               <input
@@ -928,7 +853,8 @@
   .header-actions { display: flex; gap: 0.625rem; align-items: center; flex-shrink: 0; }
 
   /* ── Alert ────────────────────────────────────────────────────────────── */
-  .alert-error { display: flex; align-items: center; gap: 0.6rem; padding: 0.875rem 1rem; margin-bottom: 1.25rem; background: rgba(239,68,68,0.08); border: 1px solid rgba(239,68,68,0.25); border-radius: 0.75rem; font-size: 0.875rem; color: #dc2626; }
+  .alert-error { display: flex; align-items: center; gap: 0.6rem; padding: 0.875rem 1rem; margin-bottom: 1.25rem; background: rgba(239,68,68,0.08); border: 1px solid rgba(239,68,68,0.25); border-radius: 0.75rem; font-size: 0.875rem; color: #dc2626; animation: shake 0.4s ease; }
+  @keyframes shake { 0%, 100% { transform: translateX(0); } 20% { transform: translateX(-4px); } 40% { transform: translateX(4px); } 60% { transform: translateX(-2px); } 80% { transform: translateX(2px); } }
 
   /* ── Grid layout ──────────────────────────────────────────────────────── */
   .exam-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1.25rem; align-items: start; }
@@ -948,7 +874,8 @@
   @keyframes fadeUp { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
 
   /* ── Cards ────────────────────────────────────────────────────────────── */
-  .card { background: var(--color-surface); border: 1px solid var(--color-border); border-radius: 1rem; overflow: visible; }
+  .card { background: var(--color-surface); border: 1px solid var(--color-border); border-radius: 1rem; overflow: visible; transition: box-shadow 0.2s; }
+  .card:hover { box-shadow: 0 1px 3px rgba(0,0,0,0.04); }
   .card-header { display: flex; align-items: flex-start; gap: 0.75rem; padding: 1rem 1.25rem 0.875rem; border-bottom: 1px solid var(--color-border); background: var(--color-bg); border-radius: 1rem 1rem 0 0; }
   .card-icon { width: 32px; height: 32px; flex-shrink: 0; display: flex; align-items: center; justify-content: center; background: var(--lc-soft); border-radius: 0.5rem; color: var(--lc-600); }
   .card-header h2 { font-size: 0.85rem; font-weight: 700; color: var(--color-text); margin: 0 0 0.15rem; line-height: 1.2; }
@@ -1004,10 +931,52 @@
   :global(.item-check) { color: var(--lc-600); flex-shrink: 0; margin-left: auto; }
   .dd-empty { text-align: center; padding: 1.25rem; font-size: 0.82rem; color: var(--color-muted); }
   .dd-trigger.multi { flex-wrap: wrap; height: auto; align-items: center; }
-  .tag-row { display: flex; flex-wrap: wrap; gap: 0.25rem; flex: 1; }
-  .tag { display: inline-flex; align-items: center; gap: 0.2rem; font-size: 0.7rem; font-weight: 700; padding: 0.2rem 0.3rem 0.2rem 0.45rem; background: var(--lc-soft); color: var(--lc-600); border-radius: 0.3rem; white-space: nowrap; }
-  .tag-x { background: none; border: none; cursor: pointer; color: var(--lc-600); display: flex; align-items: center; padding: 0; opacity: 0.6; transition: opacity 0.1s; }
-  .tag-x:hover { opacity: 1; }
+
+  /* ── Tags (reactive removal) ─────────────────────────────────────────── */
+  .tag-row { display: flex; flex-wrap: wrap; gap: 0.35rem; flex: 1; }
+  .tag {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.25rem;
+    font-size: 0.72rem;
+    font-weight: 700;
+    padding: 0.25rem 0.35rem 0.25rem 0.5rem;
+    background: var(--lc-soft);
+    color: var(--lc-600);
+    border-radius: 0.35rem;
+    white-space: nowrap;
+    border: 1.5px solid transparent;
+    transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+    cursor: default;
+  }
+  .tag:hover {
+    border-color: rgba(79, 70, 229, 0.3);
+    box-shadow: 0 1px 2px rgba(0,0,0,0.05);
+  }
+  .tag.removing {
+    opacity: 0;
+    transform: scale(0.8) translateX(-8px);
+    pointer-events: none;
+  }
+  .tag-x {
+    background: none;
+    border: none;
+    cursor: pointer;
+    color: var(--lc-600);
+    display: flex;
+    align-items: center;
+    padding: 0.1rem;
+    border-radius: 0.2rem;
+    opacity: 0.6;
+    transition: all 0.15s;
+  }
+  .tag-x:hover {
+    opacity: 1;
+    background: rgba(79, 70, 229, 0.15);
+  }
+  .tag-x:active {
+    transform: scale(0.9);
+  }
 
   /* ── DateTime picker ──────────────────────────────────────────────────── */
   :global(.dt-cal-icon) { flex-shrink: 0; color: var(--lc-600); }
@@ -1058,40 +1027,13 @@
   .score-unit { position: absolute; right: 0.75rem; top: 50%; transform: translateY(-50%); font-size: 0.72rem; font-weight: 700; color: var(--color-muted); pointer-events: none; }
 
   /* ── Questions to present ─────────────────────────────────────────────── */
-  .qtp-wrap {
-    display: flex; flex-direction: column; gap: 0.5rem;
-    padding: 0.875rem;
-    background: var(--color-bg);
-    border: 1px solid var(--color-border);
-    border-radius: 0.75rem;
-  }
-  .qtp-header {
-    display: flex; align-items: center; justify-content: space-between;
-  }
-  .qtp-label-group {
-    display: flex; align-items: center; gap: 0.35rem;
-    font-size: 0.8rem; font-weight: 600; color: var(--color-text);
-  }
-  .qtp-row {
-    display: flex; align-items: center; gap: 0.75rem;
-  }
-  .qtp-input-wrap {
-    width: 100px; flex-shrink: 0;
-  }
-  .qtp-hint-bubble {
-    flex: 1; font-size: 0.75rem; color: var(--color-muted);
-    padding: 0.45rem 0.75rem;
-    background: var(--color-surface);
-    border: 1px solid var(--color-border);
-    border-radius: 0.5rem;
-    line-height: 1.4;
-    transition: all 0.2s;
-  }
-  .qtp-hint-bubble.active {
-    color: var(--lc-600);
-    background: rgba(79, 70, 229, 0.05);
-    border-color: rgba(79, 70, 229, 0.25);
-  }
+  .qtp-wrap { display: flex; flex-direction: column; gap: 0.5rem; padding: 0.875rem; background: var(--color-bg); border: 1px solid var(--color-border); border-radius: 0.75rem; }
+  .qtp-header { display: flex; align-items: center; justify-content: space-between; }
+  .qtp-label-group { display: flex; align-items: center; gap: 0.35rem; font-size: 0.8rem; font-weight: 600; color: var(--color-text); }
+  .qtp-row { display: flex; align-items: center; gap: 0.75rem; }
+  .qtp-input-wrap { width: 100px; flex-shrink: 0; }
+  .qtp-hint-bubble { flex: 1; font-size: 0.75rem; color: var(--color-muted); padding: 0.45rem 0.75rem; background: var(--color-surface); border: 1px solid var(--color-border); border-radius: 0.5rem; line-height: 1.4; transition: all 0.2s; }
+  .qtp-hint-bubble.active { color: var(--lc-600); background: rgba(79, 70, 229, 0.05); border-color: rgba(79, 70, 229, 0.25); }
   .qtp-hint-bubble strong { font-weight: 800; }
 
   /* ── Toggles ──────────────────────────────────────────────────────────── */
@@ -1108,6 +1050,10 @@
   .toggle-cb:checked + .toggle-knob { background: var(--lc-600); }
   .toggle-cb:checked + .toggle-knob::after { transform: translateX(18px); }
 
+  /* ── Late entry field ─────────────────────────────────────────────────── */
+  .late-entry-field { padding: 0.75rem 1.25rem 1rem; border-top: 1px solid var(--color-border); }
+  .late-entry-field label { font-size: 0.8rem; font-weight: 600; color: var(--color-text); display: block; margin-bottom: 0.35rem; }
+
   /* ── Info box ─────────────────────────────────────────────────────────── */
   .info-box { display: flex; gap: 0.75rem; padding: 1rem 1.125rem; background: var(--lc-soft); border: 1px solid rgba(79, 70, 229, 0.2); border-radius: 0.875rem; }
   .info-dot { color: var(--lc-600); flex-shrink: 0; margin-top: 0.05rem; }
@@ -1122,7 +1068,6 @@
   .sum-row:hover { background: var(--lc-soft); }
   .sum-row span:first-child { font-size: 0.77rem; color: var(--color-muted); }
   .sum-val { font-size: 0.77rem; font-weight: 600; color: var(--color-text); text-align: right; }
-  .sum-val-accent { color: var(--lc-600); }
 
   /* ── Buttons ──────────────────────────────────────────────────────────── */
   .btn { display: inline-flex; align-items: center; justify-content: center; gap: 0.4rem; padding: 0.625rem 1.125rem; border-radius: 0.65rem; font-size: 0.83rem; font-weight: 700; cursor: pointer; transition: all 0.15s; text-decoration: none; font-family: inherit; white-space: nowrap; }

@@ -12,6 +12,11 @@
     FileText, Mail, Phone, Building2, BookOpen, Hash,
     Calendar, ArrowRight
   } from '@lucide/svelte';
+  
+   import { setContext } from 'svelte';
+  import { ROLE_CONTEXT_KEY } from '$lib/constants/context';
+  
+  setContext(ROLE_CONTEXT_KEY, 'invigilator');
 
   let { data, children }: { data: LayoutData; children: import('svelte').Snippet } = $props();
 

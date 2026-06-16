@@ -1,20 +1,14 @@
 // src/routes/lecturer/profile/+page.server.ts
-import type { PageServerLoad, Actions } from './$types';
 import { redirect } from '@sveltejs/kit';
-import { loadProfile, updateProfile, changePassword } from '$lib/server/profile.js';
+import type { PageServerLoad, Actions } from './$types';
+import { loadProfile, buildProfileActions } from '$lib/server/profile.js';
+
+const getUser = (locals: App.Locals) => locals.user ?? null;
 
 export const load: PageServerLoad = async ({ locals }) => {
-  if (!locals.user || locals.user.role !== 'lecturer') redirect(303, '/login');
-  return loadProfile(locals.user.id);
+  if (!locals.user) throw redirect(303, '/login');
+  const role = 'lecturer';
+  return loadProfile(locals.user.id, role);
 };
 
-export const actions: Actions = {
-  updateProfile: async ({ request, locals }) => {
-    if (!locals.user) redirect(303, '/login');
-    return updateProfile(request, locals.user.id);
-  },
-  changePassword: async ({ request, locals }) => {
-    if (!locals.user) redirect(303, '/login');
-    return changePassword(request, locals.user.id);
-  },
-};
+export const actions: Actions = buildProfileActions(getUser);
