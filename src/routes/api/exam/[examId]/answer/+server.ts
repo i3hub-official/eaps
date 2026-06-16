@@ -1,10 +1,20 @@
 // src/routes/api/exam/[examId]/answer/+server.ts
 import { error, json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
+import { z } from 'zod';
 import { getPrismaClient } from '$lib/server/db/index.js';
 import { getSessionByExamAndStudent, saveAnswerFlat, updateTimeRemaining } from '$lib/server/db/sessions.js';
 import { getExamById } from '$lib/server/db/exams.js';
 import { computeDeadline, secondsRemaining, finalizeSession, UUID_RE } from '$lib/server/exam/session-engine.js';
+
+const UUIDSchema = z.string().regex(UUID_RE, 'Must be a valid UUID');
+
+const AnswerSchema = z.object({
+  questionId:     UUIDSchema,
+  selectedOption: UUIDSchema.nullable().optional(),
+  textAnswer:     z.string().max(10_000).nullable().optional(),
+  timeSpentSecs:  z.number().int().min(0).max(86_400).default(0),
+});
 
 export const POST: RequestHandler = async (event) => {
   const user = event.locals.user;
@@ -14,18 +24,14 @@ export const POST: RequestHandler = async (event) => {
   const { examId } = event.params;
   if (!UUID_RE.test(examId)) throw error(400, 'Invalid exam id');
 
-  const body = await event.request.json().catch(() => null);
-  if (!body || typeof body.questionId !== 'string' || !UUID_RE.test(body.questionId)) {
-    throw error(400, 'questionId is required');
+  const body   = await event.request.json().catch(() => null);
+  const parsed = AnswerSchema.safeParse(body);
+
+  if (!parsed.success) {
+    throw error(400, parsed.error.flatten().fieldErrors as unknown as string);
   }
 
-  const { questionId } = body;
-  const selectedOption: string | null =
-    typeof body.selectedOption === 'string' && UUID_RE.test(body.selectedOption) ? body.selectedOption : null;
-  const textAnswer: string | null = typeof body.textAnswer === 'string' ? body.textAnswer : null;
-  const timeSpentSecs: number = Number.isFinite(body.timeSpentSecs)
-    ? Math.max(0, Math.floor(body.timeSpentSecs))
-    : 0;
+  const { questionId, selectedOption, textAnswer, timeSpentSecs } = parsed.data;
 
   const session = await getSessionByExamAndStudent(examId, user.id);
   if (!session) throw error(404, 'Exam session not found. Start the exam first.');
@@ -37,9 +43,8 @@ export const POST: RequestHandler = async (event) => {
   const exam = await getExamById(examId);
   if (!exam) throw error(404, 'Exam not found');
 
-  // ── Time check: refuse (and finalize) if the deadline has passed ────────
   if (!session.startedAt) throw error(500, 'Session has no start time');
-  const deadline = computeDeadline(exam, session.startedAt);
+  const deadline  = computeDeadline(exam, session.startedAt);
   const remaining = secondsRemaining(deadline);
 
   if (remaining <= 0) {
@@ -47,14 +52,13 @@ export const POST: RequestHandler = async (event) => {
     throw error(410, 'Time is up. This exam has been submitted automatically.');
   }
 
-  // ── Verify the question belongs to this student's locked question set ──
   const prisma = await getPrismaClient();
+
   const locked = await prisma.sessionQuestionOrder.findUnique({
     where: { sessionId_questionId: { sessionId: session.id, questionId } },
   });
   if (!locked) throw error(403, 'This question is not part of your exam.');
 
-  // ── Verify selectedOption (if provided) actually belongs to the question ─
   if (selectedOption) {
     const option = await prisma.questionOption.findUnique({ where: { id: selectedOption } });
     if (!option || option.questionId !== questionId) {
@@ -62,15 +66,22 @@ export const POST: RequestHandler = async (event) => {
     }
   }
 
-  const answer = await saveAnswerFlat(session.id, questionId, selectedOption, textAnswer, timeSpentSecs);
+  const answer = await saveAnswerFlat(
+    session.id,
+    questionId,
+    selectedOption ?? null,
+    textAnswer    ?? null,
+    timeSpentSecs,
+  );
+
   await updateTimeRemaining(session.id, remaining);
 
   return json({
-    ok: true,
+    ok:    true,
     saved: {
-      questionId: answer.questionId,
+      questionId:     answer.questionId,
       selectedOption: answer.selectedOption,
-      textAnswer: answer.textAnswer,
+      textAnswer:     answer.textAnswer,
     },
     time_remaining_secs: remaining,
   });

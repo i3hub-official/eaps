@@ -38,6 +38,11 @@ const normalize = {
   
   bvn: (s: string): string =>
     s.trim().replace(/[^0-9]/g, ''),
+
+   face: (s: string): string =>
+    s.trim().replace(/\s+/g, ' ').replace(/\w\S*/g, w =>
+      w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()
+    ),
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -104,6 +109,15 @@ export function protectKycData(raw: object): string {
   return encryptSecure(JSON.stringify(raw));
 }
 
+/** FACE: searchable (deterministic) for verification */
+export async function protectFace(raw: string) {
+  const normal = normalize.face(raw);
+  return {
+    encrypted:  encryptSearchable(normal, 'face'),
+    searchHash: await generateSearchHash(normal, 'face'),
+  };
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // UNPROTECT — Decrypt on read
 // ─────────────────────────────────────────────────────────────────────────────
@@ -140,6 +154,10 @@ export function revealKycData<T = object>(encrypted: string): T {
   return JSON.parse(decryptSecure(encrypted)) as T;
 }
 
+export function revealFace(encrypted: string): string {
+  return decryptSearchable(encrypted, 'face');
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // SEARCH HASH LOOKUP — Used in login resolver
 // ─────────────────────────────────────────────────────────────────────────────
@@ -151,6 +169,7 @@ export async function searchHashFor(
     email:    normalize.email,
     phone:    normalize.phone,
     username: normalize.username,
+    face: normalize.face,
   };
   return generateSearchHash(normalizers[field](input), field);
 }

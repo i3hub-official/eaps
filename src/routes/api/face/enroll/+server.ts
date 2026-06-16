@@ -1,59 +1,65 @@
-// src/routes/api/face/enroll/+server.ts
 import { json, error } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
+import { z } from 'zod';
 import { requireStudent } from '$lib/server/auth/guards.js';
 import { saveFaceDescriptor, isFaceEnrolled } from '$lib/server/db/faces.js';
 import { getPrismaClient } from '$lib/server/db/index.js';
 
+const EnrollSchema = z.object({
+  descriptor: z
+    .array(z.number().finite())
+    .min(64,   'Descriptor too short — minimum 64 dimensions')
+    .max(2048, 'Descriptor too long — maximum 2048 dimensions')
+    .refine(arr => arr.every(v => !isNaN(v)), 'All descriptor values must be valid numbers'),
+  photo: z
+    .string()
+    .startsWith('data:', 'Photo must be a base64 data URL')
+    .optional(),
+});
+
 export const POST: RequestHandler = async ({ request, locals }) => {
-  
   try {
-    const user = await requireStudent(locals.user);
-              const prisma = await getPrismaClient();
-    
-              
+    const user      = await requireStudent(locals.user);
+    const prisma    = await getPrismaClient();
     const studentId = String(user.id);
 
-    // BLOCK: No dual enrollment
+    // Block dual enrollment
     const alreadyEnrolled = await isFaceEnrolled(studentId);
     if (alreadyEnrolled) {
       return json(
         { ok: false, error: 'Face already enrolled. Contact admin to reset.' },
-        { status: 409 }
+        { status: 409 },
       );
     }
 
-    const { descriptor, photo, } = await request.json();
+    const body   = await request.json().catch(() => null);
+    const parsed = EnrollSchema.safeParse(body);
 
-    // Human embeddings are typically 512 or 1024 dimensions, not 128
-    if (!Array.isArray(descriptor) || descriptor.length === 0) {
-      error(400, 'Invalid descriptor — must be a non-empty float array');
+    if (!parsed.success) {
+      return json(
+        { ok: false, error: 'Invalid enrollment data', issues: parsed.error.flatten().fieldErrors },
+        { status: 400 },
+      );
     }
+
+    const { descriptor, photo } = parsed.data;
 
     console.log('Received descriptor of dimension:', descriptor.length);
-    
-    // Accept any reasonable embedding dimension (128, 512, 1024, etc.)
-    if (descriptor.length < 64 || descriptor.length > 2048) {
-      error(400, `Invalid descriptor dimension: ${descriptor.length}. Expected between 64-2048.`);
-    }
 
-    const isValid = descriptor.every(v => typeof v === 'number' && !isNaN(v) && isFinite(v));
-    if (!isValid) {
-      error(400, 'Invalid descriptor — all values must be valid finite numbers');
-    }
-
-    // Save face descriptor with dimension info
     await saveFaceDescriptor(studentId, descriptor, descriptor.length);
 
-    // Save compressed photo to user profile if provided
-    if (photo && typeof photo === 'string' && photo.startsWith('data:')) {
+    if (photo) {
       await prisma.user.update({
         where: { id: studentId },
-        data: { photoUrl: photo },
+        data:  { photoUrl: photo },
       });
     }
 
-    return json({ ok: true, message: 'Face enrolled successfully', dimension: descriptor.length });
+    return json({
+      ok:        true,
+      message:   'Face enrolled successfully',
+      dimension: descriptor.length,
+    });
 
   } catch (err) {
     console.error('Face enrollment error:', err);

@@ -1,19 +1,14 @@
 // src/routes/invigilator/notifications/+page.server.ts
+
+import { redirect } from '@sveltejs/kit';
 import type { PageServerLoad, Actions } from './$types';
-import { requireInvigilatorOrAdmin } from '$lib/server/auth/guards.js';
-import {
-  loadNotifications, markRead, markAllRead,
-  deleteNotification, deleteAllNotifications,
-} from '$lib/server/notifications-page.js';
+import { loadNotifications, buildNotificationActions } from '$lib/server/notifications-page.js';
+
+const getUser = (locals: App.Locals) => locals.user ?? null;
 
 export const load: PageServerLoad = async ({ locals }) => {
-  const user = await requireInvigilatorOrAdmin(locals.user);
-  return loadNotifications(user.id);
+  if (!locals.user) throw redirect(303, '/login');
+  return loadNotifications(locals.user.id);
 };
 
-export const actions: Actions = {
-  markRead:    async ({ request, locals }) => markRead(request, locals.user!.id),
-  markAllRead: async ({ locals })          => markAllRead(locals.user!.id),
-  delete:      async ({ request, locals }) => deleteNotification(request, locals.user!.id),
-  deleteAll:   async ({ locals })          => deleteAllNotifications(locals.user!.id),
-};
+export const actions: Actions = buildNotificationActions(getUser);

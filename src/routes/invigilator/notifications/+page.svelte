@@ -1,14 +1,10 @@
 <!-- src/routes/invigilator/notifications/+page.svelte -->
+
 <script lang="ts">
-  import type { PageData, ActionData } from './$types';
+  import type { PageData } from './$types';
   import NotificationsPage from '$lib/components/ui/NotificationsPage.svelte';
-  let { data, form }: { data: PageData; form: ActionData } = $props();
+
+  let { data }: { data: PageData } = $props();
 </script>
 
-<NotificationsPage
-  notifications={data.notifications}
-  unreadCount={data.unreadCount}
-  {form}
-  accentColor="#f97316"
-  accentBg="rgba(249,115,22,.12)"
-/>
+<NotificationsPage notifications={data.notifications} unreadCount={data.unreadCount} />
