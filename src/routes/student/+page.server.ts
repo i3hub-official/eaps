@@ -150,22 +150,26 @@ export const load: PageServerLoad = async ({ locals }) => {
     }),
   ]);
 
-  return {
+ return {
     stats: {
-      activeExams: availableExams.filter(e => e.status === 'active').length,
+      activeExams:   availableExams.filter(e => e.status === 'active').length,
       upcomingExams: availableExams.filter(e => e.status === 'scheduled').length,
-      totalResults: resultStats._count.id,
-      averageScore: Math.round(Number(resultStats._avg.percentage ?? 0)),
+      totalResults:  resultStats._count.id,
+      averageScore:  Math.round(Number(resultStats._avg.percentage ?? 0)),
     },
     availableExams,
-    recentResults,
+    recentResults: recentResults.map(r => ({
+      ...r,
+      score:      r.score      ? Number(r.score)      : null,
+      percentage: r.percentage ? Number(r.percentage) : null,
+    })),
     registeredCourses,
     activeSemester,
     _debug: {
-      studentId: user.id,
+      studentId:   user.id,
       studentLevel: user.level?.level,
-      semester: `${activeSemester.session} - Semester ${activeSemester.semester}`,
-      examCount: availableExams.length,
-    }
+      semester:    `${activeSemester.session} - Semester ${activeSemester.semester}`,
+      examCount:   availableExams.length,
+    },
   };
 };

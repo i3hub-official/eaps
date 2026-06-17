@@ -3,7 +3,7 @@ import { getPrismaClient } from '$lib/server/db/index.js';
 import type { Cookies } from '@sveltejs/kit';
 
 
-const VERIFICATION_WINDOW_MS = 5 * 60 * 1000; // 5 minutes
+const VERIFICATION_WINDOW_MS = 15 * 60 * 1000; // 15 minutes
 
 export async function requireFaceVerified(locals: App.Locals, cookies: Cookies, examId?: string) {
    const prisma = await getPrismaClient();

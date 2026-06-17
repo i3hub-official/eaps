@@ -11,10 +11,6 @@
     AlertTriangle, ArrowRight, Sparkles, Zap, Clock, Activity,
     PanelLeftClose, PanelLeftOpen
   } from '@lucide/svelte';
-   import { setContext } from 'svelte';
-  import { ROLE_CONTEXT_KEY } from '$lib/constants/context';
-  
-  setContext(ROLE_CONTEXT_KEY, 'student');
 
   let { data, children }: { data: LayoutData; children: import('svelte').Snippet } = $props();
 

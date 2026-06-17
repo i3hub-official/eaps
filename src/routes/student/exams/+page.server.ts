@@ -1,26 +1,13 @@
-/**
- * src/routes/student/exams/+page.server.ts
- *
- * Loads only session metadata for the exam flow.
- * Questions are NOT loaded here — they're fetched one-at-a-time via
- * GET /api/exam/[examId]/question?index=N&sessionId=<id>
- *
- * What we DO load here:
- *   - exam config (title, duration, course code, etc.)
- *   - student profile snapshot (for identity preview step)
- *   - face enrollment status
- *   - existing session status + server-confirmed answer indices (for resume)
- */
-
-import { error, redirect }        from '@sveltejs/kit';
-import type { PageServerLoad }    from './$types';
-import { requireStudent }         from '$lib/server/auth/guards.js';
-import { getPrismaClient }        from '$lib/server/db/index.js';
+// src/routes/student/exam/+page.server.ts
+import { error } from '@sveltejs/kit';
+import type { PageServerLoad } from './$types';
+import { requireStudent } from '$lib/server/auth/guards.js';
+import { getPrismaClient } from '$lib/server/db/index.js';
 import { getExamForSession, isStudentEligible } from '$lib/server/db/exams.js';
-import { getSessionByExamAndStudent }           from '$lib/server/db/sessions.js';
-import { computeDeadline, secondsRemaining, UUID_RE, finalizeSession }
-  from '$lib/server/exam/session-engine.js';
-import { toClientExam }           from '$lib/server/exam/transform.js';
+import { getSessionByExamAndStudent, getSessionAnswers } from '$lib/server/db/sessions.js';
+import { buildStudentQuestionOrder, sanitizeQuestionsForClient } from '$lib/server/exam/randomizer.js';
+import { computeDeadline, secondsRemaining, UUID_RE } from '$lib/server/exam/session-engine.js';
+import { toClientExam, toClientSession, toClientQuestions, toSavedAnswers } from '$lib/server/exam/transform.js';
 
 const FACE_REVALIDATION_MS = 5 * 60 * 1000;
 
@@ -38,66 +25,81 @@ export const load: PageServerLoad = async ({ locals, url, cookies }) => {
   const user   = await requireStudent(locals.user);
   const examId = url.searchParams.get('examId');
 
+  // If no examId, return early with a flag so the UI can show "Select an Exam"
   if (!examId || !UUID_RE.test(examId)) {
-    throw redirect(302, '/student/exams');
+    return {
+      examId: null,
+      exam: null,
+      student: null,
+      faceEnrolled: false,
+      faceVerified: false,
+      faceDescriptor: null,
+      sessionStatus: 'no_exam_selected',
+      session: null,
+      questions: [],
+      savedAnswers: [],
+      timeRemaining: 0,
+    };
   }
 
   const prisma = await getPrismaClient();
 
-  // ── Face enrollment check ──────────────────────────────────────────────────
+  // ── Face enrollment check ──────────────────────────────────────────────
   const faceDescriptor = await prisma.faceDescriptor.findUnique({
-    where:  { studentId: user.id },
+    where: { studentId: user.id },
     select: { descriptor: true, embedding_dimension: true, enrolledAt: true },
   });
 
-  const faceEnrolled = !!faceDescriptor;
-  const faceVerified = hasFreshFaceVerification(cookies);
+  const faceEnrolled  = !!faceDescriptor;
+  const faceVerified  = hasFreshFaceVerification(cookies);
 
-  // ── Load exam ──────────────────────────────────────────────────────────────
+  // ── Load exam ──────────────────────────────────────────────────────────
   const exam = await getExamForSession(examId);
   if (!exam) throw error(404, 'Exam not found');
 
-  // ── Registration check ─────────────────────────────────────────────────────
+  // ── Registration check ─────────────────────────────────────────────────
   const registered = await prisma.courseRegistration.findFirst({
-    where:  { studentId: user.id, courseId: exam.courseId },
+    where: { studentId: user.id, courseId: exam.courseId },
     select: { id: true },
   });
   if (!registered) throw error(403, 'You are not registered for this course.');
 
-  // ── Eligibility ────────────────────────────────────────────────────────────
+  // ── Eligibility ────────────────────────────────────────────────────────
   const eligibility = isStudentEligible(exam, user);
   if (!eligibility.eligible) throw error(403, eligibility.reason ?? 'Not eligible.');
 
-  // ── Student info for preview step ─────────────────────────────────────────
+  // ── Student info for preview ───────────────────────────────────────────
   const student = await prisma.user.findUnique({
-    where:  { id: user.id },
+    where: { id: user.id },
     select: {
-      id:           true,
-      fullName:     true,
-      email:        true,
-      matricNumber: true,
-      photoUrl:     true,
+      id:          true,
+      fullName:    true,
+      email:       true,
+      matricNumber:true,
+      photoUrl:    true,
       department: { select: { name: true, college: { select: { name: true } } } },
       level:       { select: { level: true } },
       programme:   { select: { name: true } },
     },
   });
+
   if (!student) throw error(404, 'Student record not found');
 
-  // ── Existing session ───────────────────────────────────────────────────────
+  // ── Existing session ───────────────────────────────────────────────────
   const existingSession = await getSessionByExamAndStudent(examId, user.id);
 
-  let sessionStatus    = existingSession?.status ?? 'not_started';
-  let sessionId: string | null = existingSession?.id ?? null;
-  let timeRemaining    = exam.durationMinutes * 60;
-  // Indices the server already has answers for (0-based display index)
-  let serverAnswerIndices: number[] = [];
+  let sessionData = null;
+  let questionsData: ReturnType<typeof toClientQuestions> = [];
+  let savedAnswersData: ReturnType<typeof toSavedAnswers> = [];
+  let timeRemaining = exam.durationMinutes * 60;
+  let sessionStatus = existingSession?.status ?? 'not_started';
 
-  if (existingSession?.startedAt) {
+  if (existingSession && existingSession.startedAt) {
     const deadline  = computeDeadline(exam, existingSession.startedAt);
     const remaining = secondsRemaining(deadline);
 
     if (remaining <= 0 && existingSession.status === 'in_progress') {
+      const { finalizeSession } = await import('$lib/server/exam/session-engine.js');
       await finalizeSession(existingSession.id, 'force_submitted');
       sessionStatus = 'force_submitted';
     } else {
@@ -108,56 +110,45 @@ export const load: PageServerLoad = async ({ locals, url, cookies }) => {
       existingSession.status === 'in_progress' ||
       existingSession.status === 'not_started'
     ) {
-      // Fetch which question indices the server already has recorded
-      const savedAnswerRows = await prisma.studentAnswer.findMany({
-        where:  { sessionId: existingSession.id },
-        select: { questionId: true },
-      });
+      const { getQuestionsByExam } = await import('$lib/server/db/exams.js');
+      const allQuestions = await getQuestionsByExam(examId);
+      const ordered = await buildStudentQuestionOrder(
+        existingSession.id,
+        allQuestions,
+        exam.randomizeQuestions,
+        exam.randomizeOptions,
+        exam.questionsToPresent,
+      );
+      const safe   = sanitizeQuestionsForClient(ordered);
+      const answers = await getSessionAnswers(existingSession.id);
 
-      if (savedAnswerRows.length > 0) {
-        const savedQuestionIds = new Set(savedAnswerRows.map(r => r.questionId));
-        const orderRows = await prisma.sessionQuestionOrder.findMany({
-          where:  { sessionId: existingSession.id, questionId: { in: [...savedQuestionIds] } },
-          select: { displayIndex: true },
-        });
-        serverAnswerIndices = orderRows.map(r => r.displayIndex);
-      }
+      sessionData      = toClientSession(existingSession, timeRemaining);
+      questionsData    = toClientQuestions(safe);
+      savedAnswersData = toSavedAnswers(answers);
     }
-  }
-
-  // ── Total questions (for resume context only) ──────────────────────────────
-  let totalQuestions: number | null = null;
-  if (existingSession) {
-    totalQuestions = await prisma.sessionQuestionOrder.count({
-      where: { sessionId: existingSession.id },
-    });
-    // If 0, order hasn't been built yet (new session) — client will learn on start
-    if (totalQuestions === 0) totalQuestions = null;
   }
 
   return {
     examId,
     exam:         toClientExam(exam),
     student: {
-      id:           student.id,
-      name:         student.fullName,
-      email:        student.email,
-      matricNumber: student.matricNumber,
-      photoUrl:     student.photoUrl,
-      department:   student.department?.name  ?? null,
-      college:      student.department?.college?.name ?? null,
-      level:        student.level?.level ? `${student.level.level} Level` : null,
-      programme:    student.programme?.name ?? null,
+      id:          student.id,
+      name:        student.fullName,
+      email:       student.email,
+      matricNumber:student.matricNumber,
+      photoUrl:    student.photoUrl,
+      department:  student.department?.name ?? null,
+      college:     student.department?.college?.name ?? null,
+      level:       student.level?.level ? `${student.level.level} Level` : null,
+      programme:   student.programme?.name ?? null,
     },
     faceEnrolled,
     faceVerified,
-    faceDescriptor: faceEnrolled
-      ? (faceDescriptor!.descriptor as number[])
-      : null,
+    faceDescriptor: faceDescriptor ? (faceDescriptor.descriptor as number[]) : null,
     sessionStatus,
-    sessionId,
+    session:      sessionData,
+    questions:    questionsData,
+    savedAnswers: savedAnswersData,
     timeRemaining,
-    totalQuestions,
-    serverAnswerIndices,
   };
 };

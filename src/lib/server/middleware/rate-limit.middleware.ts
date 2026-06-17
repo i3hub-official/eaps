@@ -10,26 +10,26 @@ import { RetryAfterRateLimiter } from 'sveltekit-rate-limiter/server';
 
 /** Face verification/enroll — tight limit, high-value target for brute force */
 const faceLimiter = new RetryAfterRateLimiter({
-  IP:   [10, '15m'],  // 10 attempts per IP per 15 minutes
-  IPUA: [5,  '15m'],  // 5 attempts per IP+UserAgent per 15 minutes
+  IP:   [1000, '15m'],  // 10 attempts per IP per 15 minutes
+  IPUA: [1000,  '15m'],  // 5 attempts per IP+UserAgent per 15 minutes
 });
 
 /** Exam actions: answer, start, submit — prevent answer-flooding */
 const examLimiter = new RetryAfterRateLimiter({
-  IP:   [120, 'm'],   // 120 req/min per IP  (2/sec headroom for rapid MCQ clicks)
-  IPUA: [100, 'm'],
+  IP:   [1000, 'm'],   // 120 req/min per IP  (2/sec headroom for rapid MCQ clicks)
+  IPUA: [1000, 'm'],
 });
 
 /** Auth routes: login, register, forgot, reset */
 const authLimiter = new RetryAfterRateLimiter({
-  IP:   [10, '15m'],  // 10 attempts per IP per 15 min
-  IPUA: [5,  '15m'],
+  IP:   [1000, '15m'],  // 10 attempts per IP per 15 min
+  IPUA: [1000,  '15m'],
 });
 
 /** General API catch-all — anything under /api/ not matched above */
 const generalApiLimiter = new RetryAfterRateLimiter({
-  IP:   [60, 'm'],    // 60 req/min per IP
-  IPUA: [60, 'm'],
+  IP:   [1000, 'm'],    // 60 req/min per IP
+  IPUA: [1000, 'm'],
 });
 
 // ─── Path matchers ────────────────────────────────────────────────────────────
