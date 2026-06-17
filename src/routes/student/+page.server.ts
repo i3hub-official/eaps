@@ -2,16 +2,25 @@
 import type { PageServerLoad } from './$types';
 import { requireStudent } from '$lib/server/auth/guards.js';
 import { getPrismaClient } from '$lib/server/db/index.js';
-
+// src/routes/student/+page.server.ts
 export const load: PageServerLoad = async ({ locals }) => {
   const user = await requireStudent(locals.user);
-          const prisma = await getPrismaClient();
+  const prisma = await getPrismaClient();
 
-  // Current session/semester from active AcademicSemester
   const activeSemester = await prisma.academicSemester.findFirst({
     where: { isActive: true },
-    select: { session: true, semester: true },
+    select: { session: true, semester: true, id: true },
   });
+
+  if (!activeSemester) {
+    return {
+      stats: { activeExams: 0, upcomingExams: 0, totalResults: 0, averageScore: 0 },
+      availableExams: [],
+      recentResults: [],
+      registeredCourses: [],
+      activeSemester: null,
+    };
+  }
 
   const [
     availableExams,
@@ -20,25 +29,24 @@ export const load: PageServerLoad = async ({ locals }) => {
     resultStats,
   ] = await Promise.all([
 
-    // Exams this student can take: active or scheduled, department/level match
+    // ✅ FIXED: Only filter by registration, NOT by level
     prisma.exam.findMany({
       where: {
         status: { in: ['active', 'scheduled'] },
-        // Filter by student's level
-        ...(user.levelId ? {
-          OR: [
-            { examLevels: { some: { levelId: user.levelId } } },
-            { levels:     { some: { id: user.levelId } } },
-          ],
-        } : {}),
-        // Filter by student's department
-        ...(user.departmentId ? {
-          OR: [
-            { examDepartments: { some: { departmentId: user.departmentId } } },
-            { course: { departmentId: user.departmentId } },
-          ],
-        } : {}),
-        // Exclude exams already completed by this student
+        session: activeSemester.session,
+        semester: activeSemester.semester,
+        // ✅ Remove level filter - students can see exams for any level they're registered for
+        course: {
+          registrations: {
+            some: {
+              studentId: user.id,
+              session: activeSemester.session,
+              semester: activeSemester.semester,
+              status: { in: ['pending', 'approved'] },
+            },
+          },
+        },
+        // Exclude exams already completed
         examSessions: {
           none: {
             studentId: user.id,
@@ -55,14 +63,34 @@ export const load: PageServerLoad = async ({ locals }) => {
         durationMinutes: true,
         scheduledStart: true,
         questionsToPresent: true,
-        course: { select: { code: true, title: true } },
+        course: {
+          select: {
+            code: true,
+            title: true,
+            level: true,  // Include to show student what level course it is
+            semester: true,
+          }
+        },
         _count: { select: { questions: true } },
+        examLevels: {
+          select: {
+            level: {
+              select: { level: true, name: true }
+            }
+          }
+        },
       },
     }),
 
-    // Most recent exam results for this student
+    // Recent results (current semester only)
     prisma.examResult.findMany({
-      where: { studentId: user.id },
+      where: {
+        studentId: user.id,
+        exam: {
+          session: activeSemester.session,
+          semester: activeSemester.semester,
+        }
+      },
       orderBy: { generatedAt: 'desc' },
       take: 5,
       select: {
@@ -75,60 +103,69 @@ export const load: PageServerLoad = async ({ locals }) => {
         exam: {
           select: {
             title: true,
-            course: { select: { code: true } },
+            course: { select: { code: true, level: true } },
           },
         },
       },
     }),
 
-    // Registered courses for the current semester
+    // Registered courses for current semester
     prisma.courseRegistration.findMany({
       where: {
         studentId: user.id,
-        ...(activeSemester ? {
-          session:  activeSemester.session,
-          semester: activeSemester.semester,
-        } : {}),
+        session: activeSemester.session,
+        semester: activeSemester.semester,
         status: { in: ['pending', 'approved'] },
       },
       select: {
         id: true,
         registrationType: true,
         status: true,
+        session: true,
+        semester: true,
         course: {
           select: {
             code: true,
             title: true,
             creditUnits: true,
             semester: true,
+            level: true,
           },
         },
       },
       orderBy: { createdAt: 'asc' },
     }),
 
-    // Average score across all results
+    // Average score
     prisma.examResult.aggregate({
-      where: { studentId: user.id },
+      where: {
+        studentId: user.id,
+        exam: {
+          session: activeSemester.session,
+          semester: activeSemester.semester,
+        }
+      },
       _avg: { percentage: true },
       _count: { id: true },
     }),
   ]);
 
-  // Count upcoming exams (scheduled and not yet sat)
-  const upcomingCount = availableExams.filter(e => e.status === 'scheduled').length;
-  const activeCount   = availableExams.filter(e => e.status === 'active').length;
-
   return {
     stats: {
-      activeExams:   activeCount,
-      upcomingExams: upcomingCount,
-      totalResults:  resultStats._count.id,
-      averageScore:  Math.round(Number(resultStats._avg.percentage ?? 0)),
+      activeExams: availableExams.filter(e => e.status === 'active').length,
+      upcomingExams: availableExams.filter(e => e.status === 'scheduled').length,
+      totalResults: resultStats._count.id,
+      averageScore: Math.round(Number(resultStats._avg.percentage ?? 0)),
     },
     availableExams,
     recentResults,
     registeredCourses,
     activeSemester,
+    _debug: {
+      studentId: user.id,
+      studentLevel: user.level?.level,
+      semester: `${activeSemester.session} - Semester ${activeSemester.semester}`,
+      examCount: availableExams.length,
+    }
   };
 };

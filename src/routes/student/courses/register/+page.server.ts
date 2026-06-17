@@ -99,37 +99,46 @@ export const load: PageServerLoad = async ({ locals, url }) => {
 
   const notRegistered = { NOT: { id: { in: Array.from(registeredIds) } } } as const;
 
-  const [collegeCourses, carryOverCourses, borrowedCourses] = await Promise.all([
-    studentCollegeId
-      ? prisma.course.findMany({
-        where: { ...notRegistered, level: studentLevel, department: { collegeId: studentCollegeId } },
-        include: { department: deptInclude, _count: { select: { registrations: true } } },
-        orderBy: { code: 'asc' },
-      })
-      : Promise.resolve([]),
-    (studentCollegeId && studentLevel > 100)
-      ? prisma.course.findMany({
-        where: { ...notRegistered, level: { lt: studentLevel }, department: { collegeId: studentCollegeId } },
-        include: { department: deptInclude, _count: { select: { registrations: true } } },
-        orderBy: [{ level: 'desc' }, { code: 'asc' }],
-      })
-      : Promise.resolve([]),
-    // Only offer borrowed courses when the student has a known college —
-    // otherwise `not: null` would match every course in the DB.
-    studentCollegeId
-      ? prisma.course.findMany({
-        where: {
-          ...notRegistered,
-          level: studentLevel,
-          department: {
-            collegeId: { not: studentCollegeId },
-          },
+const [collegeCourses, carryOverCourses, borrowedCourses] = await Promise.all([
+  studentCollegeId
+    ? prisma.course.findMany({
+      where: { 
+        ...notRegistered, 
+        level: studentLevel,
+        semester: currentSemester,  // ✅ ADD THIS
+        department: { collegeId: studentCollegeId } 
+      },
+      include: { department: deptInclude, _count: { select: { registrations: true } } },
+      orderBy: { code: 'asc' },
+    })
+    : Promise.resolve([]),
+  (studentCollegeId && studentLevel > 100)
+    ? prisma.course.findMany({
+      where: { 
+        ...notRegistered, 
+        level: { lt: studentLevel },
+        semester: currentSemester,  // ✅ ADD THIS
+        department: { collegeId: studentCollegeId } 
+      },
+      include: { department: deptInclude, _count: { select: { registrations: true } } },
+      orderBy: [{ level: 'desc' }, { code: 'asc' }],
+    })
+    : Promise.resolve([]),
+  studentCollegeId
+    ? prisma.course.findMany({
+      where: {
+        ...notRegistered,
+        level: studentLevel,
+        semester: currentSemester,  // ✅ ADD THIS
+        department: {
+          collegeId: { not: studentCollegeId },
         },
-        include: { department: deptInclude, _count: { select: { registrations: true } } },
-        orderBy: [{ department: { collegeId: 'asc' } }, { code: 'asc' }],
-      })
-      : Promise.resolve([]),
-  ]);
+      },
+      include: { department: deptInclude, _count: { select: { registrations: true } } },
+      orderBy: [{ department: { collegeId: 'asc' } }, { code: 'asc' }],
+    })
+    : Promise.resolve([]),
+]);
 
   const preselected = url.searchParams.get('course') ?? null;
 

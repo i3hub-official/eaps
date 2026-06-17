@@ -49,7 +49,28 @@ export const load: PageServerLoad = async ({ locals, params }) => {
 
   const passCount = await prisma.examResult.count({ where: { examId: params.examId, passed: true } });
 
-  return { exam, scoreStats, passCount };
+return {
+    exam: {
+      ...exam,
+      examSessions: exam.examSessions.map(s => ({
+        ...s,
+        score: s.score ? Number(s.score) : null,
+        examResult: s.examResult ? {
+          ...s.examResult,
+          score:      s.examResult.score      ? Number(s.examResult.score)      : null,
+          percentage: s.examResult.percentage ? Number(s.examResult.percentage) : null,
+        } : null,
+      })),
+    },
+    scoreStats: {
+      avg:      Math.round(Number(scoreStats._avg.percentage ?? 0)),
+      best:     Math.round(Number(scoreStats._max.percentage ?? 0)),
+      worst:    Math.round(Number(scoreStats._min.percentage ?? 0)),
+      avgScore: Math.round(Number(scoreStats._avg.score      ?? 0)),
+      count:    scoreStats._count.id,
+    },
+    passCount,
+  };
 };
 
 export const actions: Actions = {

@@ -336,7 +336,7 @@ results.push(`✓ ${creditCaps.length} level/semester credit caps`);
         { email: 'dr.okoro@mouau.edu.ng', fullName: 'Dr. Chika Okoro', staffId: 'LCT004', deptCode: 'PHY' },
         { email: 'prof.obiora@mouau.edu.ng', fullName: 'Prof. Obiora Kalu', staffId: 'LCT005', deptCode: 'CHM' },
         { email: 'dr.agbo@mouau.edu.ng', fullName: 'Dr. Ifenna Agbo', staffId: 'LCT006', deptCode: 'GLG' },
-                { email: 'lec_ogwo@mouau.edu.ng', fullName: 'Ogwo Godspower Chinaza', staffId: 'PHY310449', deptCode: 'PHY' },
+        { email: 'lec_ogwo@mouau.edu.ng', fullName: 'Ogwo Godspower Chinaza', staffId: 'PHY310449', deptCode: 'PHY' },
 
         // CEET
         { email: 'dr.adekunle@mouau.edu.ng', fullName: 'Dr. Adekunle Williams', staffId: 'LCT007', deptCode: 'EEE' },

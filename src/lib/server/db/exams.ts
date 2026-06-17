@@ -38,6 +38,7 @@ export async function getActiveAcademicSemester() {
  * with no ?examId — an in-progress session wins (resume), otherwise the
  * first currently-active exam they're registered for and eligible for.
  */
+// In your exam service file
 export async function findCurrentExamForStudent(student: {
   id: string;
   level: { level: number } | null;
@@ -45,16 +46,23 @@ export async function findCurrentExamForStudent(student: {
 }): Promise<string | null> {
   const prisma = await getPrismaClient();
 
+  // Check in-progress exam first
   const inProgress = await prisma.examSession.findFirst({
-    where: { studentId: student.id, status: 'in_progress' },
+    where: {
+      studentId: student.id,
+      status: 'in_progress'
+    },
     orderBy: { startedAt: 'desc' },
     select: { examId: true },
   });
   if (inProgress) return inProgress.examId;
 
-  const active = await getActiveAcademicSemester();
+  const active = await prisma.academicSemester.findFirst({
+    where: { isActive: true },
+  });
   if (!active) return null;
 
+  // ✅ FIXED: Only check registrations, NOT level
   const candidates = await prisma.exam.findMany({
     where: {
       status: 'active',
@@ -71,13 +79,30 @@ export async function findCurrentExamForStudent(student: {
         },
       },
     },
-    include: { ...withCourse, levels: { select: { level: true } } },
+    include: {
+      course: {
+        include: { department: true }
+      },
+      examLevels: {
+        select: {
+          level: { select: { level: true, name: true } }
+        }
+      },
+    },
     orderBy: { scheduledStart: 'asc' },
   });
 
-  for (const exam of candidates) {
-    if (isStudentEligible(exam, student).eligible) return exam.id;
+  if (candidates.length > 0) {
+    return candidates[0].id;
   }
+
+  // Diagnostic
+  console.log('[exam-debug]', {
+    studentId: student.id,
+    studentLevel: student.level?.level,
+    activeSemester: active,
+    candidateCount: candidates.length,
+  });
 
   return null;
 }
@@ -261,8 +286,8 @@ export async function createExam(input: {
   return prisma.exam.create({
     data: {
       ...rest,
-      department:          department          ?? null,
-      questionsToPresent:  questionsToPresent  ?? 0,
+      department: department ?? null,
+      questionsToPresent: questionsToPresent ?? 0,
       ...(levelConnect ? { levels: levelConnect } : {}),
     },
   });
@@ -294,9 +319,9 @@ export async function updateExam(id: string, input: Partial<{
   const levelConnect =
     levels !== undefined
       ? {
-          // Replace the full set: disconnect all then reconnect
-          set: levels.map((l) => ({ level: l })),
-        }
+        // Replace the full set: disconnect all then reconnect
+        set: levels.map((l) => ({ level: l })),
+      }
       : undefined;
 
   return prisma.exam.update({

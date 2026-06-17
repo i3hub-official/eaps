@@ -44,7 +44,7 @@
 
   const links = [
     { href: '/student',                   label: 'Dashboard',    icon: LayoutDashboard, exact: true  },
-    { href: '/student/exam',              label: 'My Exams',     icon: ClipboardList,   exact: false },
+    { href: '/student/exams',              label: 'My Exams',     icon: ClipboardList,   exact: false },
     { href: '/student/results',           label: 'Results',      icon: Target,          exact: false },
     { href: '/student/courses',           label: 'Courses',      icon: BookMarked,      exact: false },
     { href: '/student/courses/register',  label: 'Register',     icon: BookOpen,        exact: false, badge: true },
@@ -335,7 +335,7 @@
         <AlertTriangle size={14} />
         <span class="eb-label">Active exam:</span>
         <span class="eb-title">{data.activeExamSession.examTitle}</span>
-        <a href={`/student/exam/${data.activeExamSession.id}`} class="eb-btn">
+        <a href={`/student/exams/${data.activeExamSession.id}`} class="eb-btn">
           Resume <ArrowRight size={12} />
         </a>
       </div>

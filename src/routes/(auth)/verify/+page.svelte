@@ -287,9 +287,9 @@
           if (returnTo) {
             goto(returnTo);
           } else if (data.exam?.hasExistingSession && data.exam?.sessionId) {
-            goto(`/student/exam/${data.exam.sessionId}`);
+            goto(`/student/exams/${data.exam.sessionId}`);
           } else if (examId) {
-            goto(`/student/exam/${examId}`);
+            goto(`/student/exams/${examId}`);
           } else {
             goto('/student');
           }

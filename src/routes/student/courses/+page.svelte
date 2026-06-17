@@ -367,7 +367,7 @@
 															style="color:{es.color}; background:{es.bg}">{exam.status}</span
 														>
 														{#if exam.status === 'active'}
-															<a href="/student/exam/{exam.id}" class="exam-go">
+															<a href="/student/exams/{exam.id}" class="exam-go">
 																Start <ArrowRight size={9} />
 															</a>
 														{/if}

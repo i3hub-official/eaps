@@ -70,7 +70,7 @@
       </div>
     </div>
     {#if activeExams > 0}
-      <a href="/student/exam" class="exam-now-btn">
+      <a href="/student/exams" class="exam-now-btn">
         <Zap size={14} />
         {activeExams} Exam{activeExams > 1 ? 's' : ''} Live
         <ArrowRight size={14} />
@@ -137,7 +137,7 @@
             <span class="live-chip"><span class="live-dot"></span>{activeExams} live</span>
           {/if}
         </div>
-        <a href="/student/exam" class="see-all">All exams <ChevronRight size={13} /></a>
+        <a href="/student/exams" class="see-all">All exams <ChevronRight size={13} /></a>
       </div>
 
       {#if availableExams.length === 0}
@@ -173,9 +173,9 @@
               </div>
               <div class="exam-cta">
                 {#if exam.status === 'active'}
-                  <a href="/student/exam/{exam.id}" class="btn-start">
-                    <PlayCircle size={13} />
-                    Start
+  <a href="/student/exams?examId={exam.id}" class="btn-start">
+                      <PlayCircle size={13} />
+                    Enter exam
                   </a>
                 {:else}
                   <span class="btn-waiting">
@@ -427,7 +427,7 @@
     white-space: nowrap; overflow: hidden; text-overflow: ellipsis; flex: 1;
   }
   .exam-pill {
-    font-size: 0.6rem; font-weight: 800; text-transform: uppercase;
+    font-size: 0.5rem; font-weight: 800; text-transform: uppercase;
     letter-spacing: 0.04em; padding: 0.18rem 0.55rem; border-radius: 20px;
     flex-shrink: 0;
   }
