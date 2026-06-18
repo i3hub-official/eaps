@@ -72,3 +72,19 @@ export interface ProfileData {
   isActive?: boolean;
   lastActive?: string;
 }
+
+export interface PerformanceData {
+  grades: {
+    A: number;
+    B: number;
+    C: number;
+    D: number;
+    F: number;
+  };
+  trend: number[];
+  subjectPerformance: Array<{
+    subject: string;
+    score: number;
+  }>;
+  improvement: number;
+}
