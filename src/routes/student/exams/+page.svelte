@@ -6,7 +6,8 @@
   import {
     Camera, Clock, BookOpen, Calendar, PlayCircle,
     Lock, LayoutList, LayoutGrid, AlertTriangle,
-    ChevronRight, RotateCcw, CheckCircle,
+    ChevronRight, RotateCcw, CheckCircle, XCircle,
+    Info, AlertCircle, UserCheck, UserX
   } from '@lucide/svelte';
 
   import FaceEnrollmentModal from '$lib/components/exam/FaceEnrollmentModal.svelte';
@@ -15,12 +16,12 @@
   let { data }: { data: PageData } = $props();
 
   // ── Step machine ────────────────────────────────────────────────────────
-  // Minimal steps: exam list → optional enroll modal → optional verify modal → kiosk
   type Step = 'select' | 'enroll' | 'verify';
 
   let step            = $state<Step>('select');
   let selectedExamId  = $state<string | null>(null);
   let viewMode        = $state<'list' | 'grid'>('list');
+  let expandedSections = $state<Set<string>>(new Set(['eligible', 'scheduled']));
 
   onMount(() => {
     const saved = localStorage.getItem('etest-exam-view');
@@ -32,24 +33,30 @@
     localStorage.setItem('etest-exam-view', mode);
   }
 
+  function toggleSection(section: string) {
+    if (expandedSections.has(section)) {
+      expandedSections.delete(section);
+    } else {
+      expandedSections.add(section);
+    }
+    expandedSections = new Set(expandedSections);
+  }
+
   // ── Exam selection ───────────────────────────────────────────────────────
   function selectExam(examId: string) {
     selectedExamId = examId;
 
     if (!data.faceEnrolled) {
-      // Must enroll first; after enrollment they come back and try again
       step = 'enroll';
       return;
     }
 
     if (!data.faceVerified) {
-      // Enrolled but not verified this session → verify, then kiosk
       goto(`?examId=${examId}`, { replaceState: false });
       step = 'verify';
       return;
     }
 
-    // Enrolled + already verified this session → straight to kiosk
     enterKiosk(examId);
   }
 
@@ -59,7 +66,6 @@
 
   // ── Enrollment callbacks ─────────────────────────────────────────────────
   function onEnrollComplete() {
-    // Hard reload so server re-checks faceEnrolled
     window.location.href = selectedExamId
       ? `/student/exams?examId=${selectedExamId}`
       : '/student/exams';
@@ -67,18 +73,36 @@
 
   // ── Verification callbacks ───────────────────────────────────────────────
   function onVerifySuccess() {
-    // After verify, go directly into kiosk
     enterKiosk();
   }
 
   // ── Derived exam lists ───────────────────────────────────────────────────
-  const availableExams = $derived(data.availableExams ?? []);
-
-  // An exam is "resumable" if this student has an in_progress session for it.
-  // The server includes alreadySubmitted; we need to handle in_progress separately.
-  // We pass it through the exam's sessionStatus field (see server shape below).
-  const liveExams      = $derived(availableExams.filter(e => e.status === 'active' && !e.alreadySubmitted));
-  const scheduledExams = $derived(availableExams.filter(e => e.status === 'scheduled' && !e.alreadySubmitted));
+  const allExams = $derived(data.availableExams ?? []);
+  
+  // Categorize exams
+  const eligibleExams = $derived(
+    allExams.filter(e => 
+      e.status === 'active' && 
+      !e.alreadySubmitted &&
+      e.isEligible !== false
+    )
+  );
+  
+  const ineligibleExams = $derived(
+    allExams.filter(e => 
+      e.status === 'active' && 
+      !e.alreadySubmitted &&
+      e.isEligible === false
+    )
+  );
+  
+  const scheduledExams = $derived(
+    allExams.filter(e => e.status === 'scheduled' && !e.alreadySubmitted)
+  );
+  
+  const submittedExams = $derived(
+    allExams.filter(e => e.alreadySubmitted)
+  );
 
   // ── Helpers ─────────────────────────────────────────────────────────────
   function formatDuration(mins: number): string {
@@ -96,8 +120,22 @@
     });
   }
 
-  function questionCount(exam: typeof availableExams[number]): number {
+  function questionCount(exam: typeof allExams[number]): number {
     return exam.questionsToPresent || exam.questionCount;
+  }
+
+  function getEligibilityReason(exam: typeof allExams[number]): string {
+    if (exam.ineligibilityReasons && exam.ineligibilityReasons.length > 0) {
+      return exam.ineligibilityReasons.join(', ');
+    }
+    return 'You are not eligible for this exam';
+  }
+
+  function getStatusIcon(status: string, isEligible?: boolean) {
+    if (status === 'active' && isEligible !== false) return PlayCircle;
+    if (status === 'active' && isEligible === false) return XCircle;
+    if (status === 'scheduled') return Clock;
+    return Lock;
   }
 </script>
 
@@ -138,9 +176,10 @@
       <h1 class="page-title">My Exams</h1>
       <p class="page-sub">
         {#if !data.faceEnrolled}
-          Face enrollment required before you can enter any exam.
-        {:else if liveExams.length > 0}
-          {liveExams.length} exam{liveExams.length > 1 ? 's' : ''} live now
+          <AlertTriangle size={14} class="inline-icon" />
+          Face enrollment required
+        {:else if eligibleExams.length > 0}
+          {eligibleExams.length} exam{eligibleExams.length > 1 ? 's' : ''} available
         {:else if scheduledExams.length > 0}
           {scheduledExams.length} upcoming exam{scheduledExams.length > 1 ? 's' : ''}
         {:else}
@@ -187,24 +226,24 @@
     </div>
   </div>
 
-  <!-- ── Face enrollment banner (prominent, only when not enrolled) ──── -->
+  <!-- ── Face enrollment banner ──────────────────────────────────────── -->
   {#if !data.faceEnrolled}
     <div class="enroll-banner">
       <div class="enroll-banner-icon">
         <Camera size={20} />
       </div>
       <div class="enroll-banner-text">
-        <strong>Set up face recognition</strong>
-        <span>Required to unlock and enter any exam. Takes about 30 seconds.</span>
+        <strong>Face recognition required</strong>
+        <span>You need to enroll your face before you can start any exam.</span>
       </div>
       <button class="enroll-banner-btn" onclick={() => step = 'enroll'}>
-        Get started <ChevronRight size={14} />
+        Enroll now <ChevronRight size={14} />
       </button>
     </div>
   {/if}
 
   <!-- ── Empty state ──────────────────────────────────────────────────── -->
-  {#if availableExams.length === 0}
+  {#if allExams.length === 0}
     <div class="empty-state">
       <div class="empty-icon"><BookOpen size={32} strokeWidth={1.3} /></div>
       <h2>No exams available</h2>
@@ -213,117 +252,267 @@
 
   {:else}
 
-    <!-- ══ LIVE EXAMS ══════════════════════════════════════════════════ -->
-    {#if liveExams.length > 0}
+    <!-- ══ ELIGIBLE EXAMS ══════════════════════════════════════════════ -->
+    {#if eligibleExams.length > 0}
       <section class="exam-section">
-        <div class="section-head">
-          <span class="section-label live">
-            <span class="live-dot" aria-hidden="true"></span>
-            Live now
+        <button 
+          class="section-head interactive"
+          onclick={() => toggleSection('eligible')}
+          aria-expanded={expandedSections.has('eligible')}
+        >
+          <span class="section-label success">
+            <CheckCircle size={14} />
+            Available Now
           </span>
-          <span class="section-count">{liveExams.length}</span>
-        </div>
+          <span class="section-count">{eligibleExams.length}</span>
+          <ChevronRight 
+            size={16} 
+            class={"section-chevron " + (expandedSections.has('eligible') ? 'expanded' : '')}
+          />
+        </button>
 
-        <div class="exam-grid" class:is-grid={viewMode === 'grid'}>
-          {#each liveExams as exam}
-            {@const canEnter    = data.faceEnrolled}
-            {@const isResumable = exam.sessionStatus === 'in_progress'}
+        {#if expandedSections.has('eligible')}
+          <div class="exam-grid" class:is-grid={viewMode === 'grid'}>
+            {#each eligibleExams as exam}
+              {@const canEnter = data.faceEnrolled}
+              {@const isResumable = exam.sessionStatus === 'in_progress'}
 
-            <button
-              class="exam-card live-card"
-              class:card-locked={!canEnter}
-              class:card-resume={isResumable}
-              onclick={() => canEnter ? selectExam(exam.id) : (step = 'enroll')}
-              title={!canEnter ? 'Enroll your face to enter this exam' : undefined}
-            >
-              <!-- Course pill + status -->
-              <div class="card-top">
-                <span class="course-pill live-pill">{exam.course?.code ?? 'EXAM'}</span>
-                {#if isResumable}
-                  <span class="status-badge resume-badge">
-                    <RotateCcw size={10} /> Resume
-                  </span>
-                {:else if !canEnter}
-                  <span class="status-badge lock-badge">
-                    <Lock size={10} /> Locked
-                  </span>
-                {:else}
-                  <span class="status-badge enter-badge">
-                    <PlayCircle size={10} /> Enter
-                  </span>
+              <button
+                class="exam-card eligible-card"
+                class:card-locked={!canEnter}
+                class:card-resume={isResumable}
+                onclick={() => canEnter ? selectExam(exam.id) : (step = 'enroll')}
+                title={!canEnter ? 'Enroll your face to enter this exam' : undefined}
+              >
+                <!-- Course pill + status -->
+                <div class="card-top">
+                  <span class="course-pill eligible-pill">{exam.course?.code ?? 'EXAM'}</span>
+                  {#if isResumable}
+                    <span class="status-badge resume-badge">
+                      <RotateCcw size={10} /> Resume
+                    </span>
+                  {:else if !canEnter}
+                    <span class="status-badge lock-badge">
+                      <Lock size={10} /> Locked
+                    </span>
+                  {:else}
+                    <span class="status-badge enter-badge">
+                      <PlayCircle size={10} /> Start
+                    </span>
+                  {/if}
+                </div>
+
+                <!-- Title -->
+                <div class="card-title">{exam.title}</div>
+                {#if exam.course?.title}
+                  <div class="card-sub">{exam.course.title}</div>
                 {/if}
-              </div>
 
-              <!-- Title -->
-              <div class="card-title">{exam.title}</div>
-              {#if exam.course?.title}
-                <div class="card-sub">{exam.course.title}</div>
-              {/if}
+                <!-- Meta row -->
+                <div class="card-meta">
+                  <span class="meta-item">
+                    <Clock size={11} />{formatDuration(exam.durationMinutes)}
+                  </span>
+                  <span class="meta-item">
+                    <BookOpen size={11} />{questionCount(exam)} questions
+                  </span>
+                  {#if exam.scheduledStart}
+                    <span class="meta-item">
+                      <Calendar size={11} />{formatScheduled(exam.scheduledStart)}
+                    </span>
+                  {/if}
+                </div>
+              </button>
+            {/each}
+          </div>
+        {/if}
+      </section>
+    {/if}
 
-              <!-- Meta row -->
-              <div class="card-meta">
-                <span class="meta-item">
-                  <Clock size={11} />{formatDuration(exam.durationMinutes)}
-                </span>
-                <span class="meta-item">
-                  <BookOpen size={11} />{questionCount(exam)} questions
-                </span>
+    <!-- ══ INELIGIBLE EXAMS ════════════════════════════════════════════ -->
+    {#if ineligibleExams.length > 0}
+      <section class="exam-section">
+        <button 
+          class="section-head interactive"
+          onclick={() => toggleSection('ineligible')}
+          aria-expanded={expandedSections.has('ineligible')}
+        >
+          <span class="section-label danger">
+            <XCircle size={14} />
+            Ineligible
+          </span>
+          <span class="section-count">{ineligibleExams.length}</span>
+          <ChevronRight 
+            size={16} 
+            class="section-chevron {expandedSections.has('ineligible') ? 'expanded' : ''}"
+          />
+        </button>
+
+        {#if expandedSections.has('ineligible')}
+          <div class="exam-grid" class:is-grid={viewMode === 'grid'}>
+            {#each ineligibleExams as exam}
+              <div class="exam-card ineligible-card">
+                <div class="card-top">
+                  <span class="course-pill ineligible-pill">{exam.course?.code ?? 'EXAM'}</span>
+                  <span class="status-badge ineligible-badge">
+                    <XCircle size={10} /> Not Eligible
+                  </span>
+                </div>
+
+                <div class="card-title">{exam.title}</div>
+                {#if exam.course?.title}
+                  <div class="card-sub">{exam.course.title}</div>
+                {/if}
+
+                <div class="card-meta">
+                  <span class="meta-item">
+                    <Clock size={11} />{formatDuration(exam.durationMinutes)}
+                  </span>
+                  <span class="meta-item">
+                    <BookOpen size={11} />{questionCount(exam)} questions
+                  </span>
+                </div>
+
+                <!-- Eligibility reason -->
+                <div class="eligibility-reason">
+                  <AlertCircle size={14} />
+                  <span>{getEligibilityReason(exam)}</span>
+                </div>
               </div>
-            </button>
-          {/each}
-        </div>
+            {/each}
+          </div>
+        {/if}
       </section>
     {/if}
 
     <!-- ══ SCHEDULED EXAMS ════════════════════════════════════════════ -->
     {#if scheduledExams.length > 0}
       <section class="exam-section">
-        <div class="section-head">
-          <span class="section-label">Scheduled</span>
+        <button 
+          class="section-head interactive"
+          onclick={() => toggleSection('scheduled')}
+          aria-expanded={expandedSections.has('scheduled')}
+        >
+          <span class="section-label">
+            <Clock size={14} />
+            Scheduled
+          </span>
           <span class="section-count">{scheduledExams.length}</span>
-        </div>
+          <ChevronRight 
+            size={16} 
+            class={`section-chevron ${expandedSections.has('scheduled') ? 'expanded' : ''}`}
+          />
+        </button>
 
-        <div class="exam-grid" class:is-grid={viewMode === 'grid'}>
-          {#each scheduledExams as exam}
-            <div class="exam-card scheduled-card">
-              <div class="card-top">
-                <span class="course-pill sched-pill">{exam.course?.code ?? 'EXAM'}</span>
-                <span class="status-badge wait-badge">
-                  <Clock size={10} /> Upcoming
-                </span>
-              </div>
-
-              <div class="card-title">{exam.title}</div>
-              {#if exam.course?.title}
-                <div class="card-sub">{exam.course.title}</div>
-              {/if}
-
-              <div class="card-meta">
-                <span class="meta-item">
-                  <Clock size={11} />{formatDuration(exam.durationMinutes)}
-                </span>
-                <span class="meta-item">
-                  <BookOpen size={11} />{questionCount(exam)} questions
-                </span>
-                {#if exam.scheduledStart}
-                  <span class="meta-item">
-                    <Calendar size={11} />{formatScheduled(exam.scheduledStart)}
+        {#if expandedSections.has('scheduled')}
+          <div class="exam-grid" class:is-grid={viewMode === 'grid'}>
+            {#each scheduledExams as exam}
+              <div class="exam-card scheduled-card">
+                <div class="card-top">
+                  <span class="course-pill sched-pill">{exam.course?.code ?? 'EXAM'}</span>
+                  <span class="status-badge wait-badge">
+                    <Clock size={10} /> Upcoming
                   </span>
+                </div>
+
+                <div class="card-title">{exam.title}</div>
+                {#if exam.course?.title}
+                  <div class="card-sub">{exam.course.title}</div>
                 {/if}
+
+                <div class="card-meta">
+                  <span class="meta-item">
+                    <Clock size={11} />{formatDuration(exam.durationMinutes)}
+                  </span>
+                  <span class="meta-item">
+                    <BookOpen size={11} />{questionCount(exam)} questions
+                  </span>
+                  {#if exam.scheduledStart}
+                    <span class="meta-item">
+                      <Calendar size={11} />{formatScheduled(exam.scheduledStart)}
+                    </span>
+                  {/if}
+                </div>
               </div>
-            </div>
-          {/each}
-        </div>
+            {/each}
+          </div>
+        {/if}
+      </section>
+    {/if}
+
+    <!-- ══ SUBMITTED EXAMS ════════════════════════════════════════════ -->
+    {#if submittedExams.length > 0}
+      <section class="exam-section">
+        <button 
+          class="section-head interactive"
+          onclick={() => toggleSection('submitted')}
+          aria-expanded={expandedSections.has('submitted')}
+        >
+          <span class="section-label muted">
+            <CheckCircle size={14} />
+            Completed
+          </span>
+          <span class="section-count">{submittedExams.length}</span>
+          <ChevronRight 
+            size={16} 
+            class="section-chevron {expandedSections.has('submitted') ? 'expanded' : ''}"
+          />
+        </button>
+
+        {#if expandedSections.has('submitted')}
+          <div class="exam-grid" class:is-grid={viewMode === 'grid'}>
+            {#each submittedExams as exam}
+              <div class="exam-card submitted-card">
+                <div class="card-top">
+                  <span class="course-pill submitted-pill">{exam.course?.code ?? 'EXAM'}</span>
+                  <span class="status-badge submitted-badge">
+                    <CheckCircle size={10} /> Submitted
+                  </span>
+                </div>
+
+                <div class="card-title">{exam.title}</div>
+                {#if exam.course?.title}
+                  <div class="card-sub">{exam.course.title}</div>
+                {/if}
+
+                <div class="card-meta">
+                  <span class="meta-item">
+                    <Clock size={11} />{formatDuration(exam.durationMinutes)}
+                  </span>
+                  <span class="meta-item">
+                    <BookOpen size={11} />{questionCount(exam)} questions
+                  </span>
+                </div>
+              </div>
+            {/each}
+          </div>
+        {/if}
       </section>
     {/if}
 
   {/if}
+
+  <!-- ── Legend ──────────────────────────────────────────────────────── -->
+  <div class="legend">
+    <span class="legend-item">
+      <span class="legend-dot eligible-dot"></span> Available
+    </span>
+    <span class="legend-item">
+      <span class="legend-dot ineligible-dot"></span> Ineligible
+    </span>
+    <span class="legend-item">
+      <span class="legend-dot scheduled-dot"></span> Scheduled
+    </span>
+    <span class="legend-item">
+      <span class="legend-dot submitted-dot"></span> Completed
+    </span>
+  </div>
 </div>
 
 <style>
   /* ── Root ─────────────────────────────────────────────────────────────── */
   .exams-root {
-    max-width: 780px;
+    max-width: 820px;
     margin: 0 auto;
     padding: 1.75rem 1.5rem;
     display: flex;
@@ -350,7 +539,11 @@
     font-size: .82rem;
     color: var(--color-muted);
     margin: 0;
+    display: flex;
+    align-items: center;
+    gap: .4rem;
   }
+  .inline-icon { color: #f59e0b; }
   .page-header-right {
     display: flex;
     align-items: center;
@@ -473,34 +666,55 @@
     display: flex;
     align-items: center;
     gap: .5rem;
+    background: none;
+    border: none;
+    font-family: inherit;
+    font-size: inherit;
+    padding: 0;
+    cursor: default;
+    width: 100%;
+    text-align: left;
   }
+  .section-head.interactive {
+    cursor: pointer;
+    padding: .25rem 0;
+  }
+  .section-head.interactive:hover .section-label {
+    opacity: .8;
+  }
+
   .section-label {
-    font-size: .67rem;
+    font-size: .7rem;
     font-weight: 800;
     text-transform: uppercase;
     letter-spacing: .07em;
     color: var(--color-muted);
+    display: flex;
+    align-items: center;
+    gap: .35rem;
   }
-  .section-label.live { color: #059669; }
+  .section-label.success { color: #059669; }
+  .section-label.danger { color: #dc2626; }
+  .section-label.muted { color: var(--color-muted); }
+
   .section-count {
-    font-size: .67rem;
+    font-size: .65rem;
     font-weight: 700;
     background: var(--color-bg);
     border: 1px solid var(--color-border);
     color: var(--color-muted);
-    padding: .05rem .45rem;
+    padding: .05rem .5rem;
     border-radius: 999px;
   }
-  .live-dot {
-    display: inline-block;
-    width: 6px;
-    height: 6px;
-    border-radius: 50%;
-    background: #059669;
-    margin-right: 3px;
-    animation: livepulse 1.6s ease-in-out infinite;
+
+  .section-chevron {
+    margin-left: auto;
+    transition: transform .2s ease;
+    color: var(--color-muted);
   }
-  @keyframes livepulse { 0%,100% { opacity: 1; } 50% { opacity: .25; } }
+  .section-chevron.expanded {
+    transform: rotate(90deg);
+  }
 
   /* ── Grid layout ──────────────────────────────────────────────────────── */
   .exam-grid {
@@ -510,7 +724,7 @@
   }
   .exam-grid.is-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+    grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
     gap: .75rem;
   }
 
@@ -529,16 +743,16 @@
     position: relative;
   }
 
-  /* Live card — clickable */
+  /* Eligible card — clickable */
   button.exam-card {
     cursor: pointer;
     width: 100%;
   }
-  .live-card {
+  .eligible-card {
     border-color: rgba(16,185,129,.25);
     background: rgba(16,185,129,.02);
   }
-  button.live-card:not(.card-locked):hover {
+  button.eligible-card:not(.card-locked):hover {
     border-color: #10b981;
     background: rgba(16,185,129,.05);
     box-shadow: 0 0 0 3px rgba(16,185,129,.08);
@@ -562,11 +776,28 @@
   .card-locked:hover {
     border-color: rgba(16,185,129,.25) !important;
     box-shadow: none !important;
-    cursor: pointer; /* still pointer — opens enrollment */
+  }
+
+  /* Ineligible */
+  .ineligible-card {
+    border-color: rgba(220,38,38,.2);
+    background: rgba(220,38,38,.02);
+    opacity: .7;
   }
 
   /* Scheduled */
-  .scheduled-card { opacity: .75; }
+  .scheduled-card {
+    border-color: rgba(14,165,233,.15);
+    background: rgba(14,165,233,.02);
+    opacity: .85;
+  }
+
+  /* Submitted */
+  .submitted-card {
+    border-color: var(--color-border);
+    background: var(--color-bg);
+    opacity: .6;
+  }
 
   /* ── Card anatomy ─────────────────────────────────────────────────────── */
   .card-top {
@@ -584,8 +815,10 @@
     padding: .2rem .55rem;
     border-radius: 6px;
   }
-  .live-pill  { background: rgba(16,185,129,.12); color: #065f46; }
+  .eligible-pill { background: rgba(16,185,129,.12); color: #065f46; }
+  .ineligible-pill { background: rgba(220,38,38,.1); color: #991b1b; }
   .sched-pill { background: rgba(14,165,233,.1); color: #0c4a6e; }
+  .submitted-pill { background: var(--color-bg); color: var(--color-muted); border: 1px solid var(--color-border); }
 
   /* Status badges */
   .status-badge {
@@ -601,14 +834,15 @@
   .enter-badge  { background: rgba(16,185,129,.12); color: #065f46; }
   .resume-badge { background: rgba(99,102,241,.12); color: #3730a3; }
   .lock-badge   { background: #fef3c7; color: #92400e; border: 1px solid #fde68a; }
-  .wait-badge   { background: var(--color-bg); color: var(--color-muted); border: 1px solid var(--color-border); }
+  .wait-badge   { background: rgba(14,165,233,.1); color: #0c4a6e; }
+  .ineligible-badge { background: rgba(220,38,38,.1); color: #991b1b; }
+  .submitted-badge { background: rgba(16,185,129,.08); color: #065f46; }
 
   .card-title {
     font-size: .9rem;
     font-weight: 800;
     color: var(--color-text);
     line-height: 1.35;
-    /* truncate to 2 lines */
     display: -webkit-box;
     -webkit-line-clamp: 2;
     -webkit-box-orient: vertical;
@@ -636,6 +870,57 @@
     font-size: .7rem;
     color: var(--color-muted);
   }
+
+  .eligibility-reason {
+    display: flex;
+    align-items: flex-start;
+    gap: .5rem;
+    margin-top: .25rem;
+    padding: .5rem .625rem;
+    background: rgba(220,38,38,.05);
+    border: 1px solid rgba(220,38,38,.15);
+    border-radius: 6px;
+    font-size: .72rem;
+    color: #991b1b;
+  }
+  .eligibility-reason svg {
+    flex-shrink: 0;
+    margin-top: 1px;
+  }
+  .eligibility-reason span {
+    line-height: 1.4;
+  }
+
+  /* ── Legend ───────────────────────────────────────────────────────────── */
+  .legend {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    flex-wrap: wrap;
+    padding: .75rem 1rem;
+    background: var(--color-bg);
+    border: 1px solid var(--color-border);
+    border-radius: 10px;
+    margin-top: .5rem;
+  }
+  .legend-item {
+    display: flex;
+    align-items: center;
+    gap: .4rem;
+    font-size: .7rem;
+    font-weight: 600;
+    color: var(--color-muted);
+  }
+  .legend-dot {
+    width: 10px;
+    height: 10px;
+    border-radius: 3px;
+    display: inline-block;
+  }
+  .eligible-dot { background: #10b981; }
+  .ineligible-dot { background: #dc2626; }
+  .scheduled-dot { background: #0ea5e9; }
+  .submitted-dot { background: var(--color-muted); }
 
   /* ── Empty state ──────────────────────────────────────────────────────── */
   .empty-state {
@@ -679,6 +964,7 @@
     .enroll-banner { flex-wrap: wrap; }
     .enroll-banner-btn { width: 100%; justify-content: center; }
     .exam-grid.is-grid { grid-template-columns: 1fr 1fr; }
+    .legend { gap: .5rem; }
   }
   @media (max-width: 380px) {
     .exam-grid.is-grid { grid-template-columns: 1fr; }
