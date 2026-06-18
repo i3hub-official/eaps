@@ -1,4 +1,3 @@
-// src/routes/student/exams/+page.server.ts
 import { error, fail } from '@sveltejs/kit';
 import type { PageServerLoad, Actions } from './$types';
 import { requireStudent } from '$lib/server/auth/guards.js';
@@ -31,9 +30,11 @@ export type AvailableExam = {
   course: { code: string; title: string } | null;
   questionCount: number;
   alreadySubmitted: boolean;
-  isEligible?: boolean;
+  isEligible: boolean;
   ineligibilityReasons?: string[];
   sessionStatus?: string | null;
+  isRegistered: boolean;
+  isCarryOver: boolean;
 };
 
 export const load: PageServerLoad = async ({ locals, url, cookies }) => {
@@ -75,22 +76,35 @@ export const load: PageServerLoad = async ({ locals, url, cookies }) => {
       };
     }
 
-    // Get all exams for the student - removed 'level' and 'prerequisites'
-    const exams = await prisma.exam.findMany({
+    // Get student's registrations for this semester
+    const myRegistrations = await prisma.courseRegistration.findMany({
+      where: {
+        studentId: user.id,
+        session: activeSemester.session,
+        semester: activeSemester.semester,
+        status: { in: ['pending', 'approved'] }
+      },
+      select: { courseId: true, isCarryOver: true }
+    });
+
+    const registeredCourseIds = new Set(
+      myRegistrations
+        .filter(r => !r.isCarryOver)
+        .map(r => r.courseId)
+    );
+
+    const carryOverCourseIds = new Set(
+      myRegistrations
+        .filter(r => r.isCarryOver)
+        .map(r => r.courseId)
+    );
+
+    // Get ALL exams for the semester (not just registered courses)
+    const allSemesterExams = await prisma.exam.findMany({
       where: {
         status: { in: ['active', 'scheduled'] },
         session: activeSemester.session,
-        semester: activeSemester.semester,
-        course: {
-          registrations: {
-            some: {
-              studentId: user.id,
-              session: activeSemester.session,
-              semester: activeSemester.semester,
-              status: { in: ['pending', 'approved'] }
-            }
-          }
-        }
+        semester: activeSemester.semester
       },
       orderBy: [{ status: 'asc' }, { scheduledStart: 'asc' }],
       select: {
@@ -101,27 +115,27 @@ export const load: PageServerLoad = async ({ locals, url, cookies }) => {
         scheduledStart: true,
         questionsToPresent: true,
         courseId: true,
-        course: { 
-          select: { 
-            code: true, 
+        course: {
+          select: {
+            code: true,
             title: true,
-            level: true // Get level from course instead
-          } 
+            level: true
+          }
         },
         _count: { select: { questions: true } },
-        // Include exam levels to check eligibility
         examLevels: {
           select: {
             levelId: true,
-            level: {
-              select: {
-                level: true
-              }
-            }
+            level: { select: { level: true } }
           }
         }
       }
     });
+
+    // Filter out carryover courses entirely
+    const nonCarryOverExams = allSemesterExams.filter(exam =>
+      !carryOverCourseIds.has(exam.courseId)
+    );
 
     // Get submitted exam IDs
     const submittedIds = await prisma.examSession.findMany({
@@ -131,7 +145,6 @@ export const load: PageServerLoad = async ({ locals, url, cookies }) => {
       },
       select: { examId: true }
     });
-
     const submittedSet = new Set(submittedIds.map((s) => s.examId));
 
     // Get active sessions for resume detection
@@ -144,19 +157,26 @@ export const load: PageServerLoad = async ({ locals, url, cookies }) => {
     });
     const activeSessionSet = new Set(activeSessions.map((s) => s.examId));
 
-    // Build available exams with eligibility info
+    // Build exam list with eligibility info
     const availableExams: AvailableExam[] = await Promise.all(
-      exams.map(async (exam) => {
+      nonCarryOverExams.map(async (exam) => {
         const ineligibilityReasons: string[] = [];
+        const isRegistered = registeredCourseIds.has(exam.courseId);
         let isEligible = true;
 
-        // 1. Check if exam is active
+        // 1. Check registration
+        if (!isRegistered) {
+          isEligible = false;
+          ineligibilityReasons.push('You are not registered for this course. Register to take this exam.');
+        }
+
+        // 2. Check if exam is active
         if (exam.status !== 'active') {
           isEligible = false;
           ineligibilityReasons.push(`Exam is ${exam.status}`);
         }
 
-        // 2. Check level eligibility through examLevels
+        // 3. Check level eligibility through examLevels
         if (exam.examLevels && exam.examLevels.length > 0) {
           const allowedLevels = exam.examLevels.map(el => el.levelId);
           if (user.levelId && !allowedLevels.includes(user.levelId)) {
@@ -166,16 +186,16 @@ export const load: PageServerLoad = async ({ locals, url, cookies }) => {
           }
         }
 
-        // 3. Check if already submitted
-        if (submittedSet.has(exam.id)) {
-          isEligible = false;
-          ineligibilityReasons.push('You have already submitted this exam');
-        }
-
         // 4. Check course level requirement
         if (exam.course?.level && user.level?.level !== exam.course.level) {
           isEligible = false;
           ineligibilityReasons.push(`Course requires level ${exam.course.level} (you are level ${user.level?.level || 'unknown'})`);
+        }
+
+        // 5. Check if already submitted
+        if (submittedSet.has(exam.id)) {
+          isEligible = false;
+          ineligibilityReasons.push('You have already submitted this exam');
         }
 
         // If no specific reasons found but not eligible, add generic message
@@ -193,9 +213,11 @@ export const load: PageServerLoad = async ({ locals, url, cookies }) => {
           course: exam.course,
           questionCount: exam._count.questions,
           alreadySubmitted: submittedSet.has(exam.id),
-          isEligible: isEligible && exam.status === 'active' && !submittedSet.has(exam.id),
+          isEligible: isEligible && exam.status === 'active' && !submittedSet.has(exam.id) && isRegistered,
           ineligibilityReasons: ineligibilityReasons.length > 0 ? ineligibilityReasons : undefined,
-          sessionStatus: activeSessionSet.has(exam.id) ? 'in_progress' : null
+          sessionStatus: activeSessionSet.has(exam.id) ? 'in_progress' : null,
+          isRegistered,
+          isCarryOver: false  // Already filtered out
         };
       })
     );

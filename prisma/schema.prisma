@@ -424,7 +424,7 @@ model CourseRegistration {
   levelId          Int?               @map("level_id")
   semester         Int                @db.SmallInt
   registrationType RegistrationType   @default(normal) @map("registration_type")
-  status           RegistrationStatus @default(pending) @map("status") // Add this
+  status           RegistrationStatus @default(pending) @map("status")
   createdAt        DateTime           @default(now()) @map("created_at") @db.Timestamptz()
 
   student User   @relation(fields: [studentId], references: [id], onDelete: Cascade)
