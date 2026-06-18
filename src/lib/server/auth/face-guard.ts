@@ -2,43 +2,42 @@ import { redirect } from '@sveltejs/kit';
 import { getPrismaClient } from '$lib/server/db/index.js';
 import type { Cookies } from '@sveltejs/kit';
 
+const VERIFICATION_WINDOW_MS = 60 * 5 * 1000; // 5 minutes
+const maxAgeSeconds = 5 * 60; // 60 minutes
 
-const VERIFICATION_WINDOW_MS = 15 * 60 * 1000; // 15 minutes
 
 export async function requireFaceVerified(locals: App.Locals, cookies: Cookies, examId?: string) {
-   const prisma = await getPrismaClient();
+  const prisma = await getPrismaClient();
 
   const user = locals.user;
-  if (!user) redirect(302, '/login');
+  if (!user) {
+    throw redirect(302, '/login');  // ← FIXED
+  }
 
-  // Check cookie-based verification first
   const verified = cookies.get('face_verified');
   const verifiedAt = cookies.get('face_verified_at');
 
   if (verified === 'true' && verifiedAt) {
     const timestamp = parseInt(verifiedAt, 10);
     const age = Date.now() - timestamp;
-    
+
     if (age < VERIFICATION_WINDOW_MS) {
-      // Cookie valid, but double-check enrollment still exists
       const enrolled = await prisma.faceDescriptor.findUnique({
         where: { studentId: user.id },
       });
       if (!enrolled) {
         cookies.delete('face_verified', { path: '/' });
         cookies.delete('face_verified_at', { path: '/' });
-        redirect(302, examId ? `/student?enroll=required&exam=${examId}` : '/student?enroll=required');
+        throw redirect(302, examId ? `/student?enroll=required&exam=${examId}` : '/student?enroll=required');  // ← FIXED
       }
       return { verified: true, source: 'cookie' as const };
     }
-    
-    // Expired — clear cookies
+
     cookies.delete('face_verified', { path: '/' });
     cookies.delete('face_verified_at', { path: '/' });
     cookies.delete('face_similarity_score', { path: '/' });
   }
 
-  // Fallback: check database for recent verification
   const since = new Date(Date.now() - VERIFICATION_WINDOW_MS);
   const recent = await prisma.faceVerificationLog.findFirst({
     where: {
@@ -50,25 +49,23 @@ export async function requireFaceVerified(locals: App.Locals, cookies: Cookies, 
   });
 
   if (recent) {
-    // Refresh cookies
     cookies.set('face_verified', 'true', {
       path: '/',
       httpOnly: true,
       secure: process.env.NODE_ENV === 'production',
       sameSite: 'lax',
-      maxAge: 60 * 5
+      maxAge: maxAgeSeconds,
     });
     cookies.set('face_verified_at', Date.now().toString(), {
       path: '/',
       httpOnly: true,
       secure: process.env.NODE_ENV === 'production',
       sameSite: 'lax',
-      maxAge: 60 * 5
+      maxAge: maxAgeSeconds,
     });
     return { verified: true, source: 'database' as const };
   }
 
-  // Not verified
   const dest = examId ? `/student?verify=required&exam=${examId}` : '/student?verify=required';
-  redirect(302, dest);
+  throw redirect(302, dest);  // ← FIXED
 }

@@ -21,7 +21,7 @@ export const POST: RequestHandler = async ({ request, locals, cookies, getClient
       httpOnly: true,
       secure:   process.env.NODE_ENV === 'production',
       sameSite: 'lax' as const,
-      maxAge:   60 * 5, // 5 minutes
+      maxAge:   60 * 60, // 60 minutes
     };
 
     cookies.set('face_verified',        'true',                         cookieOpts);
