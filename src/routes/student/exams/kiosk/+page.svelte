@@ -1,148 +1,59 @@
-<!-- src/routes/student/exams/+page.svelte -->
-<!--
-  Portal page — pre-exam flow only.
-  Rule: enterKiosk() is called ONLY from onVerifySuccess(), never before.
-
-  Flow:
-    not enrolled  → enroll → verify → preview → rules → kiosk
-    enrolled      → verify → preview → rules → kiosk
-    already verified (fresh cookie) → preview → rules → kiosk
-
-  Special cases handled AFTER mount (not during render):
-    - in_progress + verified  → skip to kiosk
-    - submitted / flagged     → show terminal state
--->
+<!-- src/routes/student/exams/kiosk/+page.svelte -->
 <script lang="ts">
   import type { PageData } from './$types';
-  import { goto }          from '$app/navigation';
-  import { onMount }       from 'svelte';
+  import { onMount, tick } from 'svelte';
   import {
-    User, Mail, Hash, Building, GraduationCap,
-    BookOpen, Clock, AlertTriangle, CheckCircle,
-    ChevronRight, Shield, Eye, Maximize2
+    AlertTriangle, CheckCircle, ChevronLeft, ChevronRight,
+    Send, Loader2, Clock, User
   } from '@lucide/svelte';
 
-  import FaceEnrollmentModal from '$lib/components/exam/FaceEnrollmentModal.svelte';
-  import FaceVerifyModal     from '$lib/components/exam/FaceVerifyModal.svelte';
+  import KioskShell       from '$lib/components/exam/KioskShell.svelte';
+  import FaceMonitor      from '$lib/components/exam/FaceMonitor.svelte';
+  import ViolationWarning from '$lib/components/exam/ViolationWarning.svelte';
+  import Watermark        from '$lib/components/exam/Watermark.svelte';
+
+  import {
+    persistSession,
+    loadSession,
+    clearSession,
+    mergeServerAnswers,
+    pendingAnswers,
+    type PersistedSession,
+  } from '$lib/exam/session-store.js';
 
   let { data }: { data: PageData } = $props();
 
-  // ─── Flow step ─────────────────────────────────────────────────────────
-  type Step =
-    | 'enroll'      // no face descriptor → must enroll first
-    | 'verify'      // descriptor exists, not verified this session
-    | 'preview'     // identity confirmation
-    | 'rules'       // rules scroll + checkbox
-    | 'lobby'       // waiting for scheduled exam
-    | 'submitted'
-    | 'flagged'
-    | 'blocked';
+  type KioskStep = 'starting' | 'exam' | 'submitted' | 'flagged';
 
-  // Determine initial step purely from server data.
-  // NEVER call goto() here — component hasn't mounted yet.
-  function initialStep(): Step {
-    const s = data.sessionStatus;
-    if (s === 'submitted' || s === 'force_submitted') return 'submitted';
-    if (s === 'flagged')                               return 'flagged';
-    if (!data.faceEnrolled)                            return 'enroll';
-    if (!data.faceVerified)                            return 'verify';
-    // Face is verified. If session is active, we'll redirect in onMount.
-    // For now stay on preview so the component renders before we navigate.
-    return 'preview';
-  }
+  type ClientQuestion = {
+    id:       string;
+    type:     'mcq' | 'fill_in_the_blank';
+    body:     string;
+    imageUrl: string | null;
+    marks:    number;
+    options:  Array<{ id: string; text: string }>;
+  };
 
-  let step = $state<Step>(initialStep());
+  // ─── Session state ────────────────────────────────────────────────────────
+  let step           = $state<KioskStep>('starting');
+  let sessionId      = $state<string | null>(data.sessionId);
+  let totalQuestions = $state<number>(data.totalQuestions ?? 0);
+  let currentIndex   = $state<number>(0);
+  let answers        = $state<Record<number, string>>({});
 
-  // ─── Navigate to kiosk — only called after verification ────────────────
-  function enterKiosk() {
-    goto(`/student/exams/kiosk?examId=${data.examId}`);
-  }
+  // ─── Question state ───────────────────────────────────────────────────────
+  let question        = $state<ClientQuestion | null>(null);
+  let questionLoading = $state(false);
+  let questionError   = $state('');
 
-  // ─── Face enrollment ────────────────────────────────────────────────────
-  // Called when FaceEnrollmentModal signals enrollment is complete.
-  // Move to verify step — don't enter kiosk yet.
-  function onEnrollComplete() {
-    step = 'verify';
-  }
+  // ─── Timer ───────────────────────────────────────────────────────────────
+  let timeRemaining  = $state<number>(data.timeRemaining ?? 0);
+  let timerInterval: ReturnType<typeof setInterval> | null = null;
+  let syncInterval:  ReturnType<typeof setInterval> | null = null;
 
-  // ─── Face verification ──────────────────────────────────────────────────
-  // THE only place enterKiosk() may be called from.
-  // After verification succeeds we either resume (go straight to kiosk)
-  // or start fresh (go to preview for identity confirmation).
-  function onVerifySuccess() {
-    const isResume =
-      data.sessionStatus === 'in_progress' && !!data.sessionId;
+  const timerWarning  = $derived(timeRemaining > 0 && timeRemaining <= 300);
+  const timerCritical = $derived(timeRemaining > 0 && timeRemaining <= 60);
 
-    if (isResume) {
-      // Session already running — go straight to kiosk
-      enterKiosk();
-    } else {
-      // New session path — student must confirm identity then read rules
-      step = 'preview';
-    }
-  }
-
-  // ─── Rules ─────────────────────────────────────────────────────────────
-  let rulesAccepted = $state(false);
-  let rulesScrolled = $state(false);
-
-  function handleRulesScroll(e: Event) {
-    const el = e.currentTarget as HTMLElement;
-    if (el.scrollTop + el.clientHeight >= el.scrollHeight - 20) {
-      rulesScrolled = true;
-    }
-  }
-
-  function acceptRules() {
-    if (!rulesAccepted || !rulesScrolled) return;
-    if (data.exam.status === 'active') {
-      enterKiosk();
-    } else {
-      step = 'lobby';
-      startLobbyCountdown();
-    }
-  }
-
-  // ─── Lobby ─────────────────────────────────────────────────────────────
-  let lobbySecondsLeft = $state(0);
-  let lobbyInterval: ReturnType<typeof setInterval> | null = null;
-
-  function startLobbyCountdown() {
-    const start = data.exam.scheduledStart
-      ? new Date(data.exam.scheduledStart).getTime()
-      : null;
-
-    if (!start) { enterKiosk(); return; }
-
-    const update = () => {
-      const diff = Math.max(0, Math.floor((start - Date.now()) / 1000));
-      lobbySecondsLeft = diff;
-      if (diff <= 0 && lobbyInterval) {
-        clearInterval(lobbyInterval);
-        lobbyInterval = null;
-        enterKiosk();
-      }
-    };
-    update();
-    lobbyInterval = setInterval(update, 1000);
-  }
-
-  // ─── Lifecycle ──────────────────────────────────────────────────────────
-  onMount(() => {
-    // Safe to navigate now that the component has mounted.
-    // If face is already verified AND session is in_progress, skip to kiosk.
-    if (
-      data.faceVerified &&
-      data.sessionStatus === 'in_progress' &&
-      data.sessionId
-    ) {
-      enterKiosk();
-    }
-
-    return () => { if (lobbyInterval) clearInterval(lobbyInterval); };
-  });
-
-  // ─── Helpers ────────────────────────────────────────────────────────────
   function formatTime(secs: number): string {
     const h = Math.floor(secs / 3600);
     const m = Math.floor((secs % 3600) / 60);
@@ -151,429 +62,960 @@
     return `${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}`;
   }
 
-  function formatScheduled(d: string | null): string {
-    if (!d) return 'TBD';
-    return new Date(d).toLocaleString('en-NG', {
-      weekday:'short', month:'short', day:'numeric',
-      hour:'2-digit', minute:'2-digit',
+  function startLocalTimer() {
+    if (timerInterval) clearInterval(timerInterval);
+    timerInterval = setInterval(() => {
+      if (timeRemaining <= 0) {
+        clearInterval(timerInterval!); timerInterval = null;
+        void handleAutoSubmit(); return;
+      }
+      timeRemaining--;
+      if (timeRemaining % 10 === 0 && sessionId) persistSession(buildPersistedState());
+    }, 1000);
+  }
+
+  async function syncTimerFromServer() {
+    if (!sessionId || step !== 'exam') return;
+    try {
+      const res = await fetch(`/api/exam/${data.examId}/time?sessionId=${sessionId}`);
+      if (!res.ok) return;
+      const json = await res.json();
+      if (json.status === 'submitted' || json.status === 'force_submitted') {
+        notifyOpener('submitted'); stopAllTimers(); step = 'submitted'; return;
+      }
+      if (json.status === 'flagged') {
+        notifyOpener('flagged'); stopAllTimers(); step = 'flagged'; return;
+      }
+      if (Math.abs(timeRemaining - json.timeRemaining) > 3) timeRemaining = json.timeRemaining;
+    } catch { /* silent */ }
+  }
+
+  function startTimerSync() {
+    if (syncInterval) clearInterval(syncInterval);
+    syncInterval = setInterval(syncTimerFromServer, 30_000);
+  }
+
+  function stopAllTimers() {
+    if (timerInterval) { clearInterval(timerInterval); timerInterval = null; }
+    if (syncInterval)  { clearInterval(syncInterval);  syncInterval  = null; }
+  }
+
+  // ─── Fullscreen ───────────────────────────────────────────────────────────
+  let fullscreenViolationPending = false;
+
+  async function requestFullscreen() {
+    try { await document.documentElement.requestFullscreen(); } catch { /* ok */ }
+  }
+
+  function onFullscreenChange() {
+    if (step !== 'exam') return;
+    if (!document.fullscreenElement) {
+      void requestFullscreen();
+      if (!fullscreenViolationPending) {
+        fullscreenViolationPending = true;
+        void handleViolation('fullscreen_exit').then(() => { fullscreenViolationPending = false; });
+      }
+    }
+  }
+
+  // ─── Violations ───────────────────────────────────────────────────────────
+  let violationCount   = $state(0);
+  let violationVisible = $state(false);
+  let violationType    = $state('');
+  let violationAction  = $state('warning');
+
+  async function handleViolation(type: string) {
+    violationCount++;
+    violationType = type;
+    try {
+      const res = await fetch(`/api/exam/${data.examId}/violation`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ sessionId, type }),
+      });
+      if (res.ok) {
+        const json = await res.json();
+        violationAction = json.action ?? 'warning';
+        if (json.action === 'auto_submitted') { await submitExam(); return; }
+        if (json.action === 'exam_paused') {
+          notifyOpener('flagged'); stopAllTimers(); step = 'flagged'; return;
+        }
+      }
+    } catch { violationAction = 'warning'; }
+    violationVisible = true;
+  }
+
+  // ─── Offline queue ────────────────────────────────────────────────────────
+  let isOnline     = $state(true);
+  let offlineQueue = $state<Array<{ index: number; questionId: string; value: string }>>([]);
+  let isSyncing    = $state(false);
+
+  async function syncOfflineQueue() {
+    if (isSyncing || offlineQueue.length === 0 || !isOnline || !sessionId) return;
+    isSyncing = true;
+    const batch = [...offlineQueue];
+    const failed: typeof offlineQueue = [];
+    for (const item of batch) {
+      if (!item.questionId) continue;
+      try {
+        const res = await fetch(`/api/exam/${data.examId}/answer`, {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ sessionId, questionId: item.questionId, answer: item.value }),
+        });
+        if (!res.ok && res.status !== 409) failed.push(item);
+      } catch { failed.push(item); }
+    }
+    offlineQueue = failed;
+    isSyncing = false;
+  }
+
+  // ─── Submit ───────────────────────────────────────────────────────────────
+  let isSubmitting      = $state(false);
+  let submitError       = $state('');
+  let showSubmitConfirm = $state(false);
+  let submitRetryTimer: ReturnType<typeof setInterval> | null = null;
+
+  async function submitExam() {
+    if (!sessionId || isSubmitting) return;
+    isSubmitting = true; submitError = '';
+    if (submitRetryTimer) { clearInterval(submitRetryTimer); submitRetryTimer = null; }
+    await syncOfflineQueue();
+    try {
+      const res = await fetch(`/api/exam/${data.examId}/submit`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ sessionId }),
+      });
+      if (res.status === 409 || res.ok) {
+        clearSession(sessionId); stopAllTimers(); showSubmitConfirm = false;
+        if (document.fullscreenElement) try { await document.exitFullscreen(); } catch { /**/ }
+        notifyOpener('submitted'); step = 'submitted'; return;
+      }
+      submitError = 'Submission failed — retrying…';
+      submitRetryTimer = setInterval(submitExam, 5000);
+    } catch {
+      submitError = 'No connection — retrying…';
+      submitRetryTimer = setInterval(submitExam, 5000);
+    } finally {
+      if (!submitRetryTimer) isSubmitting = false;
+    }
+  }
+
+  async function handleAutoSubmit() { await submitExam(); }
+
+  function notifyOpener(type: 'submitted' | 'flagged') {
+    try { window.opener?.postMessage({ source: 'etest_kiosk', type }, window.location.origin); }
+    catch { /* opener may be closed */ }
+  }
+
+  // ─── Persistence ─────────────────────────────────────────────────────────
+  function buildPersistedState(): PersistedSession {
+    return {
+      sessionId: sessionId!, examId: data.examId,
+      answers: { ...answers }, currentIndex,
+      timeOffsetMs: (data.timeRemaining - timeRemaining) * 1000,
+      savedAt: Date.now(),
+    };
+  }
+
+  // ─── Fetch question ───────────────────────────────────────────────────────
+  async function fetchQuestion(idx: number) {
+    if (!sessionId) return;
+    questionLoading = true; questionError = ''; question = null;
+    try {
+      const res = await fetch(`/api/exam/${data.examId}/question?index=${idx}&sessionId=${sessionId}`);
+      if (res.status === 409) { notifyOpener('submitted'); step = 'submitted'; return; }
+      if (res.status === 423) { notifyOpener('flagged');   step = 'flagged';   return; }
+      if (!res.ok) {
+        const j = await res.json().catch(() => ({}));
+        questionError = j.message ?? `Failed to load question ${idx + 1}`; return;
+      }
+      const payload = await res.json();
+      question = payload.question; totalQuestions = payload.total; currentIndex = idx;
+      persistSession(buildPersistedState());
+    } catch { questionError = 'Network error — press R to retry'; }
+    finally { questionLoading = false; }
+  }
+
+  // ─── Save answer ──────────────────────────────────────────────────────────
+  async function saveAnswer(idx: number, value: string) {
+    if (!sessionId || !question) return;
+    answers = { ...answers, [idx]: value };
+    persistSession(buildPersistedState());
+    const questionId = question.id;
+    if (!isOnline) {
+      const existing = offlineQueue.findIndex(q => q.index === idx);
+      if (existing >= 0) offlineQueue[existing] = { index: idx, questionId, value };
+      else offlineQueue = [...offlineQueue, { index: idx, questionId, value }];
+      return;
+    }
+    try {
+      const res = await fetch(`/api/exam/${data.examId}/answer`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ sessionId, questionId, answer: value }),
+      });
+      if (res.status === 409) { notifyOpener('submitted'); step = 'submitted'; return; }
+      if (!res.ok) offlineQueue = [...offlineQueue, { index: idx, questionId, value }];
+    } catch { offlineQueue = [...offlineQueue, { index: idx, questionId, value }]; }
+  }
+
+  // ─── Navigation ───────────────────────────────────────────────────────────
+  async function goToQuestion(idx: number) {
+    if (idx < 0 || idx >= totalQuestions || questionLoading) return;
+    await fetchQuestion(idx);
+  }
+  const goNext = () => goToQuestion(currentIndex + 1);
+  const goPrev = () => goToQuestion(currentIndex - 1);
+
+  // ─── Start exam ───────────────────────────────────────────────────────────
+  let startError = $state('');
+
+  async function startExam() {
+    startError = '';
+    try {
+      const res  = await fetch(`/api/exam/${data.examId}/start`, { method: 'POST' });
+      const json = await res.json();
+      if (res.status === 409) { notifyOpener('submitted'); step = 'submitted'; return; }
+      if (res.status === 423) { notifyOpener('flagged');   step = 'flagged';   return; }
+      if (!res.ok) { startError = json.message ?? `Error ${res.status}`; return; }
+
+      sessionId = json.sessionId; totalQuestions = json.totalQuestions; timeRemaining = json.timeRemaining;
+      const stored = loadSession(json.sessionId);
+      if (stored) {
+        answers = mergeServerAnswers(stored, json.serverAnswers).answers;
+        currentIndex = stored.currentIndex;
+      } else {
+        answers = json.serverAnswers ?? {}; currentIndex = json.currentIndex ?? 0;
+      }
+      if (stored) {
+        const serverKnown = new Set(Object.keys(json.serverAnswers ?? {}).map(Number));
+        const pending = pendingAnswers(stored, serverKnown);
+        for (const item of pending) offlineQueue.push({ index: item.index, questionId: '', value: item.value });
+      }
+      persistSession(buildPersistedState());
+      step = 'exam';
+      await tick();
+      await requestFullscreen();
+      startLocalTimer(); startTimerSync();
+      await fetchQuestion(currentIndex);
+    } catch (e: any) { startError = e.message ?? 'Network error'; }
+  }
+
+  // ─── Keyboard shortcuts ───────────────────────────────────────────────────
+  function handleKeyDown(e: KeyboardEvent) {
+    if (step !== 'exam' || questionLoading) return;
+    if (document.activeElement instanceof HTMLInputElement || document.activeElement instanceof HTMLTextAreaElement) return;
+    if (violationVisible) {
+      if (e.key.toLowerCase() === 'y' || e.key === 'Enter') violationVisible = false;
+      return;
+    }
+    const letter = e.key.toUpperCase();
+    if (['A','B','C','D'].includes(letter) && question?.type === 'mcq') {
+      const opt = question.options[letter.charCodeAt(0) - 65];
+      if (opt) { saveAnswer(currentIndex, opt.id); return; }
+    }
+    switch (e.key.toLowerCase()) {
+      case 'n': goNext(); break;
+      case 'p': goPrev(); break;
+      case 's': if (!showSubmitConfirm) showSubmitConfirm = true; break;
+      case 'r': void fetchQuestion(currentIndex); break;
+      case 'y': if (showSubmitConfirm) void submitExam(); break;
+      case 'x': if (showSubmitConfirm) showSubmitConfirm = false; break;
+    }
+  }
+
+  function setupBeacon() {
+    window.addEventListener('beforeunload', () => {
+      if (!sessionId || step !== 'exam') return;
+      for (const item of offlineQueue) {
+        if (!item.questionId) continue;
+        navigator.sendBeacon(`/api/exam/${data.examId}/answer`,
+          JSON.stringify({ sessionId, questionId: item.questionId, answer: item.value }));
+      }
     });
+  }
+
+  // ─── Lifecycle ────────────────────────────────────────────────────────────
+  onMount(() => {
+    isOnline = navigator.onLine;
+    window.addEventListener('online',  () => { isOnline = true;  void syncOfflineQueue(); });
+    window.addEventListener('offline', () => { isOnline = false; });
+    window.addEventListener('keydown', handleKeyDown);
+    document.addEventListener('fullscreenchange', onFullscreenChange);
+    setupBeacon();
+
+    const s = data.sessionStatus;
+    if (s === 'submitted' || s === 'force_submitted') {
+      step = 'submitted';
+    } else if (s === 'flagged') {
+      step = 'flagged';
+    } else if ((s === 'in_progress' || s === 'not_started') && data.sessionId) {
+      sessionId = data.sessionId;
+      const stored = loadSession(data.sessionId);
+      if (stored) { answers = stored.answers; currentIndex = stored.currentIndex; }
+      step = 'exam';
+      void requestFullscreen();
+      startLocalTimer(); startTimerSync();
+      void fetchQuestion(currentIndex);
+    } else {
+      void startExam();
+    }
+
+    return () => {
+      stopAllTimers();
+      if (submitRetryTimer) clearInterval(submitRetryTimer);
+      window.removeEventListener('keydown', handleKeyDown);
+      document.removeEventListener('fullscreenchange', onFullscreenChange);
+    };
+  });
+
+  // ─── Derived ──────────────────────────────────────────────────────────────
+  const answeredCount = $derived(Object.keys(answers).length);
+  const unanswered    = $derived(totalQuestions - answeredCount);
+  const timerPct      = $derived(
+    data.timeRemaining > 0 ? Math.max(0, (timeRemaining / data.timeRemaining) * 100) : 0
+  );
+  // Only true when the server confirmed an existing in-progress session
+  const isResume = $derived(data.sessionStatus === 'in_progress' && !!data.sessionId);
+
+  function dotStatus(i: number): 'current' | 'answered' | 'unanswered' {
+    if (i === currentIndex) return 'current';
+    return answers[i] !== undefined ? 'answered' : 'unanswered';
   }
 </script>
 
 <svelte:head>
-  <title>{data.exam?.title ?? 'eTest'} — eTest</title>
+  <title>{data.exam.title} — eTest Kiosk</title>
 </svelte:head>
 
-<!-- ══ FACE ENROLLMENT ═══════════════════════════════════════════════════ -->
-{#if step === 'enroll'}
-  <FaceEnrollmentModal
-    open={true}
-    onClose={() => goto('/student')}
-    onComplete={onEnrollComplete}
-  />
-{/if}
-
-<!-- ══ FACE VERIFICATION ═════════════════════════════════════════════════ -->
-{#if step === 'verify'}
-  <FaceVerifyModal
-    examId={data.examId}
-    onSuccess={onVerifySuccess}
-    onCancel={() => goto('/student')}
-  />
-{/if}
-
-<!-- ══ IDENTITY PREVIEW ══════════════════════════════════════════════════ -->
-{#if step === 'preview'}
-  <div class="page-wrap">
-    <div class="flow-card">
-      <div class="card-header">
-        <Shield size={20} class="header-icon" />
-        <div>
-          <h1>Confirm Your Identity</h1>
-          <p>Verify the information below is yours before proceeding</p>
-        </div>
+<!-- ═══ STARTING ════════════════════════════════════════════════════════════ -->
+{#if step === 'starting'}
+  <div class="splash">
+    <Loader2 size={36} class="spin" />
+    <p>{isResume ? 'Resuming exam…' : 'Starting exam…'}</p>
+    {#if startError}
+      <div class="splash-error">
+        <AlertTriangle size={16} /> {startError}
+        <button onclick={() => void startExam()}>Retry</button>
       </div>
-
-      <div class="exam-banner">
-        <div class="exam-code">{data.exam.courseCode}</div>
-        <div class="exam-banner-info">
-          <span class="exam-banner-title">{data.exam.title}</span>
-          <div class="exam-banner-meta">
-            <span><Clock size={13} />{data.exam.durationMinutes} min</span>
-            <span><BookOpen size={13} />{data.exam.totalQuestions} questions</span>
-          </div>
-        </div>
-      </div>
-
-      <div class="student-preview">
-        <div class="preview-photo-col">
-          {#if data.student.photoUrl}
-            <img src={data.student.photoUrl} alt={data.student.name} class="preview-photo" />
-          {:else}
-            <div class="preview-photo-placeholder"><User size={40} /></div>
-          {/if}
-          <div class="preview-name">{data.student.name}</div>
-        </div>
-
-        <div class="preview-details">
-          <div class="detail-row">
-            <Hash size={15} />
-            <span class="detail-label">Matric No.</span>
-            <span class="detail-value">{data.student.matricNumber ?? 'N/A'}</span>
-          </div>
-          <div class="detail-row">
-            <Mail size={15} />
-            <span class="detail-label">Email</span>
-            <span class="detail-value">{data.student.email}</span>
-          </div>
-          {#if data.student.department}
-            <div class="detail-row">
-              <Building size={15} />
-              <span class="detail-label">Department</span>
-              <span class="detail-value">{data.student.department}</span>
-            </div>
-          {/if}
-          {#if data.student.level}
-            <div class="detail-row">
-              <GraduationCap size={15} />
-              <span class="detail-label">Level</span>
-              <span class="detail-value">{data.student.level}</span>
-            </div>
-          {/if}
-          {#if data.student.programme}
-            <div class="detail-row">
-              <BookOpen size={15} />
-              <span class="detail-label">Programme</span>
-              <span class="detail-value">{data.student.programme}</span>
-            </div>
-          {/if}
-        </div>
-      </div>
-
-      <div class="preview-question">
-        <AlertTriangle size={18} class="warn-icon" />
-        <p>Is all the information above correct and belongs to you?</p>
-      </div>
-
-      <div class="preview-actions">
-        <button class="btn-danger" onclick={() => step = 'blocked'}>
-          No, this is not me
-        </button>
-        <button class="btn-primary" onclick={() => step = 'rules'}>
-          Yes, proceed <ChevronRight size={16} />
-        </button>
-      </div>
-    </div>
+    {/if}
   </div>
-{/if}
 
-<!-- ══ RULES ══════════════════════════════════════════════════════════════ -->
-{#if step === 'rules'}
-  <div class="page-wrap">
-    <div class="flow-card rules-card">
-      <div class="card-header">
-        <Eye size={20} class="header-icon" />
-        <div>
-          <h1>Exam Rules & Regulations</h1>
-          <p>Read carefully — scroll to the bottom to continue</p>
+<!-- ═══ EXAM ═════════════════════════════════════════════════════════════════ -->
+{:else if step === 'exam'}
+  <KioskShell onViolation={handleViolation}>
+    <Watermark text="{data.student.matricNumber ?? data.student.name} · eTest" />
+
+    {#if sessionId}
+      <FaceMonitor
+        {sessionId}
+        examId={data.examId}
+        enrolledDescriptor={data.faceDescriptor}
+        maxViolations={data.exam.maxViolations}
+        onAutoSubmit={submitExam}
+        onFlagged={() => { notifyOpener('flagged'); stopAllTimers(); step = 'flagged'; }}
+      />
+    {/if}
+
+    {#if violationVisible}
+      <ViolationWarning
+        count={violationCount}
+        max={data.exam.maxViolations}
+        action={violationAction}
+        flagType={violationType}
+        onDismiss={() => { violationVisible = false; }}
+      />
+    {/if}
+
+    {#if showSubmitConfirm}
+      <div class="modal-backdrop" role="dialog" aria-modal="true">
+        <div class="confirm-modal">
+          <h2>Submit Exam?</h2>
+          {#if unanswered > 0}
+            <p class="confirm-warn">
+              <AlertTriangle size={16} />
+              <strong>{unanswered}</strong> question{unanswered !== 1 ? 's' : ''} unanswered
+            </p>
+          {:else}
+            <p class="confirm-ok">All {totalQuestions} questions answered.</p>
+          {/if}
+          {#if submitError}<p class="submit-err">{submitError}</p>{/if}
+          <div class="confirm-keys"><kbd>Y</kbd> confirm &nbsp; <kbd>X</kbd> cancel</div>
+          <div class="confirm-actions">
+            <button class="btn-cancel" onclick={() => showSubmitConfirm = false} disabled={isSubmitting}>
+              Keep Working <kbd>X</kbd>
+            </button>
+            <button class="btn-submit-confirm" onclick={() => void submitExam()} disabled={isSubmitting}>
+              {#if isSubmitting}<Loader2 size={15} class="spin" /> Submitting…
+              {:else}<Send size={15} /> Submit Now <kbd>Y</kbd>{/if}
+            </button>
+          </div>
         </div>
       </div>
+    {/if}
 
-      <div class="rules-scroll" onscroll={handleRulesScroll}>
-        <h2>General Conduct</h2>
-        <ol>
-          <li>This exam is strictly individual. Any form of collaboration or communication with other candidates is prohibited.</li>
-          <li>You must remain in front of your camera throughout the exam. Leaving the frame will be recorded as a violation.</li>
-          <li>Only one face must be visible at all times. Having another person present may trigger automatic submission.</li>
-          <li>Switching browser tabs, minimising the window, or navigating away from the exam will be flagged as a violation.</li>
-          <li>Taking screenshots, screen recordings, or photographs of exam content is strictly prohibited.</li>
-          <li>The use of external devices (phones, tablets, printed materials) during the exam is not permitted.</li>
-        </ol>
+    <div class="kiosk-layout">
+      <!-- ══ LEFT SIDEBAR ════════════════════════════════════════════════════ -->
+      <aside class="left-panel">
 
-        <h2>Technical Requirements</h2>
-        <ol>
-          <li>The exam must be taken in fullscreen mode. Exiting fullscreen is a violation.</li>
-          <li>Ensure you have a stable internet connection before starting. Network interruptions do not pause the timer.</li>
-          <li>Your camera must remain active and unobstructed throughout the exam duration.</li>
-          <li>If the exam auto-submits due to time expiry or repeated violations, the submission is final.</li>
-        </ol>
-
-        <h2>Violations & Consequences</h2>
-        <ol>
-          <li>Each detected violation increments your violation counter. You will be warned on screen.</li>
-          <li>Reaching {data.exam.maxViolations} violations will result in automatic submission.</li>
-          <li>Face mismatch or detecting multiple faces will immediately pause your session for invigilator review.</li>
-          <li>Attempting to spoof the camera with a photo or video will result in immediate disqualification.</li>
-        </ol>
-
-        <h2>Submission</h2>
-        <ol>
-          <li>You may submit your exam at any time before the timer expires.</li>
-          <li>When the timer reaches zero, your exam will be submitted automatically with all answers saved up to that point.</li>
-          <li>Once submitted, you cannot re-enter the exam.</li>
-        </ol>
-
-        <div class="rules-end-marker">
-          <CheckCircle size={20} /> <span>End of rules</span>
-        </div>
-      </div>
-
-      <div class="rules-footer">
-        <label class="accept-label" class:disabled={!rulesScrolled}>
-          <input
-            type="checkbox"
-            bind:checked={rulesAccepted}
-            disabled={!rulesScrolled}
-          />
-          <span>I have read and understand all the rules above, and I accept them.</span>
-        </label>
-
-        {#if !rulesScrolled}
-          <p class="scroll-hint">Scroll to the bottom to enable acceptance</p>
+        {#if isResume}
+          <div class="resume-badge"><CheckCircle size={13} /> Resumed session</div>
         {/if}
 
-        <button
-          class="btn-primary"
-          disabled={!rulesAccepted || !rulesScrolled}
-          onclick={acceptRules}
-        >
-          <Maximize2 size={16} /> Accept & Start Exam
+        <div class="student-card">
+          {#if data.student.photoUrl}
+            <img src={data.student.photoUrl} alt={data.student.name} class="student-photo" />
+          {:else}
+            <div class="student-photo-placeholder"><User size={20} /></div>
+          {/if}
+          <div class="student-info">
+            <span class="student-name">{data.student.name}</span>
+            <span class="student-matric">{data.student.matricNumber ?? ''}</span>
+          </div>
+        </div>
+
+        <div class="exam-info-block">
+          <span class="exam-code-pill">{data.exam.courseCode}</span>
+          <span class="exam-title-text">{data.exam.title}</span>
+        </div>
+
+        <!-- Timer -->
+        <div class="timer-block" class:warning={timerWarning} class:critical={timerCritical}>
+          <div class="timer-bar-track">
+            <div class="timer-bar-fill" style="width: {timerPct}%"
+              class:warning={timerWarning} class:critical={timerCritical}></div>
+          </div>
+          <div class="timer-display">
+            <Clock size={14} />
+            <span class="timer-digits">{formatTime(timeRemaining)}</span>
+          </div>
+          {#if timerWarning && !timerCritical}
+            <div class="timer-hint warn">Less than 5 minutes remaining</div>
+          {:else if timerCritical}
+            <div class="timer-hint crit">Less than 1 minute!</div>
+          {/if}
+        </div>
+
+        <!-- Progress -->
+        <div class="progress-block">
+          <div class="progress-row">
+            <span class="progress-label">Answered</span>
+            <span class="progress-val">{answeredCount}/{totalQuestions}</span>
+          </div>
+          <div class="progress-track">
+            <div class="progress-fill"
+              style="width: {totalQuestions > 0 ? (answeredCount / totalQuestions) * 100 : 0}%"></div>
+          </div>
+        </div>
+
+        <!-- Question navigator -->
+        <div class="nav-section">
+          <div class="nav-legend">
+            <span class="legend-dot answered"></span>Answered
+            <span class="legend-dot unanswered"></span>Unanswered
+            <span class="legend-dot current"></span>Current
+          </div>
+          <div class="nav-grid">
+            {#each { length: totalQuestions } as _, i}
+              <button
+                class="nav-btn"
+                class:answered={dotStatus(i) === 'answered'}
+                class:current={dotStatus(i) === 'current'}
+                onclick={() => void goToQuestion(i)}
+                title="Question {i + 1}"
+                tabindex="-1"
+              >{i + 1}</button>
+            {/each}
+          </div>
+        </div>
+
+        {#if !isOnline}
+          <div class="offline-bar">Offline — {offlineQueue.length} answer{offlineQueue.length !== 1 ? 's' : ''} queued</div>
+        {:else if offlineQueue.length > 0}
+          <div class="syncing-bar">Syncing {offlineQueue.length} answer{offlineQueue.length !== 1 ? 's' : ''}…</div>
+        {/if}
+
+        {#if violationCount > 0}
+          <div class="violation-counter" class:danger={violationCount >= data.exam.maxViolations - 1}>
+            <AlertTriangle size={13} />
+            {violationCount}/{data.exam.maxViolations} violations
+          </div>
+        {/if}
+
+        <button class="btn-submit-side" onclick={() => showSubmitConfirm = true}>
+          <Send size={14} /> Submit Exam <kbd>S</kbd>
         </button>
-      </div>
+
+        <div class="key-hints">
+          <div class="key-row"><kbd>A</kbd><kbd>B</kbd><kbd>C</kbd><kbd>D</kbd> Select option</div>
+          <div class="key-row"><kbd>P</kbd> Previous &nbsp; <kbd>N</kbd> Next</div>
+          <div class="key-row"><kbd>R</kbd> Reload question</div>
+          <div class="key-row"><kbd>S</kbd> Submit exam</div>
+        </div>
+      </aside>
+
+      <!-- ══ RIGHT PANEL ════════════════════════════════════════════════════ -->
+      <main class="right-panel">
+        {#if questionLoading}
+          <div class="q-loading">
+            <Loader2 size={36} class="spin" />
+            <span>Loading question…</span>
+          </div>
+        {:else if questionError}
+          <div class="q-error">
+            <AlertTriangle size={28} />
+            <p>{questionError}</p>
+            <button class="btn-retry" onclick={() => void fetchQuestion(currentIndex)}>
+              Retry <kbd>R</kbd>
+            </button>
+          </div>
+        {:else if question}
+          <div class="question-card">
+            <div class="question-header">
+              <div class="q-meta-left">
+                <span class="q-number">Question {currentIndex + 1}</span>
+                <span class="q-of">of {totalQuestions}</span>
+              </div>
+              <div class="q-meta-right">
+                <span class="q-marks">{question.marks} mark{question.marks !== 1 ? 's' : ''}</span>
+                {#if answers[currentIndex] !== undefined}
+                  <span class="q-answered-badge"><CheckCircle size={12} /> Answered</span>
+                {/if}
+              </div>
+            </div>
+
+            <div class="question-body-wrap">
+              <p class="question-text">{question.body}</p>
+              {#if question.imageUrl}
+                <img src={question.imageUrl} alt="Question illustration" class="question-img" />
+              {/if}
+            </div>
+
+            {#if question.type === 'mcq'}
+              <div class="options-list">
+                {#each question.options as opt, i}
+                  {@const letter = String.fromCharCode(65 + i)}
+                  {@const selected = answers[currentIndex] === opt.id}
+                  <button class="option-btn" class:selected onclick={() => saveAnswer(currentIndex, opt.id)} tabindex="-1">
+                    <span class="option-letter" class:selected>{letter}</span>
+                    <span class="option-text">{opt.text}</span>
+                    {#if selected}<CheckCircle size={18} class="option-check" />{/if}
+                  </button>
+                {/each}
+              </div>
+            {/if}
+
+            {#if question.type === 'fill_in_the_blank'}
+              <div class="fitb-wrap">
+                <label class="fitb-label">Your answer</label>
+                <input
+                  type="text" class="fitb-input"
+                  placeholder="Type your answer here…"
+                  value={answers[currentIndex] ?? ''}
+                  oninput={(e) => saveAnswer(currentIndex, (e.currentTarget as HTMLInputElement).value)}
+                />
+              </div>
+            {/if}
+
+            <div class="question-footer">
+              <button class="btn-nav btn-prev"
+                disabled={currentIndex === 0 || questionLoading} onclick={goPrev} tabindex="-1">
+                <ChevronLeft size={18} /> Previous <kbd>P</kbd>
+              </button>
+              <div class="footer-center">
+                {#if !isOnline}<span class="offline-text">Offline — answers saved locally</span>{/if}
+              </div>
+              {#if currentIndex < totalQuestions - 1}
+                <button class="btn-nav btn-next" disabled={questionLoading} onclick={goNext} tabindex="-1">
+                  Next <kbd>N</kbd> <ChevronRight size={18} />
+                </button>
+              {:else}
+                <button class="btn-nav btn-submit-footer"
+                  disabled={isSubmitting} onclick={() => showSubmitConfirm = true} tabindex="-1">
+                  <Send size={16} /> Submit <kbd>S</kbd>
+                </button>
+              {/if}
+            </div>
+          </div>
+        {/if}
+      </main>
     </div>
-  </div>
-{/if}
+  </KioskShell>
 
-<!-- ══ LOBBY ══════════════════════════════════════════════════════════════ -->
-{#if step === 'lobby'}
-  <div class="page-wrap">
-    <div class="lobby-card">
-      <div class="lobby-badge">Waiting Room</div>
-      <h1 class="lobby-title">{data.exam.title}</h1>
-      <p class="lobby-course">{data.exam.courseCode}</p>
-
-      <div class="lobby-countdown">
-        <div class="countdown-label">Exam starts in</div>
-        <div class="countdown-display">{formatTime(lobbySecondsLeft)}</div>
-        <div class="countdown-sub">Scheduled: {formatScheduled(data.exam.scheduledStart)}</div>
-      </div>
-
-      <div class="lobby-info">
-        <div class="lobby-info-item"><Clock size={16} />{data.exam.durationMinutes} minutes</div>
-        <div class="lobby-info-item"><BookOpen size={16} />{data.exam.totalQuestions} questions</div>
-      </div>
-
-      <p class="lobby-hint">The exam will start automatically when the timer reaches zero.</p>
-
-      {#if lobbySecondsLeft === 0}
-        <button class="btn-primary" onclick={enterKiosk}>Start Exam Now</button>
-      {/if}
-    </div>
-  </div>
-{/if}
-
-<!-- ══ SUBMITTED ══════════════════════════════════════════════════════════ -->
-{#if step === 'submitted'}
-  <div class="page-wrap">
-    <div class="flow-card center-card">
-      <CheckCircle size={48} class="done-icon" />
+<!-- ═══ SUBMITTED ═══════════════════════════════════════════════════════════ -->
+{:else if step === 'submitted'}
+  <div class="terminal-screen">
+    <div class="terminal-card">
+      <CheckCircle size={56} class="done-icon" />
       <h1>Exam Submitted</h1>
-      <p>Your answers have been recorded. Results will be available once graded.</p>
-      <button class="btn-primary" onclick={() => goto('/student/results')}>View Results</button>
+      <p>Your answers have been recorded successfully.</p>
+      <p class="terminal-sub">Results will be available once your exam is graded.</p>
+      <p class="terminal-close">You may now close this window.</p>
     </div>
   </div>
-{/if}
 
-<!-- ══ FLAGGED ════════════════════════════════════════════════════════════ -->
-{#if step === 'flagged'}
-  <div class="page-wrap">
-    <div class="flow-card center-card warn-card">
-      <AlertTriangle size={48} class="warn-icon-lg" />
+<!-- ═══ FLAGGED ═════════════════════════════════════════════════════════════ -->
+{:else if step === 'flagged'}
+  <div class="terminal-screen warn">
+    <div class="terminal-card">
+      <AlertTriangle size={56} class="warn-icon" />
       <h1>Session Paused</h1>
-      <p>Your exam has been paused pending invigilator review. Please wait — an invigilator will contact you shortly.</p>
-      <button class="btn-secondary" onclick={() => goto('/student')}>Return to Dashboard</button>
-    </div>
-  </div>
-{/if}
-
-<!-- ══ BLOCKED ════════════════════════════════════════════════════════════ -->
-{#if step === 'blocked'}
-  <div class="page-wrap">
-    <div class="flow-card center-card warn-card">
-      <AlertTriangle size={48} class="warn-icon-lg" />
-      <h1>Identity Mismatch Reported</h1>
-      <p>
-        You indicated the displayed information does not belong to you.
-        Your response has been recorded. Contact the exams office or your
-        invigilator immediately.
-      </p>
-      <button class="btn-secondary" onclick={() => goto('/student')}>Return to Dashboard</button>
+      <p>Your exam has been paused pending invigilator review.</p>
+      <p class="terminal-sub">Please wait — an invigilator will contact you shortly.</p>
+      <p class="terminal-close">Do not close this window.</p>
     </div>
   </div>
 {/if}
 
 <style>
-  .page-wrap {
-    min-height: 100vh;
-    display: flex; align-items: center; justify-content: center;
-    padding: 1.5rem; background: var(--color-bg);
-  }
+  /*
+   * Theme awareness strategy:
+   * - var(--color-bg), var(--color-surface), var(--color-border),
+   *   var(--color-text), var(--color-muted) come from the app theme layer
+   * - var(--accent) is resolved to the student green (#10b981 light / adjusted dark)
+   *   by the student layout's :root override. Fall back to #10b981 if not set.
+   * - Hard-coded warning/danger colours (#f59e0b, #ef4444) are intentional
+   *   semantic colours that don't invert with theme.
+   * - color-mix() blends accent with transparent/surface for tinted backgrounds,
+   *   which adapts automatically as --accent and --color-surface change in dark mode.
+   */
 
-  .flow-card {
-    width: 100%; max-width: 580px;
-    background: var(--color-surface); border: 1px solid var(--color-border);
-    border-radius: 1.25rem; overflow: hidden;
-    box-shadow: 0 8px 32px rgb(0 0 0 / .06);
-  }
-  .center-card {
-    display: flex; flex-direction: column; align-items: center;
-    text-align: center; gap: 1rem; padding: 3rem 2rem;
-  }
-  .warn-card { border-color: #fbbf24; }
+  :global(body) { margin: 0; padding: 0; overflow: hidden; user-select: none; }
 
-  .card-header {
-    display: flex; align-items: flex-start; gap: .875rem;
-    padding: 1.5rem 1.5rem 1.25rem; border-bottom: 1px solid var(--color-border);
+  /* ── Splash ───────────────────────────────────────────────────────────── */
+  .splash {
+    height: 100vh; display: flex; flex-direction: column;
+    align-items: center; justify-content: center; gap: 1rem;
+    color: var(--color-muted); background: var(--color-bg);
   }
-  .card-header :global(.header-icon) { color: var(--student-accent, #10b981); margin-top: .1rem; flex-shrink: 0; }
-  .card-header h1 { font-size: 1.1rem; font-weight: 800; margin: 0 0 .2rem; color: var(--color-text); }
-  .card-header p  { font-size: .82rem; color: var(--color-muted); margin: 0; }
-
-  .exam-banner {
-    display: flex; align-items: center; gap: 1rem;
-    padding: 1rem 1.5rem; background: var(--color-bg); border-bottom: 1px solid var(--color-border);
-  }
-  .exam-code {
-    font-size: .75rem; font-weight: 800; padding: .25rem .6rem;
-    background: var(--student-accent-bg, rgba(16,185,129,.1));
-    color: var(--student-accent, #10b981); border-radius: 6px; white-space: nowrap;
-  }
-  .exam-banner-title { font-size: .9rem; font-weight: 700; color: var(--color-text); display: block; }
-  .exam-banner-meta  { display: flex; gap: .75rem; font-size: .78rem; color: var(--color-muted); margin-top: .2rem; }
-  .exam-banner-meta span { display: flex; align-items: center; gap: .3rem; }
-
-  .student-preview {
-    display: flex; gap: 1.5rem; padding: 1.5rem; border-bottom: 1px solid var(--color-border);
-  }
-  .preview-photo-col { display: flex; flex-direction: column; align-items: center; gap: .5rem; flex-shrink: 0; }
-  .preview-photo {
-    width: 90px; height: 90px; border-radius: 50%; object-fit: cover;
-    border: 3px solid var(--student-accent, #10b981);
-    box-shadow: 0 0 0 6px var(--student-accent-bg, rgba(16,185,129,.1));
-  }
-  .preview-photo-placeholder {
-    width: 90px; height: 90px; border-radius: 50%;
-    background: var(--color-bg); border: 3px solid var(--color-border);
-    display: flex; align-items: center; justify-content: center; color: var(--color-muted);
-  }
-  .preview-name { font-size: .8rem; font-weight: 700; color: var(--color-text); text-align: center; max-width: 90px; }
-  .preview-details { flex: 1; display: flex; flex-direction: column; gap: .5rem; }
-  .detail-row { display: flex; align-items: center; gap: .5rem; font-size: .85rem; }
-  .detail-row :global(svg) { color: var(--color-muted); flex-shrink: 0; opacity: .7; }
-  .detail-label { color: var(--color-muted); width: 90px; flex-shrink: 0; font-size: .78rem; }
-  .detail-value { color: var(--color-text); font-weight: 600; }
-
-  .preview-question {
-    display: flex; align-items: center; gap: .75rem;
-    padding: 1rem 1.5rem; background: #fefce8; border-bottom: 1px solid #fef08a;
-  }
-  .preview-question :global(.warn-icon) { color: #ca8a04; flex-shrink: 0; }
-  .preview-question p { font-size: .88rem; font-weight: 600; color: #92400e; margin: 0; }
-  .preview-actions { display: flex; gap: .75rem; padding: 1.25rem 1.5rem; justify-content: flex-end; }
-
-  /* Rules */
-  .rules-card { max-width: 680px; }
-  .rules-scroll {
-    max-height: 380px; overflow-y: auto; padding: 1.5rem;
-    border-bottom: 1px solid var(--color-border); scroll-behavior: smooth;
-  }
-  .rules-scroll h2 {
-    font-size: .78rem; font-weight: 800; color: var(--color-text);
-    margin: 1.25rem 0 .5rem; text-transform: uppercase; letter-spacing: .05em;
-  }
-  .rules-scroll h2:first-child { margin-top: 0; }
-  .rules-scroll ol  { padding-left: 1.25rem; margin: 0 0 .75rem; }
-  .rules-scroll li  { font-size: .85rem; color: var(--color-text); line-height: 1.6; margin-bottom: .4rem; }
-  .rules-end-marker {
+  .splash p { font-size: 1rem; font-weight: 600; color: var(--color-text); }
+  .splash-error {
     display: flex; align-items: center; gap: .5rem;
-    color: var(--student-accent, #10b981); font-size: .8rem; font-weight: 600;
-    margin-top: 1.5rem; padding-top: 1rem; border-top: 1px dashed var(--color-border);
+    font-size: .85rem; color: #dc2626;
+    background: color-mix(in srgb, #ef4444 8%, var(--color-surface));
+    border: 1px solid color-mix(in srgb, #ef4444 30%, transparent);
+    padding: .625rem 1rem; border-radius: .5rem;
   }
-  .rules-footer { padding: 1.25rem 1.5rem; display: flex; flex-direction: column; gap: .75rem; }
-  .accept-label {
-    display: flex; align-items: flex-start; gap: .625rem;
-    cursor: pointer; font-size: .85rem; color: var(--color-text); line-height: 1.5;
+  .splash-error button {
+    margin-left: .5rem; padding: .25rem .75rem;
+    background: #dc2626; color: white; border: none; border-radius: .375rem;
+    font-size: .78rem; font-weight: 700; cursor: pointer;
   }
-  .accept-label.disabled { opacity: .5; cursor: not-allowed; }
-  .accept-label input[type="checkbox"] {
-    margin-top: .15rem; accent-color: var(--student-accent, #10b981); flex-shrink: 0;
-  }
-  .scroll-hint { font-size: .75rem; color: var(--color-muted); margin: 0; font-style: italic; }
 
-  /* Lobby */
-  .lobby-card {
-    width: 100%; max-width: 480px;
+  /* ── Layout ───────────────────────────────────────────────────────────── */
+  .kiosk-layout {
+    display: grid; grid-template-columns: 280px 1fr;
+    height: 100vh; overflow: hidden; position: relative; z-index: 2;
+  }
+
+  /* ── Left panel ───────────────────────────────────────────────────────── */
+  .left-panel {
+    display: flex; flex-direction: column; gap: .875rem; padding: 1rem;
+    background: var(--color-surface); border-right: 1px solid var(--color-border);
+    overflow-y: auto; overflow-x: hidden;
+  }
+
+  .resume-badge {
+    display: flex; align-items: center; gap: .4rem;
+    font-size: .65rem; font-weight: 800; text-transform: uppercase; letter-spacing: .05em;
+    padding: .3rem .65rem; border-radius: 20px; width: fit-content;
+    background: color-mix(in srgb, var(--accent, #10b981) 12%, transparent);
+    color: var(--accent, #10b981);
+    border: 1px solid color-mix(in srgb, var(--accent, #10b981) 25%, transparent);
+  }
+
+  .student-card {
+    display: flex; align-items: center; gap: .625rem; padding: .625rem;
+    background: var(--color-bg); border: 1px solid var(--color-border); border-radius: .75rem;
+  }
+  .student-photo {
+    width: 38px; height: 38px; border-radius: 50%; object-fit: cover;
+    border: 2px solid var(--accent, #10b981); flex-shrink: 0;
+  }
+  .student-photo-placeholder {
+    width: 38px; height: 38px; border-radius: 50%;
+    background: var(--color-bg); border: 2px solid var(--color-border);
+    display: flex; align-items: center; justify-content: center; color: var(--color-muted); flex-shrink: 0;
+  }
+  .student-info { display: flex; flex-direction: column; min-width: 0; }
+  .student-name {
+    font-size: .75rem; font-weight: 800; color: var(--color-text);
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .student-matric { font-size: .68rem; color: var(--color-muted); font-weight: 600; }
+
+  .exam-info-block {
+    display: flex; flex-direction: column; gap: .25rem; padding: .5rem .625rem;
+    background: color-mix(in srgb, var(--accent, #10b981) 8%, var(--color-surface));
+    border: 1px solid color-mix(in srgb, var(--accent, #10b981) 20%, transparent);
+    border-radius: .625rem;
+  }
+  .exam-code-pill {
+    font-size: .65rem; font-weight: 800; text-transform: uppercase;
+    letter-spacing: .06em; color: var(--accent, #10b981);
+  }
+  .exam-title-text { font-size: .78rem; font-weight: 700; color: var(--color-text); line-height: 1.3; }
+
+  /* Timer */
+  .timer-block {
+    padding: .75rem; background: var(--color-bg);
+    border: 1.5px solid var(--color-border); border-radius: .75rem;
+    transition: border-color .3s, background .3s;
+  }
+  .timer-block.warning  { border-color: #fcd34d; background: color-mix(in srgb, #f59e0b 6%, var(--color-bg)); }
+  .timer-block.critical { border-color: #fca5a5; background: color-mix(in srgb, #ef4444 6%, var(--color-bg)); animation: pulse-card 1s ease-in-out infinite; }
+  @keyframes pulse-card {
+    0%, 100% { box-shadow: none; }
+    50%       { box-shadow: 0 0 0 4px color-mix(in srgb, #ef4444 15%, transparent); }
+  }
+  .timer-bar-track { height: 5px; background: var(--color-border); border-radius: 3px; overflow: hidden; margin-bottom: .625rem; }
+  .timer-bar-fill {
+    height: 100%; background: var(--accent, #10b981); border-radius: 3px;
+    transition: width 1s linear, background .3s;
+  }
+  .timer-bar-fill.warning  { background: #f59e0b; }
+  .timer-bar-fill.critical { background: #ef4444; }
+  .timer-display { display: flex; align-items: center; gap: .5rem; color: var(--color-text); }
+  .timer-digits { font-size: 1.6rem; font-weight: 900; font-variant-numeric: tabular-nums; letter-spacing: -.02em; line-height: 1; }
+  .timer-block.warning  .timer-digits { color: #d97706; }
+  .timer-block.critical .timer-digits { color: #dc2626; }
+  .timer-hint { font-size: .68rem; font-weight: 700; margin-top: .375rem; padding: .2rem .5rem; border-radius: 4px; display: inline-block; }
+  .timer-hint.warn { background: color-mix(in srgb, #f59e0b 12%, var(--color-bg)); color: #92400e; }
+  .timer-hint.crit { background: color-mix(in srgb, #ef4444 10%, var(--color-bg)); color: #991b1b; }
+
+  /* Progress */
+  .progress-block { display: flex; flex-direction: column; gap: .375rem; }
+  .progress-row { display: flex; justify-content: space-between; align-items: center; }
+  .progress-label { font-size: .7rem; font-weight: 600; color: var(--color-muted); text-transform: uppercase; letter-spacing: .05em; }
+  .progress-val   { font-size: .78rem; font-weight: 800; color: var(--color-text); }
+  .progress-track { height: 5px; background: var(--color-border); border-radius: 3px; overflow: hidden; }
+  .progress-fill  { height: 100%; background: var(--accent, #10b981); border-radius: 3px; transition: width .4s ease; }
+
+  /* Navigator */
+  .nav-section { display: flex; flex-direction: column; gap: .5rem; }
+  .nav-legend { display: flex; align-items: center; gap: .5rem; font-size: .62rem; color: var(--color-muted); font-weight: 600; flex-wrap: wrap; }
+  .legend-dot { width: 8px; height: 8px; border-radius: 2px; display: inline-block; }
+  .legend-dot.answered   { background: var(--accent, #10b981); }
+  .legend-dot.unanswered { background: var(--color-border); }
+  .legend-dot.current    { background: var(--accent-dark, #16a34a); }
+
+  .nav-grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: .3rem; }
+  .nav-btn {
+    aspect-ratio: 1; border-radius: 6px;
+    border: 1.5px solid var(--color-border);
+    background: var(--color-bg); color: var(--color-muted);
+    font-size: .68rem; font-weight: 700; cursor: pointer;
+    transition: all .12s; display: flex; align-items: center; justify-content: center; padding: 0;
+  }
+  /* answered — tinted with accent */
+  .nav-btn.answered {
+    background: color-mix(in srgb, var(--accent, #10b981) 14%, var(--color-bg));
+    border-color: var(--accent, #10b981);
+    color: var(--accent, #10b981);
+  }
+  /* current — solid brand green, adapts via --accent-dark */
+  .nav-btn.current {
+    background: var(--accent-dark, #16a34a);
+    border-color: var(--accent-dark, #16a34a);
+    color: #fff;
+    transform: scale(1.08);
+    box-shadow: 0 2px 8px color-mix(in srgb, var(--accent, #10b981) 40%, transparent);
+  }
+  .nav-btn:hover:not(.current) { border-color: var(--accent, #10b981); color: var(--accent, #10b981); }
+
+  /* Status bars */
+  .offline-bar, .syncing-bar { font-size: .7rem; font-weight: 700; text-align: center; padding: .4rem .75rem; border-radius: .5rem; }
+  .offline-bar { background: color-mix(in srgb, #ef4444 8%, var(--color-surface)); color: #dc2626; border: 1px solid color-mix(in srgb, #ef4444 30%, transparent); }
+  .syncing-bar { background: color-mix(in srgb, #3b82f6 8%, var(--color-surface)); color: #2563eb; border: 1px solid color-mix(in srgb, #3b82f6 30%, transparent); }
+
+  /* Violation counter */
+  .violation-counter {
+    display: flex; align-items: center; gap: .35rem;
+    font-size: .72rem; font-weight: 700; padding: .35rem .75rem; border-radius: .5rem;
+    background: color-mix(in srgb, #f59e0b 8%, var(--color-surface));
+    color: #92400e;
+    border: 1px solid color-mix(in srgb, #f59e0b 30%, transparent);
+  }
+  .violation-counter.danger {
+    background: color-mix(in srgb, #ef4444 8%, var(--color-surface));
+    color: #991b1b;
+    border-color: color-mix(in srgb, #ef4444 30%, transparent);
+  }
+
+  /* Submit side */
+  .btn-submit-side {
+    display: flex; align-items: center; justify-content: center; gap: .5rem;
+    width: 100%; padding: .75rem;
+    background: color-mix(in srgb, var(--accent, #10b981) 85%, #000);
+    color: white; border: none; border-radius: .75rem;
+    font-size: .85rem; font-weight: 800; cursor: pointer; transition: all .2s; font-family: inherit;
+  }
+  .btn-submit-side:hover { filter: brightness(.88); transform: translateY(-1px); }
+  .btn-submit-side kbd { font-size: .62rem; padding: .1rem .35rem; background: rgba(255,255,255,.2); border-radius: 3px; }
+
+  /* Key hints */
+  .key-hints {
+    display: flex; flex-direction: column; gap: .3rem; padding: .625rem;
+    background: var(--color-bg); border: 1px solid var(--color-border); border-radius: .625rem; margin-top: auto;
+  }
+  .key-row { font-size: .65rem; color: var(--color-muted); display: flex; align-items: center; gap: .25rem; flex-wrap: wrap; }
+  .key-row kbd {
+    font-size: .6rem; padding: .1rem .35rem;
     background: var(--color-surface); border: 1px solid var(--color-border);
-    border-radius: 1.5rem; padding: 2.5rem 2rem;
-    display: flex; flex-direction: column; align-items: center; gap: 1rem;
-    text-align: center; box-shadow: 0 8px 32px rgb(0 0 0 / .06);
+    border-radius: 3px; color: var(--color-text); font-family: monospace; font-weight: 700;
   }
-  .lobby-badge {
-    font-size: .72rem; font-weight: 800; text-transform: uppercase; letter-spacing: .08em;
-    padding: .25rem .75rem;
-    background: var(--student-accent-bg, rgba(16,185,129,.1));
-    color: var(--student-accent, #10b981); border-radius: 999px;
-  }
-  .lobby-title  { font-size: 1.4rem; font-weight: 800; color: var(--color-text); margin: 0; }
-  .lobby-course { font-size: .875rem; color: var(--color-muted); margin: 0; }
-  .lobby-countdown {
-    width: 100%; padding: 1.5rem;
-    background: var(--color-bg); border-radius: 1rem; border: 1px solid var(--color-border);
-  }
-  .countdown-label { font-size: .75rem; font-weight: 600; text-transform: uppercase; letter-spacing: .06em; color: var(--color-muted); margin-bottom: .5rem; }
-  .countdown-display { font-size: 3rem; font-weight: 800; color: var(--student-accent, #10b981); font-variant-numeric: tabular-nums; line-height: 1; }
-  .countdown-sub { font-size: .75rem; color: var(--color-muted); margin-top: .5rem; }
-  .lobby-info { display: flex; gap: 1.5rem; font-size: .85rem; color: var(--color-muted); }
-  .lobby-info-item { display: flex; align-items: center; gap: .35rem; }
-  .lobby-hint { font-size: .78rem; color: var(--color-muted); margin: 0; }
 
-  /* Buttons */
-  .btn-primary {
-    display: inline-flex; align-items: center; gap: .4rem; padding: .7rem 1.5rem;
-    background: var(--student-accent, #10b981); color: white; border: none;
-    border-radius: .625rem; font-weight: 700; font-size: .9rem; cursor: pointer;
-    transition: all .2s; font-family: inherit;
-  }
-  .btn-primary:hover:not(:disabled) { filter: brightness(.92); transform: translateY(-1px); }
-  .btn-primary:disabled { opacity: .45; cursor: not-allowed; transform: none; }
+  /* ── Right panel ──────────────────────────────────────────────────────── */
+  .right-panel { display: flex; flex-direction: column; height: 100vh; overflow: hidden; background: var(--color-bg); }
 
-  .btn-secondary {
-    display: inline-flex; align-items: center; gap: .4rem; padding: .7rem 1.5rem;
+  .q-loading, .q-error {
+    flex: 1; display: flex; flex-direction: column;
+    align-items: center; justify-content: center; gap: 1rem; color: var(--color-muted);
+  }
+  .q-error { color: #dc2626; }
+  .q-error p { font-size: .95rem; font-weight: 600; margin: 0; }
+  .btn-retry {
+    display: inline-flex; align-items: center; gap: .5rem; padding: .625rem 1.25rem;
+    background: var(--color-surface); color: var(--color-text);
+    border: 1.5px solid var(--color-border); border-radius: .625rem;
+    font-weight: 700; font-size: .875rem; cursor: pointer; font-family: inherit;
+  }
+
+  .question-card { flex: 1; display: flex; flex-direction: column; padding: 2rem 2.5rem; overflow-y: auto; gap: 1.5rem; }
+  .question-header { display: flex; align-items: center; justify-content: space-between; flex-shrink: 0; }
+  .q-meta-left { display: flex; align-items: baseline; gap: .5rem; }
+  .q-number { font-size: 1rem; font-weight: 900; color: var(--color-text); letter-spacing: -.01em; }
+  .q-of     { font-size: .8rem; color: var(--color-muted); font-weight: 600; }
+  .q-meta-right { display: flex; align-items: center; gap: .75rem; }
+  .q-marks {
+    font-size: .78rem; font-weight: 700; padding: .25rem .65rem;
+    background: color-mix(in srgb, var(--accent, #10b981) 12%, transparent);
+    color: var(--accent, #10b981); border-radius: 6px;
+  }
+  .q-answered-badge {
+    display: flex; align-items: center; gap: .3rem; font-size: .72rem; font-weight: 700;
+    color: var(--accent, #10b981);
+    background: color-mix(in srgb, var(--accent, #10b981) 10%, transparent);
+    border: 1px solid var(--accent, #10b981);
+    padding: .2rem .6rem; border-radius: 20px;
+  }
+  .question-body-wrap { flex-shrink: 0; }
+  .question-text { font-size: 1.25rem; line-height: 1.75; color: var(--color-text); font-weight: 500; margin: 0; max-width: 72ch; }
+  .question-img { max-width: 100%; max-height: 280px; object-fit: contain; border-radius: .75rem; margin-top: 1rem; border: 1px solid var(--color-border); }
+
+  .options-list { display: flex; flex-direction: column; gap: .75rem; flex-shrink: 0; }
+  .option-btn {
+    display: flex; align-items: center; gap: 1rem; padding: 1rem 1.25rem;
+    background: var(--color-surface); border: 1.5px solid var(--color-border);
+    border-radius: .875rem; cursor: pointer; text-align: left;
+    transition: all .15s; font-family: inherit; color: var(--color-text); max-width: 72ch;
+  }
+  .option-btn:hover:not(.selected) {
+    border-color: var(--accent, #10b981);
+    background: color-mix(in srgb, var(--accent, #10b981) 5%, var(--color-surface));
+    transform: translateX(2px);
+  }
+  .option-btn.selected {
+    border-color: var(--accent, #10b981);
+    background: color-mix(in srgb, var(--accent, #10b981) 10%, var(--color-surface));
+  }
+  .option-letter {
+    width: 36px; height: 36px; border-radius: 50%;
+    border: 1.5px solid var(--color-border);
+    display: flex; align-items: center; justify-content: center;
+    font-size: .88rem; font-weight: 900; flex-shrink: 0; color: var(--color-muted); transition: all .15s;
+  }
+  .option-letter.selected { background: var(--accent, #10b981); border-color: var(--accent, #10b981); color: white; }
+  .option-text { flex: 1; font-size: 1rem; line-height: 1.5; }
+  .option-btn :global(.option-check) { color: var(--accent, #10b981); flex-shrink: 0; }
+
+  .fitb-wrap { display: flex; flex-direction: column; gap: .5rem; max-width: 60ch; flex-shrink: 0; }
+  .fitb-label { font-size: .78rem; font-weight: 700; color: var(--color-muted); }
+  .fitb-input {
+    padding: 1rem 1.25rem; font-size: 1.1rem; font-family: inherit;
+    color: var(--color-text); background: var(--color-surface);
+    border: 1.5px solid var(--color-border); border-radius: .75rem;
+    outline: none; transition: border-color .15s; user-select: text;
+  }
+  .fitb-input:focus { border-color: var(--accent, #10b981); }
+
+  .question-footer {
+    display: flex; align-items: center; justify-content: space-between;
+    padding-top: 1rem; border-top: 1px solid var(--color-border);
+    flex-shrink: 0; margin-top: auto; gap: 1rem;
+  }
+  .footer-center { flex: 1; text-align: center; }
+  .offline-text { font-size: .78rem; color: #dc2626; font-weight: 600; }
+  .btn-nav {
+    display: inline-flex; align-items: center; gap: .5rem; padding: .75rem 1.5rem; border-radius: .75rem;
+    font-size: .9rem; font-weight: 700; cursor: pointer; font-family: inherit; transition: all .2s;
+    border: 1.5px solid var(--color-border); background: var(--color-surface); color: var(--color-text);
+  }
+  .btn-nav:disabled { opacity: .35; cursor: not-allowed; }
+  .btn-nav kbd { font-size: .65rem; padding: .1rem .35rem; background: rgba(0,0,0,.06); border-radius: 3px; font-family: monospace; }
+  .btn-prev:hover:not(:disabled) { border-color: var(--accent, #10b981); color: var(--accent, #10b981); }
+  .btn-next { background: var(--accent, #10b981); color: white; border-color: var(--accent, #10b981); }
+  .btn-next:hover:not(:disabled) { filter: brightness(.9); }
+  .btn-next kbd { background: rgba(255,255,255,.2); }
+  .btn-submit-footer { background: color-mix(in srgb, var(--accent, #10b981) 85%, #000); color: white; border-color: transparent; }
+  .btn-submit-footer:hover:not(:disabled) { filter: brightness(.9); }
+  .btn-submit-footer:disabled { opacity: .5; }
+  .btn-submit-footer kbd { background: rgba(255,255,255,.2); }
+
+  /* Modal */
+  .modal-backdrop {
+    position: fixed; inset: 0; background: rgb(0 0 0 / .65); backdrop-filter: blur(6px);
+    display: flex; align-items: center; justify-content: center; z-index: 200; padding: 1rem;
+  }
+  .confirm-modal {
+    background: var(--color-surface); border: 1px solid var(--color-border); border-radius: 1.25rem;
+    padding: 2rem; width: 100%; max-width: 440px; display: flex; flex-direction: column; gap: 1rem;
+    box-shadow: 0 24px 64px rgb(0 0 0 / .2);
+  }
+  .confirm-modal h2 { font-size: 1.15rem; font-weight: 900; margin: 0; color: var(--color-text); }
+  .confirm-warn {
+    display: flex; align-items: center; gap: .5rem; font-size: .875rem;
+    background: color-mix(in srgb, #f59e0b 8%, var(--color-surface));
+    color: #92400e;
+    border: 1px solid color-mix(in srgb, #f59e0b 30%, transparent);
+    padding: .625rem .875rem; border-radius: .5rem; margin: 0;
+  }
+  .confirm-ok  { font-size: .875rem; color: var(--color-muted); margin: 0; }
+  .submit-err  { font-size: .8rem; color: #dc2626; margin: 0; }
+  .confirm-keys { font-size: .72rem; color: var(--color-muted); }
+  .confirm-keys kbd { padding: .1rem .4rem; background: var(--color-bg); border: 1px solid var(--color-border); border-radius: 3px; font-family: monospace; font-size: .7rem; }
+  .confirm-actions { display: flex; gap: .75rem; justify-content: flex-end; }
+  .btn-cancel {
+    display: inline-flex; align-items: center; gap: .35rem; padding: .7rem 1.25rem;
     background: var(--color-bg); color: var(--color-text);
     border: 1.5px solid var(--color-border); border-radius: .625rem;
-    font-weight: 700; font-size: .9rem; cursor: pointer; transition: all .2s; font-family: inherit;
+    font-weight: 700; font-size: .875rem; cursor: pointer; font-family: inherit;
   }
-  .btn-secondary:hover { background: var(--color-border); }
-
-  .btn-danger {
+  .btn-cancel kbd { font-size: .65rem; padding: .1rem .3rem; background: var(--color-surface); border: 1px solid var(--color-border); border-radius: 3px; font-family: monospace; }
+  .btn-cancel:disabled { opacity: .45; }
+  .btn-submit-confirm {
     display: inline-flex; align-items: center; gap: .4rem; padding: .7rem 1.5rem;
-    background: #fef2f2; color: #dc2626; border: 1.5px solid #fecaca; border-radius: .625rem;
-    font-weight: 700; font-size: .9rem; cursor: pointer; transition: all .2s; font-family: inherit;
+    background: color-mix(in srgb, var(--accent, #10b981) 85%, #000); color: white;
+    border: none; border-radius: .625rem; font-weight: 800; font-size: .875rem;
+    cursor: pointer; font-family: inherit; transition: filter .2s;
   }
-  .btn-danger:hover { background: #fee2e2; }
+  .btn-submit-confirm:hover:not(:disabled) { filter: brightness(.88); }
+  .btn-submit-confirm:disabled { opacity: .5; cursor: not-allowed; }
+  .btn-submit-confirm kbd { font-size: .65rem; padding: .1rem .3rem; background: rgba(255,255,255,.2); border-radius: 3px; font-family: monospace; }
 
-  .center-card :global(.done-icon)    { color: var(--student-accent, #10b981); }
-  .center-card :global(.warn-icon-lg) { color: #f59e0b; }
-  .center-card h1 { font-size: 1.4rem; font-weight: 800; color: var(--color-text); margin: 0; }
-  .center-card p  { font-size: .9rem; color: var(--color-muted); max-width: 380px; line-height: 1.6; margin: 0; }
-
-  @media (max-width: 600px) {
-    .student-preview   { flex-direction: column; align-items: center; }
-    .preview-details   { width: 100%; }
-    .detail-label      { width: 80px; }
-    .preview-actions   { flex-direction: column; }
-    .btn-primary, .btn-danger, .btn-secondary { width: 100%; justify-content: center; }
-    .lobby-card        { padding: 1.5rem 1.25rem; }
-    .countdown-display { font-size: 2.5rem; }
+  /* Terminal */
+  .terminal-screen { height: 100vh; display: flex; align-items: center; justify-content: center; background: var(--color-bg); padding: 2rem; }
+  .terminal-screen.warn { background: color-mix(in srgb, #f59e0b 5%, var(--color-bg)); }
+  .terminal-card { display: flex; flex-direction: column; align-items: center; gap: 1rem; text-align: center; max-width: 480px; }
+  .terminal-card :global(.done-icon) { color: var(--accent, #10b981); }
+  .terminal-card :global(.warn-icon) { color: #f59e0b; }
+  .terminal-card h1 { font-size: 1.75rem; font-weight: 900; color: var(--color-text); margin: 0; }
+  .terminal-card p  { font-size: .95rem; color: var(--color-muted); margin: 0; line-height: 1.6; }
+  .terminal-sub   { font-size: .85rem; }
+  .terminal-close {
+    font-size: .78rem; font-weight: 700; color: var(--color-muted); padding: .5rem 1rem;
+    background: var(--color-surface); border: 1px solid var(--color-border);
+    border-radius: .5rem; margin-top: .5rem;
   }
+
+  :global(.spin) { animation: spin 1s linear infinite; }
+  @keyframes spin { to { transform: rotate(360deg); } }
 </style>

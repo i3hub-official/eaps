@@ -8,4 +8,19 @@
   let { children }: { children: Snippet } = $props();
 </script>
 
+<svelte:head>
+  <!-- Prevent the kiosk from being indexed or framed -->
+  <meta name="robots" content="noindex, nofollow" />
+</svelte:head>
+ 
 {@render children()}
+ 
+<style>
+  /* Ensure the kiosk page fills the viewport with no inherited shell spacing */
+  :global(body) {
+    margin: 0;
+    padding: 0;
+    overflow: hidden;
+  }
+</style>
+ 

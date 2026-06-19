@@ -6,8 +6,7 @@ import { getActiveSemester } from '$lib/server/academic/semester.js';
 
 export const load: PageServerLoad = async ({ locals }) => {
   const user = await requireStudent(locals.user);
-            const prisma = await getPrismaClient();
-  
+  const prisma = await getPrismaClient();
 
   // ── Single source of truth ────────────────────────────────────────────
   const { session: currentSession, semester: currentSemester } = await getActiveSemester();
@@ -47,6 +46,16 @@ export const load: PageServerLoad = async ({ locals }) => {
       });
     } catch (err) { console.warn('Could not fetch LevelSemesterConfig:', err); }
   }
+
+  // ── Get submitted exam IDs for this student ───────────────────────────
+  const submittedExamIds = await prisma.examSession.findMany({
+    where: {
+      studentId: user.id,
+      status: { in: ['submitted', 'force_submitted'] },
+    },
+    select: { examId: true },
+  });
+  const submittedSet = new Set(submittedExamIds.map(s => s.examId));
 
   // ── Registered courses ────────────────────────────────────────────────
   const registrations = await prisma.courseRegistration.findMany({
@@ -115,12 +124,29 @@ export const load: PageServerLoad = async ({ locals }) => {
       registrationType: r.registrationType,
       status:           r.status,
       level:            r.level?.level ?? '—',
-      exams: r.course.exams.map(e => ({
-        id:             e.id,
-        title:          e.title,
-        status:         e.status,
-        scheduledStart: e.scheduledStart,
-      })),
+    exams: r.course.exams.map(e => {
+  // If the exam is submitted, mark it as completed
+  const status = submittedSet.has(e.id) ? 'completed' : e.status;
+  return {
+    id: e.id,
+    title: e.title,
+    status: status,
+    scheduledStart: e.scheduledStart,
+  };
+})
+// Filter out cancelled exams only
+.filter(e => e.status !== 'cancelled')
+// Sort: active → scheduled → completed
+.sort((a, b) => {
+  const order = { active: 0, scheduled: 1, completed: 2 };
+  return (order[a.status as keyof typeof order] ?? 3) - (order[b.status as keyof typeof order] ?? 3);
+})
+        .map(e => ({
+          id:             e.id,
+          title:          e.title,
+          status:         e.status,
+          scheduledStart: e.scheduledStart,
+        })),
       registeredAt: r.createdAt,
     })),
 
