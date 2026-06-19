@@ -20,6 +20,16 @@ enum UserRole {
   lecturer
   invigilator
   student
+  hod
+  dean
+  exam_officer
+  vc_dvc        // covers both VC and DVC — same permission set
+}
+
+// Secondary roles a user can hold in addition to their primary role.
+// Currently used for HOD who also lectures.
+enum SecondaryRole {
+  lecturer
 }
 
 enum ExamStatus {
@@ -81,7 +91,6 @@ enum NotificationType {
   critical
 }
 
-// Risk Level enum
 enum RiskLevel {
   low
   medium
@@ -139,6 +148,7 @@ model Department {
   courses         Course[]
   programmes      Programme[]
   examDepartments ExamDepartment[]
+  lecturerCourses LecturerCourse[]
 
   @@unique([name, collegeId])
   @@index([collegeId])
@@ -148,13 +158,12 @@ model Department {
 model Level {
   id        Int      @id @default(autoincrement())
   level     Int      @unique
-  name      String? // Optional: "100 Level", "200 Level", etc.
+  name      String?
   isDefault Boolean  @default(false)
-  order     Int      @default(0) // For custom sorting
+  order     Int      @default(0)
   createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz()
   updatedAt DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz()
 
-  // Relations
   users           User[]                @relation("UserLevel")
   exams           Exam[]                @relation("ExamLevels")
   registrations   CourseRegistration[]
@@ -167,7 +176,7 @@ model Level {
 model LevelSemesterConfig {
   id           Int      @id @default(autoincrement())
   levelId      Int      @map("level_id")
-  semester     Int      @db.SmallInt // 1 or 2
+  semester     Int      @db.SmallInt
   maxCredits   Int      @default(24) @map("max_credits") @db.SmallInt
   maxCarryOver Int      @default(6) @map("max_carry_over") @db.SmallInt
   maxBorrowed  Int      @default(6) @map("max_borrowed") @db.SmallInt
@@ -201,13 +210,12 @@ model AcademicSemester {
 
 // ─── Users ────────────────────────────────────────────────────────────────────
 
-// User model - corrected Level relationship
 model User {
   id            String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   email         String   @unique
   fullName      String   @map("full_name")
   passwordHash  String   @map("password_hash")
-  role          UserRole
+  role          UserRole // primary role — drives routing and base permissions
   isActive      Boolean  @default(true) @map("is_active")
   createdAt     DateTime @default(now()) @map("created_at") @db.Timestamptz()
   updatedAt     DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz()
@@ -226,7 +234,6 @@ model User {
   staffId      String? @unique @map("staff_id")
   jambRegNo    String? @unique @map("jamb_reg_no")
 
-  // Level - reference to Level model (one-to-many: one level has many users)
   levelId Int?    @map("level_id")
   level   Level?  @relation("UserLevel", fields: [levelId], references: [id])
   session String?
@@ -248,7 +255,6 @@ model User {
   nationality   String?
   stateoforigin String?
   lga           String?
-  
 
   // ── Receipt audit trail ───────────────────────────────────────────────────
   receiptNo     String? @map("receipt_no")
@@ -262,6 +268,12 @@ model User {
 
   // ── Face enrollment ───────────────────────────────────────────────────────
   faceDescriptor FaceDescriptor?
+
+  // ── Secondary roles (e.g. HOD who also lectures) ──────────────────────────
+  secondaryRoles UserRoleAssignment[] @relation("UserSecondaryRoles")
+
+  // created-by audit on role assignments
+  roleAssignmentsCreated UserRoleAssignment[] @relation("RoleAssignedBy")
 
   // ── Relations ─────────────────────────────────────────────────────────────
   authSessions        AuthSession[]
@@ -278,11 +290,13 @@ model User {
   userPreferences     UserPreference[]
   createdSemesters    AcademicSemester[]   @relation("SemesterCreatedBy")
 
-  // ─── Face verification & similarity ───────────────────────────────────────
   verificationLogs  FaceVerificationLog[] @relation("StudentVerifications")
   faceSimilaritiesA FaceSimilarity[]      @relation("StudentA")
   faceSimilaritiesB FaceSimilarity[]      @relation("StudentB")
   passwordResets    PasswordReset[]
+
+  lecturerCourses         LecturerCourse[] @relation("LecturerCourses")
+  assignedLecturerCourses LecturerCourse[] @relation("LecturerCourseAssignedBy")
 
   @@index([role])
   @@index([collegeId])
@@ -294,6 +308,30 @@ model User {
   @@index([levelId])
   @@map("users")
 }
+
+// ─── Secondary Role Assignments ───────────────────────────────────────────────
+//
+// Tracks additional roles a user holds beyond their primary role.
+// Example: an HOD (primary) who also lectures (secondary).
+// Kept as a junction table so it's queryable, auditable, and extensible.
+
+model UserRoleAssignment {
+  id           String        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId       String        @map("user_id") @db.Uuid
+  role         SecondaryRole
+  assignedAt   DateTime      @default(now()) @map("assigned_at") @db.Timestamptz()
+  assignedById String?       @map("assigned_by_id") @db.Uuid
+
+  user       User  @relation("UserSecondaryRoles", fields: [userId], references: [id], onDelete: Cascade)
+  assignedBy User? @relation("RoleAssignedBy", fields: [assignedById], references: [id])
+
+  @@unique([userId, role])
+  @@index([userId])
+  @@index([role])
+  @@map("user_role_assignments")
+}
+
+// ─── (rest of models unchanged from original) ─────────────────────────────────
 
 model PasswordReset {
   token     String    @id
@@ -308,21 +346,9 @@ model PasswordReset {
   @@map("password_resets")
 }
 
-// ─── Face Descriptors ─────────────────────────────────────────────────────────
-//
-// Stores the 128-float face embedding produced by face-api / vladmandic.
-// Kept in its own table so:
-//   • it can be wiped/re-enrolled without touching the user row
-//   • the descriptor column (large JSON array) doesn't bloat user queries
-//   • cascade delete keeps it clean when a user is removed
-//
-// descriptor is stored as a JSON array of 128 floats.
-// If you later add pgvector, swap the column type to vector(128) and
-// update faces.ts accordingly — the API surface stays the same.
-
 model FaceDescriptor {
   studentId           String   @id @map("student_id") @db.Uuid
-  descriptor          Json // 128-element float array — e.g. [0.123, -0.456, ...]
+  descriptor          Json
   enrolledAt          DateTime @default(now()) @map("enrolled_at") @db.Timestamptz()
   updatedAt           DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz()
   embedding_dimension Int      @default(512) @map("embedding_dimension")
@@ -331,7 +357,6 @@ model FaceDescriptor {
   @@map("face_descriptors")
 }
 
-// Face similarity for academic integrity
 model FaceSimilarity {
   id                 String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   examId             String    @map("exam_id") @db.Uuid
@@ -356,7 +381,6 @@ model FaceSimilarity {
   @@map("face_similarity")
 }
 
-// Face verification audit logs
 model FaceVerificationLog {
   id              String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   studentId       String   @map("student_id") @db.Uuid
@@ -377,8 +401,6 @@ model FaceVerificationLog {
   @@map("face_verification_logs")
 }
 
-// ─── Auth Sessions ────────────────────────────────────────────────────────────
-
 model AuthSession {
   id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   userId    String   @map("user_id") @db.Uuid
@@ -395,8 +417,6 @@ model AuthSession {
   @@map("auth_sessions")
 }
 
-// ─── Courses ──────────────────────────────────────────────────────────────────
-
 model Course {
   id           String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   departmentId String   @map("department_id") @db.Uuid
@@ -404,14 +424,16 @@ model Course {
   title        String
   creditUnits  Int      @default(2) @map("credit_units") @db.SmallInt
   level        Int?     @db.SmallInt
-  semester     Int?     @db.SmallInt // ← ADD THIS: 1 or 2
+  semester     Int?     @db.SmallInt
   createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz()
 
-  department    Department           @relation(fields: [departmentId], references: [id])
-  registrations CourseRegistration[]
-  exams         Exam[]
-  programme     Programme?           @relation(fields: [programmeId], references: [id])
-  programmeId   String?              @db.Uuid
+  department          Department           @relation(fields: [departmentId], references: [id])
+  registrations       CourseRegistration[]
+  lecturerAssignments LecturerCourse[]
+
+  exams       Exam[]
+  programme   Programme? @relation(fields: [programmeId], references: [id])
+  programmeId String?    @db.Uuid
 
   @@map("courses")
 }
@@ -453,7 +475,25 @@ model Programme {
   @@map("programmes")
 }
 
-// ─── Exams ────────────────────────────────────────────────────────────────────
+model LecturerCourse {
+  id           String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  lecturerId   String   @map("lecturer_id") @db.Uuid
+  courseId     String   @map("course_id") @db.Uuid
+  departmentId String   @map("department_id") @db.Uuid
+  assignedAt   DateTime @default(now()) @map("assigned_at") @db.Timestamptz()
+  assignedById String?  @map("assigned_by_id") @db.Uuid
+
+  lecturer   User       @relation("LecturerCourses", fields: [lecturerId], references: [id], onDelete: Cascade)
+  course     Course     @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  department Department @relation(fields: [departmentId], references: [id], onDelete: Cascade)
+  assignedBy User?      @relation("LecturerCourseAssignedBy", fields: [assignedById], references: [id])
+
+  @@unique([lecturerId, courseId])
+  @@index([lecturerId])
+  @@index([courseId])
+  @@index([departmentId])
+  @@map("lecturer_courses")
+}
 
 model Exam {
   id                 String     @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
@@ -471,7 +511,7 @@ model Exam {
   lateEntryMinutes   Int        @default(10) @map("late_entry_minutes") @db.SmallInt
   randomizeQuestions Boolean    @default(true) @map("randomize_questions")
   randomizeOptions   Boolean    @default(true) @map("randomize_options")
-  questionsToPresent Int        @default(0) @map("questions_to_present") @db.SmallInt // ← NEW
+  questionsToPresent Int        @default(0) @map("questions_to_present") @db.SmallInt
   showResultAfter    Boolean    @default(false) @map("show_result_after")
   maxViolations      Int        @default(5) @map("max_violations") @db.SmallInt
   session            String
@@ -519,14 +559,12 @@ model ExamDepartment {
   @@map("exam_departments")
 }
 
-// ─── Questions ────────────────────────────────────────────────────────────────
-
 model Question {
   id         String       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   examId     String       @map("exam_id") @db.Uuid
   type       QuestionType
   body       String
-  topic      String? // e.g. "Thermodynamics", "Algebra" — drives weakness/strength analysis in results
+  topic      String?
   imageUrl   String?      @map("image_url")
   marks      Int          @default(1) @db.SmallInt
   orderIndex Int?         @map("order_index") @db.SmallInt
@@ -567,8 +605,6 @@ model FitbAnswer {
 
   @@map("fitb_answers")
 }
-
-// ─── Exam Sessions ────────────────────────────────────────────────────────────
 
 model ExamSession {
   id                String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
@@ -630,8 +666,6 @@ model SessionOptionOrder {
   @@map("session_option_order")
 }
 
-// ─── Student Answers ──────────────────────────────────────────────────────────
-
 model StudentAnswer {
   id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   sessionId      String   @map("session_id") @db.Uuid
@@ -652,8 +686,6 @@ model StudentAnswer {
   @@map("student_answers")
 }
 
-// ─── Violations ───────────────────────────────────────────────────────────────
-
 model Violation {
   id          String           @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   sessionId   String           @map("session_id") @db.Uuid
@@ -669,8 +701,6 @@ model Violation {
   @@map("violations")
 }
 
-// ─── Invigilator Assignments ──────────────────────────────────────────────────
-
 model ExamInvigilator {
   id            String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   examId        String   @map("exam_id") @db.Uuid
@@ -683,8 +713,6 @@ model ExamInvigilator {
   @@unique([examId, invigilatorId])
   @@map("exam_invigilators")
 }
-
-// ─── Results ──────────────────────────────────────────────────────────────────
 
 model ExamResult {
   id             String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
@@ -712,8 +740,6 @@ model ExamResult {
   @@map("exam_results")
 }
 
-// ─── Audit Log ────────────────────────────────────────────────────────────────
-
 model AuditLog {
   id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   userId    String?  @map("user_id") @db.Uuid
@@ -731,8 +757,6 @@ model AuditLog {
   @@map("audit_logs")
 }
 
-// ─── Notifications ────────────────────────────────────────────────────────────
-
 model Notification {
   id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   userId    String   @map("user_id") @db.Uuid
@@ -747,20 +771,19 @@ model Notification {
   @@map("notifications")
 }
 
-// ─── API Keys ────────────────────────────────────────────────────────────────
 model ApiKey {
   id           String       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  name         String // human-readable label
-  keyHash      String       @unique @map("key_hash") // bcrypt hash of the raw key
-  keyPrefix    String       @map("key_prefix") // first 8 chars shown in UI  e.g. "mk_live_"
-  scopes       ApiScope[] // array of granted scopes
+  name         String
+  keyHash      String       @unique @map("key_hash")
+  keyPrefix    String       @map("key_prefix")
+  scopes       ApiScope[]
   status       ApiKeyStatus @default(active)
   createdById  String       @map("created_by_id") @db.Uuid
   lastUsedAt   DateTime?    @map("last_used_at") @db.Timestamptz()
   expiresAt    DateTime?    @map("expires_at") @db.Timestamptz()
   revokedAt    DateTime?    @map("revoked_at") @db.Timestamptz()
   revokedById  String?      @map("revoked_by_id") @db.Uuid
-  ipWhitelist  String[]     @default([]) @map("ip_whitelist") // optional CIDR list
+  ipWhitelist  String[]     @default([]) @map("ip_whitelist")
   requestCount Int          @default(0) @map("request_count")
   createdAt    DateTime     @default(now()) @map("created_at") @db.Timestamptz()
   updatedAt    DateTime     @default(now()) @updatedAt @map("updated_at") @db.Timestamptz()
@@ -794,7 +817,7 @@ model ApiAccessLog {
 
 model UserPreference {
   userId    String   @id @map("user_id") @db.Uuid
-  prefs     Json     @default("{}") // flexible JSON object for various preferences
+  prefs     Json     @default("{}")
   updatedAt DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz()
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)

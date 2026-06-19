@@ -3,19 +3,23 @@
   import {
     FileText, Search, BarChart3, ShieldCheck, Users, BookOpen,
     GraduationCap, AlertTriangle, TrendingUp, Clock, ChevronRight,
-    LayoutDashboard, Flag, Lock, Activity
+    LayoutDashboard, Flag, Lock, Activity, Sparkles, Filter,
+    Download, Calendar, SearchCheck, X
   } from '@lucide/svelte';
 
+  // These would come from your load function in +page.server.ts
+  // For now, using the registry data structure
   interface ReportMeta {
     id: string;
     label: string;
     description: string;
-    category: string;           // Added for proper filtering
+    category: string;
     supportsSearch: boolean;
     supportsDateRange: boolean;
     exportable: boolean;
   }
 
+  // This would be loaded from the server
   let { data } = $props<{ data: { reports: ReportMeta[] } }>();
 
   let searchQuery = $state('');
@@ -23,102 +27,50 @@
 
   // Category mapping with icons
   const categories: Record<string, { label: string; icon: typeof FileText; color: string }> = {
-    all: { label: 'All Reports', icon: LayoutDashboard, color: '#3b82f6' },
-    academic: { label: 'Academic', icon: BookOpen, color: '#16a34a' },
-    administrative: { label: 'Administrative', icon: ShieldCheck, color: '#6366f1' },
-    analytics: { label: 'Analytics', icon: BarChart3, color: '#f59e0b' },
-    compliance: { label: 'Compliance', icon: Lock, color: '#ef4444' },
+    all:           { label: 'All Reports',   icon: LayoutDashboard, color: '#3b82f6' },
+    academic:      { label: 'Academic',      icon: BookOpen,        color: '#16a34a' },
+    administrative:{ label: 'Administrative',icon: ShieldCheck,     color: '#6366f1' },
+    analytics:     { label: 'Analytics',     icon: BarChart3,       color: '#f59e0b' },
+    compliance:    { label: 'Compliance',    icon: Lock,            color: '#ef4444' },
   };
 
-  // Fallback reports with proper category assignment
+  // Fallback reports data if none provided from server
   const fallbackReports: ReportMeta[] = [
-    { 
-      id: 'overview', 
-      label: 'Overview', 
-      description: 'System-wide stats and recent activity',
-      category: 'analytics',
-      supportsSearch: false, 
-      supportsDateRange: false, 
-      exportable: false 
-    },
-    { 
-      id: 'exam-performance', 
-      label: 'Exam Performance', 
-      description: 'Per-exam scores, pass rates and sessions',
-      category: 'academic',
-      supportsSearch: false, 
-      supportsDateRange: false, 
-      exportable: true 
-    },
-    { 
-      id: 'grade-distribution', 
-      label: 'Grade Distribution', 
-      description: 'Breakdown of student scores across grade bands',
-      category: 'academic',
-      supportsSearch: false, 
-      supportsDateRange: false, 
-      exportable: true 
-    },
-    { 
-      id: 'student-performance', 
-      label: 'Student Performance', 
-      description: 'Per-student exam results and averages',
-      category: 'academic',
-      supportsSearch: false, 
-      supportsDateRange: false, 
-      exportable: true 
-    },
-    { 
-      id: 'audit-logs', 
-      label: 'Audit Logs', 
-      description: 'System activity log with user tracking',
-      category: 'compliance',
-      supportsSearch: true, 
-      supportsDateRange: true, 
-      exportable: true 
-    },
-    { 
-      id: 'violations', 
-      label: 'Violations', 
-      description: 'All recorded exam violations',
-      category: 'compliance',
-      supportsSearch: true, 
-      supportsDateRange: false, 
-      exportable: true 
-    },
-    { 
-      id: 'action-analysis', 
-      label: 'Action Analysis', 
-      description: 'Actions taken in response to violations',
-      category: 'compliance',
-      supportsSearch: false, 
-      supportsDateRange: false, 
-      exportable: true 
-    },
-    { 
-      id: 'user-overview', 
-      label: 'User Overview', 
-      description: 'User counts and role distribution',
-      category: 'administrative',
-      supportsSearch: false, 
-      supportsDateRange: false, 
-      exportable: true 
-    },
+    { id: 'overview',            label: 'Overview',            description: 'System-wide stats and recent activity',                  category: 'analytics',      supportsSearch: false, supportsDateRange: false, exportable: false },
+    { id: 'exam-performance',    label: 'Exam Performance',    description: 'Per-exam scores, pass rates and sessions',               category: 'academic',       supportsSearch: false, supportsDateRange: false, exportable: true },
+    { id: 'grade-distribution',  label: 'Grade Distribution',  description: 'Breakdown of student scores across grade bands',           category: 'academic',       supportsSearch: false, supportsDateRange: false, exportable: true },
+    { id: 'student-performance', label: 'Student Performance', description: 'Per-student exam results and averages',                  category: 'academic',       supportsSearch: false, supportsDateRange: false, exportable: true },
+    { id: 'audit-logs',          label: 'Audit Logs',          description: 'System activity log with user tracking',                   category: 'administrative', supportsSearch: true,  supportsDateRange: true,  exportable: true },
+    { id: 'violations',          label: 'Violations',          description: 'All recorded exam violations',                           category: 'compliance',     supportsSearch: true,  supportsDateRange: false, exportable: true },
+    { id: 'action-analysis',     label: 'Action Analysis',     description: 'Actions taken in response to violations',                  category: 'compliance',     supportsSearch: false, supportsDateRange: false, exportable: true },
+    { id: 'user-overview',       label: 'User Overview',       description: 'User counts and role distribution',                      category: 'administrative', supportsSearch: false, supportsDateRange: false, exportable: true },
+    { id: 'college-performance', label: 'College Performance', description: 'Performance metrics across colleges and departments',    category: 'analytics',      supportsSearch: false, supportsDateRange: false, exportable: true },
+    { id: 'department-performance', label: 'Department Performance', description: 'Department-level academic performance trends',        category: 'analytics',      supportsSearch: false, supportsDateRange: false, exportable: true },
+    { id: 'course-analysis',     label: 'Course Analysis',     description: 'Course enrollment, completion and success rates',        category: 'academic',       supportsSearch: false, supportsDateRange: false, exportable: true },
+    { id: 'lecturer-activity',   label: 'Lecturer Activity',   description: 'Lecturer engagement and assessment activity',            category: 'administrative', supportsSearch: false, supportsDateRange: false, exportable: true },
+    { id: 'login-history',       label: 'Login History',       description: 'User authentication events and session tracking',        category: 'administrative', supportsSearch: true,  supportsDateRange: true,  exportable: true },
+    { id: 'system-activity',     label: 'System Activity',     description: 'Server health, uptime and resource utilization',         category: 'analytics',      supportsSearch: false, supportsDateRange: true,  exportable: true },
+    { id: 'security-incidents',  label: 'Security Incidents',  description: 'Detected threats and security anomaly reports',          category: 'compliance',     supportsSearch: true,  supportsDateRange: true,  exportable: true },
+    { id: 'suspended-users',     label: 'Suspended Users',     description: 'Accounts under review or temporary suspension',          category: 'compliance',     supportsSearch: true,  supportsDateRange: false, exportable: true },
   ];
 
   const reports = $derived(data?.reports ?? fallbackReports);
 
-  // Fixed sorter/filtering logic
   const filteredReports = $derived(
     reports.filter(r => {
-      const matchesSearch = !searchQuery ||
-        r.label.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        r.description.toLowerCase().includes(searchQuery.toLowerCase());
-      
+      const q = searchQuery.trim().toLowerCase();
+      const matchesSearch = !q ||
+        r.label.toLowerCase().includes(q) ||
+        r.description.toLowerCase().includes(q);
       const matchesCategory = selectedCategory === 'all' || r.category === selectedCategory;
-      
       return matchesSearch && matchesCategory;
     })
+  );
+
+  const activeCount = $derived(
+    selectedCategory === 'all'
+      ? reports.length
+      : reports.filter(r => r.category === selectedCategory).length
   );
 
   function getReportIcon(id: string) {
@@ -153,8 +105,24 @@
       'violations': '#ef4444',
       'action-analysis': '#14b8a6',
       'user-overview': '#3b82f6',
+      'college-performance': '#0ea5e9',
+      'department-performance': '#06b6d4',
+      'course-analysis': '#22c55e',
+      'lecturer-activity': '#a855f7',
+      'login-history': '#64748b',
+      'system-activity': '#f97316',
+      'security-incidents': '#dc2626',
+      'suspended-users': '#7c3aed',
     };
     return colorMap[id] ?? '#6b7280';
+  }
+
+  function getCategoryLabel(cat: string) {
+    return categories[cat]?.label ?? cat;
+  }
+
+  function getCategoryColor(cat: string) {
+    return categories[cat]?.color ?? '#6b7280';
   }
 </script>
 
@@ -167,83 +135,122 @@
   <header class="page-header">
     <div class="header-main">
       <div class="header-icon">
-        <BarChart3 size={28} />
+        <BarChart3 size={24} />
       </div>
       <div class="header-text">
         <h1>Reports</h1>
-        <p class="description">Comprehensive analytics, performance metrics, and system insights for MOUAU eTest</p>
+        <p class="description">Analytics, performance metrics & system insights</p>
       </div>
+    </div>
+    <div class="header-meta">
+      <span class="meta-pill">
+        <Sparkles size={12} />
+        {filteredReports.length} of {reports.length} reports
+      </span>
     </div>
   </header>
 
-  <!-- Controls -->
-  <div class="controls">
+  <!-- Controls Row -->
+  <div class="controls-row">
     <!-- Search -->
     <div class="search-bar">
       <div class="search-input-wrap">
-        <Search size={18} />
+        <Search size={16} />
         <input
           type="search"
-          placeholder="Search reports by name or description..."
+          placeholder="Search reports..."
           bind:value={searchQuery}
         />
+        {#if searchQuery}
+          <button class="search-clear" onclick={() => searchQuery = ''} aria-label="Clear search">
+            <X size={14} />
+          </button>
+        {/if}
       </div>
-      {#if searchQuery}
-        <button class="clear-btn" onclick={() => searchQuery = ''}>Clear</button>
-      {/if}
     </div>
 
     <!-- Category Tabs -->
     <div class="category-tabs">
       {#each Object.entries(categories) as [key, cat]}
         {@const Icon = cat.icon}
+        {@const count = key === 'all' ? reports.length : reports.filter(r => r.category === key).length}
         <button
           class="cat-tab"
           class:active={selectedCategory === key}
           onclick={() => selectedCategory = key}
         >
-          <Icon size={16} />
+          <Icon size={14} />
           <span>{cat.label}</span>
+          <span class="cat-count" style="background: {selectedCategory === key ? 'rgba(255,255,255,0.25)' : cat.color + '15'}; color: {selectedCategory === key ? 'white' : cat.color}">
+            {count}
+          </span>
         </button>
       {/each}
     </div>
   </div>
 
-  <!-- Results Info -->
-  <div class="results-info">
-    <p>
-      Showing <strong>{filteredReports.length}</strong> 
-      {#if selectedCategory !== 'all'} {categories[selectedCategory].label} {/if}
-      report{filteredReports.length === 1 ? '' : 's'}
-    </p>
-  </div>
+  <!-- Active Filters Summary -->
+  {#if searchQuery || selectedCategory !== 'all'}
+    <div class="active-filters">
+      <Filter size={14} />
+      <span>Filtered by:</span>
+      {#if selectedCategory !== 'all'}
+        <span class="filter-chip">
+          Category: {categories[selectedCategory].label}
+          <button onclick={() => selectedCategory = 'all'}><X size={12} /></button>
+        </span>
+      {/if}
+      {#if searchQuery}
+        <span class="filter-chip">
+          Search: "{searchQuery}"
+          <button onclick={() => searchQuery = ''}><X size={12} /></button>
+        </span>
+      {/if}
+      <button class="clear-all" onclick={() => { searchQuery = ''; selectedCategory = 'all'; }}>
+        Clear all
+      </button>
+    </div>
+  {/if}
 
   <!-- Reports Grid -->
-  <div class="reports-grid">
-    {#each filteredReports as report}
+  <div class="reports-grid" class:empty={filteredReports.length === 0}>
+    {#each filteredReports as report (report.id)}
       {@const Icon = getReportIcon(report.id)}
       {@const color = getReportColor(report.id)}
+      {@const catColor = getCategoryColor(report.category)}
       <a href="/admin/reports/{report.id}" class="report-card">
-        <div class="card-icon" style="background: {color}10; color: {color}">
-          <Icon size={28} />
-        </div>
-        <div class="card-content">
-          <div class="card-header">
-            <h3>{report.label}</h3>
-            <ChevronRight size={18} class="arrow" />
+        <div class="card-accent" style="background: {color}"></div>
+        <div class="card-body">
+          <div class="card-icon" style="background: {color}12; color: {color}">
+            <Icon size={22} />
           </div>
-          <p class="card-desc">{report.description}</p>
-          
-          <div class="card-badges">
-            {#if report.supportsSearch}
-              <span class="badge search">Search</span>
-            {/if}
-            {#if report.supportsDateRange}
-              <span class="badge date">Date Range</span>
-            {/if}
-            {#if report.exportable}
-              <span class="badge export">Export</span>
-            {/if}
+          <div class="card-content">
+            <div class="card-header">
+              <h3>{report.label}</h3>
+              <ChevronRight size={16} class="arrow" />
+            </div>
+            <p class="card-desc">{report.description}</p>
+            <div class="card-footer">
+              <button
+                type="button"
+                class="cat-tag"
+                style="background: {catColor}12; color: {catColor}; border-color: {catColor}25"
+                onclick={(e) => { e.preventDefault(); e.stopPropagation(); selectedCategory = report.category; }}
+              >
+                {getCategoryLabel(report.category)}
+              </button>
+              <div class="card-badges">
+                {#if report.supportsSearch}
+                  <span class="badge" title="Supports search"><SearchCheck size={11} /> Search</span>
+                {/if}
+                {#if report.supportsDateRange}
+                  <span class="badge" title="Supports date range"><Calendar size={11} /> Date</span>
+                {/if}
+                {#if report.exportable}
+                  <span class="badge" title="Exportable"><Download size={11} /> Export</span>
+                {/if}
+              </div>
+            </div>
           </div>
         </div>
       </a>
@@ -252,9 +259,14 @@
 
   {#if filteredReports.length === 0}
     <div class="empty-state">
-      <FileText size={48} />
-      <h3>No matching reports</h3>
-      <p>Try adjusting your search term or filter selection.</p>
+      <div class="empty-icon">
+        <FileText size={48} />
+      </div>
+      <h3>No reports found</h3>
+      <p>Try adjusting your search or category filter.</p>
+      <button class="empty-action" onclick={() => { searchQuery = ''; selectedCategory = 'all'; }}>
+        Clear filters
+      </button>
     </div>
   {/if}
 </div>
@@ -263,30 +275,36 @@
   .reports-index {
     display: flex;
     flex-direction: column;
-    gap: 2rem;
-    padding: 2rem;
-    max-width: 1280px;
+    gap: 1.25rem;
+    padding: 1.5rem;
+    max-width: 1200px;
     margin: 0 auto;
     font-family: 'Inter', system-ui, -apple-system, sans-serif;
     min-height: 100vh;
   }
 
-  /* Header */
+  /* ═══════════════════════════════════════════
+     HEADER
+     ═══════════════════════════════════════════ */
   .page-header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 1rem;
     padding-bottom: 1.25rem;
-    border-bottom: 2px solid var(--color-border, #e5e7eb);
+    border-bottom: 1px solid var(--color-border, #e5e7eb);
   }
 
   .header-main {
     display: flex;
     align-items: center;
-    gap: 1rem;
+    gap: 0.875rem;
   }
 
   .header-icon {
-    width: 56px;
-    height: 56px;
-    border-radius: 1rem;
+    width: 48px;
+    height: 48px;
+    border-radius: 0.875rem;
     background: rgba(59, 130, 246, 0.1);
     display: flex;
     align-items: center;
@@ -295,44 +313,49 @@
     flex-shrink: 0;
   }
 
-  .header-text h1 {
-    font-size: 1.75rem;
-    font-weight: 800;
-    letter-spacing: -0.025em;
-    color: var(--color-text, #111827);
-    margin: 0;
+  .header-text { display: flex; flex-direction: column; gap: 0.15rem; }
+  .header-text h1 { font-size: 1.5rem; font-weight: 800; letter-spacing: -0.02em; color: var(--color-text, #111827); margin: 0; }
+  .description { font-size: 0.85rem; color: var(--color-muted, #6b7280); margin: 0; }
+
+  .header-meta { display: flex; align-items: center; gap: 0.5rem; }
+
+  .meta-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.375rem;
+    padding: 0.35rem 0.75rem;
+    background: rgba(59, 130, 246, 0.08);
+    border: 1px solid rgba(59, 130, 246, 0.15);
+    border-radius: 999px;
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: #3b82f6;
   }
 
-  .description {
-    font-size: 0.95rem;
-    color: var(--color-muted, #6b7280);
-    margin: 0;
-  }
-
-  /* Controls */
-  .controls {
-    display: flex;
-    flex-direction: column;
-    gap: 1.25rem;
-  }
-
-  .search-bar {
+  /* ═══════════════════════════════════════════
+     CONTROLS ROW
+     ═══════════════════════════════════════════ */
+  .controls-row {
     display: flex;
     align-items: center;
-    gap: 0.75rem;
+    justify-content: space-between;
+    gap: 1rem;
+    flex-wrap: wrap;
   }
+
+  /* Search */
+  .search-bar { display: flex; align-items: center; gap: 0.5rem; }
 
   .search-input-wrap {
     display: flex;
     align-items: center;
-    gap: 0.75rem;
-    flex: 1;
-    max-width: 480px;
-    padding: 0.75rem 1rem;
+    gap: 0.5rem;
+    width: 320px;
+    padding: 0.5rem 0.75rem;
     background: var(--color-surface, white);
     border: 1.5px solid var(--color-border, #e5e7eb);
-    border-radius: 0.75rem;
-    transition: all 0.2s ease;
+    border-radius: 0.625rem;
+    transition: all 0.15s;
   }
 
   .search-input-wrap:focus-within {
@@ -345,46 +368,50 @@
     border: none;
     background: none;
     outline: none;
-    font-size: 0.95rem;
+    font-size: 0.85rem;
     color: var(--color-text, #111827);
   }
 
-  .clear-btn {
-    padding: 0.75rem 1.25rem;
-    background: none;
-    border: 1.5px solid var(--color-border, #e5e7eb);
-    border-radius: 0.75rem;
-    font-weight: 600;
-    color: var(--color-muted, #6b7280);
+  .search-input-wrap input::placeholder { color: #9ca3af; }
+
+  .search-clear {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 20px;
+    height: 20px;
+    padding: 0;
+    background: #e5e7eb;
+    border: none;
+    border-radius: 50%;
+    color: #6b7280;
     cursor: pointer;
-    transition: all 0.2s;
+    transition: all 0.15s;
   }
 
-  .clear-btn:hover {
-    border-color: #ef4444;
-    color: #ef4444;
-  }
+  .search-clear:hover { background: #d1d5db; color: #374151; }
 
   /* Category Tabs */
   .category-tabs {
     display: flex;
-    gap: 0.5rem;
+    gap: 0.375rem;
     flex-wrap: wrap;
   }
 
   .cat-tab {
     display: flex;
     align-items: center;
-    gap: 0.5rem;
-    padding: 0.65rem 1.125rem;
+    gap: 0.4rem;
+    padding: 0.45rem 0.75rem;
     border: 1.5px solid var(--color-border, #e5e7eb);
-    border-radius: 0.75rem;
+    border-radius: 0.5rem;
     background: var(--color-surface, white);
-    font-size: 0.875rem;
+    font-size: 0.8rem;
     font-weight: 600;
     color: var(--color-muted, #6b7280);
     cursor: pointer;
-    transition: all 0.2s ease;
+    transition: all 0.15s;
+    white-space: nowrap;
   }
 
   .cat-tab:hover {
@@ -397,48 +424,145 @@
     background: #3b82f6;
     border-color: #3b82f6;
     color: white;
+    box-shadow: 0 2px 8px rgba(59, 130, 246, 0.25);
   }
 
-  /* Results Info */
-  .results-info {
-    font-size: 0.875rem;
+  .cat-count {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 18px;
+    height: 18px;
+    padding: 0 0.3rem;
+    border-radius: 999px;
+    font-size: 0.65rem;
+    font-weight: 700;
+    transition: all 0.15s;
+  }
+
+  /* ═══════════════════════════════════════════
+     ACTIVE FILTERS
+     ═══════════════════════════════════════════ */
+  .active-filters {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    flex-wrap: wrap;
+    padding: 0.625rem 0.875rem;
+    background: rgba(59, 130, 246, 0.04);
+    border: 1px dashed rgba(59, 130, 246, 0.2);
+    border-radius: 0.5rem;
+    font-size: 0.8rem;
     color: var(--color-muted, #6b7280);
+    animation: slideDown 0.2s ease;
   }
 
-  /* Reports Grid */
+  @keyframes slideDown {
+    from { opacity: 0; transform: translateY(-4px); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
+
+  .filter-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.25rem;
+    padding: 0.2rem 0.5rem;
+    background: white;
+    border: 1px solid var(--color-border, #e5e7eb);
+    border-radius: 0.375rem;
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: var(--color-text, #374151);
+  }
+
+  .filter-chip button {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0.1rem;
+    background: none;
+    border: none;
+    border-radius: 0.2rem;
+    color: #9ca3af;
+    cursor: pointer;
+    transition: all 0.15s;
+  }
+
+  .filter-chip button:hover { background: #fee2e2; color: #ef4444; }
+
+  .clear-all {
+    margin-left: auto;
+    padding: 0.25rem 0.625rem;
+    background: none;
+    border: 1px solid var(--color-border, #e5e7eb);
+    border-radius: 0.375rem;
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: #ef4444;
+    cursor: pointer;
+    transition: all 0.15s;
+  }
+
+  .clear-all:hover { background: #fef2f2; border-color: #fecaca; }
+
+  /* ═══════════════════════════════════════════
+     REPORTS GRID
+     ═══════════════════════════════════════════ */
   .reports-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
-    gap: 1.25rem;
+    grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+    gap: 1rem;
   }
 
+  .reports-grid.empty { display: none; }
+
   .report-card {
+    position: relative;
     display: flex;
-    align-items: flex-start;
-    gap: 1.25rem;
-    padding: 1.5rem;
+    flex-direction: column;
     background: var(--color-surface, white);
     border: 1.5px solid var(--color-border, #e5e7eb);
-    border-radius: 1.25rem;
+    border-radius: 0.875rem;
     text-decoration: none;
-    transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+    overflow: hidden;
+    transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
   }
 
   .report-card:hover {
-    transform: translateY(-4px);
-    box-shadow: 0 20px 25px -5px rgb(0 0 0 / 0.1), 0 8px 10px -6px rgb(0 0 0 / 0.1);
-    border-color: #d1d5db;
+    transform: translateY(-3px);
+    box-shadow: 0 12px 32px rgba(0, 0, 0, 0.1);
+    border-color: var(--color-border-hover, #d1d5db);
   }
 
   .report-card:hover .arrow {
-    transform: translateX(5px);
+    transform: translateX(4px);
     color: #3b82f6;
   }
 
+  .report-card:hover .card-accent {
+    width: 4px;
+  }
+
+  .card-accent {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 3px;
+    height: 100%;
+    transition: width 0.2s;
+  }
+
+  .card-body {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.875rem;
+    padding: 1.125rem 1.125rem 1.125rem 1.375rem;
+  }
+
   .card-icon {
-    width: 52px;
-    height: 52px;
-    border-radius: 1rem;
+    width: 42px;
+    height: 42px;
+    border-radius: 0.625rem;
     display: flex;
     align-items: center;
     justify-content: center;
@@ -456,78 +580,140 @@
     display: flex;
     align-items: center;
     justify-content: space-between;
-    gap: 0.75rem;
-    margin-bottom: 0.5rem;
+    gap: 0.5rem;
+    margin-bottom: 0.3rem;
   }
 
   .card-header h3 {
-    font-size: 1.05rem;
+    font-size: 0.9rem;
     font-weight: 700;
     color: var(--color-text, #111827);
     margin: 0;
-    line-height: 1.3;
   }
 
   .arrow {
     color: var(--color-muted, #9ca3af);
-    transition: all 0.2s ease;
+    transition: all 0.2s;
     flex-shrink: 0;
   }
 
   .card-desc {
-    font-size: 0.875rem;
+    font-size: 0.78rem;
     color: var(--color-muted, #6b7280);
     line-height: 1.45;
-    margin-bottom: 1rem;
+    margin: 0 0 0.625rem;
     display: -webkit-box;
-    -webkit-line-clamp: 3;
+    -webkit-line-clamp: 2;
     -webkit-box-orient: vertical;
     overflow: hidden;
   }
 
-  .card-badges {
+  .card-footer {
     display: flex;
+    align-items: center;
+    justify-content: space-between;
     gap: 0.5rem;
     flex-wrap: wrap;
   }
 
-  .badge {
-    padding: 0.2rem 0.65rem;
-    border-radius: 9999px;
-    font-size: 0.7rem;
+  .cat-tag {
+    display: inline-flex;
+    align-items: center;
+    padding: 0.2rem 0.55rem;
+    border: 1px solid transparent;
+    border-radius: 0.35rem;
+    font-size: 0.68rem;
     font-weight: 700;
     text-transform: uppercase;
-    letter-spacing: 0.05em;
+    letter-spacing: 0.04em;
+    cursor: pointer;
+    transition: all 0.15s;
   }
 
-  .badge.search { background: #dbeafe; color: #1e40af; }
-  .badge.date { background: #fef3c7; color: #92400e; }
-  .badge.export { background: #d1fae5; color: #065f46; }
+  .cat-tag:hover {
+    filter: brightness(0.9);
+    transform: translateY(-1px);
+  }
 
-  /* Empty State */
+  .card-badges {
+    display: flex;
+    gap: 0.35rem;
+    flex-wrap: wrap;
+  }
+
+  .badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.2rem;
+    padding: 0.2rem 0.45rem;
+    background: var(--color-bg, #f3f4f6);
+    border-radius: 0.3rem;
+    font-size: 0.65rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+    color: var(--color-muted, #6b7280);
+  }
+
+  /* ═══════════════════════════════════════════
+     EMPTY STATE
+     ═══════════════════════════════════════════ */
   .empty-state {
     display: flex;
     flex-direction: column;
     align-items: center;
     justify-content: center;
-    gap: 1rem;
-    padding: 5rem 2rem;
+    gap: 0.875rem;
+    padding: 4rem 2rem;
     text-align: center;
-    color: var(--color-muted, #9ca3af);
+    animation: fadeIn 0.3s ease;
   }
 
-  .empty-state h3 {
-    font-size: 1.25rem;
+  @keyframes fadeIn {
+    from { opacity: 0; transform: translateY(8px); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
+
+  .empty-icon {
+    width: 80px;
+    height: 80px;
+    border-radius: 1.25rem;
+    background: rgba(59, 130, 246, 0.06);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #3b82f6;
+  }
+
+  .empty-state h3 { font-size: 1.125rem; font-weight: 700; color: var(--color-text, #374151); margin: 0; }
+  .empty-state p { font-size: 0.875rem; color: var(--color-muted, #9ca3af); margin: 0; }
+
+  .empty-action {
+    margin-top: 0.5rem;
+    padding: 0.55rem 1.25rem;
+    background: #3b82f6;
+    border: none;
+    border-radius: 0.5rem;
+    font-size: 0.8rem;
     font-weight: 700;
-    color: var(--color-text, #374151);
-    margin: 0;
+    color: white;
+    cursor: pointer;
+    transition: all 0.15s;
   }
 
-  /* Responsive */
+  .empty-action:hover { background: #2563eb; transform: translateY(-1px); }
+
+  /* ═══════════════════════════════════════════
+     RESPONSIVE
+     ═══════════════════════════════════════════ */
   @media (max-width: 768px) {
-    .reports-index { padding: 1.25rem; }
+    .reports-index { padding: 1rem; gap: 1rem; }
+    .page-header { flex-direction: column; align-items: flex-start; }
+    .controls-row { flex-direction: column; align-items: stretch; }
+    .search-input-wrap { width: 100%; }
+    .category-tabs { width: 100%; overflow-x: auto; flex-wrap: nowrap; padding-bottom: 0.25rem; }
     .reports-grid { grid-template-columns: 1fr; }
-    .header-text h1 { font-size: 1.5rem; }
-    .controls { gap: 1rem; }
+    .header-text h1 { font-size: 1.25rem; }
+    .card-footer { flex-direction: column; align-items: flex-start; }
   }
 </style>
