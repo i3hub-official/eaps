@@ -3,12 +3,14 @@
   import type { PageData } from './$types';
   import { goto } from '$app/navigation';
   import { page } from '$app/stores';
+  import { onMount } from 'svelte';
+  import Chart from 'chart.js/auto';
   import {
     BarChart2, Users, CheckCircle, XCircle, TrendingUp,
     Search, Filter, Download, Grid3X3, List, ChevronDown,
     BookOpen, Clock, Award, AlertTriangle, FileText,
     GraduationCap, Building2, Layers, ArrowUpDown,
-    ChevronRight, ChevronLeft, X
+    ChevronRight, ChevronLeft, X, PieChart, Activity
   } from '@lucide/svelte';
 
   let { data }: { data: PageData } = $props();
@@ -19,6 +21,21 @@
   let sortDir    = $state<'asc' | 'desc'>('desc');
   let groupBy    = $state<'none' | 'exam' | 'college' | 'department'>('none');
   let showFilters = $state(false);
+  let activeChartTab = $state<'overview' | 'college' | 'department' | 'exam'>('overview');
+
+  // ── Chart instances ──────────────────────────────────────────
+  let chartInstances: Record<string, Chart | null> = {
+    overview: null,
+    college: null,
+    department: null,
+    exam: null
+  };
+  let chartContainers: Record<string, HTMLCanvasElement | null> = {
+    overview: null,
+    college: null,
+    department: null,
+    exam: null
+  };
 
   // ── Filters (local, applied via URL) ─────────────────────────
   let localSearch   = $state(data.filters.search);
@@ -50,6 +67,407 @@
     data.filters.filterGrade    !== 'all' ||
     data.filters.search         !== ''
   );
+
+  // ── Derived analytics data ──────────────────────────────────
+  const collegePerformance = $derived(() => {
+    const map = new Map();
+    for (const r of data.results) {
+      const id = r.student.college?.id?.toString() ?? 'none';
+      if (!map.has(id)) {
+        map.set(id, {
+          name: r.student.college?.name ?? 'No College',
+          abbr: r.student.college?.abbreviation ?? 'NC',
+          total: 0,
+          passed: 0,
+          sumScore: 0,
+          results: []
+        });
+      }
+      const entry = map.get(id);
+      entry.total++;
+      if (r.passed) entry.passed++;
+      entry.sumScore += (r.percentage ?? 0);
+      entry.results.push(r);
+    }
+    return Array.from(map.values()).map(c => ({
+      ...c,
+      avgScore: c.total > 0 ? c.sumScore / c.total : 0,
+      passRate: c.total > 0 ? (c.passed / c.total) * 100 : 0
+    }));
+  });
+
+  const departmentPerformance = $derived(() => {
+    const map = new Map();
+    for (const r of data.results) {
+      const id = r.student.department?.id ?? 'none';
+      if (!map.has(id)) {
+        map.set(id, {
+          name: r.student.department?.name ?? 'No Department',
+          college: r.student.college?.name ?? '',
+          total: 0,
+          passed: 0,
+          sumScore: 0,
+          results: []
+        });
+      }
+      const entry = map.get(id);
+      entry.total++;
+      if (r.passed) entry.passed++;
+      entry.sumScore += (r.percentage ?? 0);
+      entry.results.push(r);
+    }
+    return Array.from(map.values()).map(d => ({
+      ...d,
+      avgScore: d.total > 0 ? d.sumScore / d.total : 0,
+      passRate: d.total > 0 ? (d.passed / d.total) * 100 : 0
+    }));
+  });
+
+  const examPerformance = $derived(() => {
+    const map = new Map();
+    for (const r of data.results) {
+      const id = r.exam.id;
+      if (!map.has(id)) {
+        map.set(id, {
+          id: r.exam.id,
+          title: r.exam.title,
+          courseCode: r.exam.course.code,
+          courseTitle: r.exam.course.title,
+          session: r.exam.session,
+          semester: r.exam.semester,
+          total: 0,
+          passed: 0,
+          sumScore: 0,
+          results: []
+        });
+      }
+      const entry = map.get(id);
+      entry.total++;
+      if (r.passed) entry.passed++;
+      entry.sumScore += (r.percentage ?? 0);
+      entry.results.push(r);
+    }
+    return Array.from(map.values()).map(e => ({
+      ...e,
+      avgScore: e.total > 0 ? e.sumScore / e.total : 0,
+      passRate: e.total > 0 ? (e.passed / e.total) * 100 : 0
+    }));
+  });
+
+  // ── Chart color palette ─────────────────────────────────────
+  const COLORS = [
+    '#4f46e5', '#7c3aed', '#2563eb', '#0891b2', 
+    '#059669', '#16a34a', '#ca8a04', '#d97706',
+    '#dc2626', '#db2777', '#6b7280', '#8b5cf6'
+  ];
+
+  function getColor(index: number, opacity = 1) {
+    return COLORS[index % COLORS.length];
+  }
+
+  // ── Chart creation ──────────────────────────────────────────
+  function createOverviewChart() {
+    const ctx = chartContainers.overview?.getContext('2d');
+    if (!ctx) return;
+
+    if (chartInstances.overview) {
+      chartInstances.overview.destroy();
+    }
+
+    const gradeData = data.gradeDistribution;
+    const labels = gradeData.map(g => g.grade);
+    const values = gradeData.map(g => g.count);
+
+    chartInstances.overview = new Chart(ctx, {
+      type: 'doughnut',
+      data: {
+        labels: labels,
+        datasets: [{
+          data: values,
+          backgroundColor: ['#16a34a', '#2563eb', '#7c3aed', '#d97706', '#ea580c', '#dc2626'],
+          borderWidth: 2,
+          borderColor: '#ffffff'
+        }]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+          legend: {
+            position: 'bottom',
+            labels: {
+              padding: 16,
+              usePointStyle: true,
+              pointStyle: 'circle',
+              font: { size: 11 }
+            }
+          },
+          tooltip: {
+            callbacks: {
+              label: function(context) {
+                const total = context.dataset.data.reduce((a, b) => a + b, 0);
+                const percentage = ((context.parsed / total) * 100).toFixed(1);
+                return `${context.label}: ${context.parsed} (${percentage}%)`;
+              }
+            }
+          }
+        }
+      }
+    });
+  }
+
+  function createCollegeChart() {
+    const ctx = chartContainers.college?.getContext('2d');
+    if (!ctx) return;
+
+    if (chartInstances.college) {
+      chartInstances.college.destroy();
+    }
+
+    const data = collegePerformance();
+    const sorted = [...data].sort((a, b) => b.avgScore - a.avgScore);
+    const labels = sorted.map(c => c.abbr);
+    const avgScores = sorted.map(c => Math.round(c.avgScore * 10) / 10);
+    const passRates = sorted.map(c => Math.round(c.passRate * 10) / 10);
+
+    chartInstances.college = new Chart(ctx, {
+      type: 'bar',
+      data: {
+        labels: labels,
+        datasets: [
+          {
+            label: 'Average Score (%)',
+            data: avgScores,
+            backgroundColor: 'rgba(79, 70, 229, 0.7)',
+            borderColor: '#4f46e5',
+            borderWidth: 2,
+            borderRadius: 4
+          },
+          {
+            label: 'Pass Rate (%)',
+            data: passRates,
+            backgroundColor: 'rgba(22, 163, 74, 0.7)',
+            borderColor: '#16a34a',
+            borderWidth: 2,
+            borderRadius: 4
+          }
+        ]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+          legend: {
+            position: 'top',
+            labels: {
+              padding: 12,
+              usePointStyle: true,
+              pointStyle: 'circle',
+              font: { size: 11 }
+            }
+          },
+          tooltip: {
+            callbacks: {
+              label: function(context) {
+                return `${context.dataset.label}: ${context.parsed.y}%`;
+              }
+            }
+          }
+        },
+        scales: {
+          y: {
+            beginAtZero: true,
+            max: 100,
+            ticks: {
+              callback: function(value) { return value + '%'; }
+            }
+          },
+          x: {
+            grid: { display: false }
+          }
+        }
+      }
+    });
+  }
+
+  function createDepartmentChart() {
+    const ctx = chartContainers.department?.getContext('2d');
+    if (!ctx) return;
+
+    if (chartInstances.department) {
+      chartInstances.department.destroy();
+    }
+
+    const data = departmentPerformance();
+    // Show top 10 departments by average score
+    const sorted = [...data].sort((a, b) => b.avgScore - a.avgScore).slice(0, 10);
+    const labels = sorted.map(d => d.name.length > 20 ? d.name.substring(0, 20) + '...' : d.name);
+    const avgScores = sorted.map(d => Math.round(d.avgScore * 10) / 10);
+    const passRates = sorted.map(d => Math.round(d.passRate * 10) / 10);
+
+    chartInstances.department = new Chart(ctx, {
+      type: 'bar',
+      data: {
+        labels: labels,
+        datasets: [
+          {
+            label: 'Average Score (%)',
+            data: avgScores,
+            backgroundColor: 'rgba(124, 58, 237, 0.7)',
+            borderColor: '#7c3aed',
+            borderWidth: 2,
+            borderRadius: 4
+          },
+          {
+            label: 'Pass Rate (%)',
+            data: passRates,
+            backgroundColor: 'rgba(22, 163, 74, 0.7)',
+            borderColor: '#16a34a',
+            borderWidth: 2,
+            borderRadius: 4
+          }
+        ]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        indexAxis: 'y',
+        plugins: {
+          legend: {
+            position: 'top',
+            labels: {
+              padding: 12,
+              usePointStyle: true,
+              pointStyle: 'circle',
+              font: { size: 11 }
+            }
+          },
+          tooltip: {
+            callbacks: {
+              label: function(context) {
+                return `${context.dataset.label}: ${context.parsed.x}%`;
+              }
+            }
+          }
+        },
+        scales: {
+          x: {
+            beginAtZero: true,
+            max: 100,
+            ticks: {
+              callback: function(value) { return value + '%'; }
+            }
+          },
+          y: {
+            grid: { display: false }
+          }
+        }
+      }
+    });
+  }
+
+  function createExamChart() {
+    const ctx = chartContainers.exam?.getContext('2d');
+    if (!ctx) return;
+
+    if (chartInstances.exam) {
+      chartInstances.exam.destroy();
+    }
+
+    const data = examPerformance();
+    const sorted = [...data].sort((a, b) => b.avgScore - a.avgScore).slice(0, 8);
+    const labels = sorted.map(e => e.courseCode);
+    const avgScores = sorted.map(e => Math.round(e.avgScore * 10) / 10);
+    const passRates = sorted.map(e => Math.round(e.passRate * 10) / 10);
+    const totals = sorted.map(e => e.total);
+
+    chartInstances.exam = new Chart(ctx, {
+      type: 'bar',
+      data: {
+        labels: labels,
+        datasets: [
+          {
+            label: 'Average Score (%)',
+            data: avgScores,
+            backgroundColor: 'rgba(37, 99, 235, 0.7)',
+            borderColor: '#2563eb',
+            borderWidth: 2,
+            borderRadius: 4,
+            order: 1
+          },
+          {
+            label: 'Pass Rate (%)',
+            data: passRates,
+            backgroundColor: 'rgba(22, 163, 74, 0.7)',
+            borderColor: '#16a34a',
+            borderWidth: 2,
+            borderRadius: 4,
+            order: 2
+          }
+        ]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+          legend: {
+            position: 'top',
+            labels: {
+              padding: 12,
+              usePointStyle: true,
+              pointStyle: 'circle',
+              font: { size: 11 }
+            }
+          },
+          tooltip: {
+            callbacks: {
+              afterBody: function(context) {
+                const idx = context[0].dataIndex;
+                return `Students: ${totals[idx]}`;
+              },
+              label: function(context) {
+                return `${context.dataset.label}: ${context.parsed.y}%`;
+              }
+            }
+          }
+        },
+        scales: {
+          y: {
+            beginAtZero: true,
+            max: 100,
+            ticks: {
+              callback: function(value) { return value + '%'; }
+            }
+          },
+          x: {
+            grid: { display: false }
+          }
+        }
+      }
+    });
+  }
+
+  // ── Initialize charts on mount and when data changes ──────
+  onMount(() => {
+    // Wait for DOM to render
+    setTimeout(() => {
+      if (chartContainers.overview) createOverviewChart();
+      if (chartContainers.college) createCollegeChart();
+      if (chartContainers.department) createDepartmentChart();
+      if (chartContainers.exam) createExamChart();
+    }, 100);
+  });
+
+  // ── Recreate charts when tab changes ──────────────────────
+  $effect(() => {
+    const tab = activeChartTab;
+    setTimeout(() => {
+      if (tab === 'overview' && chartContainers.overview) createOverviewChart();
+      else if (tab === 'college' && chartContainers.college) createCollegeChart();
+      else if (tab === 'department' && chartContainers.department) createDepartmentChart();
+      else if (tab === 'exam' && chartContainers.exam) createExamChart();
+    }, 50);
+  });
 
   // ── Sorted results ────────────────────────────────────────────
   const sorted = $derived((() => {
@@ -94,7 +512,7 @@
   let currentPage = $state(1);
   const pageSize  = 25;
 
-  $effect(() => { sorted; currentPage = 1; });   // reset on filter/sort change
+  $effect(() => { sorted; currentPage = 1; });
 
   const pagedSorted = $derived(
     groupBy === 'none'
@@ -129,7 +547,6 @@
       .toUpperCase().slice(0, 2);
   }
 
-  type Grade = 'A' | 'B' | 'C' | 'D' | 'E' | 'F';
   const GRADE_META: Record<string, { color: string; bg: string; label: string }> = {
     'A':  { color: '#16a34a', bg: 'rgba(22,163,74,0.1)',   label: 'Excellent' },
     'B':  { color: '#2563eb', bg: 'rgba(37,99,235,0.08)',  label: 'Good' },
@@ -237,32 +654,95 @@
     </div>
   </div>
 
-  <!-- ── Grade distribution row ─────────────────────────────── -->
-  {#if data.gradeDistribution.length > 0}
-    <div class="lc-card grade-dist-card">
-      <div class="lc-card-head">
-        <div>
-          <h2>Grade Distribution</h2>
-          <p>Overall across filtered results</p>
+  <!-- ── Analytics Dashboard ────────────────────────────────── -->
+  {#if data.results.length > 0}
+    <div class="analytics-section lc-card">
+      <div class="analytics-header">
+        <div class="analytics-title">
+          <Activity size={18} />
+          <h2>Performance Analytics</h2>
+        </div>
+        <div class="analytics-tabs">
+          <button 
+            class="analytics-tab" class:active={activeChartTab === 'overview'}
+            onclick={() => activeChartTab = 'overview'}
+            type="button"
+          >
+            <PieChart size={14} /> Overview
+          </button>
+          <button 
+            class="analytics-tab" class:active={activeChartTab === 'college'}
+            onclick={() => activeChartTab = 'college'}
+            type="button"
+          >
+            <Building2 size={14} /> Colleges
+          </button>
+          <button 
+            class="analytics-tab" class:active={activeChartTab === 'department'}
+            onclick={() => activeChartTab = 'department'}
+            type="button"
+          >
+            <Layers size={14} /> Departments
+          </button>
+          <button 
+            class="analytics-tab" class:active={activeChartTab === 'exam'}
+            onclick={() => activeChartTab = 'exam'}
+            type="button"
+          >
+            <BookOpen size={14} /> Exams
+          </button>
         </div>
       </div>
-      <div class="grade-dist-bars">
-        {#each data.gradeDistribution as g}
-          {@const m = gradeMeta(g.grade)}
-          <div class="grade-dist-item">
-            <div class="grade-label-row">
-              <span class="grade-pill" style="background:{m.bg}; color:{m.color};">{g.grade}</span>
-              <span class="grade-desc">{m.label}</span>
-              <span class="grade-count">{g.count}</span>
+
+      <div class="analytics-chart-wrapper">
+        {#if activeChartTab === 'overview'}
+          <div class="chart-container">
+            <div class="chart-header">
+              <span class="chart-title">Grade Distribution</span>
+              <span class="chart-subtitle">{data.gradeDistribution.reduce((a, b) => a + b.count, 0)} total grades</span>
             </div>
-            <div class="lc-bar">
-              <div class="lc-bar-fill" style="width:{g.pct}%; background:{m.color};"></div>
+            <div class="chart-body">
+              <canvas bind:this={chartContainers.overview}></canvas>
             </div>
-            <span class="grade-pct-label">{g.pct}%</span>
           </div>
-        {/each}
+        {:else if activeChartTab === 'college'}
+          <div class="chart-container">
+            <div class="chart-header">
+              <span class="chart-title">College Performance</span>
+              <span class="chart-subtitle">{collegePerformance().length} colleges · Avg score vs Pass rate</span>
+            </div>
+            <div class="chart-body">
+              <canvas bind:this={chartContainers.college}></canvas>
+            </div>
+          </div>
+        {:else if activeChartTab === 'department'}
+          <div class="chart-container">
+            <div class="chart-header">
+              <span class="chart-title">Department Performance</span>
+              <span class="chart-subtitle">Top {Math.min(10, departmentPerformance().length)} departments by avg score</span>
+            </div>
+            <div class="chart-body">
+              <canvas bind:this={chartContainers.department}></canvas>
+            </div>
+          </div>
+        {:else if activeChartTab === 'exam'}
+          <div class="chart-container">
+            <div class="chart-header">
+              <span class="chart-title">Exam Performance</span>
+              <span class="chart-subtitle">Top {Math.min(8, examPerformance().length)} exams by avg score</span>
+            </div>
+            <div class="chart-body">
+              <canvas bind:this={chartContainers.exam}></canvas>
+            </div>
+          </div>
+        {/if}
       </div>
     </div>
+  {/if}
+
+  <!-- ── Grade distribution row (keep existing) ─────────────── -->
+  {#if data.gradeDistribution.length > 0 && activeChartTab === 'overview'}
+    <!-- This is replaced by the chart now -->
   {/if}
 
   <!-- ── Filter panel ────────────────────────────────────────── -->
@@ -733,16 +1213,26 @@
   .grade-mini-strip { display: flex; align-items: flex-end; gap: 3px; height: 24px; margin: 0.25rem 0 0.1rem; }
   .grade-mini-bar { width: 14px; border-radius: 3px 3px 0 0; transition: height 0.3s; }
 
-  /* ── Grade distribution card ─────────────────────────────────── */
-  .grade-dist-card { padding: 1.125rem; }
-  .grade-dist-bars { display: flex; flex-direction: column; gap: 0.55rem; }
-  .grade-dist-item { display: grid; grid-template-columns: 200px 1fr 48px; align-items: center; gap: 0.75rem; }
-  @media (max-width: 640px) { .grade-dist-item { grid-template-columns: 120px 1fr 40px; } }
-  .grade-label-row { display: flex; align-items: center; gap: 0.5rem; }
-  .grade-pill { display: inline-flex; padding: 0.15rem 0.55rem; border-radius: 20px; font-size: 0.72rem; font-weight: 800; flex-shrink: 0; }
-  .grade-desc { font-size: 0.72rem; color: var(--color-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  .grade-count { font-size: 0.72rem; font-weight: 700; color: var(--color-text); margin-left: auto; }
-  .grade-pct-label { font-size: 0.72rem; color: var(--color-muted); text-align: right; font-variant-numeric: tabular-nums; }
+  /* ── Analytics Section ───────────────────────────────────────── */
+  .analytics-section { padding: 1.25rem; margin-bottom: 1.5rem; }
+  .analytics-header { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 0.75rem; margin-bottom: 1.25rem; }
+  .analytics-title { display: flex; align-items: center; gap: 0.5rem; }
+  .analytics-title h2 { font-size: 1.1rem; font-weight: 700; color: var(--color-text); margin: 0; }
+  .analytics-title :global(svg) { color: var(--lc600); }
+
+  .analytics-tabs { display: flex; gap: 0.25rem; background: var(--color-bg); padding: 0.2rem; border-radius: 8px; border: 1px solid var(--color-border); }
+  .analytics-tab { display: flex; align-items: center; gap: 0.4rem; padding: 0.35rem 0.8rem; background: none; border: none; border-radius: 6px; font-size: 0.78rem; font-weight: 600; color: var(--color-muted); cursor: pointer; transition: all 0.15s; font-family: inherit; }
+  .analytics-tab:hover { background: var(--color-surface); color: var(--color-text); }
+  .analytics-tab.active { background: var(--lc-soft); color: var(--lc600); }
+  .analytics-tab :global(svg) { flex-shrink: 0; }
+
+  .analytics-chart-wrapper { min-height: 320px; }
+  .chart-container { height: 320px; }
+  .chart-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 0.5rem; }
+  .chart-title { font-size: 0.85rem; font-weight: 700; color: var(--color-text); }
+  .chart-subtitle { font-size: 0.72rem; color: var(--color-muted); }
+  .chart-body { height: calc(100% - 30px); position: relative; }
+  .chart-body canvas { width: 100% !important; height: 100% !important; }
 
   /* ── Filter panel ────────────────────────────────────────────── */
   .filter-panel { padding: 1rem 1.125rem; }
@@ -829,4 +1319,18 @@
 
   .pass-chip { display: inline-flex; align-items: center; gap: 0.3rem; font-size: 0.7rem; font-weight: 700; color: #16a34a; background: rgba(22,163,74,0.1); padding: 0.2rem 0.55rem; border-radius: 20px; }
   .fail-chip { display: inline-flex; align-items: center; gap: 0.3rem; font-size: 0.7rem; font-weight: 700; color: #dc2626; background: rgba(220,38,38,0.08); padding: 0.2rem 0.55rem; border-radius: 20px; }
+
+  /* ── Responsive ───────────────────────────────────────────────── */
+  @media (max-width: 768px) {
+    .analytics-header { flex-direction: column; align-items: stretch; }
+    .analytics-tabs { flex-wrap: wrap; }
+    .analytics-tab { flex: 1; justify-content: center; font-size: 0.7rem; padding: 0.3rem 0.5rem; }
+    .chart-container { height: 260px; }
+    .analytics-chart-wrapper { min-height: 260px; }
+  }
+
+  @media (max-width: 480px) {
+    .chart-container { height: 220px; }
+    .analytics-chart-wrapper { min-height: 220px; }
+  }
 </style>

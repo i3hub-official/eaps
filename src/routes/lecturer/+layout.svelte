@@ -1,3 +1,4 @@
+<!-- src/routes/lecturer/+layout.svelte -->
 <script lang="ts">
   import type { LayoutData } from './$types';
   import { page, navigating } from '$app/stores';
