@@ -8,7 +8,7 @@
     Lock, AlertTriangle, ChevronRight, RotateCcw,
     CheckCircle, XCircle, Ban, GraduationCap,
     Building2, Layers, FilePlus, LayoutList,
-    LayoutGrid, Eye, Sparkles, TrendingUp,
+    LayoutGrid, Eye, TrendingUp,
     Award, Shield, Zap, Users, Settings
   } from '@lucide/svelte';
 
@@ -101,15 +101,34 @@
     ineligible: ineligibleExams.length,
   });
 
+  // Sort function: active exams first, then by status
+  function sortExams(exams: typeof allExams) {
+    return [...exams].sort((a, b) => {
+      // Active exams come first
+      const aActive = a.status === 'active' && !a.alreadySubmitted && a.isEligible !== false;
+      const bActive = b.status === 'active' && !b.alreadySubmitted && b.isEligible !== false;
+      
+      if (aActive && !bActive) return -1;
+      if (!aActive && bActive) return 1;
+      
+      // Then by scheduled date (soonest first)
+      const dateA = a.scheduledStart ? new Date(a.scheduledStart).getTime() : 0;
+      const dateB = b.scheduledStart ? new Date(b.scheduledStart).getTime() : 0;
+      return dateA - dateB;
+    });
+  }
+
   const displayed = $derived((): typeof allExams => {
+    let exams: typeof allExams;
     switch (activeTab) {
-      case 'live':       return liveExams;
-      case 'scheduled':  return scheduledExams;
-      case 'completed':  return completedExams;
-      case 'cancelled':  return cancelledExams;
-      case 'ineligible': return ineligibleExams;
-      default:           return allExams;
+      case 'live':       exams = liveExams; break;
+      case 'scheduled':  exams = scheduledExams; break;
+      case 'completed':  exams = completedExams; break;
+      case 'cancelled':  exams = cancelledExams; break;
+      case 'ineligible': exams = ineligibleExams; break;
+      default:           exams = allExams; break;
     }
+    return sortExams(exams);
   });
 
   // ── Helpers ───────────────────────────────────────────────────────────────
@@ -198,10 +217,6 @@
   <div class="hero-header">
     <div class="hero-content">
       <div class="hero-left">
-        <div class="hero-badge">
-          <Sparkles size={14} />
-          <span>Exam Dashboard</span>
-        </div>
         <h1 class="hero-title">My Exams</h1>
         <p class="hero-subtitle">
           {#if !data.faceEnrolled}
@@ -525,7 +540,7 @@
     right: 0;
     width: 300px;
     height: 100%;
-    background: radial-gradient(circle at top right, rgba(99, 102, 241, 0.05), transparent 70%);
+    background: radial-gradient(circle at top right, rgba(16, 185, 129, 0.05), transparent 70%);
     pointer-events: none;
   }
 
@@ -548,8 +563,8 @@
     align-items: center;
     gap: 0.4rem;
     padding: 0.25rem 0.75rem;
-    background: rgba(99, 102, 241, 0.1);
-    color: #6366f1;
+    background: rgba(16, 185, 129, 0.1);
+    color: #059669;
     border-radius: 999px;
     font-size: 0.7rem;
     font-weight: 700;
@@ -673,14 +688,14 @@
   }
 
   .action-btn.primary {
-    background: #6366f1;
+    background: #059669;
     color: white;
   }
 
   .action-btn.primary:hover {
-    background: #4f46e5;
+    background: #047857;
     transform: translateY(-1px);
-    box-shadow: 0 4px 12px rgba(99, 102, 241, 0.3);
+    box-shadow: 0 4px 12px rgba(5, 150, 105, 0.3);
   }
 
   .face-status {
@@ -885,9 +900,9 @@
   }
 
   .tab.active .tab-count {
-    background: #6366f1;
+    background: #059669;
     color: white;
-    border-color: #6366f1;
+    border-color: #059669;
   }
 
   .tab:not(.disabled):hover .tab-count {
@@ -925,7 +940,7 @@
 
   .exam-card.clickable:hover {
     transform: translateY(-2px);
-    border-color: #6366f1;
+    border-color: #059669;
     box-shadow: 0 8px 24px rgba(0, 0, 0, 0.06);
   }
 
@@ -940,13 +955,13 @@
   }
 
   .exam-card.status-resume {
-    border-color: rgba(99, 102, 241, 0.3);
-    background: rgba(99, 102, 241, 0.02);
+    border-color: rgba(5, 150, 105, 0.3);
+    background: rgba(5, 150, 105, 0.02);
   }
 
   .exam-card.status-resume.clickable:hover {
-    border-color: #6366f1;
-    box-shadow: 0 0 0 4px rgba(99, 102, 241, 0.08);
+    border-color: #059669;
+    box-shadow: 0 0 0 4px rgba(5, 150, 105, 0.08);
   }
 
   .exam-card.status-scheduled {
