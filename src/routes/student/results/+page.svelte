@@ -5,8 +5,9 @@
   import {
     Award, TrendingUp, CheckCircle2, XCircle,
     Clock, Calendar, Target, ChevronRight, AlertTriangle, BarChart3,
-    LineChart, Activity, BarChart, PieChart
+    LineChart, Activity, BarChart, PieChart, GraduationCap
   } from '@lucide/svelte';
+  import Chart from 'chart.js/auto';
 
   let { data }: { data: PageData } = $props();
 
@@ -14,7 +15,6 @@
   const summary = $derived(data.summary ?? {});
 
   let filter = $state<'all' | 'passed' | 'failed'>('all');
-  let chartReady = $state(false);
 
   // ── Chart refs ──────────────────────────────────────────────────────────
   let trendCanvas: HTMLCanvasElement;
@@ -22,33 +22,93 @@
   let timelineCanvas: HTMLCanvasElement;
   let comparisonCanvas: HTMLCanvasElement;
 
+  let trendChart: Chart | null = null;
+  let subjectChart: Chart | null = null;
+  let timelineChart: Chart | null = null;
+  let comparisonChart: Chart | null = null;
+
   const filtered = $derived(
     filter === 'all'    ? results :
     filter === 'passed' ? results.filter(r => r.passed) :
                           results.filter(r => !r.passed && r.passed !== null)
   );
 
+  // ── MOUAU Grade system ──────────────────────────────────────────────────
+  const MOUAU_GRADES = {
+    A: { min: 70, max: 100, points: 5, label: 'Excellent', color: 'grade-a' },
+    B: { min: 60, max: 69,  points: 4, label: 'Very Good', color: 'grade-b' },
+    C: { min: 50, max: 59,  points: 3, label: 'Good',      color: 'grade-c' },
+    D: { min: 45, max: 49,  points: 2, label: 'Fair',      color: 'grade-d' },
+    E: { min: 40, max: 44,  points: 1, label: 'Pass',      color: 'grade-e' },
+    F: { min: 0,  max: 39,  points: 0, label: 'Fail',      color: 'grade-f' }
+  } as const;
+
+  type GradeKey = keyof typeof MOUAU_GRADES;
+
+  function getGradeInfo(percentage: number): { grade: GradeKey; points: number; label: string; passed: boolean } {
+    for (const [grade, info] of Object.entries(MOUAU_GRADES)) {
+      if (percentage >= info.min && percentage <= info.max) {
+        return { grade: grade as GradeKey, points: info.points, label: info.label, passed: grade !== 'F' };
+      }
+    }
+    return { grade: 'F', points: 0, label: 'Fail', passed: false };
+  }
+
+  function gradeColor(pct: number) {
+    if (pct >= 70) return 'grade-a';
+    if (pct >= 60) return 'grade-b';
+    if (pct >= 50) return 'grade-c';
+    if (pct >= 45) return 'grade-d';
+    if (pct >= 40) return 'grade-e';
+    return 'grade-f';
+  }
+
+  // ── Past / Current / Future classification ───────────────────────────────
+  function classifyExam(result: (typeof results)[number]): 'past' | 'current' | 'future' {
+    const now = new Date();
+    const scheduledStart = result.exam?.scheduledStart ? new Date(result.exam.scheduledStart) : null;
+    const scheduledEnd   = result.exam?.scheduledEnd   ? new Date(result.exam.scheduledEnd)   : null;
+    const submittedAt    = result.submittedAt ? new Date(result.submittedAt) : null;
+
+    // Has scheduled dates — use them
+    if (scheduledStart) {
+      if (scheduledEnd && scheduledEnd < now) return 'past';
+      if (scheduledStart <= now && (!scheduledEnd || scheduledEnd >= now)) return 'current';
+      if (scheduledStart > now) return 'future';
+    }
+
+    // Fallback: use submission date
+    if (submittedAt) {
+      const daysDiff = (now.getTime() - submittedAt.getTime()) / (1000 * 60 * 60 * 24);
+      if (daysDiff > 7) return 'past';
+      return 'current';
+    }
+
+    return 'current';
+  }
+
   // ── Chart data prep ───────────────────────────────────────────────────────
-  const sortedResults = $derived([...results].sort((a, b) =>
-    new Date(a.submittedAt ?? 0).getTime() - new Date(b.submittedAt ?? 0).getTime()
-  ));
+  const sortedByDate = $derived([...results].sort((a, b) => {
+    const dA = a.submittedAt ? new Date(a.submittedAt).getTime() : 0;
+    const dB = b.submittedAt ? new Date(b.submittedAt).getTime() : 0;
+    return dA - dB;
+  }));
 
   const courseGroups = $derived(() => {
-    const map = new Map<string, { scores: number[]; dates: string[]; name: string }>();
+    const map = new Map<string, { scores: number[]; name: string }>();
     for (const r of results) {
       const code = r.exam?.course?.code ?? 'Unknown';
       const name = r.exam?.course?.title ?? code;
-      if (!map.has(code)) map.set(code, { scores: [], dates: [], name });
+      if (!map.has(code)) map.set(code, { scores: [], name });
       map.get(code)!.scores.push(Number(r.percentage ?? 0));
-      map.get(code)!.dates.push(formatDate(r.submittedAt));
     }
     return map;
   });
 
   const monthlyTrend = $derived(() => {
     const map = new Map<string, { total: number; count: number; passed: number }>();
-    for (const r of sortedResults) {
-      const d = new Date(r.submittedAt ?? 0);
+    for (const r of sortedByDate) {
+      const d = new Date(r.submittedAt ?? r.generatedAt ?? Date.now());
       const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
       const existing = map.get(key) ?? { total: 0, count: 0, passed: 0 };
       existing.total += Number(r.percentage ?? 0);
@@ -66,34 +126,46 @@
       }));
   });
 
-  // ── Chart.js init ───────────────────────────────────────────────────────
-  onMount(async () => {
-    const [{ default: Chart }, { default: ChartDataLabels }] = await Promise.all([
-      import('chart.js/auto'),
-      import('chartjs-plugin-datalabels'),
-    ]);
+  // ── Chart helpers ─────────────────────────────────────────────────────────
+  function getThemeColors() {
+    const style = getComputedStyle(document.documentElement);
+    return {
+      accent: style.getPropertyValue('--accent').trim() || '#10b981',
+      text: style.getPropertyValue('--color-text').trim() || '#1f2937',
+      muted: style.getPropertyValue('--color-muted').trim() || '#6b7280',
+      border: style.getPropertyValue('--color-border').trim() || '#e5e7eb',
+      isDark: document.documentElement.classList.contains('dark'),
+    };
+  }
 
-    Chart.register(ChartDataLabels);
-    chartReady = true;
+  function hexToRGB(hex: string): string {
+    const clean = hex.replace('#', '');
+    const bigint = parseInt(clean, 16);
+    const r = (bigint >> 16) & 255;
+    const g = (bigint >> 8) & 255;
+    const b = bigint & 255;
+    return `${r}, ${g}, ${b}`;
+  }
 
-    const accent = getComputedStyle(document.documentElement).getPropertyValue('--accent').trim() || '#10b981';
+  // ── Render charts ─────────────────────────────────────────────────────────
+  function renderCharts() {
+    const { accent, text, muted, border, isDark } = getThemeColors();
     const accentRGB = hexToRGB(accent);
-    const textColor = getComputedStyle(document.documentElement).getPropertyValue('--color-text').trim() || '#1f2937';
-    const mutedColor = getComputedStyle(document.documentElement).getPropertyValue('--color-muted').trim() || '#6b7280';
-    const borderColor = getComputedStyle(document.documentElement).getPropertyValue('--color-border').trim() || '#e5e7eb';
-    const isDark = document.documentElement.classList.contains('dark');
-
     const gridColor = isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)';
 
-    // 1. Performance Trend Line Chart
-    if (trendCanvas && sortedResults.length > 1) {
-      new Chart(trendCanvas, {
+    // 1. Performance Trend (Line)
+    if (trendCanvas && sortedByDate.length > 1) {
+      if (trendChart) trendChart.destroy();
+      trendChart = new Chart(trendCanvas, {
         type: 'line',
         data: {
-          labels: sortedResults.map((_, i) => `Exam ${i + 1}`),
+          labels: sortedByDate.map((r, i) => {
+            const code = r.exam?.course?.code ?? `E${i+1}`;
+            return code;
+          }),
           datasets: [{
-            label: 'Score %',
-            data: sortedResults.map(r => Number(r.percentage ?? 0)),
+            label: 'Your Score',
+            data: sortedByDate.map(r => Math.round(Number(r.percentage ?? 0))),
             borderColor: accent,
             backgroundColor: `rgba(${accentRGB}, 0.08)`,
             borderWidth: 2.5,
@@ -105,14 +177,13 @@
             pointRadius: 5,
             pointHoverRadius: 7,
           }, {
-            label: 'Class Avg',
-            data: sortedResults.map(r => Number(r.classAverage ?? 55)),
-            borderColor: '#6366f1',
+            label: 'Pass Mark (40%)',
+            data: sortedByDate.map(() => 40),
+            borderColor: '#ef4444',
             borderWidth: 2,
             borderDash: [6, 4],
             tension: 0.35,
             pointRadius: 0,
-            pointHoverRadius: 5,
             fill: false,
           }],
         },
@@ -129,16 +200,15 @@
                 usePointStyle: true,
                 pointStyle: 'circle',
                 padding: 16,
-                color: textColor,
+                color: text,
                 font: { size: 11, weight: '600' },
               },
             },
-            datalabels: { display: false },
             tooltip: {
               backgroundColor: isDark ? '#1f2937' : '#fff',
-              titleColor: textColor,
-              bodyColor: mutedColor,
-              borderColor: borderColor,
+              titleColor: text,
+              bodyColor: muted,
+              borderColor: border,
               borderWidth: 1,
               padding: 10,
               cornerRadius: 8,
@@ -146,24 +216,35 @@
               callbacks: {
                 title: (items) => {
                   const idx = items[0].dataIndex;
-                  const r = sortedResults[idx];
-                  return `${r.exam?.course?.code ?? 'Exam'} — ${formatDate(r.submittedAt)}`;
+                  const r = sortedByDate[idx];
+                  return `${r.exam?.course?.code ?? 'Exam'} — ${r.exam?.title ?? 'Untitled'}`;
                 },
                 label: (ctx) => `${ctx.dataset.label}: ${ctx.parsed.y}%`,
+                afterBody: (items) => {
+                  const idx = items[0].dataIndex;
+                  const r = sortedByDate[idx];
+                  const gi = getGradeInfo(Math.round(Number(r.percentage ?? 0)));
+                  const type = classifyExam(r);
+                  return [
+                    `Grade: ${r.grade ?? gi.grade} (${gi.label})`,
+                    `Date: ${formatDate(r.submittedAt)}`,
+                    `${type === 'past' ? '📚' : type === 'current' ? '📝' : '🔮'} ${type.charAt(0).toUpperCase() + type.slice(1)}`,
+                  ];
+                },
               },
             },
           },
           scales: {
             x: {
               grid: { display: false },
-              ticks: { color: mutedColor, font: { size: 10, weight: '600' } },
+              ticks: { color: muted, font: { size: 10, weight: '600' } },
               border: { display: false },
             },
             y: {
               min: 0,
               max: 100,
               grid: { color: gridColor },
-              ticks: { color: mutedColor, font: { size: 10, weight: '600' }, stepSize: 20 },
+              ticks: { color: muted, font: { size: 10, weight: '600' }, stepSize: 20, callback: (v) => `${v}%` },
               border: { display: false },
             },
           },
@@ -171,11 +252,12 @@
       });
     }
 
-    // 2. Subject Performance Bar Chart
+    // 2. By Subject (Bar)
     const cg = courseGroups();
     if (subjectCanvas && cg.size > 0) {
+      if (subjectChart) subjectChart.destroy();
       const entries = Array.from(cg.entries());
-      new Chart(subjectCanvas, {
+      subjectChart = new Chart(subjectCanvas, {
         type: 'bar',
         data: {
           labels: entries.map(([code]) => code),
@@ -205,23 +287,15 @@
                 usePointStyle: true,
                 pointStyle: 'rectRounded',
                 padding: 16,
-                color: textColor,
+                color: text,
                 font: { size: 11, weight: '600' },
               },
             },
-            datalabels: {
-              display: true,
-              anchor: 'end',
-              align: 'top',
-              color: textColor,
-              font: { size: 10, weight: '700' },
-              formatter: (v: number) => `${v}%`,
-            },
             tooltip: {
               backgroundColor: isDark ? '#1f2937' : '#fff',
-              titleColor: textColor,
-              bodyColor: mutedColor,
-              borderColor: borderColor,
+              titleColor: text,
+              bodyColor: muted,
+              borderColor: border,
               borderWidth: 1,
               padding: 10,
               cornerRadius: 8,
@@ -236,14 +310,14 @@
           scales: {
             x: {
               grid: { display: false },
-              ticks: { color: mutedColor, font: { size: 10, weight: '600' } },
+              ticks: { color: muted, font: { size: 10, weight: '600' } },
               border: { display: false },
             },
             y: {
               min: 0,
               max: 100,
               grid: { color: gridColor },
-              ticks: { color: mutedColor, font: { size: 10, weight: '600' }, stepSize: 20 },
+              ticks: { color: muted, font: { size: 10, weight: '600' }, stepSize: 20, callback: (v) => `${v}%` },
               border: { display: false },
             },
           },
@@ -251,10 +325,11 @@
       });
     }
 
-    // 3. Monthly Timeline Chart
+    // 3. Monthly Timeline (Line + Bar)
     const mt = monthlyTrend();
-    if (timelineCanvas && mt.length > 1) {
-      new Chart(timelineCanvas, {
+    if (timelineCanvas && mt.length > 0) {
+      if (timelineChart) timelineChart.destroy();
+      timelineChart = new Chart(timelineCanvas, {
         type: 'line',
         data: {
           labels: mt.map(m => m.label),
@@ -295,16 +370,15 @@
                 usePointStyle: true,
                 pointStyle: 'circle',
                 padding: 16,
-                color: textColor,
+                color: text,
                 font: { size: 11, weight: '600' },
               },
             },
-            datalabels: { display: false },
             tooltip: {
               backgroundColor: isDark ? '#1f2937' : '#fff',
-              titleColor: textColor,
-              bodyColor: mutedColor,
-              borderColor: borderColor,
+              titleColor: text,
+              bodyColor: muted,
+              borderColor: border,
               borderWidth: 1,
               padding: 10,
               cornerRadius: 8,
@@ -313,47 +387,42 @@
           scales: {
             x: {
               grid: { display: false },
-              ticks: { color: mutedColor, font: { size: 10, weight: '600' } },
+              ticks: { color: muted, font: { size: 10, weight: '600' } },
               border: { display: false },
             },
             y: {
               min: 0,
               max: 100,
               grid: { color: gridColor },
-              ticks: { color: mutedColor, font: { size: 10, weight: '600' }, stepSize: 20 },
+              ticks: { color: muted, font: { size: 10, weight: '600' }, stepSize: 20, callback: (v) => `${v}%` },
               border: { display: false },
-              title: { display: false },
             },
             y1: {
               position: 'right',
               min: 0,
               grid: { display: false },
-              ticks: { color: mutedColor, font: { size: 10, weight: '600' }, stepSize: 1 },
+              ticks: { color: muted, font: { size: 10, weight: '600' }, stepSize: 1 },
               border: { display: false },
-              title: { display: false },
             },
           },
         },
       });
     }
 
-    // 4. Pass/Fail Distribution Doughnut
+    // 4. Pass/Fail Distribution (Doughnut)
     if (comparisonCanvas && results.length > 0) {
+      if (comparisonChart) comparisonChart.destroy();
       const passed = results.filter(r => r.passed).length;
       const failed = results.filter(r => !r.passed && r.passed !== null).length;
       const pending = results.filter(r => r.passed === null).length;
 
-      new Chart(comparisonCanvas, {
+      comparisonChart = new Chart(comparisonCanvas, {
         type: 'doughnut',
         data: {
           labels: ['Passed', 'Failed', 'Pending'],
           datasets: [{
             data: [passed, failed, pending],
-            backgroundColor: [
-              '#10b981',
-              '#ef4444',
-              '#f59e0b',
-            ],
+            backgroundColor: ['#10b981', '#ef4444', '#f59e0b'],
             borderWidth: 0,
             hoverOffset: 6,
           }],
@@ -370,24 +439,15 @@
                 usePointStyle: true,
                 pointStyle: 'circle',
                 padding: 20,
-                color: textColor,
+                color: text,
                 font: { size: 11, weight: '600' },
-              },
-            },
-            datalabels: {
-              display: true,
-              color: '#fff',
-              font: { size: 12, weight: '800' },
-              formatter: (v: number, ctx: any) => {
-                const total = ctx.dataset.data.reduce((a: number, b: number) => a + b, 0);
-                return total > 0 ? `${Math.round((v / total) * 100)}%` : '';
               },
             },
             tooltip: {
               backgroundColor: isDark ? '#1f2937' : '#fff',
-              titleColor: textColor,
-              bodyColor: mutedColor,
-              borderColor: borderColor,
+              titleColor: text,
+              bodyColor: muted,
+              borderColor: border,
               borderWidth: 1,
               padding: 10,
               cornerRadius: 8,
@@ -399,12 +459,34 @@
         },
       });
     }
+  }
+
+  // ── Lifecycle ─────────────────────────────────────────────────────────────
+  onMount(() => {
+    if (results.length > 0) {
+      // Small delay to ensure DOM is ready and CSS vars are computed
+      requestAnimationFrame(() => renderCharts());
+    }
+    return () => {
+      trendChart?.destroy();
+      subjectChart?.destroy();
+      timelineChart?.destroy();
+      comparisonChart?.destroy();
+    };
+  });
+
+  // Re-render on results change (e.g. filter shouldn't trigger this, but data fetch might)
+  $effect(() => {
+    if (results.length > 0) {
+      requestAnimationFrame(() => renderCharts());
+    }
   });
 
   // ── Helpers ───────────────────────────────────────────────────────────────
-  function formatDate(d: string | null | undefined) {
+  function formatDate(d: string | Date | null | undefined) {
     if (!d) return '—';
-    return new Intl.DateTimeFormat('en-NG', { day: 'numeric', month: 'short', year: 'numeric' }).format(new Date(d));
+    const date = typeof d === 'string' ? new Date(d) : d;
+    return new Intl.DateTimeFormat('en-NG', { day: 'numeric', month: 'short', year: 'numeric' }).format(date);
   }
 
   function formatTime(secs: number | null | undefined) {
@@ -412,23 +494,6 @@
     const m = Math.floor(secs / 60);
     const s = secs % 60;
     return `${m}m ${s}s`;
-  }
-
-  function gradeColor(pct: number) {
-    if (pct >= 70) return 'grade-a';
-    if (pct >= 60) return 'grade-b';
-    if (pct >= 50) return 'grade-c';
-    if (pct >= 45) return 'grade-d';
-    return 'grade-f';
-  }
-
-  function hexToRGB(hex: string): string {
-    const clean = hex.replace('#', '');
-    const bigint = parseInt(clean, 16);
-    const r = (bigint >> 16) & 255;
-    const g = (bigint >> 8) & 255;
-    const b = bigint & 255;
-    return `${r}, ${g}, ${b}`;
   }
 </script>
 
@@ -439,8 +504,17 @@
       <h1 class="page-title">My Results</h1>
       <p class="page-sub">{summary.total ?? 0} exam{(summary.total ?? 0) !== 1 ? 's' : ''} taken</p>
     </div>
+    <div class="grade-legend">
+      <span class="legend-item grade-a">A</span>
+      <span class="legend-item grade-b">B</span>
+      <span class="legend-item grade-c">C</span>
+      <span class="legend-item grade-d">D</span>
+      <span class="legend-item grade-e">E</span>
+      <span class="legend-item grade-f">F</span>
+    </div>
   </div>
 
+  
   <!-- ── Summary cards ─────────────────────────────────────── -->
   {#if (summary.total ?? 0) > 0}
     <div class="summary-row">
@@ -485,11 +559,11 @@
             <div class="chart-icon"><LineChart size={14} /></div>
             <div class="chart-title-group">
               <h3 class="chart-title">Performance Trend</h3>
-              <p class="chart-sub">Your scores over time vs. class average</p>
+              <p class="chart-sub">Your scores over time vs. pass mark</p>
             </div>
           </div>
           <div class="chart-body" style="height: 260px;">
-            {#if sortedResults.length > 1}
+            {#if sortedByDate.length > 1}
               <canvas bind:this={trendCanvas}></canvas>
             {:else}
               <div class="chart-placeholder">
@@ -552,12 +626,12 @@
             </div>
           </div>
           <div class="chart-body" style="height: 240px;">
-            {#if monthlyTrend().length > 1}
+            {#if monthlyTrend().length > 0}
               <canvas bind:this={timelineCanvas}></canvas>
             {:else}
               <div class="chart-placeholder">
                 <Calendar size={24} />
-                <span>Need exams across multiple months</span>
+                <span>No monthly data yet</span>
               </div>
             {/if}
           </div>
@@ -565,6 +639,7 @@
       </div>
     </div>
   {/if}
+
 
   <!-- ── Filter tabs ────────────────────────────────────────── -->
   <div class="filter-bar">
@@ -589,10 +664,16 @@
     <div class="results-list">
       {#each filtered as result}
         {@const pct = Math.round(Number(result.percentage ?? 0))}
+        {@const gradeInfo = getGradeInfo(pct)}
+        {@const examType = classifyExam(result)}
         <div class="result-card">
           <div class="result-left">
             <div class="grade-circle {gradeColor(pct)}">
               {result.grade ?? '?'}
+            </div>
+            <div class="grade-points">{gradeInfo.points} pts</div>
+            <div class="exam-type-badge type-{examType}">
+              {examType === 'past' ? '📚' : examType === 'current' ? '📝' : '🔮'}
             </div>
           </div>
           <div class="result-main">
@@ -600,6 +681,7 @@
               <div class="result-title-row">
                 <span class="course-code">{result.exam?.course?.code}</span>
                 <h3 class="result-title">{result.exam?.title}</h3>
+                <span class="grade-label">{gradeInfo.label}</span>
               </div>
               <div class="result-score">
                 <span class="score-big {gradeColor(pct)}">{pct}%</span>
@@ -610,11 +692,16 @@
             <div class="result-bar-wrap">
               <div class="result-bar">
                 <div class="result-fill {gradeColor(pct)}-fill" style="width:{pct}%"></div>
-                <!-- Pass mark line -->
-                {#if result.exam?.passMark}
-                  {@const passPct = Math.round((result.exam.passMark / (result.exam.totalMarks ?? 100)) * 100)}
-                  <div class="pass-line" style="left:{passPct}%"></div>
-                {/if}
+                <!-- MOUAU Pass mark line (40%) -->
+                <div class="pass-line" style="left:40%"></div>
+                <!-- Grade markers -->
+                <div class="grade-markers">
+                  <span class="marker" style="left:70%">A</span>
+                  <span class="marker" style="left:60%">B</span>
+                  <span class="marker" style="left:50%">C</span>
+                  <span class="marker" style="left:45%">D</span>
+                  <span class="marker" style="left:40%">E</span>
+                </div>
               </div>
             </div>
 
@@ -646,30 +733,29 @@
 
 <style>
   .page { display: flex; flex-direction: column; gap: 1.5rem; }
-  .page-header { display: flex; align-items: flex-end; justify-content: space-between; }
+  .page-header { display: flex; align-items: flex-end; justify-content: space-between; flex-wrap: wrap; gap: 0.75rem; }
   .page-title { font-size: 1.5rem; font-weight: 900; color: var(--color-text); letter-spacing: -0.03em; margin: 0 0 0.2rem; }
   .page-sub { font-size: 0.8rem; color: var(--color-muted); margin: 0; }
 
-  /* Summary */
-  .summary-row { display: grid; grid-template-columns: repeat(4, 1fr); gap: 0.75rem; }
-  @media (max-width: 640px) { .summary-row { grid-template-columns: repeat(2, 1fr); } }
-  .sum-card {
-    background: var(--color-surface); border: 1px solid var(--color-border);
-    border-radius: 12px; padding: 0.875rem; display: flex; align-items: center; gap: 0.75rem;
-  }
-  .sum-icon {
-    width: 36px; height: 36px; border-radius: 9px; flex-shrink: 0;
+  /* Grade Legend */
+  .grade-legend { display: flex; gap: 0.3rem; align-items: center; }
+  .grade-legend .legend-item {
+    width: 28px; height: 28px; border-radius: 50%;
     display: flex; align-items: center; justify-content: center;
+    font-size: 0.7rem; font-weight: 800; color: #fff;
   }
-  .avg-icon  { background: rgba(99,102,241,0.1); color: #6366f1; }
-  .best-icon { background: rgba(16,185,129,0.1); color: #10b981; }
-  .pass-icon { background: rgba(22,163,74,0.1);  color: var(--g600); }
-  .fail-icon { background: rgba(220,38,38,0.06); color: #dc2626; }
-  .sum-body { display: flex; flex-direction: column; }
-  .sum-val { font-size: 1.4rem; font-weight: 900; color: var(--color-text); letter-spacing: -0.04em; line-height: 1; }
-  .sum-val.good { color: var(--g600); }
-  .sum-val.bad  { color: #dc2626; }
-  .sum-lbl { font-size: 0.65rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; color: var(--color-muted); margin-top: 0.15rem; }
+  .grade-legend .grade-a { background: #065f46; }
+  .grade-legend .grade-b { background: #0369a1; }
+  .grade-legend .grade-c { background: #92400e; }
+  .grade-legend .grade-d { background: #9a3412; }
+  .grade-legend .grade-e { background: #854d0e; }
+  .grade-legend .grade-f { background: #991b1b; }
+  :global(.dark) .grade-legend .grade-a { background: #4ade80; color: #065f46; }
+  :global(.dark) .grade-legend .grade-b { background: #38bdf8; color: #0369a1; }
+  :global(.dark) .grade-legend .grade-c { background: #fbbf24; color: #92400e; }
+  :global(.dark) .grade-legend .grade-d { background: #fb923c; color: #9a3412; }
+  :global(.dark) .grade-legend .grade-e { background: #fcd34d; color: #854d0e; }
+  :global(.dark) .grade-legend .grade-f { background: #f87171; color: #991b1b; }
 
   /* ── Charts Section ───────────────────────────────────────────────────── */
   .charts-section {
@@ -770,6 +856,27 @@
     font-weight: 600;
   }
 
+  /* Summary */
+  .summary-row { display: grid; grid-template-columns: repeat(4, 1fr); gap: 0.75rem; }
+  @media (max-width: 640px) { .summary-row { grid-template-columns: repeat(2, 1fr); } }
+  .sum-card {
+    background: var(--color-surface); border: 1px solid var(--color-border);
+    border-radius: 12px; padding: 0.875rem; display: flex; align-items: center; gap: 0.75rem;
+  }
+  .sum-icon {
+    width: 36px; height: 36px; border-radius: 9px; flex-shrink: 0;
+    display: flex; align-items: center; justify-content: center;
+  }
+  .avg-icon  { background: rgba(99,102,241,0.1); color: #6366f1; }
+  .best-icon { background: rgba(16,185,129,0.1); color: #10b981; }
+  .pass-icon { background: rgba(22,163,74,0.1);  color: var(--g600); }
+  .fail-icon { background: rgba(220,38,38,0.06); color: #dc2626; }
+  .sum-body { display: flex; flex-direction: column; }
+  .sum-val { font-size: 1.4rem; font-weight: 900; color: var(--color-text); letter-spacing: -0.04em; line-height: 1; }
+  .sum-val.good { color: var(--g600); }
+  .sum-val.bad  { color: #dc2626; }
+  .sum-lbl { font-size: 0.65rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; color: var(--color-muted); margin-top: 0.15rem; }
+
   /* Filter */
   .filter-bar { display: flex; gap: 0.375rem; }
   .filter-btn {
@@ -789,19 +896,38 @@
   }
   .result-card:hover { border-color: var(--g600); }
 
+  .result-left { display: flex; flex-direction: column; align-items: center; gap: 0.3rem; }
   .grade-circle {
     width: 48px; height: 48px; border-radius: 50%; flex-shrink: 0;
     display: flex; align-items: center; justify-content: center;
     font-size: 1rem; font-weight: 900;
   }
+  .grade-points {
+    font-size: 0.6rem; font-weight: 700; color: var(--color-muted);
+    text-align: center;
+  }
+  .exam-type-badge {
+    font-size: 0.65rem;
+    padding: 0.15rem 0.4rem;
+    border-radius: 4px;
+    font-weight: 700;
+  }
+  .type-past { background: rgba(99,102,241,0.1); }
+  .type-current { background: rgba(34,197,94,0.1); }
+  .type-future { background: rgba(251,191,36,0.1); }
+
   .grade-a { background: rgba(22,163,74,0.12);  color: #065f46; }
   .grade-b { background: rgba(14,165,233,0.12); color: #0369a1; }
   .grade-c { background: rgba(245,158,11,0.12); color: #92400e; }
   .grade-d { background: rgba(249,115,22,0.12); color: #9a3412; }
+  .grade-e { background: rgba(234,179,8,0.12);  color: #854d0e; }
   .grade-f { background: rgba(220,38,38,0.12);  color: #991b1b; }
   :global(.dark) .grade-a { color: #4ade80; background: rgba(22,163,74,0.18); }
-  :global(.dark) .grade-b { color: #38bdf8; }
-  :global(.dark) .grade-f { color: #f87171; }
+  :global(.dark) .grade-b { color: #38bdf8; background: rgba(14,165,233,0.18); }
+  :global(.dark) .grade-c { color: #fbbf24; background: rgba(245,158,11,0.18); }
+  :global(.dark) .grade-d { color: #fb923c; background: rgba(249,115,22,0.18); }
+  :global(.dark) .grade-e { color: #fcd34d; background: rgba(234,179,8,0.18); }
+  :global(.dark) .grade-f { color: #f87171; background: rgba(220,38,38,0.18); }
 
   .result-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 0.625rem; }
   .result-top { display: flex; align-items: flex-start; justify-content: space-between; gap: 1rem; }
@@ -814,6 +940,10 @@
   .result-title {
     font-size: 0.9rem; font-weight: 700; color: var(--color-text);
     margin: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .grade-label {
+    font-size: 0.65rem; font-weight: 600; color: var(--color-muted);
+    text-transform: uppercase; letter-spacing: 0.05em;
   }
   .result-score { text-align: right; flex-shrink: 0; }
   .score-big {
@@ -831,13 +961,29 @@
   .grade-b-fill { background: #38bdf8; }
   .grade-c-fill { background: #f59e0b; }
   .grade-d-fill { background: #f97316; }
+  .grade-e-fill { background: #eab308; }
   .grade-f-fill { background: #ef4444; }
+
   .pass-line {
     position: absolute; top: -3px; bottom: -3px; width: 2px;
-    background: rgba(0,0,0,0.2); border-radius: 2px;
+    background: rgba(239, 68, 68, 0.8); border-radius: 2px;
     transform: translateX(-50%);
   }
-  :global(.dark) .pass-line { background: rgba(255,255,255,0.2); }
+
+  .grade-markers {
+    position: relative;
+    width: 100%;
+    height: 0;
+  }
+  .marker {
+    position: absolute;
+    top: -14px;
+    font-size: 0.5rem;
+    font-weight: 700;
+    color: var(--color-muted);
+    transform: translateX(-50%);
+    opacity: 0.5;
+  }
 
   .result-meta {
     display: flex; align-items: center; gap: 0.625rem; flex-wrap: wrap;
@@ -861,4 +1007,14 @@
   }
   .empty h3 { font-size: 1.05rem; font-weight: 800; color: var(--color-text); margin: 0; }
   .empty p  { font-size: 0.8rem; margin: 0; }
+
+  /* Responsive */
+  @media (max-width: 640px) {
+    .chart-body { height: 220px !important; }
+    .result-top { flex-direction: column; }
+    .result-score { text-align: left; width: 100%; }
+    .result-left { flex-direction: row; gap: 0.5rem; align-items: center; }
+    .grade-points { display: none; }
+    .grade-legend { display: none; }
+  }
 </style>
