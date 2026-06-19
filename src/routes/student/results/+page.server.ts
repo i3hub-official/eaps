@@ -5,8 +5,7 @@ import { getPrismaClient } from '$lib/server/db/index.js';
 
 export const load: PageServerLoad = async ({ locals }) => {
   const user = await requireStudent(locals.user);
-            const prisma = await getPrismaClient();
-
+  const prisma = await getPrismaClient();
 
   const [results, aggregate] = await Promise.all([
     prisma.examResult.findMany({
@@ -20,6 +19,7 @@ export const load: PageServerLoad = async ({ locals }) => {
           select: {
             id: true, title: true, totalMarks: true, passMark: true,
             durationMinutes: true, session: true, semester: true,
+            scheduledStart: true, scheduledEnd: true, // ← ADD THESE
             course: { select: { code: true, title: true } },
           },
         },
@@ -41,7 +41,7 @@ export const load: PageServerLoad = async ({ locals }) => {
   const passed = results.filter(r => r.passed).length;
   const failed = results.filter(r => !r.passed && r.passed !== null).length;
 
- return {
+  return {
     results: results.map(r => ({
       ...r,
       score:      r.score      ? Number(r.score)      : null,
@@ -50,6 +50,8 @@ export const load: PageServerLoad = async ({ locals }) => {
         ...r.exam,
         totalMarks: r.exam.totalMarks ? Number(r.exam.totalMarks) : null,
         passMark:   r.exam.passMark   ? Number(r.exam.passMark)   : null,
+        scheduledStart: r.exam.scheduledStart, // Already DateTime
+        scheduledEnd: r.exam.scheduledEnd,     // Already DateTime
       } : null,
     })),
     summary: {

@@ -1,9 +1,11 @@
 <!-- src/routes/student/results/+page.svelte -->
 <script lang="ts">
   import type { PageData } from './$types';
+  import { onMount } from 'svelte';
   import {
     Award, TrendingUp, CheckCircle2, XCircle,
-    Clock, Calendar, Target, ChevronRight, AlertTriangle, BarChart3
+    Clock, Calendar, Target, ChevronRight, AlertTriangle, BarChart3,
+    LineChart, Activity, BarChart, PieChart
   } from '@lucide/svelte';
 
   let { data }: { data: PageData } = $props();
@@ -12,6 +14,13 @@
   const summary = $derived(data.summary ?? {});
 
   let filter = $state<'all' | 'passed' | 'failed'>('all');
+  let chartReady = $state(false);
+
+  // ── Chart refs ──────────────────────────────────────────────────────────
+  let trendCanvas: HTMLCanvasElement;
+  let subjectCanvas: HTMLCanvasElement;
+  let timelineCanvas: HTMLCanvasElement;
+  let comparisonCanvas: HTMLCanvasElement;
 
   const filtered = $derived(
     filter === 'all'    ? results :
@@ -19,6 +28,380 @@
                           results.filter(r => !r.passed && r.passed !== null)
   );
 
+  // ── Chart data prep ───────────────────────────────────────────────────────
+  const sortedResults = $derived([...results].sort((a, b) =>
+    new Date(a.submittedAt ?? 0).getTime() - new Date(b.submittedAt ?? 0).getTime()
+  ));
+
+  const courseGroups = $derived(() => {
+    const map = new Map<string, { scores: number[]; dates: string[]; name: string }>();
+    for (const r of results) {
+      const code = r.exam?.course?.code ?? 'Unknown';
+      const name = r.exam?.course?.title ?? code;
+      if (!map.has(code)) map.set(code, { scores: [], dates: [], name });
+      map.get(code)!.scores.push(Number(r.percentage ?? 0));
+      map.get(code)!.dates.push(formatDate(r.submittedAt));
+    }
+    return map;
+  });
+
+  const monthlyTrend = $derived(() => {
+    const map = new Map<string, { total: number; count: number; passed: number }>();
+    for (const r of sortedResults) {
+      const d = new Date(r.submittedAt ?? 0);
+      const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+      const existing = map.get(key) ?? { total: 0, count: 0, passed: 0 };
+      existing.total += Number(r.percentage ?? 0);
+      existing.count++;
+      if (r.passed) existing.passed++;
+      map.set(key, existing);
+    }
+    return Array.from(map.entries())
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([key, v]) => ({
+        label: new Date(key + '-01').toLocaleDateString('en-NG', { month: 'short', year: 'numeric' }),
+        avg: Math.round(v.total / v.count),
+        count: v.count,
+        passRate: Math.round((v.passed / v.count) * 100),
+      }));
+  });
+
+  // ── Chart.js init ───────────────────────────────────────────────────────
+  onMount(async () => {
+    const [{ default: Chart }, { default: ChartDataLabels }] = await Promise.all([
+      import('chart.js/auto'),
+      import('chartjs-plugin-datalabels'),
+    ]);
+
+    Chart.register(ChartDataLabels);
+    chartReady = true;
+
+    const accent = getComputedStyle(document.documentElement).getPropertyValue('--accent').trim() || '#10b981';
+    const accentRGB = hexToRGB(accent);
+    const textColor = getComputedStyle(document.documentElement).getPropertyValue('--color-text').trim() || '#1f2937';
+    const mutedColor = getComputedStyle(document.documentElement).getPropertyValue('--color-muted').trim() || '#6b7280';
+    const borderColor = getComputedStyle(document.documentElement).getPropertyValue('--color-border').trim() || '#e5e7eb';
+    const isDark = document.documentElement.classList.contains('dark');
+
+    const gridColor = isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)';
+
+    // 1. Performance Trend Line Chart
+    if (trendCanvas && sortedResults.length > 1) {
+      new Chart(trendCanvas, {
+        type: 'line',
+        data: {
+          labels: sortedResults.map((_, i) => `Exam ${i + 1}`),
+          datasets: [{
+            label: 'Score %',
+            data: sortedResults.map(r => Number(r.percentage ?? 0)),
+            borderColor: accent,
+            backgroundColor: `rgba(${accentRGB}, 0.08)`,
+            borderWidth: 2.5,
+            tension: 0.35,
+            fill: true,
+            pointBackgroundColor: accent,
+            pointBorderColor: isDark ? '#1f2937' : '#fff',
+            pointBorderWidth: 2,
+            pointRadius: 5,
+            pointHoverRadius: 7,
+          }, {
+            label: 'Class Avg',
+            data: sortedResults.map(r => Number(r.classAverage ?? 55)),
+            borderColor: '#6366f1',
+            borderWidth: 2,
+            borderDash: [6, 4],
+            tension: 0.35,
+            pointRadius: 0,
+            pointHoverRadius: 5,
+            fill: false,
+          }],
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          interaction: { intersect: false, mode: 'index' },
+          plugins: {
+            legend: {
+              display: true,
+              position: 'top',
+              align: 'end',
+              labels: {
+                usePointStyle: true,
+                pointStyle: 'circle',
+                padding: 16,
+                color: textColor,
+                font: { size: 11, weight: '600' },
+              },
+            },
+            datalabels: { display: false },
+            tooltip: {
+              backgroundColor: isDark ? '#1f2937' : '#fff',
+              titleColor: textColor,
+              bodyColor: mutedColor,
+              borderColor: borderColor,
+              borderWidth: 1,
+              padding: 10,
+              cornerRadius: 8,
+              displayColors: true,
+              callbacks: {
+                title: (items) => {
+                  const idx = items[0].dataIndex;
+                  const r = sortedResults[idx];
+                  return `${r.exam?.course?.code ?? 'Exam'} — ${formatDate(r.submittedAt)}`;
+                },
+                label: (ctx) => `${ctx.dataset.label}: ${ctx.parsed.y}%`,
+              },
+            },
+          },
+          scales: {
+            x: {
+              grid: { display: false },
+              ticks: { color: mutedColor, font: { size: 10, weight: '600' } },
+              border: { display: false },
+            },
+            y: {
+              min: 0,
+              max: 100,
+              grid: { color: gridColor },
+              ticks: { color: mutedColor, font: { size: 10, weight: '600' }, stepSize: 20 },
+              border: { display: false },
+            },
+          },
+        },
+      });
+    }
+
+    // 2. Subject Performance Bar Chart
+    const cg = courseGroups();
+    if (subjectCanvas && cg.size > 0) {
+      const entries = Array.from(cg.entries());
+      new Chart(subjectCanvas, {
+        type: 'bar',
+        data: {
+          labels: entries.map(([code]) => code),
+          datasets: [{
+            label: 'Best Score',
+            data: entries.map(([, v]) => Math.max(...v.scores)),
+            backgroundColor: accent,
+            borderRadius: 6,
+            borderSkipped: false,
+          }, {
+            label: 'Average',
+            data: entries.map(([, v]) => Math.round(v.scores.reduce((a, b) => a + b, 0) / v.scores.length)),
+            backgroundColor: `rgba(${accentRGB}, 0.35)`,
+            borderRadius: 6,
+            borderSkipped: false,
+          }],
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: {
+            legend: {
+              display: true,
+              position: 'top',
+              align: 'end',
+              labels: {
+                usePointStyle: true,
+                pointStyle: 'rectRounded',
+                padding: 16,
+                color: textColor,
+                font: { size: 11, weight: '600' },
+              },
+            },
+            datalabels: {
+              display: true,
+              anchor: 'end',
+              align: 'top',
+              color: textColor,
+              font: { size: 10, weight: '700' },
+              formatter: (v: number) => `${v}%`,
+            },
+            tooltip: {
+              backgroundColor: isDark ? '#1f2937' : '#fff',
+              titleColor: textColor,
+              bodyColor: mutedColor,
+              borderColor: borderColor,
+              borderWidth: 1,
+              padding: 10,
+              cornerRadius: 8,
+              callbacks: {
+                title: (items) => {
+                  const [, v] = entries[items[0].dataIndex];
+                  return v.name;
+                },
+              },
+            },
+          },
+          scales: {
+            x: {
+              grid: { display: false },
+              ticks: { color: mutedColor, font: { size: 10, weight: '600' } },
+              border: { display: false },
+            },
+            y: {
+              min: 0,
+              max: 100,
+              grid: { color: gridColor },
+              ticks: { color: mutedColor, font: { size: 10, weight: '600' }, stepSize: 20 },
+              border: { display: false },
+            },
+          },
+        },
+      });
+    }
+
+    // 3. Monthly Timeline Chart
+    const mt = monthlyTrend();
+    if (timelineCanvas && mt.length > 1) {
+      new Chart(timelineCanvas, {
+        type: 'line',
+        data: {
+          labels: mt.map(m => m.label),
+          datasets: [{
+            label: 'Avg Score',
+            data: mt.map(m => m.avg),
+            borderColor: accent,
+            backgroundColor: `rgba(${accentRGB}, 0.06)`,
+            borderWidth: 2.5,
+            tension: 0.4,
+            fill: true,
+            pointBackgroundColor: accent,
+            pointBorderColor: isDark ? '#1f2937' : '#fff',
+            pointBorderWidth: 2,
+            pointRadius: 5,
+            yAxisID: 'y',
+          }, {
+            label: 'Exams Taken',
+            data: mt.map(m => m.count),
+            type: 'bar',
+            backgroundColor: `rgba(${accentRGB}, 0.15)`,
+            borderRadius: 4,
+            borderSkipped: false,
+            yAxisID: 'y1',
+            barThickness: 20,
+          }],
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          interaction: { intersect: false, mode: 'index' },
+          plugins: {
+            legend: {
+              display: true,
+              position: 'top',
+              align: 'end',
+              labels: {
+                usePointStyle: true,
+                pointStyle: 'circle',
+                padding: 16,
+                color: textColor,
+                font: { size: 11, weight: '600' },
+              },
+            },
+            datalabels: { display: false },
+            tooltip: {
+              backgroundColor: isDark ? '#1f2937' : '#fff',
+              titleColor: textColor,
+              bodyColor: mutedColor,
+              borderColor: borderColor,
+              borderWidth: 1,
+              padding: 10,
+              cornerRadius: 8,
+            },
+          },
+          scales: {
+            x: {
+              grid: { display: false },
+              ticks: { color: mutedColor, font: { size: 10, weight: '600' } },
+              border: { display: false },
+            },
+            y: {
+              min: 0,
+              max: 100,
+              grid: { color: gridColor },
+              ticks: { color: mutedColor, font: { size: 10, weight: '600' }, stepSize: 20 },
+              border: { display: false },
+              title: { display: false },
+            },
+            y1: {
+              position: 'right',
+              min: 0,
+              grid: { display: false },
+              ticks: { color: mutedColor, font: { size: 10, weight: '600' }, stepSize: 1 },
+              border: { display: false },
+              title: { display: false },
+            },
+          },
+        },
+      });
+    }
+
+    // 4. Pass/Fail Distribution Doughnut
+    if (comparisonCanvas && results.length > 0) {
+      const passed = results.filter(r => r.passed).length;
+      const failed = results.filter(r => !r.passed && r.passed !== null).length;
+      const pending = results.filter(r => r.passed === null).length;
+
+      new Chart(comparisonCanvas, {
+        type: 'doughnut',
+        data: {
+          labels: ['Passed', 'Failed', 'Pending'],
+          datasets: [{
+            data: [passed, failed, pending],
+            backgroundColor: [
+              '#10b981',
+              '#ef4444',
+              '#f59e0b',
+            ],
+            borderWidth: 0,
+            hoverOffset: 6,
+          }],
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          cutout: '68%',
+          plugins: {
+            legend: {
+              display: true,
+              position: 'bottom',
+              labels: {
+                usePointStyle: true,
+                pointStyle: 'circle',
+                padding: 20,
+                color: textColor,
+                font: { size: 11, weight: '600' },
+              },
+            },
+            datalabels: {
+              display: true,
+              color: '#fff',
+              font: { size: 12, weight: '800' },
+              formatter: (v: number, ctx: any) => {
+                const total = ctx.dataset.data.reduce((a: number, b: number) => a + b, 0);
+                return total > 0 ? `${Math.round((v / total) * 100)}%` : '';
+              },
+            },
+            tooltip: {
+              backgroundColor: isDark ? '#1f2937' : '#fff',
+              titleColor: textColor,
+              bodyColor: mutedColor,
+              borderColor: borderColor,
+              borderWidth: 1,
+              padding: 10,
+              cornerRadius: 8,
+              callbacks: {
+                label: (ctx) => `${ctx.label}: ${ctx.parsed} exam${ctx.parsed !== 1 ? 's' : ''}`,
+              },
+            },
+          },
+        },
+      });
+    }
+  });
+
+  // ── Helpers ───────────────────────────────────────────────────────────────
   function formatDate(d: string | null | undefined) {
     if (!d) return '—';
     return new Intl.DateTimeFormat('en-NG', { day: 'numeric', month: 'short', year: 'numeric' }).format(new Date(d));
@@ -37,6 +420,15 @@
     if (pct >= 50) return 'grade-c';
     if (pct >= 45) return 'grade-d';
     return 'grade-f';
+  }
+
+  function hexToRGB(hex: string): string {
+    const clean = hex.replace('#', '');
+    const bigint = parseInt(clean, 16);
+    const r = (bigint >> 16) & 255;
+    const g = (bigint >> 8) & 255;
+    const b = bigint & 255;
+    return `${r}, ${g}, ${b}`;
   }
 </script>
 
@@ -78,6 +470,97 @@
         <div class="sum-body">
           <span class="sum-val" class:bad={summary.failed > 0}>{summary.failed}</span>
           <span class="sum-lbl">Failed</span>
+        </div>
+      </div>
+    </div>
+  {/if}
+
+  <!-- ── Charts Section ────────────────────────────────────── -->
+  {#if (summary.total ?? 0) > 0}
+    <div class="charts-section">
+      <!-- Row 1: Trend + Distribution -->
+      <div class="chart-row">
+        <div class="chart-card chart-large">
+          <div class="chart-header">
+            <div class="chart-icon"><LineChart size={14} /></div>
+            <div class="chart-title-group">
+              <h3 class="chart-title">Performance Trend</h3>
+              <p class="chart-sub">Your scores over time vs. class average</p>
+            </div>
+          </div>
+          <div class="chart-body" style="height: 260px;">
+            {#if sortedResults.length > 1}
+              <canvas bind:this={trendCanvas}></canvas>
+            {:else}
+              <div class="chart-placeholder">
+                <Activity size={24} />
+                <span>Complete more exams to see your trend</span>
+              </div>
+            {/if}
+          </div>
+        </div>
+
+        <div class="chart-card chart-small">
+          <div class="chart-header">
+            <div class="chart-icon"><PieChart size={14} /></div>
+            <div class="chart-title-group">
+              <h3 class="chart-title">Outcome</h3>
+              <p class="chart-sub">Pass / fail breakdown</p>
+            </div>
+          </div>
+          <div class="chart-body" style="height: 260px;">
+            {#if results.length > 0}
+              <canvas bind:this={comparisonCanvas}></canvas>
+            {:else}
+              <div class="chart-placeholder">
+                <PieChart size={24} />
+                <span>No data yet</span>
+              </div>
+            {/if}
+          </div>
+        </div>
+      </div>
+
+      <!-- Row 2: Subject + Timeline -->
+      <div class="chart-row">
+        <div class="chart-card chart-medium">
+          <div class="chart-header">
+            <div class="chart-icon"><BarChart size={14} /></div>
+            <div class="chart-title-group">
+              <h3 class="chart-title">By Subject</h3>
+              <p class="chart-sub">Best and average per course</p>
+            </div>
+          </div>
+          <div class="chart-body" style="height: 240px;">
+            {#if courseGroups().size > 0}
+              <canvas bind:this={subjectCanvas}></canvas>
+            {:else}
+              <div class="chart-placeholder">
+                <BarChart size={24} />
+                <span>No subject data available</span>
+              </div>
+            {/if}
+          </div>
+        </div>
+
+        <div class="chart-card chart-medium">
+          <div class="chart-header">
+            <div class="chart-icon"><Activity size={14} /></div>
+            <div class="chart-title-group">
+              <h3 class="chart-title">Monthly Activity</h3>
+              <p class="chart-sub">Exams taken and average scores</p>
+            </div>
+          </div>
+          <div class="chart-body" style="height: 240px;">
+            {#if monthlyTrend().length > 1}
+              <canvas bind:this={timelineCanvas}></canvas>
+            {:else}
+              <div class="chart-placeholder">
+                <Calendar size={24} />
+                <span>Need exams across multiple months</span>
+              </div>
+            {/if}
+          </div>
         </div>
       </div>
     </div>
@@ -187,6 +670,105 @@
   .sum-val.good { color: var(--g600); }
   .sum-val.bad  { color: #dc2626; }
   .sum-lbl { font-size: 0.65rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; color: var(--color-muted); margin-top: 0.15rem; }
+
+  /* ── Charts Section ───────────────────────────────────────────────────── */
+  .charts-section {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+  }
+
+  .chart-row {
+    display: grid;
+    grid-template-columns: 2fr 1fr;
+    gap: 0.75rem;
+  }
+  .chart-row:nth-child(2) {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  @media (max-width: 768px) {
+    .chart-row,
+    .chart-row:nth-child(2) {
+      grid-template-columns: 1fr;
+    }
+  }
+
+  .chart-card {
+    background: var(--color-surface);
+    border: 1px solid var(--color-border);
+    border-radius: 14px;
+    padding: 1rem 1.125rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+    transition: border-color 0.15s;
+  }
+  .chart-card:hover {
+    border-color: color-mix(in srgb, var(--accent, #10b981) 25%, var(--color-border));
+  }
+
+  .chart-header {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.625rem;
+  }
+
+  .chart-icon {
+    width: 32px;
+    height: 32px;
+    border-radius: 8px;
+    background: color-mix(in srgb, var(--accent, #10b981) 10%, transparent);
+    color: var(--accent, #10b981);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+  }
+
+  .chart-title-group {
+    display: flex;
+    flex-direction: column;
+    gap: 0.1rem;
+    min-width: 0;
+  }
+
+  .chart-title {
+    font-size: 0.88rem;
+    font-weight: 800;
+    color: var(--color-text);
+    margin: 0;
+    letter-spacing: -0.01em;
+  }
+
+  .chart-sub {
+    font-size: 0.72rem;
+    color: var(--color-muted);
+    margin: 0;
+    font-weight: 500;
+  }
+
+  .chart-body {
+    position: relative;
+    width: 100%;
+    min-height: 200px;
+  }
+  .chart-body canvas {
+    width: 100% !important;
+    height: 100% !important;
+  }
+
+  .chart-placeholder {
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+    color: var(--color-muted);
+    font-size: 0.78rem;
+    font-weight: 600;
+  }
 
   /* Filter */
   .filter-bar { display: flex; gap: 0.375rem; }

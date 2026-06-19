@@ -75,6 +75,7 @@
 		"@vladmandic/human": "^3.3.6",
 		"bcryptjs": "^3.0.3",
 		"chart.js": "^4.5.1",
+		"chartjs-plugin-datalabels": "^2.2.0",
 		"cheerio": "^1.2.0",
 		"cloudinary": "^2.10.0",
 		"dotenv": "^17.4.2",
