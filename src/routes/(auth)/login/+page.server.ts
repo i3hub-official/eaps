@@ -6,10 +6,14 @@ import { verifyPassword } from '$lib/server/auth/password.js';
 import { createSession, setSessionCookie } from '$lib/server/auth/session.js';
 
 const ROLE_HOME: Record<string, string> = {
-  student:     '/student',
-  lecturer:    '/lecturer',
-  invigilator: '/invigilator',
-  admin:       '/admin',
+  student:      '/student',
+  lecturer:     '/lecturer',
+  invigilator:  '/invigilator',
+  admin:        '/admin',
+  hod:          '/hod',
+  dean:         '/dean',
+  exam_officer: '/exam-officer',
+  vc_dvc:       '/vc-dvc',
 };
 
 export const load: PageServerLoad = async ({ locals }) => {
@@ -19,7 +23,7 @@ export const load: PageServerLoad = async ({ locals }) => {
 
 export const actions: Actions = {
   default: async ({ request, cookies, getClientAddress }) => {
-    const data  = await request.formData();
+    const data     = await request.formData();
     const email    = String(data.get('email')    ?? '').trim().toLowerCase();
     const password = String(data.get('password') ?? '');
 

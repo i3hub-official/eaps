@@ -1,46 +1,113 @@
 // src/lib/server/auth/guards.ts
-import { redirect, error } from '@sveltejs/kit';
+//
+// Role guards for all portals.
+// Usage: requireAdmin(locals.user)  — throws redirect(303) or error(403)
+//        await requireAdminOrApiKey(ctx, 'read_users') — session OR API key
+import { error, redirect } from '@sveltejs/kit';
 import type { UserRole, User } from '@prisma/client';
-import { requireApiKey } from './api-key-guard.js';
 import type { ApiScope } from '@prisma/client';
+import { requireApiKey } from './api-key-guard.js';
 
-const ROLE_HOME: Record<UserRole, string> = {
-  student:     '/student',
-  lecturer:    '/lecturer',
-  invigilator: '/invigilator',
-  admin:       '/admin',
-};
+type MaybeUser = { id: string; role: UserRole; isActive: boolean; isSuspended: boolean } | null | undefined;
 
-export function requireAuth(user: User | null): User {
-  if (!user) redirect(302, '/login');
-  return user;
+function assertActive(user: MaybeUser, loginPath = '/login') {
+  if (!user) redirect(303, loginPath);
+  if (!user.isActive || user.isSuspended) error(403, 'Account suspended or inactive.');
 }
 
-export function requireRole(user: User | null, ...roles: UserRole[]): User {
-  const authed = requireAuth(user);
-  if (!roles.includes(authed.role)) {
-    redirect(302, ROLE_HOME[authed.role]);
-  }
-  return authed;
+// ── Core auth ─────────────────────────────────────────────────────────────────
+
+export function requireAuth(user: MaybeUser): NonNullable<MaybeUser> {
+  assertActive(user);
+  return user!;
 }
 
-export function requireStudent(user: User | null):     User { return requireRole(user, 'student'); }
-export function requireLecturer(user: User | null):    User { return requireRole(user, 'lecturer'); }
-export function requireInvigilator(user: User | null): User { return requireRole(user, 'invigilator'); }
-export function requireAdmin(user: User | null):       User { return requireRole(user, 'admin'); }
-
-export function requireLecturerOrAdmin(user: User | null):    User { return requireRole(user, 'lecturer', 'admin'); }
-export function requireInvigilatorOrAdmin(user: User | null): User { return requireRole(user, 'invigilator', 'admin'); }
-
-export function requireOwnership(user: User, ownerId: string): void {
+export function requireOwnership(user: NonNullable<MaybeUser>, ownerId: string): void {
   if (user.id !== ownerId && user.role !== 'admin') {
-    error(403, 'You do not have permission to access this resource');
+    error(403, 'You do not have permission to access this resource.');
   }
 }
 
-// ── Admin OR API Key ─────────────────────────────────────────────────────────
+// ── Single-role guards ────────────────────────────────────────────────────────
 
-type AdminOrKeySuccess = { ok: true; user?: User; keyId?: string; scopes?: string[] };
+export function requireAdmin(user: MaybeUser) {
+  assertActive(user);
+  if (user!.role !== 'admin') error(403, 'Admin access required.');
+}
+
+export function requireLecturer(user: MaybeUser) {
+  assertActive(user);
+  if (user!.role !== 'lecturer' && user!.role !== 'hod') {
+    error(403, 'Lecturer access required.');
+  }
+}
+
+export function requireInvigilator(user: MaybeUser) {
+  assertActive(user);
+  if (user!.role !== 'invigilator') error(403, 'Invigilator access required.');
+}
+
+export function requireStudent(user: MaybeUser) {
+  assertActive(user);
+  if (user!.role !== 'student') error(403, 'Student access required.');
+}
+
+export function requireHod(user: MaybeUser) {
+  assertActive(user);
+  if (user!.role !== 'hod') error(403, 'HOD access required.');
+}
+
+export function requireDean(user: MaybeUser) {
+  assertActive(user);
+  if (user!.role !== 'dean') error(403, 'Dean access required.');
+}
+
+export function requireExamOfficer(user: MaybeUser) {
+  assertActive(user);
+  if (user!.role !== 'exam_officer') error(403, 'Exam Officer access required.');
+}
+
+export function requireVcDvc(user: MaybeUser) {
+  assertActive(user);
+  if (user!.role !== 'vc_dvc') error(403, 'VC/DVC access required.');
+}
+
+// ── Multi-role guards (OR semantics) ─────────────────────────────────────────
+
+/** Routes accessible by admin OR exam officer (e.g. exam schedule management). */
+export function requireExamManagement(user: MaybeUser) {
+  assertActive(user);
+  const allowed: UserRole[] = ['admin', 'exam_officer'];
+  if (!allowed.includes(user!.role)) error(403, 'Exam management access required.');
+}
+
+/** Routes readable by governance accounts (VC/DVC, Dean, Exam Officer, Admin). */
+export function requireReportAccess(user: MaybeUser) {
+  assertActive(user);
+  const allowed: UserRole[] = ['admin', 'exam_officer', 'dean', 'vc_dvc'];
+  if (!allowed.includes(user!.role)) error(403, 'Report access required.');
+}
+
+/**
+ * Routes accessible by lecturers AND HODs who also lecture.
+ * Pass the user's secondaryRoles (loaded from UserRoleAssignment) for HOD check.
+ */
+export function requireLecturerOrHod(user: MaybeUser, secondaryRoles: string[] = []) {
+  assertActive(user);
+  const isLecturer = user!.role === 'lecturer';
+  const isHodWhoLectures = user!.role === 'hod' && secondaryRoles.includes('lecturer');
+  if (!isLecturer && !isHodWhoLectures) error(403, 'Lecturer access required.');
+}
+
+/** Any authenticated, active staff member (non-student). */
+export function requireStaff(user: MaybeUser) {
+  assertActive(user);
+  if (user!.role === 'student') error(403, 'Staff access required.');
+}
+
+// ── Admin OR API Key ──────────────────────────────────────────────────────────
+
+type AdminOrKeySuccess = { ok: true; user?: MaybeUser; keyId?: string; scopes?: string[] };
 type AdminOrKeyFailure = { ok: false; response: Response };
 
 /**
@@ -57,17 +124,22 @@ export async function requireAdminOrApiKey(
   requiredScope?: ApiScope,
   endpoint = '(unknown)'
 ): Promise<AdminOrKeySuccess | AdminOrKeyFailure> {
-  // 1. Try session-based admin auth first
-  const user = ctx.locals.user;
-  if (user?.role === 'admin') {
+  const user = ctx.locals.user as MaybeUser;
+  if (user?.role === 'admin' && user.isActive && !user.isSuspended) {
     return { ok: true, user };
   }
 
-  // 2. Fall back to API key
   const auth = await requireApiKey(ctx.request, requiredScope, endpoint);
   if (!auth.ok) {
     return { ok: false, response: auth.response };
   }
 
   return { ok: true, keyId: auth.keyId, scopes: auth.scopes };
+}
+
+// ── Utility ───────────────────────────────────────────────────────────────────
+
+/** True if the user holds a given secondary role. */
+export function hasSecondaryRole(secondaryRoles: string[], role: string): boolean {
+  return secondaryRoles.includes(role);
 }

@@ -20,43 +20,71 @@
 
   let currentRole = $derived.by(() => {
     const path = $page.url.pathname;
-    if (path.startsWith('/admin')) return 'admin';
-    if (path.startsWith('/lecturer')) return 'lecturer';
-    if (path.startsWith('/invigilator')) return 'invigilator';
-    if (path.startsWith('/student')) return 'student';
+    if (path.startsWith('/admin'))        return 'admin';
+    if (path.startsWith('/lecturer'))     return 'lecturer';
+    if (path.startsWith('/hod'))          return 'hod';
+    if (path.startsWith('/dean'))         return 'dean';
+    if (path.startsWith('/exam-officer')) return 'exam_officer';
+    if (path.startsWith('/vc-dvc'))       return 'vc_dvc';
+    if (path.startsWith('/invigilator'))  return 'invigilator';
+    if (path.startsWith('/student'))      return 'student';
     return 'default';
   });
 
   const roleStyles = {
     admin: {
-      accent: 'var(--admin-accent, #6366f1)',
+      accent:     'var(--admin-accent, #6366f1)',
       accentSoft: 'var(--admin-accent-bg, rgba(99,102,241,0.08))',
-      accentMid: 'rgba(99,102,241,0.15)',
-      border: 'var(--admin-border, rgba(99,102,241,0.15))'
+      accentMid:  'rgba(99,102,241,0.15)',
+      border:     'var(--admin-border, rgba(99,102,241,0.15))'
     },
     lecturer: {
-      accent: 'var(--lecturer-accent, #8b5cf6)',
+      accent:     'var(--lecturer-accent, #8b5cf6)',
       accentSoft: 'var(--lecturer-accent-bg, rgba(139,92,246,0.08))',
-      accentMid: 'rgba(139,92,246,0.15)',
-      border: 'var(--lecturer-border, rgba(139,92,246,0.15))'
+      accentMid:  'rgba(139,92,246,0.15)',
+      border:     'var(--lecturer-border, rgba(139,92,246,0.15))'
+    },
+    hod: {
+      accent:     'var(--hod-accent, #7c3aed)',
+      accentSoft: 'var(--hod-accent-bg, rgba(124,58,237,0.08))',
+      accentMid:  'rgba(124,58,237,0.15)',
+      border:     'var(--hod-border, rgba(124,58,237,0.15))'
+    },
+    dean: {
+      accent:     'var(--dean-accent, #0ea5e9)',
+      accentSoft: 'var(--dean-accent-bg, rgba(14,165,233,0.08))',
+      accentMid:  'rgba(14,165,233,0.15)',
+      border:     'var(--dean-border, rgba(14,165,233,0.15))'
+    },
+    exam_officer: {
+      accent:     'var(--exam-officer-accent, #f97316)',
+      accentSoft: 'var(--exam-officer-accent-bg, rgba(249,115,22,0.08))',
+      accentMid:  'rgba(249,115,22,0.15)',
+      border:     'var(--exam-officer-border, rgba(249,115,22,0.15))'
+    },
+    vc_dvc: {
+      accent:     'var(--vc-dvc-accent, #e11d48)',
+      accentSoft: 'var(--vc-dvc-accent-bg, rgba(225,29,72,0.08))',
+      accentMid:  'rgba(225,29,72,0.15)',
+      border:     'var(--vc-dvc-border, rgba(225,29,72,0.15))'
     },
     invigilator: {
-      accent: 'var(--invigilator-accent, #f59e0b)',
+      accent:     'var(--invigilator-accent, #f59e0b)',
       accentSoft: 'var(--invigilator-accent-bg, rgba(245,158,11,0.08))',
-      accentMid: 'rgba(245,158,11,0.15)',
-      border: 'var(--invigilator-border, rgba(245,158,11,0.15))'
+      accentMid:  'rgba(245,158,11,0.15)',
+      border:     'var(--invigilator-border, rgba(245,158,11,0.15))'
     },
     student: {
-      accent: 'var(--student-accent, #10b981)',
+      accent:     'var(--student-accent, #10b981)',
       accentSoft: 'var(--student-accent-bg, rgba(16,185,129,0.08))',
-      accentMid: 'rgba(16,185,129,0.15)',
-      border: 'var(--student-border, rgba(16,185,129,0.15))'
+      accentMid:  'rgba(16,185,129,0.15)',
+      border:     'var(--student-border, rgba(16,185,129,0.15))'
     },
     default: {
-      accent: 'var(--g500, #22c55e)',
-      accentSoft: 'rgba(34,197,94,0.08)',
-      accentMid: 'rgba(34,197,94,0.15)',
-      border: 'rgba(34,197,94,0.15)'
+      accent:     'var(--accent, #10b981)',
+      accentSoft: 'rgba(16,185,129,0.08)',
+      accentMid:  'rgba(16,185,129,0.15)',
+      border:     'rgba(16,185,129,0.15)'
     }
   };
 
@@ -85,11 +113,15 @@
   );
 
   const roleLabels: Record<string, string> = {
-    admin: 'Admin',
-    lecturer: 'Lecturer',
-    invigilator: 'Invigilator',
-    student: 'Student',
-    default: ''
+    admin:        'Admin',
+    lecturer:     'Lecturer',
+    hod:          'HOD',
+    dean:         'Dean',
+    exam_officer: 'Exam Officer',
+    vc_dvc:       'VC / DVC',
+    invigilator:  'Invigilator',
+    student:      'Student',
+    default:      ''
   };
 
   const totalCount = $derived(notifications.length);

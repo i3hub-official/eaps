@@ -6,63 +6,55 @@
     AlertCircle, Info, Users, ChevronDown, Check,
     Calendar, Search, X, GraduationCap, Building2,
     FileText, Timer, BarChart3, ShieldAlert, Layers,
-    Shuffle, Eye, UserCheck, LogIn, CheckCircle2,
-    AlertTriangle, Zap, TrendingUp,
+    Shuffle, Eye, LogIn, AlertTriangle, Zap,
+    TrendingUp,
   } from '@lucide/svelte';
   import { fly, fade, scale } from 'svelte/transition';
   import { flip } from 'svelte/animate';
 
   let { data, form }: {
     data: PageData & {
-      departments:      Array<{ id: string; name: string; code: string }>;
-      levels:           Array<{ id: number; level: number; name: string | null }>;
-      semesters:        Array<{ id: number; session: string; semester: number; label: string | null; isActive: boolean }>;
-      defaultSession:   string;
-      defaultSemester:  number;
-      activeSemesterId: number | null;
+      departments: Array<{ id: string; name: string; code: string }>;
+      levels: Array<{ id: string; name: string; value: number }>;
+      sessions: Array<{ id: string; session: string }>;
     };
     form: ActionData;
   } = $props();
 
-  // ── Toast — only ⚡ info/warn toasts, NO success toasts ──────────────────
+  // ── Toast system ──────────────────────────────────────────────────────────
   type Toast = { id: number; message: string; type: 'info' | 'warn' };
   let toasts = $state<Toast[]>([]);
   let toastId = 0;
 
-  function toast(message: string, type: Toast['type'] = 'info', duration = 2600) {
+  function toast(message: string, type: Toast['type'] = 'success', duration = 2600) {
     const id = ++toastId;
     toasts = [...toasts, { id, message, type }];
     setTimeout(() => { toasts = toasts.filter(t => t.id !== id); }, duration);
   }
 
-  // ── Levels — from DB (lecturer's assigned levels only) ────────────────────
-  const LEVELS = $derived((data.levels ?? []).map(l => l.level));
+  // ── Levels (DB-aware, lecturer-assigned) ──────────────────────────────────
+  const LEVELS = $derived(
+    (data.levels ?? []).map(l => l.value).sort((a, b) => a - b)
+  );
   let selectedLevels = $state<Set<number>>(new Set());
-  const allLevels    = $derived(LEVELS.length > 0 && selectedLevels.size === LEVELS.length);
+  const allLevels = $derived(selectedLevels.size === LEVELS.length && LEVELS.length > 0);
 
   function toggleLevel(level: number) {
     const next = new Set(selectedLevels);
-    if (next.has(level)) { next.delete(level); toast(`${level} Level removed`); }
-    else                 { next.add(level); }
+    if (next.has(level)) { next.delete(level); toast(`${level} Level removed`, 'info'); }
+    else                 { next.add(level);    toast(`${level} Level added`, 'info'); }
     selectedLevels = next;
   }
 
   function toggleAll() {
-    if (allLevels) { selectedLevels = new Set(); toast('All levels cleared'); }
-    else           { selectedLevels = new Set(LEVELS); }
+    if (allLevels) { selectedLevels = new Set(); toast('All levels cleared', 'info'); }
+    else           { selectedLevels = new Set(LEVELS); toast('All levels selected', 'info'); }
   }
 
-  // ── Departments — lecturer's own department(s) from DB ────────────────────
+  // ── Departments ───────────────────────────────────────────────────────────
   let selectedDepartments = $state<Set<string>>(new Set());
   let deptOpen   = $state(false);
   let deptSearch = $state('');
-
-  // Pre-select if there's only one department (lecturer's own)
-  $effect(() => {
-    if (data.departments.length === 1 && selectedDepartments.size === 0) {
-      selectedDepartments = new Set([data.departments[0].id]);
-    }
-  });
 
   const filteredDepts = $derived(
     data.departments.filter(d =>
@@ -74,8 +66,8 @@
   function toggleDept(id: string) {
     const dept = data.departments.find(d => d.id === id);
     const next = new Set(selectedDepartments);
-    if (next.has(id)) { next.delete(id); toast(`${dept?.code ?? 'Dept'} removed`); }
-    else              { next.add(id); }
+    if (next.has(id)) { next.delete(id); toast(`${dept?.code ?? 'Dept'} removed`, 'info'); }
+    else              { next.add(id);    toast(`${dept?.code ?? 'Dept'} added`, 'info'); }
     selectedDepartments = next;
   }
 
@@ -84,79 +76,74 @@
     const next = new Set(selectedDepartments);
     next.delete(id);
     selectedDepartments = next;
-    toast(`${dept?.code ?? 'Dept'} removed`);
+    toast(`${dept?.code ?? 'Dept'} removed`, 'info');
   }
 
-  // ── Course ────────────────────────────────────────────────────────────────
+  // ── Course — scoped to courses assigned to this lecturer ─────────────────
+  // data.courses comes from getCoursesForLecturer which returns courses
+  // the lecturer is assigned to (via LecturerCourse join or createdBy exams).
   let selectedCourse = $state('');
-  let courseOpen     = $state(false);
-  let courseSearch   = $state('');
+  let courseOpen   = $state(false);
+  let courseSearch = $state('');
 
-  const filteredCourses    = $derived((data.courses ?? []).filter((c: any) =>
-    c.code.toLowerCase().includes(courseSearch.toLowerCase()) ||
-    c.title.toLowerCase().includes(courseSearch.toLowerCase())
-  ));
-  const selectedCourseObj  = $derived((data.courses ?? []).find((c: any) => c.id === selectedCourse));
+  const filteredCourses = $derived(
+    (data.courses ?? []).filter((c: any) =>
+      c.code.toLowerCase().includes(courseSearch.toLowerCase()) ||
+      c.title.toLowerCase().includes(courseSearch.toLowerCase())
+    )
+  );
+  const selectedCourseObj = $derived((data.courses ?? []).find((c: any) => c.id === selectedCourse));
 
-  // ── Session — dropdown from DB active semesters ───────────────────────────
-  // Build unique session+semester option list from the semesters array
-  const semesterOptions = $derived(data.semesters ?? []);
-
-  // Selected semester id (defaults to active)
-  let selectedSemesterId = $state<number | null>(data.activeSemesterId ?? null);
-  let semesterOpen       = $state(false);
-
-  const selectedSemesterObj = $derived(
-    semesterOptions.find(s => s.id === selectedSemesterId) ?? semesterOptions[0] ?? null
+  // ── Semester ──────────────────────────────────────────────────────────────
+  const SEMESTERS = [
+    { value: '1', label: 'First Semester' },
+    { value: '2', label: 'Second Semester' },
+  ];
+  let selectedSemester = $state(String(data.defaultSemester ?? 1));
+  let semesterOpen = $state(false);
+  const selectedSemesterLabel = $derived(
+    SEMESTERS.find(s => s.value === selectedSemester)?.label ?? ''
   );
 
-  // Derived hidden input values for the form
-  const formSession  = $derived(selectedSemesterObj?.session  ?? '');
-  const formSemester = $derived(selectedSemesterObj?.semester ?? 1);
+  // ── Session (DB-aware dropdown) ──────────────────────────────────────────
+  let selectedSession = $state(data.defaultSession ?? '');
+  let sessionOpen = $state(false);
+  let sessionSearch = $state('');
 
-  function semesterLabel(s: typeof semesterOptions[number]) {
-    return `${s.session} — Semester ${s.semester}${s.isActive ? ' (Active)' : ''}`;
-  }
+  const filteredSessions = $derived(
+    (data.sessions ?? []).filter((s: any) =>
+      s.session.toLowerCase().includes(sessionSearch.toLowerCase())
+    )
+  );
 
-  // ── Scoring — auto-calculated from questionsToPresent ────────────────────
-  let durationMinutes    = $state<number>(Number(form?.values?.durationMinutes ?? 60));
-  let maxViolations      = $state<number>(Number(form?.values?.maxViolations   ?? 5));
-  // Default 35 questions per student
+  // ── Scoring ───────────────────────────────────────────────────────────────
+  let durationMinutes = $state<number>(Number(form?.values?.durationMinutes ?? 60));
+  let totalMarks      = $state<number>(Number(form?.values?.totalMarks ?? 70));
+  let passMark        = $state<number>(Number(form?.values?.passMark ?? 40));
+  let maxViolations   = $state<number>(Number(form?.values?.maxViolations ?? 5));
   let questionsToPresent = $state<number>(Number(form?.values?.questionsToPresent ?? 35));
 
-  // Auto-calculate marks:
-  //   ≤35 questions  → 2 marks each  → totalMarks = q * 2
-  //   >35 questions  → 1 mark each   → totalMarks = q
-  //   passMark is always 40% of totalMarks (rounded)
-  const autoTotalMarks = $derived(
-    questionsToPresent > 0
-      ? (questionsToPresent <= 35 ? questionsToPresent * 2 : questionsToPresent)
-      : 0
-  );
-  const autoPassMark = $derived(
-    autoTotalMarks > 0 ? Math.round(autoTotalMarks * 0.4) : 0
-  );
-  const marksPerQuestion = $derived(
-    questionsToPresent > 0 ? (questionsToPresent <= 35 ? 2 : 1) : 0
-  );
-
-  // Allow manual override
-  let totalMarksOverride = $state<number | null>(null);
-  let passMarkOverride   = $state<number | null>(null);
-
-  const totalMarks = $derived(totalMarksOverride ?? autoTotalMarks);
-  const passMark   = $derived(passMarkOverride   ?? autoPassMark);
-
-  function resetMarks() {
-    totalMarksOverride = null;
-    passMarkOverride   = null;
-    toast('Marks reset to auto-calculated values');
-  }
+  // Auto-calculate marks based on questions per student
+  // 35 questions = 70 marks (2 marks each)
+  // 70 questions = 70 marks (1 mark each)
+  // 50 questions = 50 marks (1 mark each)
+  // etc.
+  $effect(() => {
+    if (questionsToPresent > 0) {
+      const marksPerQuestion = questionsToPresent <= 35 ? 2 : 1;
+      const calculated = questionsToPresent * marksPerQuestion;
+      if (calculated !== totalMarks) {
+        totalMarks = calculated;
+        // Auto-set pass mark to 50% of total, rounded
+        passMark = Math.round(totalMarks * 0.5);
+      }
+    }
+  });
 
   const passMarkWarning = $derived(
     passMark > totalMarks
       ? `Pass mark (${passMark}) exceeds total marks (${totalMarks})`
-      : totalMarks > 0 && passMark > totalMarks * 0.75
+      : passMark > totalMarks * 0.75
       ? `High pass mark — ${Math.round((passMark / totalMarks) * 100)}% required to pass`
       : null
   );
@@ -165,15 +152,25 @@
     : durationMinutes < 10 ? 'Very short — students may not have enough time'
     : null
   );
-  const passPercent = $derived(totalMarks > 0 && passMark > 0 ? Math.round((passMark / totalMarks) * 100) : 0);
+  const passPercent = $derived(totalMarks > 0 ? Math.round((passMark / totalMarks) * 100) : 0);
 
   // ── Toggles ───────────────────────────────────────────────────────────────
+  // FIX: Do NOT put onclick on the <label> — it fires twice (label + checkbox).
+  // Instead bind:checked directly and use oninput on the checkbox itself.
   let randomizeQuestions = $state(true);
   let randomizeOptions   = $state(true);
   let showResultAfter    = $state(false);
-  // Default allow late entry ON, 30 min
   let allowLateEntry     = $state(true);
   let lateEntryMinutes   = $state(30);
+
+  function onToggleChange(
+    field: 'randomizeQuestions' | 'randomizeOptions' | 'showResultAfter' | 'allowLateEntry',
+    newValue: boolean,
+    onMsg: string,
+    offMsg: string
+  ) {
+    toast(newValue ? onMsg : offMsg, 'info');
+  }
 
   // ── Date/time ─────────────────────────────────────────────────────────────
   let startDate = $state('');
@@ -207,35 +204,40 @@
 
   function selectStartDay(day: number) {
     startDate = fmtDate(startCalYear, startCalMonth, day);
-  }
-
-  function selectEndDay(day: number) {
-    const proposed = fmtDate(endCalYear, endCalMonth, day);
-    const proposedDt = new Date(`${proposed}T${endTime}`);
-    const startDt    = startDate ? new Date(`${startDate}T${startTime}`) : null;
-    if (startDt && proposedDt <= startDt) {
-      toast('End date must be after start date', 'warn');
-      return;
+    toast(`Start: ${MONTH_SHORT[startCalMonth]} ${day}, ${startCalYear}`, 'info');
+    // Auto-adjust end date if it is before start
+    if (endDate && new Date(`${endDate}T${endTime}`) <= new Date(`${startDate}T${startTime}`)) {
+      // Set end to start + 2 hours
+      const startDt = new Date(`${startDate}T${startTime}`);
+      const endDt = new Date(startDt.getTime() + 2 * 60 * 60 * 1000);
+      endDate = fmtDate(endDt.getFullYear(), endDt.getMonth(), endDt.getDate());
+      endTime = `${String(endDt.getHours()).padStart(2,'0')}:${String(endDt.getMinutes()).padStart(2,'0')}`;
+      endCalYear = endDt.getFullYear();
+      endCalMonth = endDt.getMonth();
+      toast('End time auto-adjusted to be after start', 'info');
     }
-    endDate = proposed;
   }
-
-  const startValue = $derived(startDate ? `${startDate}T${startTime}` : '');
-  const endValue   = $derived(endDate   ? `${endDate}T${endTime}`     : '');
-
-  const dateRangeWarn = $derived(
-    startDate && endDate && new Date(endValue) <= new Date(startValue)
-      ? 'End must be after start' : null
-  );
-
-  // Warn in real time when end time changes too
-  $effect(() => {
-    if (endDate && startDate && endTime && startTime) {
-      if (new Date(endValue) <= new Date(startValue)) {
-        toast('End time is before start time', 'warn');
+  function selectEndDay(day: number) {
+    const candidate = fmtDate(endCalYear, endCalMonth, day);
+    // Prevent end date from being before start date
+    if (startDate) {
+      const startDt = new Date(`${startDate}T${startTime}`);
+      const candidateDt = new Date(`${candidate}T${endTime}`);
+      if (candidateDt <= startDt) {
+        toast('End date must be after start date', 'warn');
+        return;
       }
     }
-  });
+    endDate = candidate;
+    toast(`End: ${MONTH_SHORT[endCalMonth]} ${day}, ${endCalYear}`, 'info');
+  }
+
+  const startValue    = $derived(startDate ? `${startDate}T${startTime}` : '');
+  const endValue      = $derived(endDate   ? `${endDate}T${endTime}`     : '');
+  const dateRangeWarn = $derived(
+    startDate && endDate && new Date(endValue) <= new Date(startValue)
+      ? 'End time must be after start time' : null
+  );
 
   function fmtDisplay(date: string, time: string) {
     if (!date) return '';
@@ -255,7 +257,7 @@
     return { destroy() { document.removeEventListener('mousedown', handle, true); } };
   }
 
-  function closeAll() { courseOpen = deptOpen = semesterOpen = startOpen = endOpen = false; }
+  function closeAll() { courseOpen = deptOpen = semesterOpen = startOpen = endOpen = sessionOpen = false; }
 
   // ── Preview ───────────────────────────────────────────────────────────────
   const levelPreview = $derived(
@@ -270,23 +272,24 @@
     : `${selectedDepartments.size} departments`
   );
 
-  // ── Pulse on change ───────────────────────────────────────────────────────
+  // ── Pulse row on change ───────────────────────────────────────────────────
   let changedRow = $state<string | null>(null);
   function pulseRow(key: string) { changedRow = key; setTimeout(() => { changedRow = null; }, 700); }
 
-  $effect(() => { void selectedCourseObj;       pulseRow('course'); });
-  $effect(() => { void selectedLevels.size;      pulseRow('levels'); });
-  $effect(() => { void selectedDepartments.size; pulseRow('depts'); });
-  $effect(() => { void selectedSemesterId;       pulseRow('semester'); });
-  $effect(() => { void startDate; void startTime; pulseRow('start'); });
-  $effect(() => { void endDate; void endTime;     pulseRow('end'); });
+  $effect(() => { void selectedCourseObj;         pulseRow('course'); });
+  $effect(() => { void selectedLevels.size;        pulseRow('levels'); });
+  $effect(() => { void selectedDepartments.size;   pulseRow('depts'); });
+  $effect(() => { void selectedSemester;           pulseRow('semester'); });
+  $effect(() => { void selectedSession;            pulseRow('session'); });
+  $effect(() => { void startDate; void startTime;  pulseRow('start'); });
+  $effect(() => { void endDate; void endTime;       pulseRow('end'); });
   $effect(() => { void allowLateEntry; void lateEntryMinutes; pulseRow('late'); });
-  $effect(() => { void questionsToPresent;       pulseRow('pool'); });
+  $effect(() => { void questionsToPresent;         pulseRow('pool'); });
 </script>
 
 <svelte:head><title>Create Exam — MOUAU eTest</title></svelte:head>
 
-<!-- ── Toast stack — info/warn only ──────────────────────────────────────── -->
+<!-- ── Toast stack ─────────────────────────────────────────────────────────── -->
 <div class="toast-stack" aria-live="polite">
   {#each toasts as t (t.id)}
     <div class="toast toast-{t.type}"
@@ -312,7 +315,7 @@
       <div class="header-actions">
         <a href="/lecturer" class="btn ghost">Cancel</a>
         <button type="submit" form="exam-form" class="btn primary">
-          Create Exam &amp; Add Questions →
+          Create Exam &amp; Add Questions &rarr;
         </button>
       </div>
     </div>
@@ -325,19 +328,6 @@
   {/if}
 
   <form method="POST" id="exam-form" class="exam-grid">
-    <!-- Hidden form values -->
-    <input type="hidden" name="session"  value={formSession} />
-    <input type="hidden" name="semester" value={formSemester} />
-    <input type="hidden" name="scheduledStart" value={startValue} />
-    <input type="hidden" name="scheduledEnd"   value={endValue} />
-    <input type="hidden" name="totalMarks"      value={totalMarks} />
-    <input type="hidden" name="passMark"        value={passMark} />
-    {#each [...selectedLevels] as level}
-      <input type="hidden" name="levels" value={level} />
-    {/each}
-    {#each [...selectedDepartments] as id}
-      <input type="hidden" name="departments" value={id} />
-    {/each}
 
     <!-- ══ COLUMN 1 ════════════════════════════════════════════════════════ -->
     <div class="col">
@@ -358,13 +348,13 @@
             {#if form?.errors?.title}<span class="field-error">{form.errors.title}</span>{/if}
           </div>
 
-          <!-- Course dropdown -->
+          <!-- Course dropdown — only lecturer's assigned courses -->
           <div class="field">
             <label>Course <span class="req">*</span>
               {#if (data.courses ?? []).length === 0}
                 <span class="field-hint-inline">— No courses assigned yet</span>
               {:else}
-                <span class="field-hint-inline muted">{(data.courses ?? []).length} available</span>
+                <span class="field-hint-inline muted">{(data.courses ?? []).length} course{(data.courses ?? []).length !== 1 ? 's' : ''} available</span>
               {/if}
             </label>
             <input type="hidden" name="courseId" value={selectedCourse} />
@@ -376,7 +366,7 @@
                   <span class="dd-val">{selectedCourseObj.title}</span>
                 {:else}
                   <span class="dd-placeholder">
-                    {(data.courses ?? []).length === 0 ? 'No courses assigned' : 'Select a course…'}
+                    {(data.courses ?? []).length === 0 ? 'No courses assigned — contact admin' : 'Select a course…'}
                   </span>
                 {/if}
                 <ChevronDown size={15} class="dd-chevron" />
@@ -390,11 +380,16 @@
                   </div>
                   <div class="dd-list">
                     {#if filteredCourses.length === 0}
-                      <div class="dd-empty">No courses match</div>
+                      <div class="dd-empty">No courses match your search</div>
                     {:else}
                       {#each filteredCourses as c}
                         <button type="button" class="dd-item" class:active={selectedCourse === c.id}
-                          onclick={() => { selectedCourse = c.id; courseOpen = false; courseSearch = ''; }}>
+                          onclick={() => {
+                            const prev = selectedCourse;
+                            selectedCourse = c.id;
+                            courseOpen = false; courseSearch = '';
+                            if (prev !== c.id) toast(`Course set to ${c.code}`, 'info');
+                          }}>
                           <span class="item-code">{c.code}</span>
                           <span class="item-label">{c.title}</span>
                           {#if selectedCourse === c.id}<Check size={13} class="item-check" />{/if}
@@ -425,7 +420,6 @@
         </div>
         <div class="card-body">
 
-          <!-- Levels (only admin-assigned levels shown) -->
           <div class="scope-section">
             <div class="scope-row">
               <div class="scope-label-group">
@@ -435,32 +429,30 @@
                   <span class="count-badge" in:scale={{ duration: 160 }}>{selectedLevels.size}</span>
                 {/if}
               </div>
-              {#if LEVELS.length > 1}
-                <button type="button" class="pill-btn" class:active={allLevels} onclick={toggleAll}>
-                  {allLevels ? '✓ All' : 'Select All'}
-                </button>
-              {/if}
+              <button type="button" class="pill-btn" class:active={allLevels} onclick={toggleAll}>
+                {allLevels ? '✓ All' : 'Select All'}
+              </button>
             </div>
 
-            {#if LEVELS.length === 0}
-              <p class="field-hint">No levels assigned — contact admin.</p>
-            {:else}
-              <div class="level-grid">
-                {#each LEVELS as level}
-                  <button type="button" class="level-chip" class:selected={selectedLevels.has(level)}
-                    onclick={() => toggleLevel(level)}>
-                    <span class="level-num">{level}</span>
-                    <span class="level-lbl">Level</span>
-                    {#if selectedLevels.has(level)}
-                      <span class="level-check" in:scale={{ duration: 140 }}><Check size={10} strokeWidth={3} /></span>
-                    {/if}
-                  </button>
-                {/each}
-              </div>
-            {/if}
+            <div class="level-grid">
+              {#each LEVELS as level}
+                <button type="button" class="level-chip" class:selected={selectedLevels.has(level)}
+                  onclick={() => toggleLevel(level)}>
+                  <span class="level-num">{level}</span>
+                  <span class="level-lbl">Level</span>
+                  {#if selectedLevels.has(level)}
+                    <span class="level-check" in:scale={{ duration: 140 }}><Check size={10} strokeWidth={3} /></span>
+                  {/if}
+                </button>
+              {/each}
+            </div>
 
-            <div class="scope-note" class:active={selectedLevels.size > 0}>
-              {#if allLevels}✓ All assigned levels can sit this exam.
+            {#each [...selectedLevels] as level}
+              <input type="hidden" name="levels" value={level} />
+            {/each}
+
+            <div class="scope-note" class:active={selectedLevels.size > 0 || allLevels}>
+              {#if allLevels}✓ All levels ({LEVELS.join('–')}) can sit this exam.
               {:else if selectedLevels.size > 0}✓ {[...selectedLevels].sort((a,b)=>a-b).map(l=>`${l}L`).join(', ')} students eligible.
               {:else}No level selected — all levels allowed by default.{/if}
             </div>
@@ -468,7 +460,6 @@
 
           <div class="divider"></div>
 
-          <!-- Departments (lecturer's dept pre-selected) -->
           <div class="scope-section">
             <div class="scope-row">
               <div class="scope-label-group">
@@ -481,65 +472,58 @@
               <span class="opt-badge">Optional</span>
             </div>
 
-            {#if data.departments.length === 1}
-              <!-- Single department — just show it as a locked chip -->
-              <div class="single-dept-chip">
-                <Building2 size={12} />
-                <span>{data.departments[0].name}</span>
-                <span class="dept-code-badge">{data.departments[0].code}</span>
-                <span class="dept-auto-tag">Your dept.</span>
-              </div>
-            {:else}
-              <!-- Multiple — show dropdown -->
-              <div class="dd-wrap" use:clickOutside={() => { deptOpen = false; deptSearch = ''; }}>
-                <button type="button" class="dd-trigger multi" class:open={deptOpen}
-                  onclick={() => { closeAll(); deptOpen = true; }}>
-                  {#if selectedDepartments.size === 0}
-                    <span class="dd-placeholder">All departments (no restriction)…</span>
-                  {:else}
-                    <div class="tag-row">
-                      {#each [...selectedDepartments] as id (id)}
-                        {@const d = data.departments.find((dept: any) => dept.id === id)}
-                        <div animate:flip={{ duration: 180 }}>
-                          {#if d}
-                            <span class="tag">
-                              {d.code}
-                              <button type="button" class="tag-x"
-                                onclick={(e) => { e.stopPropagation(); removeDept(id); }}>
-                                <X size={9} strokeWidth={3} />
-                              </button>
-                            </span>
-                          {/if}
-                        </div>
-                      {/each}
-                    </div>
-                  {/if}
-                  <ChevronDown size={15} class="dd-chevron" />
-                </button>
-                {#if deptOpen}
-                  <div class="dd-panel" transition:fade={{ duration: 100 }}>
-                    <div class="dd-search">
-                      <Search size={13} />
-                      <input type="text" placeholder="Search departments…" bind:value={deptSearch} autofocus />
-                    </div>
-                    <div class="dd-list">
-                      {#if filteredDepts.length === 0}
-                        <div class="dd-empty">No departments found</div>
-                      {:else}
-                        {#each filteredDepts as d}
-                          <button type="button" class="dd-item" class:active={selectedDepartments.has(d.id)}
-                            onclick={() => toggleDept(d.id)}>
-                            <span class="item-code">{d.code}</span>
-                            <span class="item-label">{d.name}</span>
-                            {#if selectedDepartments.has(d.id)}<Check size={13} class="item-check" />{/if}
-                          </button>
-                        {/each}
-                      {/if}
-                    </div>
+            {#each [...selectedDepartments] as id}
+              <input type="hidden" name="departments" value={id} />
+            {/each}
+
+            <div class="dd-wrap" use:clickOutside={() => { deptOpen = false; deptSearch = ''; }}>
+              <button type="button" class="dd-trigger multi" class:open={deptOpen}
+                onclick={() => { closeAll(); deptOpen = true; }}>
+                {#if selectedDepartments.size === 0}
+                  <span class="dd-placeholder">All departments (no restriction)…</span>
+                {:else}
+                  <div class="tag-row">
+                    {#each [...selectedDepartments] as id (id)}
+                      {@const d = data.departments.find((dept: any) => dept.id === id)}
+                      <div animate:flip={{ duration: 180 }}>
+                        {#if d}
+                          <span class="tag">
+                            {d.code}
+                            <button type="button" class="tag-x"
+                              onclick={(e) => { e.stopPropagation(); removeDept(id); }}>
+                              <X size={9} strokeWidth={3} />
+                            </button>
+                          </span>
+                        {/if}
+                      </div>
+                    {/each}
                   </div>
                 {/if}
-              </div>
-            {/if}
+                <ChevronDown size={15} class="dd-chevron" />
+              </button>
+              {#if deptOpen}
+                <div class="dd-panel" transition:fade={{ duration: 100 }}>
+                  <div class="dd-search">
+                    <Search size={13} />
+                    <input type="text" placeholder="Search departments…" bind:value={deptSearch} autofocus />
+                  </div>
+                  <div class="dd-list">
+                    {#if filteredDepts.length === 0}
+                      <div class="dd-empty">No departments found</div>
+                    {:else}
+                      {#each filteredDepts as d}
+                        <button type="button" class="dd-item" class:active={selectedDepartments.has(d.id)}
+                          onclick={() => toggleDept(d.id)}>
+                          <span class="item-code">{d.code}</span>
+                          <span class="item-label">{d.name}</span>
+                          {#if selectedDepartments.has(d.id)}<Check size={13} class="item-check" />{/if}
+                        </button>
+                      {/each}
+                    {/if}
+                  </div>
+                </div>
+              {/if}
+            </div>
             <p class="field-hint">Leave empty to allow all departments.</p>
           </div>
         </div>
@@ -549,60 +533,16 @@
     <!-- ══ COLUMN 2 ════════════════════════════════════════════════════════ -->
     <div class="col">
 
-      <!-- Schedule -->
       <div class="card">
         <div class="card-header">
           <span class="card-icon"><Clock size={16} /></span>
           <div><h2>Schedule &amp; Timing</h2><p>Set when the exam runs and how long students have</p></div>
         </div>
         <div class="card-body">
+          <input type="hidden" name="scheduledStart" value={startValue} />
+          <input type="hidden" name="scheduledEnd"   value={endValue} />
 
-          <!-- Session dropdown (DB-aware) -->
-          <div class="field">
-            <label>Academic Session &amp; Semester <span class="req">*</span></label>
-            <div class="dd-wrap" use:clickOutside={() => semesterOpen = false}>
-              <button type="button" class="dd-trigger" class:open={semesterOpen} class:has-val={!!selectedSemesterObj}
-                onclick={() => { closeAll(); semesterOpen = true; }}>
-                {#if selectedSemesterObj}
-                  <span class="dd-val">
-                    {selectedSemesterObj.session} · Semester {selectedSemesterObj.semester}
-                    {#if selectedSemesterObj.isActive}
-                      <span class="active-sem-dot"></span>
-                    {/if}
-                  </span>
-                {:else}
-                  <span class="dd-placeholder">Select session…</span>
-                {/if}
-                <ChevronDown size={15} class="dd-chevron" />
-              </button>
-              {#if semesterOpen}
-                <div class="dd-panel" transition:fade={{ duration: 100 }}>
-                  <div class="dd-list">
-                    {#if semesterOptions.length === 0}
-                      <div class="dd-empty">No academic semesters found — contact admin</div>
-                    {:else}
-                      {#each semesterOptions as s}
-                        <button type="button" class="dd-item" class:active={selectedSemesterId === s.id}
-                          onclick={() => { selectedSemesterId = s.id; semesterOpen = false; }}>
-                          <span class="item-label">
-                            {s.session} — Semester {s.semester}
-                            {#if s.label} <span class="sem-label-tag">{s.label}</span>{/if}
-                          </span>
-                          {#if s.isActive}<span class="sem-active-badge">Active</span>{/if}
-                          {#if selectedSemesterId === s.id}<Check size={13} class="item-check" />{/if}
-                        </button>
-                      {/each}
-                    {/if}
-                  </div>
-                </div>
-              {/if}
-            </div>
-            {#if !selectedSemesterObj}
-              <span class="field-error">Please select a session</span>
-            {/if}
-          </div>
-
-          <!-- Start datetime -->
+          <!-- Start -->
           <div class="field">
             <label>Scheduled Start</label>
             <div class="dd-wrap" use:clickOutside={() => startOpen = false}>
@@ -616,9 +556,9 @@
               {#if startOpen}
                 <div class="dd-panel dt-panel" transition:fade={{ duration: 100 }}>
                   <div class="cal-nav">
-                    <button type="button" class="cal-arr" onclick={() => { if (startCalMonth === 0) { startCalMonth = 11; startCalYear--; } else startCalMonth--; }}>‹</button>
+                    <button type="button" class="cal-arr" onclick={() => { if (startCalMonth === 0) { startCalMonth = 11; startCalYear--; } else startCalMonth--; }}>&lsaquo;</button>
                     <span class="cal-month-lbl">{MONTH_NAMES[startCalMonth]} {startCalYear}</span>
-                    <button type="button" class="cal-arr" onclick={() => { if (startCalMonth === 11) { startCalMonth = 0; startCalYear++; } else startCalMonth++; }}>›</button>
+                    <button type="button" class="cal-arr" onclick={() => { if (startCalMonth === 11) { startCalMonth = 0; startCalYear++; } else startCalMonth++; }}>&rsaquo;</button>
                   </div>
                   <div class="cal-grid">
                     {#each DAY_NAMES as dn}<span class="cal-dn">{dn}</span>{/each}
@@ -634,7 +574,8 @@
                   </div>
                   <div class="time-row">
                     <Clock size={13} />
-                    <select class="time-sel" bind:value={startTime}>
+                    <select class="time-sel" bind:value={startTime}
+                      onchange={() => startDate && toast(`Start time → ${startTime}`, 'info')}>
                       {#each TIME_OPTIONS as t}<option value={t}>{t}</option>{/each}
                     </select>
                     {#if startDate}<button type="button" class="dt-done-btn" onclick={() => startOpen = false}>Done</button>{/if}
@@ -644,12 +585,11 @@
             </div>
           </div>
 
-          <!-- End datetime -->
+          <!-- End -->
           <div class="field">
             <label>Scheduled End</label>
             <div class="dd-wrap" use:clickOutside={() => endOpen = false}>
               <button type="button" class="dd-trigger" class:open={endOpen} class:has-val={!!endDate}
-                class:dd-trigger-warn={!!dateRangeWarn}
                 onclick={() => { closeAll(); endOpen = true; }}>
                 <Calendar size={14} class="dt-cal-icon" />
                 {#if endDate}<span class="dd-val">{fmtDisplay(endDate, endTime)}</span>
@@ -659,9 +599,9 @@
               {#if endOpen}
                 <div class="dd-panel dt-panel" transition:fade={{ duration: 100 }}>
                   <div class="cal-nav">
-                    <button type="button" class="cal-arr" onclick={() => { if (endCalMonth === 0) { endCalMonth = 11; endCalYear--; } else endCalMonth--; }}>‹</button>
+                    <button type="button" class="cal-arr" onclick={() => { if (endCalMonth === 0) { endCalMonth = 11; endCalYear--; } else endCalMonth--; }}>&lsaquo;</button>
                     <span class="cal-month-lbl">{MONTH_NAMES[endCalMonth]} {endCalYear}</span>
-                    <button type="button" class="cal-arr" onclick={() => { if (endCalMonth === 11) { endCalMonth = 0; endCalYear++; } else endCalMonth++; }}>›</button>
+                    <button type="button" class="cal-arr" onclick={() => { if (endCalMonth === 11) { endCalMonth = 0; endCalYear++; } else endCalMonth++; }}>&rsaquo;</button>
                   </div>
                   <div class="cal-grid">
                     {#each DAY_NAMES as dn}<span class="cal-dn">{dn}</span>{/each}
@@ -671,14 +611,25 @@
                         <button type="button" class="cal-day"
                           class:today={fmtDate(endCalYear, endCalMonth, day) === todayStr}
                           class:selected={endDate === fmtDate(endCalYear, endCalMonth, day)}
-                          class:before-start={startDate ? fmtDate(endCalYear, endCalMonth, day) < startDate : false}
+                          class:disabled={startDate ? new Date(`${fmtDate(endCalYear, endCalMonth, day)}T${endTime}`) <= new Date(`${startDate}T${startTime}`) : false}
                           onclick={() => selectEndDay(day)}>{day}</button>
                       {/if}
                     {/each}
                   </div>
                   <div class="time-row">
                     <Clock size={13} />
-                    <select class="time-sel" bind:value={endTime}>
+                    <select class="time-sel" bind:value={endTime}
+                      onchange={() => {
+                        if (endDate && startDate) {
+                          const endDt = new Date(`${endDate}T${endTime}`);
+                          const startDt = new Date(`${startDate}T${startTime}`);
+                          if (endDt <= startDt) {
+                            toast('End time must be after start time', 'warn');
+                          } else {
+                            toast(`End time → ${endTime}`, 'info');
+                          }
+                        }
+                      }}>
                       {#each TIME_OPTIONS as t}<option value={t}>{t}</option>{/each}
                     </select>
                     {#if endDate}<button type="button" class="dt-done-btn" onclick={() => endOpen = false}>Done</button>{/if}
@@ -695,18 +646,79 @@
             {/if}
           </div>
 
-          <div class="field">
-            <label for="durationMinutes">Duration <span class="req">*</span></label>
-            <div class="score-input-wrap">
-              <input id="durationMinutes" name="durationMinutes" type="number"
-                bind:value={durationMinutes} min="5" max="300" required />
-              <span class="score-unit">min</span>
+          <div class="two-col">
+            <!-- Session dropdown (DB-aware) -->
+            <div class="field">
+              <label>Academic Session <span class="req">*</span></label>
+              <input type="hidden" name="session" value={selectedSession} />
+              <div class="dd-wrap" use:clickOutside={() => { sessionOpen = false; sessionSearch = ''; }}>
+                <button type="button" class="dd-trigger" class:open={sessionOpen} class:has-val={!!selectedSession}
+                  onclick={() => { closeAll(); sessionOpen = true; }}>
+                  {#if selectedSession}
+                    <span class="dd-val">{selectedSession}</span>
+                  {:else}
+                    <span class="dd-placeholder">Select session…</span>
+                  {/if}
+                  <ChevronDown size={15} class="dd-chevron" />
+                </button>
+                {#if sessionOpen}
+                  <div class="dd-panel" transition:fade={{ duration: 100 }}>
+                    <div class="dd-search">
+                      <Search size={13} />
+                      <input type="text" placeholder="Search sessions…" bind:value={sessionSearch} autofocus />
+                    </div>
+                    <div class="dd-list">
+                      {#if filteredSessions.length === 0}
+                        <div class="dd-empty">No sessions found</div>
+                      {:else}
+                        {#each filteredSessions as s}
+                          <button type="button" class="dd-item" class:active={selectedSession === s.session}
+                            onclick={() => {
+                              const prev = selectedSession;
+                              selectedSession = s.session;
+                              sessionOpen = false; sessionSearch = '';
+                              if (prev !== s.session) toast(`Session set to ${s.session}`, 'info');
+                            }}>
+                            <span class="item-label">{s.session}</span>
+                            {#if selectedSession === s.session}<Check size={13} class="item-check" />{/if}
+                          </button>
+                        {/each}
+                      {/if}
+                    </div>
+                  </div>
+                {/if}
+              </div>
+              {#if form?.errors?.session}<span class="field-error">{form.errors.session}</span>{/if}
             </div>
-            {#if durationWarning}
-              <span class="field-warn" transition:fly={{ y: -4, duration: 140 }}>
-                <AlertTriangle size={10} /> {durationWarning}
-              </span>
-            {/if}
+            <div class="field">
+              <label>Semester <span class="req">*</span></label>
+              <input type="hidden" name="semester" value={selectedSemester} />
+              <div class="dd-wrap" use:clickOutside={() => semesterOpen = false}>
+                <button type="button" class="dd-trigger" class:open={semesterOpen} class:has-val={true}
+                  onclick={() => { closeAll(); semesterOpen = true; }}>
+                  <span class="dd-val">{selectedSemesterLabel}</span>
+                  <ChevronDown size={15} class="dd-chevron" />
+                </button>
+                {#if semesterOpen}
+                  <div class="dd-panel" transition:fade={{ duration: 100 }}>
+                    <div class="dd-list">
+                      {#each SEMESTERS as s}
+                        <button type="button" class="dd-item" class:active={selectedSemester === s.value}
+                          onclick={() => {
+                            const prev = selectedSemester;
+                            selectedSemester = s.value; semesterOpen = false;
+                            if (prev !== s.value) toast(`${s.label} selected`, 'info');
+                          }}>
+                          <span class="item-label">{s.label}</span>
+                          {#if selectedSemester === s.value}<Check size={13} class="item-check" />{/if}
+                        </button>
+                      {/each}
+                    </div>
+                  </div>
+                {/if}
+              </div>
+              {#if form?.errors?.semester}<span class="field-error">{form.errors.semester}</span>{/if}
+            </div>
           </div>
         </div>
       </div>
@@ -715,99 +727,55 @@
       <div class="card">
         <div class="card-header">
           <span class="card-icon"><BarChart3 size={16} /></span>
-          <div><h2>Scoring</h2><p>Auto-calculated from question count</p></div>
+          <div><h2>Scoring</h2><p>Marks, pass threshold and duration</p></div>
         </div>
         <div class="card-body">
+          <div class="score-grid">
 
-          <!-- Questions per student (primary control) -->
-          <div class="qtp-wrap">
-            <div class="qtp-header">
-              <div class="qtp-label-group"><Layers size={14} /><span>Questions Per Student</span></div>
-              <span class="opt-badge">Controls marks</span>
-            </div>
-            <div class="qtp-row">
-              <div class="score-input-wrap qtp-input-wrap">
-                <input name="questionsToPresent" type="number"
-                  bind:value={questionsToPresent} min="1" max="200" />
-                <span class="score-unit">Qs</span>
+            <div class="score-field">
+              <label for="durationMinutes"><Timer size={13} /> Duration</label>
+              <div class="score-input-wrap">
+                <input id="durationMinutes" name="durationMinutes" type="number"
+                  bind:value={durationMinutes} min="5" max="300" required />
+                <span class="score-unit">min</span>
               </div>
-              <div class="qtp-hint-bubble" class:active={questionsToPresent > 0}>
-                {#if questionsToPresent > 0}
-                  <strong>{marksPerQuestion} mark{marksPerQuestion !== 1 ? 's' : ''}</strong> each →
-                  <strong>{autoTotalMarks} total</strong>, pass at
-                  <strong>{autoPassMark}</strong>
-                {:else}
-                  <span class="muted">Set question count to auto-calculate marks</span>
-                {/if}
-              </div>
+              {#if durationWarning}
+                <span class="field-warn" transition:fly={{ y: -4, duration: 140 }}>
+                  <AlertTriangle size={10} /> {durationWarning}
+                </span>
+              {/if}
             </div>
-          </div>
 
-          <!-- Auto-calculated display + override -->
-          <div class="marks-auto-row">
-            <div class="marks-auto-cell">
-              <span class="marks-auto-label">Total Marks</span>
-              <span class="marks-auto-val">{totalMarks}</span>
-              <span class="marks-auto-hint">
-                {questionsToPresent > 0 ? `${questionsToPresent} × ${marksPerQuestion}` : 'auto'}
-              </span>
-            </div>
-            <div class="marks-auto-sep">→</div>
-            <div class="marks-auto-cell">
-              <span class="marks-auto-label">Pass Mark</span>
-              <span class="marks-auto-val">{passMark}</span>
-              <span class="marks-auto-hint">{passPercent}%</span>
-            </div>
-            {#if totalMarks > 0}
-              <div class="pass-bar-outer">
-                <div class="pass-bar-track">
-                  <div class="pass-bar-fill"
-                    class:bar-ok={passPercent <= 60}
-                    class:bar-high={passPercent > 60 && passPercent <= 80}
-                    class:bar-warn={passPercent > 80}
-                    style="width:{Math.min(passPercent,100)}%"></div>
-                </div>
+            <div class="score-field">
+              <label for="totalMarks"><FileText size={13} /> Total Marks</label>
+              <div class="score-input-wrap">
+                <input id="totalMarks" name="totalMarks" type="number"
+                  bind:value={totalMarks} min="1" required readonly
+                  class="input-readonly" />
+                <span class="score-unit">pts</span>
               </div>
-            {/if}
-          </div>
+              <p class="field-hint">Auto-calculated from questions per student</p>
+            </div>
 
-          <!-- Manual override (collapsed by default) -->
-          <details class="override-details">
-            <summary>Override marks manually</summary>
-            <div class="override-body">
-              <div class="score-grid">
-                <div class="score-field">
-                  <label for="totalMarksOvr"><FileText size={13} /> Total Marks</label>
-                  <div class="score-input-wrap">
-                    <input id="totalMarksOvr" type="number" min="1"
-                      placeholder={String(autoTotalMarks)}
-                      value={totalMarksOverride ?? ''}
-                      oninput={(e) => {
-                        const v = (e.currentTarget as HTMLInputElement).valueAsNumber;
-                        totalMarksOverride = isNaN(v) ? null : v;
-                      }} />
-                    <span class="score-unit">pts</span>
+            <div class="score-field">
+              <label for="passMark"><Check size={13} strokeWidth={2.5} /> Pass Mark</label>
+              <div class="score-input-wrap">
+                <input id="passMark" name="passMark" type="number"
+                  bind:value={passMark} min="1" required
+                  class:input-warn={!!passMarkWarning} />
+                <span class="score-unit">pts</span>
+              </div>
+              {#if totalMarks > 0 && passMark > 0}
+                <div class="pass-bar-wrap">
+                  <div class="pass-bar-track">
+                    <div class="pass-bar-fill"
+                      class:bar-ok={passPercent <= 60}
+                      class:bar-high={passPercent > 60 && passPercent <= 80}
+                      class:bar-warn={passPercent > 80}
+                      style="width:{Math.min(passPercent,100)}%"></div>
                   </div>
+                  <span class="pass-pct">{passPercent}%</span>
                 </div>
-                <div class="score-field">
-                  <label for="passMarkOvr"><Check size={13} strokeWidth={2.5} /> Pass Mark</label>
-                  <div class="score-input-wrap">
-                    <input id="passMarkOvr" type="number" min="1"
-                      placeholder={String(autoPassMark)}
-                      value={passMarkOverride ?? ''}
-                      oninput={(e) => {
-                        const v = (e.currentTarget as HTMLInputElement).valueAsNumber;
-                        passMarkOverride = isNaN(v) ? null : v;
-                      }}
-                      class:input-warn={!!passMarkWarning} />
-                    <span class="score-unit">pts</span>
-                  </div>
-                </div>
-              </div>
-              {#if totalMarksOverride !== null || passMarkOverride !== null}
-                <button type="button" class="reset-btn" onclick={resetMarks}>
-                  ↺ Reset to auto-calculated
-                </button>
               {/if}
               {#if passMarkWarning}
                 <span class="field-warn" transition:fly={{ y: -4, duration: 140 }}>
@@ -815,21 +783,43 @@
                 </span>
               {/if}
             </div>
-          </details>
 
-          <div class="two-col">
             <div class="score-field">
               <label for="maxViolations"><ShieldAlert size={13} /> Max Violations</label>
               <div class="score-input-wrap">
                 <input id="maxViolations" name="maxViolations" type="number"
                   bind:value={maxViolations} min="1" max="20" />
-                <span class="score-unit">×</span>
+                <span class="score-unit">&times;</span>
               </div>
               {#if maxViolations <= 2}
                 <span class="field-warn" transition:fly={{ y: -4, duration: 140 }}>
-                  <AlertTriangle size={10} /> Very strict
+                  <AlertTriangle size={10} /> Very strict — only {maxViolations} chance{maxViolations > 1 ? 's' : ''}
                 </span>
               {/if}
+            </div>
+          </div>
+
+          <div class="qtp-wrap">
+            <div class="qtp-header">
+              <div class="qtp-label-group"><Layers size={14} /><span>Questions Per Student</span></div>
+              <span class="opt-badge">Auto-scoring</span>
+            </div>
+            <div class="qtp-row">
+              <div class="score-input-wrap qtp-input-wrap">
+                <input name="questionsToPresent" type="number"
+                  bind:value={questionsToPresent} min="1" placeholder="35" />
+                <span class="score-unit">Qs</span>
+              </div>
+              <div class="qtp-hint-bubble" class:active={questionsToPresent > 0}>
+                {#if questionsToPresent > 0}
+                  Each student gets <strong>{questionsToPresent}</strong> questions
+                  {#if questionsToPresent <= 35}
+                    &middot; <strong>2 marks each</strong> = {questionsToPresent * 2} total
+                  {:else}
+                    &middot; <strong>1 mark each</strong> = {questionsToPresent} total
+                  {/if}
+                {:else}<span class="muted">Set questions to auto-calculate marks</span>{/if}
+              </div>
             </div>
           </div>
         </div>
@@ -839,7 +829,7 @@
     <!-- ══ COLUMN 3 ════════════════════════════════════════════════════════ -->
     <div class="col">
 
-      <!-- Options -->
+      <!-- Options — FIX: toggles use oninput on checkbox, NOT onclick on label -->
       <div class="card">
         <div class="card-header">
           <span class="card-icon"><Settings size={16} /></span>
@@ -852,11 +842,17 @@
               <span class="toggle-icon-wrap"><Shuffle size={14} /></span>
               <div>
                 <span class="toggle-label">Randomize Questions</span>
-                <span class="toggle-desc">{randomizeQuestions ? 'Shuffled per student' : 'Fixed order for all'}</span>
+                <span class="toggle-desc">
+                  {randomizeQuestions ? 'Shuffled per student' : 'Fixed order for all'}
+                </span>
               </div>
             </div>
             <div class="toggle-track" class:on={randomizeQuestions}>
-              <input type="checkbox" name="randomizeQuestions" bind:checked={randomizeQuestions} class="toggle-cb" />
+              <input type="checkbox" name="randomizeQuestions"
+                bind:checked={randomizeQuestions}
+                oninput={() => onToggleChange('randomizeQuestions', randomizeQuestions,
+                  'Questions will be shuffled', 'Questions in fixed order')}
+                class="toggle-cb" />
               <span class="toggle-knob"></span>
             </div>
           </label>
@@ -866,11 +862,17 @@
               <span class="toggle-icon-wrap"><TrendingUp size={14} /></span>
               <div>
                 <span class="toggle-label">Randomize Options</span>
-                <span class="toggle-desc">{randomizeOptions ? 'MCQ choices shuffled' : 'Choices in fixed order'}</span>
+                <span class="toggle-desc">
+                  {randomizeOptions ? 'MCQ choices shuffled' : 'Choices in fixed order'}
+                </span>
               </div>
             </div>
             <div class="toggle-track" class:on={randomizeOptions}>
-              <input type="checkbox" name="randomizeOptions" bind:checked={randomizeOptions} class="toggle-cb" />
+              <input type="checkbox" name="randomizeOptions"
+                bind:checked={randomizeOptions}
+                oninput={() => onToggleChange('randomizeOptions', randomizeOptions,
+                  'MCQ choices will be shuffled', 'MCQ choices in fixed order')}
+                class="toggle-cb" />
               <span class="toggle-knob"></span>
             </div>
           </label>
@@ -880,11 +882,17 @@
               <span class="toggle-icon-wrap"><Eye size={14} /></span>
               <div>
                 <span class="toggle-label">Show Result Immediately</span>
-                <span class="toggle-desc">{showResultAfter ? 'Score shown after submission' : 'Results hidden until released'}</span>
+                <span class="toggle-desc">
+                  {showResultAfter ? 'Score shown after submission' : 'Results hidden until released'}
+                </span>
               </div>
             </div>
             <div class="toggle-track" class:on={showResultAfter}>
-              <input type="checkbox" name="showResultAfter" bind:checked={showResultAfter} class="toggle-cb" />
+              <input type="checkbox" name="showResultAfter"
+                bind:checked={showResultAfter}
+                oninput={() => onToggleChange('showResultAfter', showResultAfter,
+                  'Students will see their score immediately', 'Results hidden until you release them')}
+                class="toggle-cb" />
               <span class="toggle-knob"></span>
             </div>
           </label>
@@ -894,14 +902,21 @@
               <span class="toggle-icon-wrap"><LogIn size={14} /></span>
               <div>
                 <span class="toggle-label">Allow Late Entry</span>
-                <span class="toggle-desc">{allowLateEntry ? `${lateEntryMinutes} min grace period` : 'Must join on time'}</span>
+                <span class="toggle-desc">
+                  {allowLateEntry ? `${lateEntryMinutes} min grace period` : 'Must join on time'}
+                </span>
               </div>
             </div>
             <div class="toggle-track" class:on={allowLateEntry}>
-              <input type="checkbox" name="allowLateEntry" bind:checked={allowLateEntry} class="toggle-cb" />
+              <input type="checkbox" name="allowLateEntry"
+                bind:checked={allowLateEntry}
+                oninput={() => onToggleChange('allowLateEntry', allowLateEntry,
+                  'Late entry enabled', 'Late entry disabled')}
+                class="toggle-cb" />
               <span class="toggle-knob"></span>
             </div>
           </label>
+
         </div>
 
         {#if allowLateEntry}
@@ -913,7 +928,9 @@
                   bind:value={lateEntryMinutes} min="1" max="60" />
                 <span class="score-unit">min</span>
               </div>
-              <span class="late-hint">Up to {lateEntryMinutes} min after start</span>
+              <span class="late-hint">
+                Students can join up to {lateEntryMinutes} min after start
+              </span>
             </div>
           </div>
         {/if}
@@ -923,7 +940,7 @@
         <div class="info-dot"><Info size={15} /></div>
         <div>
           <strong>Next: Question Builder</strong>
-          <p>After creating the exam you'll be redirected to add MCQ and fill-in-the-blank questions.</p>
+          <p>After creating the exam you will be redirected to add MCQ and fill-in-the-blank questions.</p>
         </div>
       </div>
 
@@ -931,14 +948,11 @@
       <div class="summary-card">
         <div class="summary-title">Configuration Preview</div>
         <div class="summary-rows">
+
           <div class="sum-row" class:sum-row-pulse={changedRow === 'course'}>
             <span>Course</span>
-            <span class="sum-val" class:sum-val-set={!!selectedCourseObj}>{selectedCourseObj?.code ?? '—'}</span>
-          </div>
-          <div class="sum-row" class:sum-row-pulse={changedRow === 'semester'}>
-            <span>Session</span>
-            <span class="sum-val sum-val-set">
-              {selectedSemesterObj ? `${selectedSemesterObj.session} S${selectedSemesterObj.semester}` : '—'}
+            <span class="sum-val" class:sum-val-set={!!selectedCourseObj}>
+              {selectedCourseObj?.code ?? '—'}
             </span>
           </div>
           <div class="sum-row" class:sum-row-pulse={changedRow === 'levels'}>
@@ -949,73 +963,95 @@
             <span>Departments</span>
             <span class="sum-val" class:sum-val-set={selectedDepartments.size > 0}>{deptPreview}</span>
           </div>
+          <div class="sum-row" class:sum-row-pulse={changedRow === 'session'}>
+            <span>Session</span>
+            <span class="sum-val" class:sum-val-set={!!selectedSession}>{selectedSession || '—'}</span>
+          </div>
+          <div class="sum-row" class:sum-row-pulse={changedRow === 'semester'}>
+            <span>Semester</span>
+            <span class="sum-val sum-val-set">{selectedSemesterLabel}</span>
+          </div>
           <div class="sum-row" class:sum-row-pulse={changedRow === 'start'}>
             <span>Start</span>
-            <span class="sum-val" class:sum-val-set={!!startDate}>{startDate ? fmtDisplay(startDate, startTime) : '—'}</span>
+            <span class="sum-val" class:sum-val-set={!!startDate}>
+              {startDate ? fmtDisplay(startDate, startTime) : '—'}
+            </span>
           </div>
           <div class="sum-row" class:sum-row-pulse={changedRow === 'end'}>
             <span>End</span>
-            <span class="sum-val" class:sum-val-set={!!endDate} class:sum-val-warn={!!dateRangeWarn}>{endDate ? fmtDisplay(endDate, endTime) : '—'}</span>
+            <span class="sum-val" class:sum-val-set={!!endDate}>
+              {endDate ? fmtDisplay(endDate, endTime) : '—'}
+            </span>
           </div>
           <div class="sum-row">
             <span>Duration</span>
             <span class="sum-val sum-val-set">{durationMinutes} min</span>
           </div>
-          <div class="sum-row" class:sum-row-pulse={changedRow === 'pool'}>
-            <span>Qs per student</span>
-            <span class="sum-val" class:sum-val-set={questionsToPresent > 0}>{questionsToPresent > 0 ? questionsToPresent : 'All'}</span>
-          </div>
-          <div class="sum-row">
-            <span>Marks per Q</span>
-            <span class="sum-val" class:sum-val-set={marksPerQuestion > 0}>{marksPerQuestion > 0 ? marksPerQuestion : '—'}</span>
-          </div>
-          <div class="sum-row">
-            <span>Total marks</span>
-            <span class="sum-val" class:sum-val-set={totalMarks > 0}>{totalMarks > 0 ? totalMarks : '—'}</span>
-          </div>
           <div class="sum-row">
             <span>Pass threshold</span>
-            <span class="sum-val" class:sum-val-set={passMark > 0} class:sum-val-warn={!!passMarkWarning}>
-              {passMark > 0 ? `${passMark}/${totalMarks} · ${passPercent}%` : '—'}
+            <span class="sum-val sum-val-set" class:sum-val-warn={!!passMarkWarning}>
+              {passMark}/{totalMarks} &middot; {passPercent}%
             </span>
           </div>
           <div class="sum-row" class:sum-row-pulse={changedRow === 'late'}>
             <span>Late Entry</span>
-            <span class="sum-val" class:sum-val-set={allowLateEntry}>{allowLateEntry ? `✓ ${lateEntryMinutes} min` : 'Off'}</span>
+            <span class="sum-val" class:sum-val-set={allowLateEntry}>
+              {allowLateEntry ? `✓ ${lateEntryMinutes} min` : 'Off'}
+            </span>
+          </div>
+          <div class="sum-row" class:sum-row-pulse={changedRow === 'pool'}>
+            <span>Question pool</span>
+            <span class="sum-val" class:sum-val-set={questionsToPresent > 0}>
+              {questionsToPresent > 0 ? `${questionsToPresent} per student` : 'All questions'}
+            </span>
           </div>
           <div class="sum-row">
             <span>Randomize</span>
             <span class="sum-val">
               {randomizeQuestions && randomizeOptions ? 'Questions & options'
               : randomizeQuestions ? 'Questions only'
-              : randomizeOptions ? 'Options only' : 'Off'}
+              : randomizeOptions ? 'Options only'
+              : 'Off'}
             </span>
           </div>
           <div class="sum-row">
             <span>Max violations</span>
-            <span class="sum-val sum-val-set" class:sum-val-warn={maxViolations <= 2}>{maxViolations}</span>
+            <span class="sum-val sum-val-set" class:sum-val-warn={maxViolations <= 2}>
+              {maxViolations}
+            </span>
           </div>
+
         </div>
       </div>
 
       <div class="form-footer">
         <a href="/lecturer" class="btn ghost">Cancel</a>
-        <button type="submit" class="btn primary">Create Exam &amp; Add Questions →</button>
+        <button type="submit" class="btn primary">Create Exam &amp; Add Questions &rarr;</button>
       </div>
     </div>
   </form>
 </div>
 
 <style>
-  /* ── Toast — info/warn only ──────────────────────────────────────────────── */
-  .toast-stack { position: fixed; bottom: 1.5rem; right: 1.5rem; z-index: 9999; display: flex; flex-direction: column; gap: .35rem; pointer-events: none; }
-  .toast { display: inline-flex; align-items: center; gap: .45rem; padding: .5rem .9rem; border-radius: .55rem; font-size: .79rem; font-weight: 600; white-space: nowrap; box-shadow: 0 4px 14px rgba(0,0,0,.1); max-width: 300px; }
-  .toast-info { background: var(--color-surface); color: var(--color-text); border: 1px solid var(--color-border); }
-  .toast-warn { background: #fef3c7; color: #92400e; border: 1px solid #fde68a; }
+  /* ── Toast ───────────────────────────────────────────────────────────────── */
+  .toast-stack {
+    position: fixed; bottom: 1.5rem; right: 1.5rem;
+    z-index: 9999; display: flex; flex-direction: column; gap: .35rem;
+    pointer-events: none;
+  }
+  .toast {
+    display: inline-flex; align-items: center; gap: .45rem;
+    padding: .5rem .9rem; border-radius: .55rem;
+    font-size: .79rem; font-weight: 600; white-space: nowrap;
+    box-shadow: 0 4px 14px rgba(0,0,0,.1); max-width: 300px;
+  }
+  .toast-info    { background: var(--color-surface); color: var(--color-text); border: 1px solid var(--color-border); }
+  .toast-warn    { background: #fef3c7; color: #92400e; border: 1px solid #fde68a; }
 
   /* ── Root ────────────────────────────────────────────────────────────────── */
   .page { padding: 1.75rem 2rem 4rem; max-width: 1400px; margin: 0 auto; }
 
+  /* ── Header ──────────────────────────────────────────────────────────────── */
   .page-header { margin-bottom: 1.75rem; padding-bottom: 1.25rem; border-bottom: 1px solid var(--color-border); }
   .back-link { display: inline-flex; align-items: center; gap: .2rem; font-size: .75rem; font-weight: 600; color: var(--lc-600); text-decoration: none; margin-bottom: .875rem; transition: gap .12s; }
   .back-link:hover { gap: .4rem; }
@@ -1023,6 +1059,7 @@
   .page-header-main h1 { font-size: 1.85rem; font-weight: 900; letter-spacing: -.04em; color: var(--color-text); margin: 0 0 .2rem; }
   .page-header-main > div > p { font-size: .82rem; color: var(--color-muted); margin: 0; }
   .header-actions { display: flex; gap: .625rem; align-items: center; flex-shrink: 0; }
+
   .alert-error { display: flex; align-items: center; gap: .6rem; padding: .875rem 1rem; margin-bottom: 1.25rem; background: rgba(239,68,68,.08); border: 1px solid rgba(239,68,68,.25); border-radius: .75rem; font-size: .875rem; color: #dc2626; }
 
   /* ── Grid ────────────────────────────────────────────────────────────────── */
@@ -1039,7 +1076,7 @@
   .col:has(.dd-panel) { z-index: 100; }
   .col:nth-child(2) { animation-delay: .06s; }
   .col:nth-child(3) { animation-delay: .12s; }
-  @keyframes fadeUp { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; } }
+  @keyframes fadeUp { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
 
   /* ── Cards ───────────────────────────────────────────────────────────────── */
   .card { background: var(--color-surface); border: 1px solid var(--color-border); border-radius: 1rem; overflow: visible; }
@@ -1073,6 +1110,13 @@
   .field input:focus, .field textarea:focus { border-color: var(--lc-600); box-shadow: 0 0 0 3px var(--lc-soft); }
   .two-col { display: grid; grid-template-columns: 1fr 1fr; gap: .75rem; }
 
+  /* Readonly input styling */
+  .input-readonly {
+    background: var(--color-border) !important;
+    cursor: not-allowed;
+    opacity: 0.8;
+  }
+
   /* ── Count badge ─────────────────────────────────────────────────────────── */
   .count-badge { display: inline-flex; align-items: center; justify-content: center; min-width: 18px; height: 18px; padding: 0 .35rem; background: var(--lc-600); color: white; border-radius: 999px; font-size: .65rem; font-weight: 800; }
 
@@ -1083,9 +1127,8 @@
   .dd-trigger:hover { border-color: rgba(79,70,229,.5); }
   .dd-trigger.open, .dd-trigger.has-val { border-color: var(--lc-600); }
   .dd-trigger.open { box-shadow: 0 0 0 3px var(--lc-soft); border-radius: .6rem .6rem 0 0; }
-  .dd-trigger-warn { border-color: #f59e0b !important; }
   .dd-placeholder { color: var(--color-muted); flex: 1; font-size: .85rem; }
-  .dd-val { flex: 1; font-size: .85rem; color: var(--color-text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: flex; align-items: center; gap: .5rem; }
+  .dd-val { flex: 1; font-size: .85rem; color: var(--color-text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .dd-badge { flex-shrink: 0; font-size: .7rem; font-weight: 800; background: var(--lc-soft); color: var(--lc-600); padding: .1rem .45rem; border-radius: .3rem; }
   :global(.dd-chevron) { margin-left: auto; flex-shrink: 0; color: var(--color-muted); transition: transform .18s; }
   .dd-trigger.open :global(.dd-chevron) { transform: rotate(180deg); }
@@ -1100,16 +1143,10 @@
   .dd-item:hover { background: var(--lc-soft); }
   .dd-item.active { background: rgba(79,70,229,.1); }
   .item-code { font-size: .7rem; font-weight: 800; color: var(--lc-600); background: var(--lc-soft); padding: .1rem .4rem; border-radius: .3rem; white-space: nowrap; flex-shrink: 0; }
-  .item-label { font-size: .83rem; color: var(--color-text); flex: 1; display: flex; align-items: center; gap: .5rem; }
+  .item-label { font-size: .83rem; color: var(--color-text); flex: 1; }
   :global(.item-check) { color: var(--lc-600); flex-shrink: 0; margin-left: auto; }
   .dd-empty { text-align: center; padding: 1.25rem; font-size: .82rem; color: var(--color-muted); }
   .dd-trigger.multi { flex-wrap: wrap; height: auto; }
-
-  /* Session dropdown extras */
-  .active-sem-dot { display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: #10b981; flex-shrink: 0; }
-  .sem-active-badge { font-size: .65rem; font-weight: 800; text-transform: uppercase; padding: .1rem .4rem; background: rgba(16,185,129,.12); color: #065f46; border-radius: 4px; flex-shrink: 0; margin-left: auto; }
-  :global(.dark) .sem-active-badge { color: #4ade80; }
-  .sem-label-tag { font-size: .72rem; color: var(--color-muted); }
 
   /* ── Tags ────────────────────────────────────────────────────────────────── */
   .tag-row { display: flex; flex-wrap: wrap; gap: .35rem; flex: 1; }
@@ -1117,11 +1154,6 @@
   .tag:hover { border-color: rgba(79,70,229,.3); }
   .tag-x { background: none; border: none; cursor: pointer; color: var(--lc-600); display: flex; align-items: center; padding: .1rem; border-radius: .2rem; opacity: .6; transition: all .15s; }
   .tag-x:hover { opacity: 1; background: rgba(79,70,229,.15); }
-
-  /* ── Single department chip ──────────────────────────────────────────────── */
-  .single-dept-chip { display: flex; align-items: center; gap: .5rem; padding: .575rem .875rem; background: var(--lc-soft); border: 1.5px solid rgba(79,70,229,.2); border-radius: .6rem; font-size: .84rem; color: var(--color-text); }
-  .dept-code-badge { font-size: .68rem; font-weight: 800; background: var(--lc-600); color: white; padding: .1rem .45rem; border-radius: .3rem; }
-  .dept-auto-tag { font-size: .65rem; font-weight: 700; color: var(--color-muted); margin-left: auto; text-transform: uppercase; letter-spacing: .04em; }
 
   /* ── DateTime ────────────────────────────────────────────────────────────── */
   :global(.dt-cal-icon) { flex-shrink: 0; color: var(--lc-600); }
@@ -1136,8 +1168,7 @@
   .cal-day:hover { background: var(--lc-soft); color: var(--lc-600); }
   .cal-day.today { color: var(--lc-600); font-weight: 800; }
   .cal-day.selected { background: var(--lc-600); color: white; font-weight: 700; }
-  /* Days before the start date are visually dimmed in the end calendar */
-  .cal-day.before-start { opacity: .28; cursor: not-allowed; }
+  .cal-day.disabled { opacity: 0.35; cursor: not-allowed; pointer-events: none; }
   .time-row { display: flex; align-items: center; gap: .5rem; padding: .55rem .875rem; border-top: 1px solid var(--color-border); color: var(--color-muted); }
   .time-sel { flex: 1; padding: .3rem .5rem; border: 1px solid var(--color-border); border-radius: .4rem; background: var(--color-bg); color: var(--color-text); font-size: .8rem; font-family: inherit; outline: none; cursor: pointer; }
   .time-sel:focus { border-color: var(--lc-600); }
@@ -1162,7 +1193,7 @@
   .scope-note.active { color: var(--lc-600); background: rgba(79,70,229,.05); border-color: rgba(79,70,229,.25); }
   .divider { height: 1px; background: var(--color-border); margin: .25rem 0; }
 
-  /* ── Score / marks ───────────────────────────────────────────────────────── */
+  /* ── Score ───────────────────────────────────────────────────────────────── */
   .score-grid { display: grid; grid-template-columns: 1fr 1fr; gap: .75rem; }
   .score-field { display: flex; flex-direction: column; gap: .35rem; }
   .score-field label { font-size: .78rem; font-weight: 600; color: var(--color-muted); display: flex; align-items: center; gap: .3rem; }
@@ -1171,42 +1202,29 @@
   .score-input-wrap input:focus { border-color: var(--lc-600); box-shadow: 0 0 0 3px var(--lc-soft); }
   .score-input-wrap input.input-warn { border-color: #f59e0b; }
   .score-unit { position: absolute; right: .75rem; top: 50%; transform: translateY(-50%); font-size: .72rem; font-weight: 700; color: var(--color-muted); pointer-events: none; }
-
-  /* Auto-calculated marks display */
-  .marks-auto-row { display: flex; align-items: center; gap: .75rem; padding: .875rem; background: var(--color-bg); border: 1px solid var(--color-border); border-radius: .75rem; flex-wrap: wrap; }
-  .marks-auto-cell { display: flex; flex-direction: column; align-items: center; gap: .1rem; min-width: 60px; }
-  .marks-auto-label { font-size: .65rem; font-weight: 700; text-transform: uppercase; letter-spacing: .05em; color: var(--color-muted); }
-  .marks-auto-val { font-size: 1.5rem; font-weight: 900; color: var(--lc-600); letter-spacing: -.03em; line-height: 1; }
-  .marks-auto-hint { font-size: .65rem; color: var(--color-muted); }
-  .marks-auto-sep { font-size: 1.1rem; color: var(--color-muted); }
-  .pass-bar-outer { flex: 1; min-width: 60px; }
-  .pass-bar-track { height: 5px; background: var(--color-border); border-radius: 2px; overflow: hidden; }
-  .pass-bar-fill { height: 100%; border-radius: 2px; transition: width .35s ease, background .3s; }
+  .pass-bar-wrap { display: flex; align-items: center; gap: .5rem; margin-top: .1rem; }
+  .pass-bar-track { flex: 1; height: 4px; background: var(--color-border); border-radius: 2px; overflow: hidden; }
+  .pass-bar-fill { height: 100%; border-radius: 2px; transition: width .3s ease, background .3s; }
   .bar-ok   { background: #10b981; }
   .bar-high { background: #f59e0b; }
   .bar-warn { background: #ef4444; }
-
-  /* Override details */
-  .override-details { border: 1px solid var(--color-border); border-radius: .6rem; overflow: hidden; }
-  .override-details summary { padding: .55rem .875rem; font-size: .78rem; font-weight: 600; color: var(--color-muted); cursor: pointer; user-select: none; background: var(--color-bg); }
-  .override-details summary:hover { color: var(--lc-600); }
-  .override-body { padding: .875rem; display: flex; flex-direction: column; gap: .625rem; border-top: 1px solid var(--color-border); }
-  .reset-btn { display: inline-flex; align-items: center; gap: .3rem; font-size: .75rem; font-weight: 600; color: var(--lc-600); background: none; border: none; cursor: pointer; padding: 0; }
-  .reset-btn:hover { text-decoration: underline; }
-
-  /* QTP */
+  .pass-pct { font-size: .68rem; font-weight: 700; color: var(--color-muted); flex-shrink: 0; }
   .qtp-wrap { display: flex; flex-direction: column; gap: .5rem; padding: .875rem; background: var(--color-bg); border: 1px solid var(--color-border); border-radius: .75rem; }
   .qtp-header { display: flex; align-items: center; justify-content: space-between; }
   .qtp-label-group { display: flex; align-items: center; gap: .35rem; font-size: .8rem; font-weight: 600; color: var(--color-text); }
   .qtp-row { display: flex; align-items: center; gap: .75rem; }
   .qtp-input-wrap { width: 100px; flex-shrink: 0; }
-  .qtp-hint-bubble { flex: 1; font-size: .75rem; color: var(--color-muted); padding: .45rem .75rem; background: var(--color-surface); border: 1px solid var(--color-border); border-radius: .5rem; line-height: 1.5; transition: all .2s; }
+  .qtp-hint-bubble { flex: 1; font-size: .75rem; color: var(--color-muted); padding: .45rem .75rem; background: var(--color-surface); border: 1px solid var(--color-border); border-radius: .5rem; line-height: 1.4; transition: all .2s; }
   .qtp-hint-bubble.active { color: var(--lc-600); background: rgba(79,70,229,.05); border-color: rgba(79,70,229,.25); }
   .qtp-hint-bubble strong { font-weight: 800; }
 
-  /* ── Toggles ─────────────────────────────────────────────────────────────── */
+  /* ── Toggles — key fix: label has NO onclick; only the hidden checkbox fires ── */
   .toggles { display: flex; flex-direction: column; }
-  .toggle-row { display: flex; align-items: center; justify-content: space-between; gap: 1rem; padding: .875rem 1.25rem; cursor: pointer; border-bottom: 1px solid var(--color-border); transition: background .12s; user-select: none; }
+  .toggle-row {
+    display: flex; align-items: center; justify-content: space-between; gap: 1rem;
+    padding: .875rem 1.25rem; cursor: pointer; border-bottom: 1px solid var(--color-border);
+    transition: background .12s; user-select: none;
+  }
   .toggle-row:last-child { border-bottom: none; }
   .toggle-row:hover { background: var(--lc-soft); }
   .toggle-text { display: flex; align-items: flex-start; gap: .625rem; }
@@ -1214,22 +1232,35 @@
   .toggle-row:hover .toggle-icon-wrap { background: var(--lc-soft); color: var(--lc-600); border-color: rgba(79,70,229,.2); }
   .toggle-label { display: block; font-size: .83rem; font-weight: 600; color: var(--color-text); margin-bottom: .1rem; }
   .toggle-desc  { display: block; font-size: .73rem; color: var(--color-muted); transition: color .2s; }
+
+  /* The track — driven by .on class which is bound to the $state variable */
   .toggle-track { position: relative; width: 40px; height: 22px; flex-shrink: 0; }
   .toggle-cb { position: absolute; opacity: 0; width: 0; height: 0; pointer-events: none; }
-  .toggle-knob { position: absolute; inset: 0; background: var(--color-border); border-radius: 999px; transition: background .2s; cursor: pointer; }
-  .toggle-knob::after { content: ''; position: absolute; width: 16px; height: 16px; top: 3px; left: 3px; background: white; border-radius: 50%; transition: transform .2s; box-shadow: 0 1px 3px rgba(0,0,0,.2); }
+  .toggle-knob {
+    position: absolute; inset: 0; background: var(--color-border);
+    border-radius: 999px; transition: background .2s; cursor: pointer;
+  }
+  .toggle-knob::after {
+    content: ''; position: absolute; width: 16px; height: 16px; top: 3px; left: 3px;
+    background: white; border-radius: 50%; transition: transform .2s;
+    box-shadow: 0 1px 3px rgba(0,0,0,.2);
+  }
+  /* .on class controls the visual — synced from bind:checked */
   .toggle-track.on .toggle-knob { background: var(--lc-600); }
   .toggle-track.on .toggle-knob::after { transform: translateX(18px); }
+
   .late-entry-field { padding: .75rem 1.25rem 1rem; border-top: 1px solid var(--color-border); background: rgba(79,70,229,.03); }
   .late-entry-field label { font-size: .8rem; font-weight: 600; color: var(--color-text); display: block; margin-bottom: .5rem; }
   .late-row { display: flex; align-items: center; gap: .75rem; }
   .late-hint { font-size: .75rem; color: var(--lc-600); font-weight: 600; }
 
-  /* ── Info / summary ──────────────────────────────────────────────────────── */
+  /* ── Info box ────────────────────────────────────────────────────────────── */
   .info-box { display: flex; gap: .75rem; padding: 1rem 1.125rem; background: var(--lc-soft); border: 1px solid rgba(79,70,229,.2); border-radius: .875rem; }
   .info-dot { color: var(--lc-600); flex-shrink: 0; margin-top: .05rem; }
   .info-box strong { display: block; font-size: .82rem; font-weight: 700; color: var(--color-text); margin-bottom: .3rem; }
   .info-box p { font-size: .76rem; color: var(--color-muted); margin: 0; line-height: 1.55; }
+
+  /* ── Summary ─────────────────────────────────────────────────────────────── */
   .summary-card { background: var(--color-surface); border: 1px solid var(--color-border); border-radius: .875rem; overflow: hidden; }
   .summary-title { padding: .625rem 1rem; font-size: .72rem; font-weight: 800; text-transform: uppercase; letter-spacing: .06em; color: var(--color-muted); background: var(--color-bg); border-bottom: 1px solid var(--color-border); }
   .summary-rows { padding: .5rem; }
