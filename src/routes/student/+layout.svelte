@@ -14,9 +14,32 @@
 
   let { data, children }: { data: LayoutData; children: import('svelte').Snippet } = $props();
 
-  onMount(() => initTheme());
+  // ── Theme ──────────────────────────────────────────────────────────
+  // Own the theme value as a $state rune so Svelte 5 can track it.
+  // Do NOT use $derived(getTheme()) — getTheme() reads localStorage/DOM,
+  // which are not reactive signals, so $derived never re-runs after mount.
+  let theme = $state<'light' | 'dark'>('light');
 
-  let theme        = $derived(getTheme());
+  function applyTheme(t: 'light' | 'dark') {
+    theme = t;
+    document.documentElement.dataset.theme = t;
+    localStorage.setItem('theme', t);
+  }
+
+  function handleToggleTheme() {
+    applyTheme(theme === 'dark' ? 'light' : 'dark');
+  }
+
+  onMount(() => {
+    // Read whatever initTheme() set on the DOM, then sync our $state.
+    initTheme();
+    const stored = (localStorage.getItem('theme') as 'light' | 'dark') ?? 'light';
+    // Also respect OS preference if nothing stored yet.
+    const preferred = stored ?? (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
+    theme = (document.documentElement.dataset.theme as 'light' | 'dark') ?? preferred;
+  });
+  // ── End theme ───────────────────────────────────────────────────────
+
   let collapsed    = $state(false);
   let mobileOpen   = $state(false);
   let showNotifs   = $state(false);
@@ -214,7 +237,8 @@
 
     <!-- Footer -->
     <div class="sidebar-foot">
-      <button class="foot-btn" type="button" onclick={toggleTheme} title={collapsed ? (theme === 'dark' ? 'Light mode' : 'Dark mode') : undefined}>
+      <!-- Single source of truth: handleToggleTheme -->
+      <button class="foot-btn" type="button" onclick={handleToggleTheme} title={collapsed ? (theme === 'dark' ? 'Light mode' : 'Dark mode') : undefined}>
         <div class="foot-icon">
           {#if theme === 'dark'}<Sun size={14} />{:else}<Moon size={14} />{/if}
         </div>
@@ -319,7 +343,8 @@
           {/if}
         </div>
 
-        <button class="icon-btn" type="button" onclick={toggleTheme} aria-label="Toggle theme">
+        <!-- Single source of truth: handleToggleTheme -->
+        <button class="icon-btn" type="button" onclick={handleToggleTheme} aria-label="Toggle theme">
           {#if theme === 'dark'}<Sun size={16} />{:else}<Moon size={16} />{/if}
         </button>
       </div>
