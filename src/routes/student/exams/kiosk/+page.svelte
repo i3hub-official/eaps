@@ -107,43 +107,73 @@
     try { await document.documentElement.requestFullscreen(); } catch { /* ok */ }
   }
 
-  function onFullscreenChange() {
-    if (step !== 'exam') return;
-    if (!document.fullscreenElement) {
-      void requestFullscreen();
-      if (!fullscreenViolationPending) {
-        fullscreenViolationPending = true;
-        void handleViolation('fullscreen_exit').then(() => { fullscreenViolationPending = false; });
-      }
+function onFullscreenChange() {
+  if (step !== 'exam') return;
+  if (!document.fullscreenElement) {
+    void requestFullscreen();
+    if (!fullscreenViolationPending && !violationInFlight) {
+      fullscreenViolationPending = true;
+      void handleViolation('fullscreen_exit').then(() => {
+        
+      });
     }
   }
+}
 
   // ─── Violations ───────────────────────────────────────────────────────────
-  let violationCount   = $state(0);
-  let violationVisible = $state(false);
-  let violationType    = $state('');
-  let violationAction  = $state('warning');
+// ─── Violations ───────────────────────────────────────────────────────────
+// violationCount is driven by the SERVER response, never incremented locally.
+// This prevents the client count drifting above max or double-counting when
+// multiple sources (KioskShell, FaceMonitor, fullscreen) fire concurrently.
+let violationCount    = $state(0);
+let violationVisible  = $state(false);
+let violationType     = $state('');
+let violationAction   = $state('warning');
+let violationInFlight = false;
 
-  async function handleViolation(type: string) {
-    violationCount++;
-    violationType = type;
-    try {
-      const res = await fetch(`/api/exam/${data.examId}/violation`, {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ sessionId, type }),
-      });
-      if (res.ok) {
-        const json = await res.json();
-        violationAction = json.action ?? 'warning';
-        if (json.action === 'auto_submitted') { await submitExam(); return; }
-        if (json.action === 'exam_paused') {
-          notifyOpener('flagged'); stopAllTimers(); step = 'flagged'; return;
-        }
+async function handleViolation(type: string) {
+  // KioskShell already throttles per-type; this guard stops overlapping
+  // API calls if two different types fire within the same tick.
+  if (violationInFlight || step !== 'exam') return;
+  violationInFlight = true;
+  violationType = type;
+ 
+  try {
+    const res = await fetch(`/api/exam/${data.examId}/violation`, {
+      method:  'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body:    JSON.stringify({ sessionId, flagType: type }), // ← was "type", must be "flagType"
+    });
+ 
+    if (res.ok) {
+      const json = await res.json();
+      // Server is the source of truth — never do violationCount++ locally
+      if (typeof json.violationCount === 'number') violationCount = json.violationCount;
+      violationAction = json.action ?? 'warning';
+ 
+      if (json.action === 'auto_submitted') {
+        violationVisible = true; // show "Session ended" briefly before submit
+        await submitExam();
+        return;
       }
-    } catch { violationAction = 'warning'; }
-    violationVisible = true;
+      if (json.action === 'exam_paused') {
+        notifyOpener('flagged');
+        stopAllTimers();
+        step = 'flagged';
+        return;
+      }
+    } else {
+      // API error — show generic warning, don't mutate count
+      violationAction = 'warning';
+    }
+  } catch {
+    violationAction = 'warning';
+  } finally {
+    violationInFlight = false;
   }
-
+ 
+  violationVisible = true;
+}
   // ─── Offline queue ────────────────────────────────────────────────────────
   let isOnline     = $state(true);
   let offlineQueue = $state<Array<{ index: number; questionId: string; value: string }>>([]);
@@ -335,37 +365,37 @@
 
   // ─── Lifecycle ────────────────────────────────────────────────────────────
   onMount(() => {
-    isOnline = navigator.onLine;
-    window.addEventListener('online',  () => { isOnline = true;  void syncOfflineQueue(); });
-    window.addEventListener('offline', () => { isOnline = false; });
-    window.addEventListener('keydown', handleKeyDown);
-    document.addEventListener('fullscreenchange', onFullscreenChange);
-    setupBeacon();
-
-    const s = data.sessionStatus;
-    if (s === 'submitted' || s === 'force_submitted') {
-      step = 'submitted';
-    } else if (s === 'flagged') {
-      step = 'flagged';
-    } else if ((s === 'in_progress' || s === 'not_started') && data.sessionId) {
-      sessionId = data.sessionId;
-      const stored = loadSession(data.sessionId);
-      if (stored) { answers = stored.answers; currentIndex = stored.currentIndex; }
-      step = 'exam';
-      void requestFullscreen();
-      startLocalTimer(); startTimerSync();
-      void fetchQuestion(currentIndex);
-    } else {
-      void startExam();
-    }
-
-    return () => {
-      stopAllTimers();
-      if (submitRetryTimer) clearInterval(submitRetryTimer);
-      window.removeEventListener('keydown', handleKeyDown);
-      document.removeEventListener('fullscreenchange', onFullscreenChange);
-    };
-  });
+  isOnline = navigator.onLine;
+  window.addEventListener('online',  () => { isOnline = true;  void syncOfflineQueue(); });
+  window.addEventListener('offline', () => { isOnline = false; });
+  window.addEventListener('keydown', handleKeyDown);
+  // NO fullscreenchange here — KioskShell owns it
+  setupBeacon();
+ 
+  const s = data.sessionStatus;
+  if (s === 'submitted' || s === 'force_submitted') {
+    step = 'submitted';
+  } else if (s === 'flagged') {
+    step = 'flagged';
+  } else if ((s === 'in_progress' || s === 'not_started') && data.sessionId) {
+    sessionId = data.sessionId;
+    const stored = loadSession(data.sessionId);
+    if (stored) { answers = stored.answers; currentIndex = stored.currentIndex; }
+    step = 'exam';
+    // No requestFullscreen() here — KioskShell handles it on its own mount
+    startLocalTimer(); startTimerSync();
+    void fetchQuestion(currentIndex);
+  } else {
+    void startExam();
+  }
+ 
+  return () => {
+    stopAllTimers();
+    if (submitRetryTimer) clearInterval(submitRetryTimer);
+    window.removeEventListener('keydown', handleKeyDown);
+    // NO fullscreenchange removal here
+  };
+});
 
   // ─── Derived ──────────────────────────────────────────────────────────────
   const answeredCount = $derived(Object.keys(answers).length);

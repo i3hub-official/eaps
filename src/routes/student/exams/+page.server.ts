@@ -4,7 +4,7 @@ import { error, fail } from '@sveltejs/kit';
 import type { PageServerLoad, Actions } from './$types';
 import { requireStudent } from '$lib/server/auth/guards.js';
 import { getPrismaClient } from '$lib/server/db/index.js';
-import { getExamForSession, isStudentEligible } from '$lib/server/db/exams.js';
+import { getExamForSession } from '$lib/server/db/exams.js';
 import { getSessionByExamAndStudent, getSessionAnswers, createExamSession } from '$lib/server/db/sessions.js';
 import { buildStudentQuestionOrder, sanitizeQuestionsForClient } from '$lib/server/exam/randomizer.js';
 import { computeDeadline, secondsRemaining, UUID_RE } from '$lib/server/exam/session-engine.js';
@@ -117,7 +117,7 @@ export const load: PageServerLoad = async ({ locals, url, cookies }) => {
               level: true 
             } 
           },
-          // Include levels so isStudentEligible can check them
+          // Include levels so we can check eligibility
           levels: { select: { level: true } },
           _count: { select: { questions: true } },
         },
@@ -159,23 +159,56 @@ export const load: PageServerLoad = async ({ locals, url, cookies }) => {
     // Map courseId → registration row for O(1) lookup
     const regByCourse = new Map(regs.map(r => [r.courseId, r]));
 
-    // Student record for eligibility (needs level + department)
+    // Student record for eligibility (needs level only - department is not checked at exam level)
     const studentForElig = await prisma.user.findUnique({
       where: { id: user.id },
       select: {
         level: { select: { level: true } },
-        department: { select: { name: true } },
       },
     });
 
     // ── Build available exams with eligibility info ────────────────────────
     const availableExams: AvailableExam[] = exams.map(e => {
       const reg = regByCourse.get(e.courseId) ?? null;
-      const eligibility = isStudentEligible(
-        { levels: e.levels, department: e.department },
-        studentForElig ?? { level: null, department: null },
-        reg,
-      );
+      
+      // Check eligibility manually - don't check department
+      let isEligible = true;
+      const ineligibilityReasons: string[] = [];
+      
+      // 1. Check if exam is active
+      if (e.status !== 'active') {
+        isEligible = false;
+        ineligibilityReasons.push(`Exam is ${e.status}`);
+      }
+      
+      // 2. Check level eligibility through exam levels
+      if (e.levels && e.levels.length > 0) {
+        const allowedLevels = e.levels.map(l => l.level);
+        if (studentForElig?.level?.level && !allowedLevels.includes(studentForElig.level.level)) {
+          isEligible = false;
+          ineligibilityReasons.push(`Requires one of these levels: ${allowedLevels.join(', ')} (you are level ${studentForElig.level.level})`);
+        }
+      }
+      
+      // 3. Check if already submitted
+      if (submittedSet.has(e.id)) {
+        isEligible = false;
+        ineligibilityReasons.push('You have already submitted this exam');
+      }
+      
+      // 4. Check if student is registered (already handled by the query, but double-check)
+      if (!reg) {
+        isEligible = false;
+        ineligibilityReasons.push('You are not registered for this course');
+      }
+      
+      // 5. IMPORTANT: Do NOT check department - registration already validates this
+      // The student is registered for the course, so they are eligible regardless of department
+      
+      // If no specific reasons found but not eligible, add generic message
+      if (!isEligible && ineligibilityReasons.length === 0) {
+        ineligibilityReasons.push('You are not eligible for this exam');
+      }
 
       return {
         id: e.id,
@@ -188,11 +221,10 @@ export const load: PageServerLoad = async ({ locals, url, cookies }) => {
         questionCount: e._count.questions,
         alreadySubmitted: submittedSet.has(e.id),
         sessionStatus: inProgressSet.has(e.id) ? 'in_progress' : null,
-        isEligible: eligibility.eligible,
+        isEligible: isEligible,
         isRegistered: reg !== null,
-        // true when student is higher level writing a lower-level course exam
         isCarryOver: reg?.registrationType === 'carry_over',
-        ineligibilityReasons: eligibility.eligible ? [] : [eligibility.reason ?? 'Not eligible'],
+        ineligibilityReasons: ineligibilityReasons,
       };
     });
 
@@ -240,22 +272,44 @@ export const load: PageServerLoad = async ({ locals, url, cookies }) => {
 
   if (!registration) throw error(403, 'You are not registered for this course.');
 
-  // Check eligibility using the registration data
+  // Check eligibility manually - don't check department
   const studentForElig = await prisma.user.findUnique({
     where: { id: user.id },
     select: {
       level: { select: { level: true } },
-      department: { select: { name: true } },
     },
   });
 
-  const eligibility = isStudentEligible(
-    { levels: exam.levels, department: exam.department },
-    studentForElig ?? { level: null, department: null },
-    registration
-  );
+  let isEligible = true;
+  let eligibilityReason = '';
 
-  if (!eligibility.eligible) throw error(403, eligibility.reason ?? 'Not eligible.');
+  // Check level eligibility
+  if (exam.levels && exam.levels.length > 0) {
+    const allowedLevels = exam.levels.map(l => l.level);
+    if (studentForElig?.level?.level && !allowedLevels.includes(studentForElig.level.level)) {
+      isEligible = false;
+      eligibilityReason = `Requires one of these levels: ${allowedLevels.join(', ')} (you are level ${studentForElig.level.level})`;
+    }
+  }
+
+  // Check if already submitted
+  const existingSubmission = await prisma.examSession.findFirst({
+    where: {
+      studentId: user.id,
+      examId: exam.id,
+      status: { in: ['submitted', 'force_submitted'] }
+    },
+    select: { id: true }
+  });
+
+  if (existingSubmission) {
+    isEligible = false;
+    eligibilityReason = 'You have already submitted this exam';
+  }
+
+  // IMPORTANT: Do NOT check department - registration already validates this
+
+  if (!isEligible) throw error(403, eligibilityReason || 'Not eligible.');
 
   const student = await prisma.user.findUnique({
     where: { id: user.id },
@@ -349,7 +403,8 @@ export const actions: Actions = {
     }
 
     // ── STRICT face check ONLY at start ─────────────────────────────────────
-    const faceDescriptor = await (await getPrismaClient()).faceDescriptor.findUnique({
+    const prisma = await getPrismaClient();
+    const faceDescriptor = await prisma.faceDescriptor.findUnique({
       where: { studentId: user.id },
       select: { id: true }
     });
@@ -365,8 +420,7 @@ export const actions: Actions = {
     const exam = await getExamForSession(examId);
     if (!exam) return fail(404, { message: 'Exam not found' });
 
-    // Get active semester and registration for eligibility check
-    const prisma = await getPrismaClient();
+    // Get active semester and registration
     const activeSemester = await prisma.academicSemester.findFirst({
       where: { isActive: true },
       select: { session: true, semester: true }
@@ -391,22 +445,45 @@ export const actions: Actions = {
       return fail(403, { message: 'You are not registered for this course.' });
     }
 
+    // Check eligibility manually - don't check department
     const studentForElig = await prisma.user.findUnique({
       where: { id: user.id },
       select: {
         level: { select: { level: true } },
-        department: { select: { name: true } },
       },
     });
 
-    const eligibility = isStudentEligible(
-      { levels: exam.levels, department: exam.department },
-      studentForElig ?? { level: null, department: null },
-      registration
-    );
+    let isEligible = true;
+    let eligibilityReason = '';
 
-    if (!eligibility.eligible) {
-      return fail(403, { message: eligibility.reason ?? 'Not eligible to start this exam.' });
+    // Check level eligibility
+    if (exam.levels && exam.levels.length > 0) {
+      const allowedLevels = exam.levels.map(l => l.level);
+      if (studentForElig?.level?.level && !allowedLevels.includes(studentForElig.level.level)) {
+        isEligible = false;
+        eligibilityReason = `Requires one of these levels: ${allowedLevels.join(', ')} (you are level ${studentForElig.level.level})`;
+      }
+    }
+
+    // Check if already submitted
+    const existingSubmission = await prisma.examSession.findFirst({
+      where: {
+        studentId: user.id,
+        examId: exam.id,
+        status: { in: ['submitted', 'force_submitted'] }
+      },
+      select: { id: true }
+    });
+
+    if (existingSubmission) {
+      isEligible = false;
+      eligibilityReason = 'You have already submitted this exam';
+    }
+
+    // IMPORTANT: Do NOT check department - registration already validates this
+
+    if (!isEligible) {
+      return fail(403, { message: eligibilityReason || 'Not eligible to start this exam.' });
     }
 
     const existingSession = await getSessionByExamAndStudent(examId, user.id);
@@ -441,13 +518,35 @@ export const actions: Actions = {
       return fail(400, { message: 'Missing required fields' });
     }
 
-    const session = await (await getPrismaClient()).examSession.findFirst({
+    const prisma = await getPrismaClient();
+    const session = await prisma.examSession.findFirst({
       where: { id: sessionId, studentId: user.id, status: 'in_progress' },
       select: { id: true, examId: true }
     });
 
     if (!session) {
       return fail(403, { message: 'Invalid or expired session' });
+    }
+
+    // Save the answer
+    if (answer !== undefined) {
+      await prisma.examAnswer.upsert({
+        where: {
+          sessionId_questionId: {
+            sessionId: session.id,
+            questionId: questionId,
+          },
+        },
+        update: {
+          answer: answer,
+          updatedAt: new Date(),
+        },
+        create: {
+          sessionId: session.id,
+          questionId: questionId,
+          answer: answer,
+        },
+      });
     }
 
     return { success: true };
@@ -462,7 +561,8 @@ export const actions: Actions = {
       return fail(400, { message: 'Session ID required' });
     }
 
-    const session = await (await getPrismaClient()).examSession.findFirst({
+    const prisma = await getPrismaClient();
+    const session = await prisma.examSession.findFirst({
       where: { id: sessionId, studentId: user.id, status: 'in_progress' },
       select: { id: true, examId: true, startedAt: true }
     });

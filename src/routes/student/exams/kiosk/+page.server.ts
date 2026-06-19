@@ -1,17 +1,20 @@
 /**
  * src/routes/student/exams/kiosk/+page.server.ts
  *
- * Loads session metadata for the detached kiosk exam window.
- * Face verification must already be complete (done in the portal window).
- * Redirects back to the exam flow page if verification cookie is missing.
+ * Loads session metadata for the kiosk exam environment.
+ * Face verification must already be complete (cookie set by verify API).
+ *
+ * Eligibility is checked manually here — we do NOT use isStudentEligible()
+ * because that utility checks department and requires status='approved', which
+ * rejects valid pending/carry_over registrations. The list page does the same.
  */
 
 import { error, redirect }     from '@sveltejs/kit';
 import type { PageServerLoad } from './$types';
 import { requireStudent }      from '$lib/server/auth/guards.js';
 import { getPrismaClient }     from '$lib/server/db/index.js';
-import { getExamForSession, isStudentEligible } from '$lib/server/db/exams.js';
-import { getSessionByExamAndStudent }           from '$lib/server/db/sessions.js';
+import { getExamForSession }   from '$lib/server/db/exams.js';
+import { getSessionByExamAndStudent } from '$lib/server/db/sessions.js';
 import {
   computeDeadline,
   secondsRemaining,
@@ -19,18 +22,9 @@ import {
   finalizeSession,
 } from '$lib/server/exam/session-engine.js';
 import { toClientExam } from '$lib/server/exam/transform.js';
-
 import { requireFaceVerified } from '$lib/server/auth/face-guard.js';
 
-
 export const load: PageServerLoad = async ({ locals, url, cookies }) => {
-
-console.log('=== KIOSK LOAD ===');
-  console.log('examId:', url.searchParams.get('examId'));
-  console.log('face_verified cookie:', cookies.get('face_verified'));
-  console.log('face_verified_at cookie:', cookies.get('face_verified_at'));
-  console.log('user:', locals.user?.id);
-
   const user   = await requireStudent(locals.user);
   const examId = url.searchParams.get('examId');
 
@@ -38,8 +32,8 @@ console.log('=== KIOSK LOAD ===');
     throw redirect(302, '/student');
   }
 
-await requireFaceVerified(locals, cookies, examId);
-
+  // ── Face verification gate ───────────────────────────────────────────────
+  await requireFaceVerified(locals, cookies, examId);
 
   const prisma = await getPrismaClient();
 
@@ -47,16 +41,55 @@ await requireFaceVerified(locals, cookies, examId);
   const exam = await getExamForSession(examId);
   if (!exam) throw error(404, 'Exam not found');
 
+  // ── Active semester ──────────────────────────────────────────────────────
+  const activeSemester = await prisma.academicSemester.findFirst({
+    where:  { isActive: true },
+    select: { session: true, semester: true },
+  });
+
   // ── Registration check ───────────────────────────────────────────────────
-  const registered = await prisma.courseRegistration.findFirst({
-    where:  { studentId: user.id, courseId: exam.courseId },
+  // Allow pending + carry_over, just like the list page does.
+  // Do NOT check department — registration already validates course ownership.
+  const registration = await prisma.courseRegistration.findFirst({
+    where: {
+      studentId: user.id,
+      courseId:  exam.courseId,
+      ...(activeSemester ? {
+        session:  activeSemester.session,
+        semester: activeSemester.semester,
+      } : {}),
+      status: { notIn: ['rejected', 'withdrawn'] },
+    },
+    select: { id: true, registrationType: true },
+  });
+  if (!registration) throw error(403, 'You are not registered for this course.');
+
+  // ── Level eligibility ────────────────────────────────────────────────────
+  // Only check if the exam restricts to specific levels.
+  if (exam.levels && exam.levels.length > 0) {
+    const student = await prisma.user.findUnique({
+      where:  { id: user.id },
+      select: { level: { select: { level: true } } },
+    });
+    const allowedLevels = exam.levels.map((l: { level: string }) => l.level);
+    const studentLevel  = student?.level?.level;
+    if (studentLevel && !allowedLevels.includes(studentLevel)) {
+      throw error(403,
+        `This exam requires level ${allowedLevels.join(' or ')} (you are ${studentLevel} Level).`
+      );
+    }
+  }
+
+  // ── Already submitted? ───────────────────────────────────────────────────
+  const submitted = await prisma.examSession.findFirst({
+    where: {
+      studentId: user.id,
+      examId,
+      status: { in: ['submitted', 'force_submitted'] },
+    },
     select: { id: true },
   });
-  if (!registered) throw error(403, 'You are not registered for this course.');
-
-  // ── Eligibility ──────────────────────────────────────────────────────────
-  const eligibility = isStudentEligible(exam, user);
-  if (!eligibility.eligible) throw error(403, eligibility.reason ?? 'Not eligible.');
+  if (submitted) throw error(403, 'You have already submitted this exam.');
 
   // ── Student snapshot ─────────────────────────────────────────────────────
   const student = await prisma.user.findUnique({
@@ -79,12 +112,12 @@ await requireFaceVerified(locals, cookies, examId);
     select: { descriptor: true },
   });
 
-  // ── Existing session ─────────────────────────────────────────────────────
+  // ── Session ──────────────────────────────────────────────────────────────
   const existingSession = await getSessionByExamAndStudent(examId, user.id);
 
-  let sessionStatus: string = existingSession?.status ?? 'not_started';
+  let sessionStatus: string    = existingSession?.status ?? 'not_started';
   let sessionId: string | null = existingSession?.id ?? null;
-  let timeRemaining = exam.durationMinutes * 60;
+  let timeRemaining            = exam.durationMinutes * 60;
   let serverAnswerIndices: number[] = [];
 
   if (existingSession?.startedAt) {
@@ -98,7 +131,10 @@ await requireFaceVerified(locals, cookies, examId);
       timeRemaining = Math.max(0, remaining);
     }
 
-    if (existingSession.status === 'in_progress' || existingSession.status === 'not_started') {
+    if (
+      existingSession.status === 'in_progress' ||
+      existingSession.status === 'not_started'
+    ) {
       const savedAnswerRows = await prisma.studentAnswer.findMany({
         where:  { sessionId: existingSession.id },
         select: { questionId: true },
