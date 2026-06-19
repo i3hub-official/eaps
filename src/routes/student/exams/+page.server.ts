@@ -5,7 +5,7 @@ import type { PageServerLoad, Actions } from './$types';
 import { requireStudent } from '$lib/server/auth/guards.js';
 import { getPrismaClient } from '$lib/server/db/index.js';
 import { getExamForSession } from '$lib/server/db/exams.js';
-import { getSessionByExamAndStudent, getSessionAnswers, createExamSession } from '$lib/server/db/sessions.js';
+import { getSessionByExamAndStudent, getSessionAnswers, getOrCreateSession } from '$lib/server/db/sessions.js';
 import { buildStudentQuestionOrder, sanitizeQuestionsForClient } from '$lib/server/exam/randomizer.js';
 import { computeDeadline, secondsRemaining, UUID_RE } from '$lib/server/exam/session-engine.js';
 import { toClientExam, toClientSession, toClientQuestions, toSavedAnswers } from '$lib/server/exam/transform.js';
@@ -497,7 +497,7 @@ export const actions: Actions = {
     }
 
     // Create and start session
-    const session = await createExamSession({
+    const session = await getOrCreateSession({
       examId,
       studentId: user.id,
       status: 'in_progress',
