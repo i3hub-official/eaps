@@ -1,7 +1,7 @@
 // src/lib/server/auth/guards.ts
 //
 // Role guards for all portals.
-// Usage: requireAdmin(locals.user)  — throws redirect(303) or error(403)
+// Usage: const user = requireAdmin(locals.user)  — returns User or throws redirect/error
 //        await requireAdminOrApiKey(ctx, 'read_users') — session OR API key
 import { error, redirect } from '@sveltejs/kit';
 import type { UserRole, User } from '@prisma/client';
@@ -10,7 +10,7 @@ import { requireApiKey } from './api-key-guard.js';
 
 type MaybeUser = { id: string; role: UserRole; isActive: boolean; isSuspended: boolean } | null | undefined;
 
-function assertActive(user: MaybeUser, loginPath = '/login') {
+function assertActive(user: MaybeUser, loginPath = '/login'): asserts user is NonNullable<MaybeUser> {
   if (!user) redirect(303, loginPath);
   if (!user.isActive || user.isSuspended) error(403, 'Account suspended or inactive.');
 }
@@ -19,7 +19,7 @@ function assertActive(user: MaybeUser, loginPath = '/login') {
 
 export function requireAuth(user: MaybeUser): NonNullable<MaybeUser> {
   assertActive(user);
-  return user!;
+  return user;
 }
 
 export function requireOwnership(user: NonNullable<MaybeUser>, ownerId: string): void {
@@ -30,79 +30,92 @@ export function requireOwnership(user: NonNullable<MaybeUser>, ownerId: string):
 
 // ── Single-role guards ────────────────────────────────────────────────────────
 
-export function requireAdmin(user: MaybeUser) {
+export function requireAdmin(user: MaybeUser): NonNullable<MaybeUser> {
   assertActive(user);
-  if (user!.role !== 'admin') error(403, 'Admin access required.');
+  if (user.role !== 'admin') error(403, 'Admin access required.');
+  return user;
 }
 
-export function requireLecturer(user: MaybeUser) {
+export function requireLecturer(user: MaybeUser): NonNullable<MaybeUser> {
   assertActive(user);
-  if (user!.role !== 'lecturer' && user!.role !== 'hod') {
-    error(403, 'Lecturer access required.');
-  }
+  if (user.role !== 'lecturer' && user.role !== 'hod') error(403, 'Lecturer access required.');
+  return user;
 }
 
-export function requireInvigilator(user: MaybeUser) {
+export function requireInvigilator(user: MaybeUser): NonNullable<MaybeUser> {
   assertActive(user);
-  if (user!.role !== 'invigilator') error(403, 'Invigilator access required.');
+  if (user.role !== 'invigilator') error(403, 'Invigilator access required.');
+  return user;
 }
 
-export function requireStudent(user: MaybeUser) {
+export function requireStudent(user: MaybeUser): NonNullable<MaybeUser> {
   assertActive(user);
-  if (user!.role !== 'student') error(403, 'Student access required.');
+  if (user.role !== 'student') error(403, 'Student access required.');
+  return user;
 }
 
-export function requireHod(user: MaybeUser) {
+export function requireHod(user: MaybeUser): NonNullable<MaybeUser> {
   assertActive(user);
-  if (user!.role !== 'hod') error(403, 'HOD access required.');
+  if (user.role !== 'hod') error(403, 'HOD access required.');
+  return user;
 }
 
-export function requireDean(user: MaybeUser) {
+export function requireDean(user: MaybeUser): NonNullable<MaybeUser> {
   assertActive(user);
-  if (user!.role !== 'dean') error(403, 'Dean access required.');
+  if (user.role !== 'dean') error(403, 'Dean access required.');
+  return user;
 }
 
-export function requireExamOfficer(user: MaybeUser) {
+export function requireExamOfficer(user: MaybeUser): NonNullable<MaybeUser> {
   assertActive(user);
-  if (user!.role !== 'exam_officer') error(403, 'Exam Officer access required.');
+  if (user.role !== 'exam_officer') error(403, 'Exam Officer access required.');
+  return user;
 }
 
-export function requireVcDvc(user: MaybeUser) {
+export function requireVcDvc(user: MaybeUser): NonNullable<MaybeUser> {
   assertActive(user);
-  if (user!.role !== 'vc_dvc') error(403, 'VC/DVC access required.');
+  if (user.role !== 'vc_dvc') error(403, 'VC/DVC access required.');
+  return user;
 }
 
 // ── Multi-role guards (OR semantics) ─────────────────────────────────────────
 
 /** Routes accessible by admin OR exam officer (e.g. exam schedule management). */
-export function requireExamManagement(user: MaybeUser) {
+export function requireExamManagement(user: MaybeUser): NonNullable<MaybeUser> {
   assertActive(user);
   const allowed: UserRole[] = ['admin', 'exam_officer'];
-  if (!allowed.includes(user!.role)) error(403, 'Exam management access required.');
+  if (!allowed.includes(user.role)) error(403, 'Exam management access required.');
+  return user;
 }
 
 /** Routes readable by governance accounts (VC/DVC, Dean, Exam Officer, Admin). */
-export function requireReportAccess(user: MaybeUser) {
+export function requireReportAccess(user: MaybeUser): NonNullable<MaybeUser> {
   assertActive(user);
   const allowed: UserRole[] = ['admin', 'exam_officer', 'dean', 'vc_dvc'];
-  if (!allowed.includes(user!.role)) error(403, 'Report access required.');
+  if (!allowed.includes(user.role)) error(403, 'Report access required.');
+  return user;
 }
 
 /**
  * Routes accessible by lecturers AND HODs who also lecture.
  * Pass the user's secondaryRoles (loaded from UserRoleAssignment) for HOD check.
  */
-export function requireLecturerOrHod(user: MaybeUser, secondaryRoles: string[] = []) {
+export function requireLecturerOrHod(
+  user: MaybeUser,
+  secondaryRoles: string[] = []
+): NonNullable<MaybeUser> {
   assertActive(user);
-  const isLecturer = user!.role === 'lecturer';
-  const isHodWhoLectures = user!.role === 'hod' && secondaryRoles.includes('lecturer');
+  const isLecturer = user.role === 'lecturer';
+  const isHodWhoLectures = user.role === 'hod' && secondaryRoles.includes('lecturer');
   if (!isLecturer && !isHodWhoLectures) error(403, 'Lecturer access required.');
+  return user;
 }
 
 /** Any authenticated, active staff member (non-student). */
-export function requireStaff(user: MaybeUser) {
+export function requireStaff(user: MaybeUser): NonNullable<MaybeUser> {
   assertActive(user);
-  if (user!.role === 'student') error(403, 'Staff access required.');
+  if (user.role === 'student') error(403, 'Staff access required.');
+  return user;
 }
 
 // ── Admin OR API Key ──────────────────────────────────────────────────────────

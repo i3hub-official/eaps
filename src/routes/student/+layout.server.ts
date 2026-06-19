@@ -5,8 +5,9 @@ import { getPrismaClient } from '$lib/server/db/index.js';
 import { SessionStatus } from '$lib/constants/enums.js';
 
 export const load: LayoutServerLoad = async ({ locals }) => {
-  const user = await requireStudent(locals.user);
-          const prisma = await getPrismaClient();
+  requireStudent(locals.user);
+  const user = locals.user!;
+  const prisma = await getPrismaClient();
 
   // Fetch full student profile with all relations
   const fullUser = await prisma.user.findUnique({
@@ -41,18 +42,15 @@ export const load: LayoutServerLoad = async ({ locals }) => {
       orderBy: { createdAt: 'desc' },
       take: 20,
     }),
-    // Active exams (in_progress or active)
     prisma.examSession.count({
       where: {
         studentId: user.id,
         status: { in: [SessionStatus.in_progress, SessionStatus.active] },
       },
     }),
-    // Total results
     prisma.examResult.count({
       where: { studentId: user.id },
     }),
-    // Upcoming exams
     prisma.examSession.count({
       where: {
         studentId: user.id,
@@ -60,7 +58,6 @@ export const load: LayoutServerLoad = async ({ locals }) => {
         exam: { scheduledStart: { gt: new Date() } },
       },
     }),
-    // Total course registrations for current session/semester
     prisma.courseRegistration.count({
       where: {
         studentId: user.id,
@@ -68,7 +65,6 @@ export const load: LayoutServerLoad = async ({ locals }) => {
         semester: currentSemester,
       },
     }),
-    // Active exam session
     prisma.examSession.findFirst({
       where: {
         studentId: user.id,
@@ -76,7 +72,6 @@ export const load: LayoutServerLoad = async ({ locals }) => {
       },
       include: { exam: { select: { title: true } } },
     }),
-    // Average score from completed exams
     prisma.examResult.aggregate({
       where: {
         studentId: user.id,
@@ -86,14 +81,12 @@ export const load: LayoutServerLoad = async ({ locals }) => {
         percentage: true,
       },
     }),
-    // Count completed exams
     prisma.examSession.count({
       where: {
         studentId: user.id,
         status: SessionStatus.submitted,
       },
     }),
-    // Count total courses (through registrations)
     prisma.courseRegistration.count({
       where: {
         studentId: user.id,
@@ -103,7 +96,6 @@ export const load: LayoutServerLoad = async ({ locals }) => {
     }),
   ]);
 
-  // Calculate total credit hours by joining with Course table
   const registrationsWithCourses = await prisma.courseRegistration.findMany({
     where: {
       studentId: user.id,
@@ -112,9 +104,7 @@ export const load: LayoutServerLoad = async ({ locals }) => {
     },
     include: {
       course: {
-        select: {
-          creditUnits: true,
-        },
+        select: { creditUnits: true },
       },
     },
   });
@@ -141,10 +131,9 @@ export const load: LayoutServerLoad = async ({ locals }) => {
       totalCreditHours,
       totalCourses,
     },
-    activeExamSession: activeExamSession ? {
-      id: activeExamSession.id,
-      examTitle: activeExamSession.exam.title,
-    } : null,
+    activeExamSession: activeExamSession
+      ? { id: activeExamSession.id, examTitle: activeExamSession.exam.title }
+      : null,
   };
 };
 
@@ -153,11 +142,7 @@ function deriveSessionFromDate(): string {
   const now = new Date();
   const year = now.getFullYear();
   const month = now.getMonth() + 1;
-
-  if (month >= 10) {
-    return `${year}/${year + 1}`;
-  }
-  return `${year - 1}/${year}`;
+  return month >= 10 ? `${year}/${year + 1}` : `${year - 1}/${year}`;
 }
 
 function deriveSemesterFromDate(): number {
