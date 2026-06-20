@@ -78,6 +78,57 @@ export function requireVcDvc(user: MaybeUser): NonNullable<MaybeUser> {
   return user;
 }
 
+// ── Role + Admin combo guards ─────────────────────────────────────────────────
+
+export function requireLecturerOrAdmin(user: MaybeUser): NonNullable<MaybeUser> {
+  assertActive(user);
+  const allowed: UserRole[] = ['lecturer', 'hod', 'admin'];
+  if (!allowed.includes(user.role)) error(403, 'Lecturer or Admin access required.');
+  return user;
+}
+
+export function requireInvigilatorOrAdmin(user: MaybeUser): NonNullable<MaybeUser> {
+  assertActive(user);
+  const allowed: UserRole[] = ['invigilator', 'admin'];
+  if (!allowed.includes(user.role)) error(403, 'Invigilator or Admin access required.');
+  return user;
+}
+
+export function requireStudentOrAdmin(user: MaybeUser): NonNullable<MaybeUser> {
+  assertActive(user);
+  const allowed: UserRole[] = ['student', 'admin'];
+  if (!allowed.includes(user.role)) error(403, 'Student or Admin access required.');
+  return user;
+}
+
+export function requireHodOrAdmin(user: MaybeUser): NonNullable<MaybeUser> {
+  assertActive(user);
+  const allowed: UserRole[] = ['hod', 'admin'];
+  if (!allowed.includes(user.role)) error(403, 'HOD or Admin access required.');
+  return user;
+}
+
+export function requireDeanOrAdmin(user: MaybeUser): NonNullable<MaybeUser> {
+  assertActive(user);
+  const allowed: UserRole[] = ['dean', 'admin'];
+  if (!allowed.includes(user.role)) error(403, 'Dean or Admin access required.');
+  return user;
+}
+
+export function requireExamOfficerOrAdmin(user: MaybeUser): NonNullable<MaybeUser> {
+  assertActive(user);
+  const allowed: UserRole[] = ['exam_officer', 'admin'];
+  if (!allowed.includes(user.role)) error(403, 'Exam Officer or Admin access required.');
+  return user;
+}
+
+export function requireVcDvcOrAdmin(user: MaybeUser): NonNullable<MaybeUser> {
+  assertActive(user);
+  const allowed: UserRole[] = ['vc_dvc', 'admin'];
+  if (!allowed.includes(user.role)) error(403, 'VC/DVC or Admin access required.');
+  return user;
+}
+
 // ── Multi-role guards (OR semantics) ─────────────────────────────────────────
 
 /** Routes accessible by admin OR exam officer (e.g. exam schedule management). */
