@@ -3,22 +3,28 @@
   import { page } from '$app/stores';
   import { getContext } from 'svelte';
   import { ROLE_CONTEXT_KEY } from '$lib/constants/context';
-  import { Home, ArrowLeft, SearchX, ShieldAlert, Bug, Frown, Clock, User, Users, GraduationCap, UserCog } from '@lucide/svelte';
+  import { Home, ArrowLeft, SearchX, ShieldAlert, Bug, Frown, Clock, User, Users, GraduationCap, UserCog,
+    Crown, ClipboardList, Building2,
+   } from '@lucide/svelte';
   import { onMount } from 'svelte';
 
   // Get role from context (set in layout files)
   const contextRole = getContext<string | undefined>(ROLE_CONTEXT_KEY);
   
   // Fallback to route detection
-  let currentRole = $derived.by(() => {
-    if (contextRole) return contextRole;
-    const path = $page.url.pathname;
-    if (path.startsWith('/admin')) return 'admin';
-    if (path.startsWith('/lecturer')) return 'lecturer';
-    if (path.startsWith('/invigilator')) return 'invigilator';
-    if (path.startsWith('/student')) return 'student';
-    return 'default';
-  });
+let currentRole = $derived.by(() => {
+  if (contextRole) return contextRole;
+  const path = $page.url.pathname;
+  if (path.startsWith('/admin'))        return 'admin';
+  if (path.startsWith('/lecturer'))     return 'lecturer';
+  if (path.startsWith('/hod'))          return 'hod';
+  if (path.startsWith('/dean'))         return 'dean';
+  if (path.startsWith('/exam-officer')) return 'exam_officer';
+  if (path.startsWith('/vc-dvc'))       return 'vc_dvc';
+  if (path.startsWith('/invigilator'))  return 'invigilator';
+  if (path.startsWith('/student'))      return 'student';
+  return 'default';
+});
 
   // Role-specific configurations
   const roleConfig = {
@@ -58,6 +64,42 @@
       homeRoute: '/student',
       titlePrefix: 'Student'
     },
+    hod: {
+    icon: Users,
+    label: 'HOD',
+    color: '#7c3aed',
+    colorVar: 'var(--hod-accent, #7c3aed)',
+    bgVar: 'var(--hod-accent-bg, rgba(124,58,237,0.1))',
+    homeRoute: '/hod',
+    titlePrefix: 'Head of Department'
+  },
+  dean: {
+    icon: Building2,
+    label: 'Dean',
+    color: '#0ea5e9',
+    colorVar: 'var(--dean-accent, #0ea5e9)',
+    bgVar: 'var(--dean-accent-bg, rgba(14,165,233,0.1))',
+    homeRoute: '/dean',
+    titlePrefix: 'Dean'
+  },
+  exam_officer: {
+    icon: ClipboardList,
+    label: 'Exam Officer',
+    color: '#f97316',
+    colorVar: 'var(--exam-officer-accent, #f97316)',
+    bgVar: 'var(--exam-officer-accent-bg, rgba(249,115,22,0.1))',
+    homeRoute: '/exam-officer',
+    titlePrefix: 'Exam Officer'
+  },
+  vc_dvc: {
+    icon: Crown,
+    label: 'VC / DVC',
+    color: '#e11d48',
+    colorVar: 'var(--vc-dvc-accent, #e11d48)',
+    bgVar: 'var(--vc-dvc-accent-bg, rgba(225,29,72,0.1))',
+    homeRoute: '/vc-dvc',
+    titlePrefix: 'VC/DVC'
+  },
     default: {
       icon: Home,
       label: 'Home',
@@ -430,7 +472,8 @@
     }));
 
     // Handle retryAfter countdown for 429 errors
-    const rawRetry = ($page.error as any)?.retryAfter;
+   // After — SvelteKit puts the error() body on $page.error:
+const rawRetry = $page.error?.retryAfter;
     if (status === 429 && rawRetry) {
       retryAfter = typeof rawRetry === 'number' ? rawRetry : parseInt(rawRetry, 10);
       if (!isNaN(retryAfter) && retryAfter > 0) {

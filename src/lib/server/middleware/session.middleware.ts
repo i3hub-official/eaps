@@ -14,8 +14,17 @@ export async function sessionMiddleware(event: RequestEvent): Promise<void> {
   try {
     event.locals.user = await validateSession(token);
   } catch (err) {
-    // DB is down or query timed out — degrade gracefully.
     console.error('[Auth] validateSession failed (treating as unauthenticated):', err);
     event.locals.user = null;
+  }
+
+  // Prevent authenticated pages from being served from bfcache.
+  // Without this, hitting the back button after logout (or offline→online)
+  // restores a cached dashboard from the browser without hitting the server.
+  if (event.locals.user) {
+    event.setHeaders({
+      'Cache-Control': 'no-store, no-cache, must-revalidate, private',
+      'Pragma':        'no-cache',
+    });
   }
 }

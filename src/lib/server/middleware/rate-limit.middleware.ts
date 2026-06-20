@@ -1,35 +1,30 @@
 // src/lib/server/middleware/rate-limit.middleware.ts
 
+import { dev } from '$app/environment';
+import { error } from '@sveltejs/kit';
 import type { RequestEvent } from '@sveltejs/kit';
 import { RetryAfterRateLimiter } from 'sveltekit-rate-limiter/server';
 
 // ─── Route-specific limiters ──────────────────────────────────────────────────
-// Each limiter is a singleton — they hold the in-memory TTL cache.
-// Rates are defined as [number, unit] where unit is:
-// 's' | 'm' | 'h' | 'd' | 'w' | 'month' | '15m' | '30m' | '60m' | '6h' | '12h'
 
-/** Face verification/enroll — tight limit, high-value target for brute force */
 const faceLimiter = new RetryAfterRateLimiter({
-  IP:   [1000, '15m'],  // 10 attempts per IP per 15 minutes
-  IPUA: [1000,  '15m'],  // 5 attempts per IP+UserAgent per 15 minutes
+  IP:   [10, '15m'],
+  IPUA: [5,  '15m'],
 });
 
-/** Exam actions: answer, start, submit — prevent answer-flooding */
 const examLimiter = new RetryAfterRateLimiter({
-  IP:   [1000, 'm'],   // 120 req/min per IP  (2/sec headroom for rapid MCQ clicks)
-  IPUA: [1000, 'm'],
+  IP:   [120, 'm'],
+  IPUA: [120, 'm'],
 });
 
-/** Auth routes: login, register, forgot, reset */
 const authLimiter = new RetryAfterRateLimiter({
-  IP:   [1000, '15m'],  // 10 attempts per IP per 15 min
-  IPUA: [1000,  '15m'],
+  IP:   [10, '15m'],
+  IPUA: [10, '15m'],
 });
 
-/** General API catch-all — anything under /api/ not matched above */
 const generalApiLimiter = new RetryAfterRateLimiter({
-  IP:   [1000, 'm'],    // 60 req/min per IP
-  IPUA: [1000, 'm'],
+  IP:   [60, 'm'],
+  IPUA: [60, 'm'],
 });
 
 // ─── Path matchers ────────────────────────────────────────────────────────────
@@ -71,10 +66,13 @@ const LIMITERS: Array<{
 export async function rateLimitMiddleware(
   event: RequestEvent
 ): Promise<Response | null> {
+  if (dev) return null;
+
   const { pathname } = event.url;
+  const isApiRoute = pathname.startsWith('/api/');
 
   const matched = LIMITERS.find(({ match }) => match(pathname));
-  if (!matched) return null; // No limiter for this path — pass through
+  if (!matched) return null;
 
   const status = await matched.limiter.check(event);
 
@@ -84,20 +82,29 @@ export async function rateLimitMiddleware(
       `Retry after ${status.retryAfter}s`
     );
 
-    return new Response(
-      JSON.stringify({
-        error: 'Too many requests',
-        retryAfter: status.retryAfter,
-      }),
-      {
-        status: 429,
-        headers: {
-          'Content-Type': 'application/json',
-          'Retry-After': String(status.retryAfter),
-        },
-      }
-    );
+    // API routes get raw JSON (consumed by fetch callers, not the browser)
+    if (isApiRoute) {
+      return new Response(
+        JSON.stringify({
+          error: 'Too many requests',
+          retryAfter: status.retryAfter,
+        }),
+        {
+          status: 429,
+          headers: {
+            'Content-Type': 'application/json',
+            'Retry-After': String(status.retryAfter),
+          },
+        }
+      );
+    }
+
+    // Page routes → throw SvelteKit error so +error.svelte renders it
+    error(429, {
+      message: 'Too many requests',
+      retryAfter: status.retryAfter,
+    } as any);
   }
 
-  return null; // Not limited — continue
+  return null;
 }

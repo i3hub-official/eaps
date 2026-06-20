@@ -1,0 +1,431 @@
+/* src/lib/styles/portals.css
+   Design tokens for HOD, Dean, Exam Officer, VC/DVC portals.
+   Each portal imports this and overrides --p-* with its own accent.
+*/
+
+/* ── HOD  (amber) ─────────────────────────────── */
+:root[data-portal="hod"] {
+  --p-accent:       #f59e0b;
+  --p-accent-dim:   rgba(245,158,11,.12);
+  --p-accent-hover: #d97706;
+  --p-accent-text:  #92400e;
+}
+
+/* ── Dean  (emerald) ──────────────────────────── */
+:root[data-portal="dean"] {
+  --p-accent:       #10b981;
+  --p-accent-dim:   rgba(16,185,129,.12);
+  --p-accent-hover: #059669;
+  --p-accent-text:  #065f46;
+}
+
+/* ── Exam Officer  (sky) ──────────────────────── */
+:root[data-portal="exam-officer"] {
+  --p-accent:       #0ea5e9;
+  --p-accent-dim:   rgba(14,165,233,.12);
+  --p-accent-hover: #0284c7;
+  --p-accent-text:  #0c4a6e;
+}
+
+/* ── VC / DVC  (violet) ───────────────────────── */
+:root[data-portal="vc-dvc"] {
+  --p-accent:       #8b5cf6;
+  --p-accent-dim:   rgba(139,92,246,.12);
+  --p-accent-hover: #7c3aed;
+  --p-accent-text:  #4c1d95;
+}
+
+/* ── Shared portal layout primitives ─────────────────────────────────────── */
+
+.portal-shell {
+  display: flex;
+  min-height: 100vh;
+  background: var(--color-bg);
+}
+
+/* Sidebar */
+.sidebar {
+  width: 240px;
+  flex-shrink: 0;
+  background: var(--color-surface);
+  border-right: 1px solid var(--color-border);
+  display: flex;
+  flex-direction: column;
+  position: sticky;
+  top: 0;
+  height: 100vh;
+  overflow-y: auto;
+}
+
+.sidebar-logo {
+  display: flex;
+  align-items: center;
+  gap: .75rem;
+  padding: 1.25rem 1.125rem;
+  border-bottom: 1px solid var(--color-border);
+  text-decoration: none;
+}
+
+.sidebar-logo-icon {
+  width: 34px;
+  height: 34px;
+  border-radius: .5rem;
+  background: var(--p-accent-dim);
+  color: var(--p-accent);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.sidebar-logo-text {
+  display: flex;
+  flex-direction: column;
+  line-height: 1.2;
+}
+
+.sidebar-logo-title {
+  font-size: .8rem;
+  font-weight: 800;
+  color: var(--color-text);
+}
+
+.sidebar-logo-role {
+  font-size: .68rem;
+  color: var(--p-accent);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: .04em;
+}
+
+.sidebar-nav {
+  flex: 1;
+  padding: .75rem .625rem;
+  display: flex;
+  flex-direction: column;
+  gap: .125rem;
+}
+
+.nav-section {
+  margin-top: .875rem;
+  margin-bottom: .25rem;
+  padding: 0 .5rem;
+  font-size: .64rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: .08em;
+  color: var(--color-muted);
+}
+
+.nav-link {
+  display: flex;
+  align-items: center;
+  gap: .625rem;
+  padding: .525rem .75rem;
+  border-radius: .5rem;
+  font-size: .82rem;
+  font-weight: 500;
+  color: var(--color-muted);
+  text-decoration: none;
+  transition: background .12s, color .12s;
+}
+
+.nav-link:hover {
+  background: var(--color-bg);
+  color: var(--color-text);
+}
+
+.nav-link.active {
+  background: var(--p-accent-dim);
+  color: var(--p-accent);
+  font-weight: 600;
+}
+
+.nav-link :global(svg) { flex-shrink: 0; }
+
+.nav-divider {
+  height: 1px;
+  background: var(--color-border);
+  margin: .625rem .5rem;
+}
+
+/* External portal link (HOD → Lecturer) */
+.nav-link.ext {
+  border: 1px dashed var(--color-border);
+  margin-top: .25rem;
+  font-size: .78rem;
+}
+
+.nav-link.ext:hover { border-color: var(--p-accent); }
+
+/* Sidebar footer */
+.sidebar-foot {
+  padding: .875rem .625rem;
+  border-top: 1px solid var(--color-border);
+  display: flex;
+  flex-direction: column;
+  gap: .125rem;
+}
+
+/* Main content */
+.portal-main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.portal-topbar {
+  height: 56px;
+  border-bottom: 1px solid var(--color-border);
+  background: var(--color-surface);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 1.5rem;
+  gap: 1rem;
+  position: sticky;
+  top: 0;
+  z-index: 10;
+}
+
+.topbar-breadcrumb {
+  font-size: .82rem;
+  color: var(--color-muted);
+  display: flex;
+  align-items: center;
+  gap: .4rem;
+}
+
+.topbar-breadcrumb strong { color: var(--color-text); }
+
+.topbar-actions {
+  display: flex;
+  align-items: center;
+  gap: .625rem;
+}
+
+.topbar-avatar {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: var(--p-accent-dim);
+  color: var(--p-accent);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: .78rem;
+  font-weight: 800;
+  text-decoration: none;
+  flex-shrink: 0;
+}
+
+.portal-content {
+  flex: 1;
+  padding: 1.75rem;
+  max-width: 1200px;
+  width: 100%;
+}
+
+/* ── Stat cards ──────────────────────────────────────────────────────────── */
+.stat-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 1rem;
+  margin-bottom: 1.75rem;
+}
+
+.stat-card {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: .875rem;
+  padding: 1.125rem 1.25rem;
+  display: flex;
+  flex-direction: column;
+  gap: .5rem;
+}
+
+.stat-icon {
+  width: 36px;
+  height: 36px;
+  border-radius: .5rem;
+  background: var(--p-accent-dim);
+  color: var(--p-accent);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.stat-value {
+  font-size: 1.6rem;
+  font-weight: 800;
+  color: var(--color-text);
+  line-height: 1;
+}
+
+.stat-label {
+  font-size: .75rem;
+  color: var(--color-muted);
+}
+
+/* ── Read-only table card ─────────────────────────────────────────────────── */
+.table-card {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: .875rem;
+  overflow: hidden;
+}
+
+.table-head-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: .875rem 1.25rem;
+  border-bottom: 1px solid var(--color-border);
+  background: var(--color-bg);
+}
+
+.table-title {
+  font-size: .85rem;
+  font-weight: 700;
+  color: var(--color-text);
+}
+
+.data-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.data-table th {
+  padding: .7rem 1rem;
+  font-size: .7rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: .05em;
+  color: var(--color-muted);
+  text-align: left;
+  border-bottom: 1px solid var(--color-border);
+  background: var(--color-bg);
+}
+
+.data-table td {
+  padding: .75rem 1rem;
+  font-size: .82rem;
+  border-bottom: 1px solid var(--color-border);
+  vertical-align: middle;
+  color: var(--color-text);
+}
+
+.data-table tr:last-child td { border-bottom: none; }
+.data-table tr:hover td { background: var(--color-surface-hover, rgba(0,0,0,.02)); }
+
+.empty-row {
+  text-align: center;
+  color: var(--color-muted);
+  padding: 2.5rem !important;
+}
+
+/* ── Status badge ─────────────────────────────────────────────────────────── */
+.badge {
+  display: inline-flex;
+  align-items: center;
+  gap: .3rem;
+  font-size: .68rem;
+  font-weight: 700;
+  padding: .22rem .6rem;
+  border-radius: 2rem;
+  white-space: nowrap;
+}
+
+.badge-draft      { background:rgba(107,114,128,.1); color:#6b7280; }
+.badge-scheduled  { background:rgba(59,130,246,.1);  color:#3b82f6; }
+.badge-active     { background:rgba(22,163,74,.1);   color:#16a34a; }
+.badge-completed  { background:rgba(99,102,241,.1);  color:#6366f1; }
+.badge-cancelled  { background:rgba(220,38,38,.1);   color:#dc2626; }
+
+/* ── Utility buttons ──────────────────────────────────────────────────────── */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  gap: .4rem;
+  padding: .5rem 1rem;
+  border-radius: .5rem;
+  font-size: .8rem;
+  font-weight: 600;
+  cursor: pointer;
+  font-family: inherit;
+  text-decoration: none;
+  border: none;
+  transition: opacity .15s, transform .15s;
+}
+
+.btn:hover { opacity: .88; transform: translateY(-1px); }
+.btn:active { transform: none; }
+
+.btn-accent { background: var(--p-accent); color: white; }
+.btn-outline { background: transparent; border: 1px solid var(--color-border); color: var(--color-text); }
+.btn-outline:hover { border-color: var(--p-accent); color: var(--p-accent); opacity: 1; }
+.btn-ghost  { background: transparent; border: none; color: var(--color-muted); }
+.btn-ghost:hover { color: var(--color-text); opacity: 1; }
+
+/* ── Page header ──────────────────────────────────────────────────────────── */
+.page-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: 1.5rem;
+  flex-wrap: wrap;
+}
+
+.page-header-text h1 {
+  font-size: 1.15rem;
+  font-weight: 800;
+  color: var(--color-text);
+  margin: 0 0 .25rem;
+}
+
+.page-header-text p {
+  font-size: .8rem;
+  color: var(--color-muted);
+  margin: 0;
+}
+
+/* ── Mobile sidebar toggle ────────────────────────────────────────────────── */
+.mob-toggle {
+  display: none;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border: 1px solid var(--color-border);
+  border-radius: .5rem;
+  background: none;
+  cursor: pointer;
+  color: var(--color-text);
+}
+
+@media (max-width: 768px) {
+  .mob-toggle { display: flex; }
+  .sidebar {
+    position: fixed;
+    left: -260px;
+    top: 0;
+    z-index: 100;
+    transition: left .22s ease;
+    box-shadow: none;
+  }
+  .sidebar.open {
+    left: 0;
+    box-shadow: 4px 0 24px rgba(0,0,0,.18);
+  }
+  .sidebar-overlay {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,.4);
+    z-index: 99;
+  }
+  .sidebar-overlay.open { display: block; }
+  .portal-content { padding: 1.125rem; }
+}
