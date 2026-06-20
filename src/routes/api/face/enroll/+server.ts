@@ -1,32 +1,37 @@
 // src/routes/api/face/enroll/+server.ts
 //
 // Security model:
-//   1. A student cannot re-enroll (already blocked — 409 if descriptor exists).
-//   2. A face cannot be enrolled under MORE THAN ONE student account.
-//      This prevents: sit at Computer A as Student X, enroll face, then sit at
-//      Computer B as Student Y and enroll the same face again.
-//   3. The duplicate check uses the same cosine similarity threshold as
-//      face verification (FACE_THRESHOLDS.match = 0.72) so the bar is
-//      consistent across the whole system.
+//   1. A student cannot re-enroll (409 if descriptor exists).
+//   2. A face cannot be enrolled under more than one account — cross-student
+//      duplicate check runs before save (FACE_THRESHOLDS.match = 0.72).
+//   3. Enrolled descriptors are stored AES-256-GCM encrypted.
+//      getAllDescriptorsExcept() in faces.ts handles decryption transparently,
+//      including the legacy raw-JSON fallback for pre-migration rows.
+//   4. Dimension mismatch during duplicate scan is skipped (different models
+//      cannot be compared). A warning is logged but enrollment proceeds.
 
-import { json, error }    from '@sveltejs/kit';
+import { json, error }      from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
-import { z }              from 'zod';
-import { requireStudent } from '$lib/server/auth/guards.js';
+import { z }                from 'zod';
+import { requireStudent }   from '$lib/server/auth/guards.js';
 import {
   saveFaceDescriptor,
   isFaceEnrolled,
+  getAllDescriptorsExcept,
   cosineSimilarity,
   FACE_THRESHOLDS,
 } from '$lib/server/db/faces.js';
-import { getPrismaClient } from '$lib/server/db/index.js';
+import { getPrismaClient }  from '$lib/server/db/index.js';
 
 const EnrollSchema = z.object({
   descriptor: z
     .array(z.number().finite())
     .min(64,   'Descriptor too short — minimum 64 dimensions')
     .max(2048, 'Descriptor too long — maximum 2048 dimensions')
-    .refine(arr => arr.every(v => !isNaN(v)), 'All descriptor values must be valid numbers'),
+    .refine(
+      arr => arr.every(v => !isNaN(v)),
+      'All descriptor values must be valid numbers',
+    ),
   photo: z
     .string()
     .startsWith('data:', 'Photo must be a base64 data URL')
@@ -35,35 +40,29 @@ const EnrollSchema = z.object({
 
 // ─── Duplicate-face scan ──────────────────────────────────────────────────────
 //
-// Loads every enrolled descriptor and computes cosine similarity against the
-// incoming one. Returns the conflicting studentId if found, null otherwise.
+// Uses getAllDescriptorsExcept() which decrypts every enrolled descriptor
+// via safeDecrypt() in faces.ts. We never touch the raw DB column here.
 //
-// Complexity: O(N × D) where N = enrolled students, D = descriptor dimension.
-// At 5 000 students × 512-d: ~20 MB memory, ~3–10 ms CPU — acceptable for an
-// enrollment endpoint that fires at most once per student per exam period.
+// Complexity: O(N × D) — acceptable for enrollment (fires once per student).
 
 async function findDuplicateFace(
   incomingDescriptor: number[],
-  excludeStudentId:   string,           // don't flag the same student's existing row
+  excludeStudentId:   string,
 ): Promise<{ studentId: string; similarity: number } | null> {
-  const prisma = await getPrismaClient();
-
-  // Pull all existing descriptors except the enrolling student's own row
-  // (which wouldn't exist yet anyway, but be explicit for re-enrollment safety).
-  const rows = await prisma.faceDescriptor.findMany({
-    where:  { studentId: { not: excludeStudentId } },
-    select: { studentId: true, descriptor: true },
-  });
+  const rows = await getAllDescriptorsExcept(excludeStudentId);
 
   for (const row of rows) {
-    const stored: number[] = Array.isArray(row.descriptor)
-      ? (row.descriptor as number[])
-      : JSON.parse(row.descriptor as string);
+    // Skip descriptors from a different model (dimension mismatch)
+    if (row.descriptor.length !== incomingDescriptor.length) {
+      console.warn(
+        `[enroll] dimension mismatch during duplicate scan — ` +
+        `existing student=${row.studentId} ` +
+        `enrolled=${row.descriptor.length}d incoming=${incomingDescriptor.length}d — skipped`,
+      );
+      continue;
+    }
 
-    // Skip dimension mismatch — can't compare embeddings from different models
-    if (stored.length !== incomingDescriptor.length) continue;
-
-    const similarity = cosineSimilarity(incomingDescriptor, stored);
+    const similarity = cosineSimilarity(incomingDescriptor, row.descriptor);
 
     if (similarity >= FACE_THRESHOLDS.match) {
       return { studentId: row.studentId, similarity };
@@ -77,11 +76,11 @@ async function findDuplicateFace(
 
 export const POST: RequestHandler = async ({ request, locals }) => {
   try {
-    const user      = await requireStudent(locals.user);
+    const user      = requireStudent(locals.user);
     const prisma    = await getPrismaClient();
     const studentId = String(user.id);
 
-    // ── 1. Block re-enrollment for this student ──────────────────────────────
+    // ── 1. Block re-enrollment ─────────────────────────────────────────────
     const alreadyEnrolled = await isFaceEnrolled(studentId);
     if (alreadyEnrolled) {
       return json(
@@ -90,13 +89,17 @@ export const POST: RequestHandler = async ({ request, locals }) => {
       );
     }
 
-    // ── 2. Parse + validate body ─────────────────────────────────────────────
+    // ── 2. Parse + validate body ───────────────────────────────────────────
     const body   = await request.json().catch(() => null);
     const parsed = EnrollSchema.safeParse(body);
 
     if (!parsed.success) {
       return json(
-        { ok: false, error: 'Invalid enrollment data', issues: parsed.error.flatten().fieldErrors },
+        {
+          ok:     false,
+          error:  'Invalid enrollment data',
+          issues: parsed.error.flatten().fieldErrors,
+        },
         { status: 400 },
       );
     }
@@ -105,37 +108,36 @@ export const POST: RequestHandler = async ({ request, locals }) => {
 
     console.log(`[enroll] student=${studentId} descriptor_dim=${descriptor.length}`);
 
-    // ── 3. Cross-student duplicate face check ────────────────────────────────
+    // ── 3. Cross-student duplicate face check ──────────────────────────────
     //
-    // This is the critical security gate the original code was missing.
-    // If another account already has a face this similar, reject immediately.
-    // We do NOT tell the student which account it matched — that would be a
-    // privacy leak. A generic error is sufficient.
-
+    // getAllDescriptorsExcept() decrypts each stored descriptor before
+    // returning it. The raw DB column is never accessed here directly.
     const duplicate = await findDuplicateFace(descriptor, studentId);
 
     if (duplicate) {
       console.warn(
         `[enroll] DUPLICATE FACE — student=${studentId} ` +
         `matches existing student=${duplicate.studentId} ` +
-        `similarity=${duplicate.similarity.toFixed(4)}`
+        `similarity=${duplicate.similarity.toFixed(4)}`,
       );
 
       return json(
         {
           ok:    false,
-          error: 'Face enrollment failed: this face has already been registered to another account. ' +
-                 'If you believe this is an error, contact the exams office.',
+          error: 'Face enrollment failed: this face has already been registered ' +
+                 'to another account. If you believe this is an error, contact the exams office.',
           code:  'FACE_ALREADY_REGISTERED',
         },
         { status: 409 },
       );
     }
 
-    // ── 4. Save descriptor ───────────────────────────────────────────────────
+    // ── 4. Encrypt + save descriptor ───────────────────────────────────────
+    //
+    // saveFaceDescriptor() encrypts with AES-256-GCM before writing.
     await saveFaceDescriptor(studentId, descriptor, descriptor.length);
 
-    // ── 5. Save photo (optional) ─────────────────────────────────────────────
+    // ── 5. Save photo (optional) ───────────────────────────────────────────
     if (photo) {
       await prisma.user.update({
         where: { id: studentId },

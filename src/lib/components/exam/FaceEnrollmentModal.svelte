@@ -35,17 +35,10 @@
   let faceDetected    = $state(false);
 
   // ── Gesture state ─────────────────────────────────────────────────────────
-  /** 3 randomly chosen gestures for this session */
   let selected: GestureDefinition[] = [];
   let gestureIndex = $state(0);
   let gesturesDone = $state(0);
-  /** progress bar for current gesture (0-1), driven by GestureTracker */
   let holdProgress = $state(0);
-
-  // FIX 1: tracker is initialised to a no-op default here; it gets replaced
-  // with the correct per-gesture tracker (blink vs hold) inside gestureLoop
-  // when each new gesture step begins. Using a plain default here avoids the
-  // "step is not defined" ReferenceError that was in the original code.
   let tracker = new GestureTracker();
 
   // ── Descriptor collection ─────────────────────────────────────────────────
@@ -105,17 +98,47 @@
     }
   }
 
+  // ── Theme-aware overlay colors ────────────────────────────────────────────
+  // Read computed CSS vars at draw time so the canvas reflects the active theme.
+  function getThemeColors() {
+    const style = getComputedStyle(document.documentElement);
+    // Falls back to dark values if vars are not set (e.g. canvas runs before
+    // the theme is applied — matches the original behaviour exactly).
+    return {
+      overlayBg:   style.getPropertyValue('--fe-overlay-bg').trim()   || 'rgba(10,13,15,0.72)',
+      ringOk:      style.getPropertyValue('--fe-ring-ok').trim()       || '#00c9a7',
+      ringErr:     style.getPropertyValue('--fe-ring-err').trim()      || '#ef4444',
+      ringIdle:    style.getPropertyValue('--fe-ring-idle').trim()     || 'rgba(255,255,255,0.18)',
+      cornerOk:    style.getPropertyValue('--fe-corner-ok').trim()     || 'rgba(0,201,167,0.6)',
+      pillBg:      style.getPropertyValue('--fe-pill-bg').trim()       || 'rgba(10,13,15,0.85)',
+      pillBorder:  style.getPropertyValue('--fe-pill-border').trim()   || 'rgba(255,255,255,0.25)',
+      pillText:    style.getPropertyValue('--fe-pill-text').trim()     || '#ffffff',
+      pillTextOk:  style.getPropertyValue('--fe-pill-text-ok').trim()  || '#00e5b9',
+      badgeWarnBg: style.getPropertyValue('--fe-badge-warn-bg').trim() || 'rgba(239,68,68,0.2)',
+      badgeWarnBd: style.getPropertyValue('--fe-badge-warn-bd').trim() || 'rgba(239,68,68,0.5)',
+      badgeWarnTx: style.getPropertyValue('--fe-badge-warn-tx').trim() || '#fca5a5',
+      badgeOkBg:   style.getPropertyValue('--fe-badge-ok-bg').trim()   || 'rgba(0,201,167,0.15)',
+      badgeOkBd:   style.getPropertyValue('--fe-badge-ok-bd').trim()   || 'rgba(0,201,167,0.4)',
+      badgeOkTx:   style.getPropertyValue('--fe-badge-ok-tx').trim()   || '#00c9a7',
+      badgeIdleBg: style.getPropertyValue('--fe-badge-idle-bg').trim() || 'rgba(255,255,255,0.07)',
+      badgeIdleBd: style.getPropertyValue('--fe-badge-idle-bd').trim() || 'rgba(255,255,255,0.14)',
+      badgeIdleTx: style.getPropertyValue('--fe-badge-idle-tx').trim() || 'rgba(255,255,255,0.5)',
+    };
+  }
+
   // ── Overlay drawing ───────────────────────────────────────────────────────
   function drawOverlay(detected: boolean, multiple: boolean, progress: number, gestureLabel?: string) {
     if (!ctx || !canvas) return;
     const w = canvas.width, h = canvas.height;
     const cx = w / 2, cy = h / 2;
     const rx = w * 0.28, ry = h * 0.44;
+    const c  = getThemeColors();
 
     ctx.clearRect(0, 0, w, h);
 
+    // Dimming mask with oval cutout
     ctx.save();
-    ctx.fillStyle = 'rgba(10,13,15,0.72)';
+    ctx.fillStyle = c.overlayBg;
     ctx.fillRect(0, 0, w, h);
     ctx.globalCompositeOperation = 'destination-out';
     ctx.beginPath();
@@ -123,23 +146,21 @@
     ctx.fill();
     ctx.restore();
 
+    // Oval ring
     ctx.beginPath();
     ctx.ellipse(cx, cy, rx, ry, 0, 0, Math.PI * 2);
-    ctx.strokeStyle = multiple
-      ? '#ef4444'
-      : detected
-        ? '#00c9a7'
-        : 'rgba(255,255,255,0.18)';
+    ctx.strokeStyle = multiple ? c.ringErr : detected ? c.ringOk : c.ringIdle;
     ctx.lineWidth   = detected ? 2.5 : 1.5;
     ctx.stroke();
 
+    // Corner brackets
     const corners: [number, number, [number, number]][] = [
       [cx - rx, cy - ry, [1,  1]],
       [cx + rx, cy - ry, [-1, 1]],
       [cx - rx, cy + ry, [1, -1]],
       [cx + rx, cy + ry, [-1,-1]],
     ];
-    ctx.strokeStyle = multiple ? '#ef4444' : detected ? '#00c9a7' : 'rgba(0,201,167,0.6)';
+    ctx.strokeStyle = multiple ? c.ringErr : detected ? c.ringOk : c.cornerOk;
     ctx.lineWidth   = 2.5;
     ctx.lineCap     = 'round';
     for (const [x, y, [dx, dy]] of corners) {
@@ -150,6 +171,7 @@
       ctx.stroke();
     }
 
+    // Progress arc
     if (progress > 0 && detected && !multiple) {
       ctx.save();
       ctx.beginPath();
@@ -163,6 +185,7 @@
       ctx.restore();
     }
 
+    // Gesture label pill
     if (gestureLabel && !multiple) {
       ctx.save();
       const pillH   = 38;
@@ -175,34 +198,34 @@
       const pillX = cx - pillW / 2;
       ctx.fillStyle   = progress > 0
         ? `rgba(0,201,167,${0.18 + progress * 0.14})`
-        : 'rgba(10,13,15,0.85)';
+        : c.pillBg;
       ctx.strokeStyle = progress > 0
         ? `rgba(0,201,167,${0.6 + progress * 0.3})`
-        : 'rgba(255,255,255,0.25)';
+        : c.pillBorder;
       ctx.lineWidth = 1.5;
       ctx.beginPath();
       ctx.roundRect(pillX, pillY, pillW, pillH, pillH / 2);
       ctx.fill();
       ctx.stroke();
-      ctx.fillStyle    = progress > 0 ? '#00e5b9' : '#ffffff';
+      ctx.fillStyle    = progress > 0 ? c.pillTextOk : c.pillText;
       ctx.textAlign    = 'center';
       ctx.textBaseline = 'middle';
       ctx.fillText(gestureLabel, cx, pillMid);
       ctx.restore();
     }
 
+    // Status badge (top centre)
     {
       const badgeY = h * 0.10;
       if (multiple) {
         ctx.save();
-        ctx.fillStyle    = 'rgba(239,68,68,0.2)';
-        ctx.strokeStyle  = 'rgba(239,68,68,0.5)';
-        ctx.lineWidth    = 1.5;
+        ctx.fillStyle   = c.badgeWarnBg;
+        ctx.strokeStyle = c.badgeWarnBd;
+        ctx.lineWidth   = 1.5;
         ctx.beginPath();
         ctx.roundRect(cx - 110, badgeY - 14, 220, 28, 14);
-        ctx.fill();
-        ctx.stroke();
-        ctx.fillStyle    = '#fca5a5';
+        ctx.fill(); ctx.stroke();
+        ctx.fillStyle    = c.badgeWarnTx;
         ctx.font         = 'bold 12px system-ui';
         ctx.textAlign    = 'center';
         ctx.textBaseline = 'middle';
@@ -210,14 +233,13 @@
         ctx.restore();
       } else if (detected) {
         ctx.save();
-        ctx.fillStyle   = 'rgba(0,201,167,0.15)';
-        ctx.strokeStyle = 'rgba(0,201,167,0.4)';
+        ctx.fillStyle   = c.badgeOkBg;
+        ctx.strokeStyle = c.badgeOkBd;
         ctx.lineWidth   = 1;
         ctx.beginPath();
         ctx.roundRect(cx - 60, badgeY - 14, 120, 28, 14);
-        ctx.fill();
-        ctx.stroke();
-        ctx.fillStyle    = '#00c9a7';
+        ctx.fill(); ctx.stroke();
+        ctx.fillStyle    = c.badgeOkTx;
         ctx.font         = 'bold 12px system-ui';
         ctx.textAlign    = 'center';
         ctx.textBaseline = 'middle';
@@ -225,14 +247,13 @@
         ctx.restore();
       } else {
         ctx.save();
-        ctx.fillStyle   = 'rgba(255,255,255,0.07)';
-        ctx.strokeStyle = 'rgba(255,255,255,0.14)';
+        ctx.fillStyle   = c.badgeIdleBg;
+        ctx.strokeStyle = c.badgeIdleBd;
         ctx.lineWidth   = 1;
         ctx.beginPath();
         ctx.roundRect(cx - 72, badgeY - 14, 144, 28, 14);
-        ctx.fill();
-        ctx.stroke();
-        ctx.fillStyle    = 'rgba(255,255,255,0.5)';
+        ctx.fill(); ctx.stroke();
+        ctx.fillStyle    = c.badgeIdleTx;
         ctx.font         = '600 12px system-ui';
         ctx.textAlign    = 'center';
         ctx.textBaseline = 'middle';
@@ -247,13 +268,10 @@
     if (status !== 'positioning') return;
 
     await runDetect();
-
     const faces = lastResult?.face ?? [];
 
     if (faces.length === 0) {
-      faceDetected    = false;
-      posHoldStart    = null;
-      posHoldProgress = 0;
+      faceDetected = false; posHoldStart = null; posHoldProgress = 0;
       drawOverlay(false, false, 0);
       subline = 'Move closer and centre your face in the oval';
       raf = requestAnimationFrame(positioningLoop);
@@ -261,9 +279,7 @@
     }
 
     if (faces.length > 1) {
-      faceDetected    = false;
-      posHoldStart    = null;
-      posHoldProgress = 0;
+      faceDetected = false; posHoldStart = null; posHoldProgress = 0;
       drawOverlay(false, true, 0);
       subline = 'Only one person allowed';
       raf = requestAnimationFrame(positioningLoop);
@@ -297,15 +313,11 @@
         gestureIndex = 0;
         gesturesDone = 0;
         descriptors  = [];
-
-        // FIX 2: create the correct tracker for the FIRST gesture step
-        tracker = createTrackerForGesture(selected[0].id);
+        tracker      = createTrackerForGesture(selected[0].id);
         holdProgress = 0;
-
-        status   = 'gesture';
-        headline = 'Face Enrollment';
-        subline  = selected[0].label;
-
+        status       = 'gesture';
+        headline     = 'Face Enrollment';
+        subline      = selected[0].label;
         if (raf) cancelAnimationFrame(raf);
         raf = requestAnimationFrame(gestureLoop);
         return;
@@ -325,15 +337,11 @@
     if (status !== 'gesture') return;
 
     await runDetect();
-
-    const faces    = lastResult?.face     ?? [];
-    const gestures = lastResult?.gesture  ?? [];
-
-    console.log('[gestureLoop] faces:', faces.length, 'gestures:', gestures.map((g: any) => g.gesture));
+    const faces    = lastResult?.face    ?? [];
+    const gestures = lastResult?.gesture ?? [];
 
     if (faces.length === 0) {
-      tracker.reset();
-      holdProgress = 0;
+      tracker.reset(); holdProgress = 0;
       drawOverlay(false, false, 0, selected[gestureIndex]?.label);
       subline = 'Keep your face in the oval';
       raf = requestAnimationFrame(gestureLoop);
@@ -341,8 +349,7 @@
     }
 
     if (faces.length > 1) {
-      tracker.reset();
-      holdProgress = 0;
+      tracker.reset(); holdProgress = 0;
       drawOverlay(false, true, 0);
       subline = 'Only one person allowed';
       raf = requestAnimationFrame(gestureLoop);
@@ -350,12 +357,8 @@
     }
 
     const face = faces[0];
+    const g    = selected[gestureIndex];
 
-    // FIX 3: guard against gestureIndex going out of bounds (was "No gesture
-    // at index 0" error that caused infinite rAF spin). This can happen when
-    // gestureIndex gets incremented past selected.length, or when selected[]
-    // is empty because the positioning phase never completed cleanly.
-    const g = selected[gestureIndex];
     if (!g) {
       console.warn('[gestureLoop] gestureIndex out of range:', gestureIndex, '/ selected.length:', selected.length);
       finishEnrollment();
@@ -364,20 +367,15 @@
 
     const confidence = gestureConfidence(g.id, face, gestures);
     const confirmed  = tracker.update(confidence);
-
-    holdProgress = tracker.holdProgress;
+    holdProgress     = tracker.holdProgress;
 
     drawOverlay(true, false, holdProgress, g.label);
     subline = g.label;
 
     if (confirmed) {
-      const embedding = face.embedding
-        ? Array.from(face.embedding as number[])
-        : null;
-
+      const embedding = face.embedding ? Array.from(face.embedding as number[]) : null;
       if (embedding && embedding.length > 0) {
         descriptors.push(embedding);
-        console.log('[gestureLoop] Captured descriptor for', g.id, 'dim:', embedding.length);
       } else {
         console.warn('[gestureLoop] No embedding captured for', g.id);
       }
@@ -389,13 +387,10 @@
         return;
       }
 
-      // FIX 2 (continued): advance index THEN create the tracker for the
-      // NEW gesture. This ensures blink gets its 2-frame tracker and all
-      // hold gestures get the 5-frame tracker, automatically.
       gestureIndex++;
-      tracker = createTrackerForGesture(selected[gestureIndex].id);
+      tracker      = createTrackerForGesture(selected[gestureIndex].id);
       holdProgress = 0;
-      subline = selected[gestureIndex].label;
+      subline      = selected[gestureIndex].label;
     }
 
     raf = requestAnimationFrame(gestureLoop);
@@ -404,53 +399,38 @@
   // ── Submit ────────────────────────────────────────────────────────────────
   function finishEnrollment() {
     if (descriptors.length === 0) {
-      status       = 'error';
-      headline     = 'Enrollment failed';
+      status = 'error'; headline = 'Enrollment failed';
       errorMessage = 'No face captures collected. Please try again.';
-      subline      = errorMessage;
+      subline = errorMessage;
       return;
     }
-
-    status   = 'processing';
-    headline = 'Processing…';
-    subline  = 'Saving your face data…';
+    status = 'processing'; headline = 'Processing…'; subline = 'Saving your face data…';
     stopCamera();
     submitEnrollment();
   }
 
   async function submitEnrollment() {
     const photoDataUrl = await captureAndCompress();
-
     const dim = descriptors[0].length;
     const avg = new Array<number>(dim).fill(0);
-    for (const d of descriptors) {
-      for (let i = 0; i < dim; i++) avg[i] += d[i];
-    }
+    for (const d of descriptors) for (let i = 0; i < dim; i++) avg[i] += d[i];
     for (let i = 0; i < dim; i++) avg[i] /= descriptors.length;
 
     try {
-      const res = await fetch('/api/face/enroll', {
+      const res  = await fetch('/api/face/enroll', {
         method:  'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          descriptor:          avg,
-          embedding_dimension: avg.length,
-          photo:               photoDataUrl,
-        }),
+        body: JSON.stringify({ descriptor: avg, embedding_dimension: avg.length, photo: photoDataUrl }),
       });
-
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? `${res.status}`);
-
-      status   = 'done';
-      headline = 'Enrolled!';
-      subline  = `Face saved (${avg.length}-dim embedding, ${descriptors.length} samples)`;
+      status = 'done'; headline = 'Enrolled!';
+      subline = `Face saved (${avg.length}-dim embedding, ${descriptors.length} samples)`;
       setTimeout(() => onComplete(), 1800);
     } catch (e: any) {
-      status       = 'error';
-      headline     = 'Enrollment failed';
+      status = 'error'; headline = 'Enrollment failed';
       errorMessage = e.message ?? 'Please try again';
-      subline      = errorMessage;
+      subline = errorMessage;
     }
   }
 
@@ -465,11 +445,8 @@
     if (!c) return null;
     c.translate(tw, 0); c.scale(-1, 1);
     c.drawImage(video, 0, 0, tw, th);
-
     let blob: Blob | null = await new Promise(r => cap.toBlob(r, 'image/webp', 0.15));
-    if (!blob || blob.size > 15000) {
-      blob = await new Promise(r => cap.toBlob(r, 'image/jpeg', 0.2));
-    }
+    if (!blob || blob.size > 15000) blob = await new Promise(r => cap.toBlob(r, 'image/jpeg', 0.2));
     if (!blob) return null;
     return new Promise(r => {
       const fr = new FileReader();
@@ -486,57 +463,37 @@
   }
 
   function resetState() {
-    descriptors     = [];
-    gesturesDone    = 0;
-    gestureIndex    = 0;
-    holdProgress    = 0;
-    posHoldProgress = 0;
-    posHoldStart    = null;
-    faceDetected    = false;
-    lastResult      = null;
-    lastDetectAt    = 0;
-    tracker         = new GestureTracker(); // reset to neutral default
-    selected        = [];
+    descriptors = []; gesturesDone = 0; gestureIndex = 0;
+    holdProgress = 0; posHoldProgress = 0; posHoldStart = null;
+    faceDetected = false; lastResult = null; lastDetectAt = 0;
+    tracker = new GestureTracker(); selected = [];
   }
 
   async function init() {
     if (!browser) return;
-
     try {
       const interval = setInterval(() => {
         if (loadingProgress < 88) loadingProgress += 6;
       }, 180);
-
-      if (!human) {
-        human = await modelLoadingPromise;
-      }
-
+      if (!human) human = await modelLoadingPromise;
       clearInterval(interval);
       loadingProgress = 100;
-
       stream = await navigator.mediaDevices.getUserMedia({
         video: { facingMode: 'user', width: { ideal: 640 }, height: { ideal: 480 } },
       });
       video.srcObject = stream;
-
       await new Promise<void>(resolve => {
         const check = () => { if (video.videoWidth) resolve(); else video.addEventListener('loadeddata', check, { once: true }); };
         if (video.readyState >= 2) resolve(); else check();
       });
-
-      canvas.width  = video.videoWidth  || 640;
+      canvas.width = video.videoWidth || 640;
       canvas.height = video.videoHeight || 480;
-      ctx = canvas.getContext('2d');
-
-      status   = 'positioning';
-      headline = 'Position Your Face';
-      subline  = 'Centre your face in the oval';
-
+      ctx    = canvas.getContext('2d');
+      status = 'positioning'; headline = 'Position Your Face'; subline = 'Centre your face in the oval';
       if (raf) cancelAnimationFrame(raf);
       raf = requestAnimationFrame(positioningLoop);
     } catch (e: any) {
-      status       = 'error';
-      headline     = 'Camera error';
+      status = 'error'; headline = 'Camera error';
       errorMessage = e.message?.includes('denied')
         ? 'Allow camera access and retry'
         : e.message?.includes('not found')
@@ -555,11 +512,8 @@
   $effect(() => {
     if (open && status === 'intro') startEnrollment();
     if (!open) {
-      stopCamera();
-      resetState();
-      status          = 'intro';
-      errorMessage    = '';
-      loadingProgress = 0;
+      stopCamera(); resetState();
+      status = 'intro'; errorMessage = ''; loadingProgress = 0;
     }
   });
 
@@ -697,27 +651,15 @@
             <div class="gesture-hint">
               <span class="gesture-icon">
                 {#if selected[gestureIndex]?.icon === 'left'}
-                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
-                    <path d="M15 18l-6-6 6-6"/>
-                  </svg>
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M15 18l-6-6 6-6"/></svg>
                 {:else if selected[gestureIndex]?.icon === 'right'}
-                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
-                    <path d="M9 18l6-6-6-6"/>
-                  </svg>
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M9 18l6-6-6-6"/></svg>
                 {:else if selected[gestureIndex]?.icon === 'blink'}
-                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
-                    <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/>
-                    <circle cx="12" cy="12" r="3"/>
-                  </svg>
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
                 {:else if selected[gestureIndex]?.icon === 'nod'}
-                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
-                    <path d="M12 5v14M5 12l7-7 7 7"/>
-                  </svg>
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 5v14M5 12l7-7 7 7"/></svg>
                 {:else if selected[gestureIndex]?.icon === 'mouth'}
-                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
-                    <circle cx="12" cy="12" r="10"/>
-                    <path d="M8 14s1.5 2 4 2 4-2 4-2"/>
-                  </svg>
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="10"/><path d="M8 14s1.5 2 4 2 4-2 4-2"/></svg>
                 {/if}
               </span>
               <p class="subline gesture-label" aria-live="polite">{currentGestureLabel}</p>
@@ -742,11 +684,160 @@
 {/if}
 
 <style>
+  /* ── Theme tokens ──────────────────────────────────────────────────────────
+     These drive both the CSS UI and the canvas overlay via getThemeColors().
+     Light mode uses softer, semi-transparent surfaces.
+     Dark mode preserves the original deep black aesthetic.
+     The --fe-* vars are scoped to the modal root to avoid polluting globals.
+  ──────────────────────────────────────────────────────────────────────────── */
+  :global(:root),
+  :global([data-theme="light"]) {
+    /* Modal chrome */
+    --fe-modal-bg:     #ffffff;
+    --fe-modal-border: rgba(0, 0, 0, 0.08);
+    --fe-header-border:rgba(0, 0, 0, 0.07);
+    --fe-bottom-border:rgba(0, 0, 0, 0.07);
+
+    /* Text */
+    --fe-title:        #0f172a;
+    --fe-subline:      #64748b;
+    --fe-subline-err:  #dc2626;
+    --fe-subline-ok:   #059669;
+
+    /* Close button */
+    --fe-close-bg:     rgba(0, 0, 0, 0.05);
+    --fe-close-border: rgba(0, 0, 0, 0.08);
+    --fe-close-color:  #64748b;
+    --fe-close-hover:  rgba(0, 0, 0, 0.1);
+
+    /* Intro */
+    --fe-intro-text:        #475569;
+    --fe-intro-strong:      #0f172a;
+    --fe-step-color:        #475569;
+    --fe-step-num-bg:       rgba(0, 201, 167, 0.12);
+    --fe-step-num-border:   rgba(0, 201, 167, 0.3);
+    --fe-step-num-color:    #059669;
+
+    /* Face status pill */
+    --fe-face-pill-bg:      rgba(0, 0, 0, 0.04);
+    --fe-face-pill-border:  rgba(0, 0, 0, 0.08);
+    --fe-face-pill-color:   #64748b;
+    --fe-face-pill-ok-bg:   rgba(0, 201, 167, 0.08);
+    --fe-face-pill-ok-bd:   rgba(0, 201, 167, 0.2);
+    --fe-face-pill-ok-tx:   #059669;
+
+    /* Dots */
+    --fe-dot-idle:     rgba(0, 0, 0, 0.12);
+
+    /* Hold / progress bars */
+    --fe-bar-bg:       rgba(0, 0, 0, 0.08);
+
+    /* Spinner */
+    --fe-spinner-track:#e2e8f0;
+    --fe-spinner-head: rgba(15, 23, 42, 0.35);
+
+    /* Center-state overlay */
+    --fe-center-bg:    rgba(255, 255, 255, 0.88);
+    --fe-center-text:  #64748b;
+
+    /* Canvas overlay colors (read by getThemeColors()) */
+    --fe-overlay-bg:    rgba(248, 250, 252, 0.72);
+    --fe-ring-ok:       #00c9a7;
+    --fe-ring-err:      #ef4444;
+    --fe-ring-idle:     rgba(0, 0, 0, 0.2);
+    --fe-corner-ok:     rgba(0, 201, 167, 0.5);
+    --fe-pill-bg:       rgba(255, 255, 255, 0.92);
+    --fe-pill-border:   rgba(0, 0, 0, 0.12);
+    --fe-pill-text:     #0f172a;
+    --fe-pill-text-ok:  #059669;
+    --fe-badge-warn-bg: rgba(239, 68, 68, 0.12);
+    --fe-badge-warn-bd: rgba(239, 68, 68, 0.35);
+    --fe-badge-warn-tx: #dc2626;
+    --fe-badge-ok-bg:   rgba(0, 201, 167, 0.1);
+    --fe-badge-ok-bd:   rgba(0, 201, 167, 0.3);
+    --fe-badge-ok-tx:   #059669;
+    --fe-badge-idle-bg: rgba(0, 0, 0, 0.06);
+    --fe-badge-idle-bd: rgba(0, 0, 0, 0.1);
+    --fe-badge-idle-tx: rgba(0, 0, 0, 0.4);
+  }
+
+  :global([data-theme="dark"]),
+  :global(.dark) {
+    /* Modal chrome */
+    --fe-modal-bg:     #0f1115;
+    --fe-modal-border: rgba(255, 255, 255, 0.08);
+    --fe-header-border:rgba(255, 255, 255, 0.06);
+    --fe-bottom-border:rgba(255, 255, 255, 0.06);
+
+    /* Text */
+    --fe-title:        #ffffff;
+    --fe-subline:      rgba(255, 255, 255, 0.4);
+    --fe-subline-err:  #ef4444;
+    --fe-subline-ok:   #00c9a7;
+
+    /* Close button */
+    --fe-close-bg:     rgba(255, 255, 255, 0.06);
+    --fe-close-border: rgba(255, 255, 255, 0.08);
+    --fe-close-color:  rgba(255, 255, 255, 0.5);
+    --fe-close-hover:  rgba(255, 255, 255, 0.1);
+
+    /* Intro */
+    --fe-intro-text:       rgba(255, 255, 255, 0.45);
+    --fe-intro-strong:     rgba(255, 255, 255, 0.75);
+    --fe-step-color:       rgba(255, 255, 255, 0.5);
+    --fe-step-num-bg:      rgba(0, 201, 167, 0.15);
+    --fe-step-num-border:  rgba(0, 201, 167, 0.3);
+    --fe-step-num-color:   #00c9a7;
+
+    /* Face status pill */
+    --fe-face-pill-bg:     rgba(255, 255, 255, 0.06);
+    --fe-face-pill-border: rgba(255, 255, 255, 0.1);
+    --fe-face-pill-color:  rgba(255, 255, 255, 0.5);
+    --fe-face-pill-ok-bg:  rgba(0, 201, 167, 0.1);
+    --fe-face-pill-ok-bd:  rgba(0, 201, 167, 0.25);
+    --fe-face-pill-ok-tx:  #00c9a7;
+
+    /* Dots */
+    --fe-dot-idle:     rgba(255, 255, 255, 0.15);
+
+    /* Hold / progress bars */
+    --fe-bar-bg:       rgba(255, 255, 255, 0.1);
+
+    /* Spinner */
+    --fe-spinner-track:rgba(255, 255, 255, 0.08);
+    --fe-spinner-head: rgba(255, 255, 255, 0.4);
+
+    /* Center-state overlay */
+    --fe-center-bg:    rgba(10, 13, 15, 0.85);
+    --fe-center-text:  rgba(255, 255, 255, 0.5);
+
+    /* Canvas overlay colors */
+    --fe-overlay-bg:    rgba(10, 13, 15, 0.72);
+    --fe-ring-ok:       #00c9a7;
+    --fe-ring-err:      #ef4444;
+    --fe-ring-idle:     rgba(255, 255, 255, 0.18);
+    --fe-corner-ok:     rgba(0, 201, 167, 0.6);
+    --fe-pill-bg:       rgba(10, 13, 15, 0.85);
+    --fe-pill-border:   rgba(255, 255, 255, 0.25);
+    --fe-pill-text:     #ffffff;
+    --fe-pill-text-ok:  #00e5b9;
+    --fe-badge-warn-bg: rgba(239, 68, 68, 0.2);
+    --fe-badge-warn-bd: rgba(239, 68, 68, 0.5);
+    --fe-badge-warn-tx: #fca5a5;
+    --fe-badge-ok-bg:   rgba(0, 201, 167, 0.15);
+    --fe-badge-ok-bd:   rgba(0, 201, 167, 0.4);
+    --fe-badge-ok-tx:   #00c9a7;
+    --fe-badge-idle-bg: rgba(255, 255, 255, 0.07);
+    --fe-badge-idle-bd: rgba(255, 255, 255, 0.14);
+    --fe-badge-idle-tx: rgba(255, 255, 255, 0.5);
+  }
+
+  /* ── Modal chrome ─────────────────────────────────────────────────────────── */
   .modal-backdrop {
     position: fixed;
     inset: 0;
     z-index: 100;
-    background: rgba(0, 0, 0, 0.7);
+    background: rgba(0, 0, 0, 0.6);
     backdrop-filter: blur(8px);
     display: flex;
     align-items: center;
@@ -758,11 +849,11 @@
   .modal {
     width: 100%;
     max-width: 420px;
-    background: #0f1115;
+    background: var(--fe-modal-bg);
     border-radius: 1.25rem;
     overflow: hidden;
-    border: 1px solid rgba(255, 255, 255, 0.08);
-    box-shadow: 0 24px 48px rgba(0, 0, 0, 0.5);
+    border: 1px solid var(--fe-modal-border);
+    box-shadow: 0 24px 48px rgba(0, 0, 0, 0.3);
     animation: scale-in 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
     display: flex;
     flex-direction: column;
@@ -773,7 +864,7 @@
     align-items: center;
     justify-content: space-between;
     padding: 1rem 1.25rem;
-    border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+    border-bottom: 1px solid var(--fe-header-border);
   }
 
   .header-left {
@@ -785,7 +876,7 @@
   .modal-header h2 {
     font-size: 0.95rem;
     font-weight: 700;
-    color: #fff;
+    color: var(--fe-title);
     margin: 0;
   }
 
@@ -804,9 +895,9 @@
     width: 32px;
     height: 32px;
     border-radius: 50%;
-    background: rgba(255, 255, 255, 0.06);
-    border: 1px solid rgba(255, 255, 255, 0.08);
-    color: rgba(255, 255, 255, 0.5);
+    background: var(--fe-close-bg);
+    border: 1px solid var(--fe-close-border);
+    color: var(--fe-close-color);
     display: flex;
     align-items: center;
     justify-content: center;
@@ -815,15 +906,16 @@
   }
 
   .close-btn:hover {
-    background: rgba(255, 255, 255, 0.1);
-    color: #fff;
+    background: var(--fe-close-hover);
+    color: var(--fe-title);
   }
 
+  /* ── Camera area ──────────────────────────────────────────────────────────── */
   .cam-wrap {
     position: relative;
     width: 100%;
     aspect-ratio: 4/3;
-    background: #000;
+    background: #000;   /* always black — it's a camera feed */
     overflow: hidden;
   }
 
@@ -844,6 +936,7 @@
     pointer-events: none;
   }
 
+  /* ── Center states (loading / processing / done / error) ─────────────────── */
   .center-state {
     position: absolute;
     inset: 0;
@@ -852,16 +945,16 @@
     align-items: center;
     justify-content: center;
     gap: 0.875rem;
-    background: rgba(10, 13, 15, 0.85);
+    background: var(--fe-center-bg);
     z-index: 10;
   }
 
-  .success-state { background: rgba(10, 13, 15, 0.9); }
-  .error-state   { background: rgba(10, 13, 15, 0.9); }
+  .state-text   { font-size: 0.875rem; color: var(--fe-center-text); margin: 0; }
+  .success-text { color: #00c9a7; font-weight: 600; }
+  .error-text   { color: #ef4444; font-weight: 600; }
 
   .success-ring {
-    width: 64px; height: 64px;
-    border-radius: 50%;
+    width: 64px; height: 64px; border-radius: 50%;
     border: 2px solid rgba(0, 201, 167, 0.3);
     background: rgba(0, 201, 167, 0.1);
     display: flex; align-items: center; justify-content: center;
@@ -869,21 +962,17 @@
   }
 
   .error-ring {
-    width: 64px; height: 64px;
-    border-radius: 50%;
+    width: 64px; height: 64px; border-radius: 50%;
     border: 2px solid rgba(239, 68, 68, 0.3);
     background: rgba(239, 68, 68, 0.1);
     display: flex; align-items: center; justify-content: center;
     animation: scale-in 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
   }
 
-  .state-text    { font-size: 0.875rem; color: rgba(255, 255, 255, 0.5); margin: 0; }
-  .success-text  { color: #00c9a7; font-weight: 600; }
-  .error-text    { color: #ef4444; font-weight: 600; }
-
+  /* ── Progress bar ─────────────────────────────────────────────────────────── */
   .progress-bar {
     width: 200px; height: 4px;
-    background: rgba(255, 255, 255, 0.1);
+    background: var(--fe-bar-bg);
     border-radius: 2px; overflow: hidden;
   }
 
@@ -894,28 +983,30 @@
     transition: width 0.3s ease;
   }
 
+  /* ── Bottom panel ─────────────────────────────────────────────────────────── */
   .bottom {
     padding: 1.25rem;
     display: flex;
     flex-direction: column;
     align-items: center;
     gap: 0.75rem;
-    border-top: 1px solid rgba(255, 255, 255, 0.06);
+    border-top: 1px solid var(--fe-bottom-border);
     min-height: 120px;
   }
 
   .subline {
     font-size: 0.8rem;
-    color: rgba(255, 255, 255, 0.4);
+    color: var(--fe-subline);
     margin: 0;
     text-align: center;
     min-height: 1.3em;
   }
 
-  .subline.error-sub   { color: #ef4444; }
-  .subline.success-sub { color: #00c9a7; }
-  .gesture-label       { font-size: 0.9rem; font-weight: 600; color: #fff; }
+  .subline.error-sub   { color: var(--fe-subline-err); }
+  .subline.success-sub { color: var(--fe-subline-ok); }
+  .gesture-label       { font-size: 0.9rem; font-weight: 600; color: var(--fe-title); }
 
+  /* ── CTA button ───────────────────────────────────────────────────────────── */
   .cta {
     width: 100%;
     padding: 0.85rem;
@@ -934,6 +1025,7 @@
   .cta:hover  { transform: translateY(-1px); box-shadow: 0 6px 20px rgba(21, 128, 61, 0.4); }
   .cta:active { transform: scale(0.98) translateY(0); }
 
+  /* ── Intro ────────────────────────────────────────────────────────────────── */
   .intro-content {
     display: flex; flex-direction: column; align-items: center;
     gap: 0.875rem; width: 100%;
@@ -948,11 +1040,12 @@
   }
 
   .intro-text {
-    font-size: 0.8rem; color: rgba(255, 255, 255, 0.45);
+    font-size: 0.8rem;
+    color: var(--fe-intro-text);
     margin: 0; text-align: center; line-height: 1.6;
   }
 
-  .intro-text strong { color: rgba(255, 255, 255, 0.75); font-weight: 600; }
+  .intro-text strong { color: var(--fe-intro-strong); font-weight: 600; }
 
   .intro-steps {
     display: flex; flex-direction: column; gap: 0.5rem;
@@ -961,17 +1054,19 @@
 
   .step {
     display: flex; align-items: center; gap: 0.625rem;
-    font-size: 0.78rem; color: rgba(255, 255, 255, 0.5);
+    font-size: 0.78rem; color: var(--fe-step-color);
   }
 
   .step-num {
     width: 22px; height: 22px; border-radius: 50%;
-    background: rgba(0, 201, 167, 0.15);
-    border: 1px solid rgba(0, 201, 167, 0.3);
-    color: #00c9a7; font-size: 0.65rem; font-weight: 800;
+    background: var(--fe-step-num-bg);
+    border: 1px solid var(--fe-step-num-border);
+    color: var(--fe-step-num-color);
+    font-size: 0.65rem; font-weight: 800;
     display: flex; align-items: center; justify-content: center; flex-shrink: 0;
   }
 
+  /* ── Gesture panel ────────────────────────────────────────────────────────── */
   .gesture-panel {
     display: flex; flex-direction: column; align-items: center;
     gap: 0.625rem; width: 100%;
@@ -981,7 +1076,7 @@
 
   .dot {
     width: 6px; height: 6px; border-radius: 3px;
-    background: rgba(255, 255, 255, 0.15);
+    background: var(--fe-dot-idle);
     transition: all 0.35s cubic-bezier(0.34, 1.56, 0.64, 1);
   }
 
@@ -991,9 +1086,10 @@
   .gesture-hint { display: flex; align-items: center; gap: 0.5rem; }
   .gesture-icon { color: #00c9a7; display: flex; align-items: center; }
 
+  /* ── Hold bar ─────────────────────────────────────────────────────────────── */
   .hold-bar {
     width: 100%; max-width: 200px; height: 3px;
-    background: rgba(255, 255, 255, 0.1);
+    background: var(--fe-bar-bg);
     border-radius: 999px; overflow: hidden; margin-top: 0.25rem;
   }
 
@@ -1004,6 +1100,7 @@
     transition: width 0.1s linear;
   }
 
+  /* ── Positioning panel ────────────────────────────────────────────────────── */
   .positioning-panel {
     display: flex; flex-direction: column; align-items: center;
     gap: 0.625rem; width: 100%;
@@ -1013,35 +1110,37 @@
   .face-status {
     display: flex; align-items: center; gap: 0.5rem;
     padding: 0.4rem 1rem; border-radius: 999px;
-    background: rgba(255, 255, 255, 0.06);
-    border: 1px solid rgba(255, 255, 255, 0.1);
+    background: var(--fe-face-pill-bg);
+    border: 1px solid var(--fe-face-pill-border);
     font-size: 0.8rem; font-weight: 600;
-    color: rgba(255, 255, 255, 0.5);
+    color: var(--fe-face-pill-color);
     transition: all 0.3s ease;
   }
 
   .face-status.detected {
-    background: rgba(0, 201, 167, 0.1);
-    border-color: rgba(0, 201, 167, 0.25);
-    color: #00c9a7;
+    background: var(--fe-face-pill-ok-bg);
+    border-color: var(--fe-face-pill-ok-bd);
+    color: var(--fe-face-pill-ok-tx);
   }
 
   .searching-dot {
     width: 8px; height: 8px; border-radius: 50%;
-    background: rgba(255, 255, 255, 0.3);
+    background: var(--fe-face-pill-color);
     animation: pulse 1.5s ease-in-out infinite;
   }
 
+  /* ── Spinner ──────────────────────────────────────────────────────────────── */
   .spinner {
     width: 36px; height: 36px;
-    border: 2.5px solid rgba(255, 255, 255, 0.08);
-    border-top-color: rgba(255, 255, 255, 0.4);
+    border: 2.5px solid var(--fe-spinner-track);
+    border-top-color: var(--fe-spinner-head);
     border-radius: 50%;
     animation: spin 0.75s linear infinite;
   }
 
   .spinner.teal { border-top-color: #00c9a7; }
 
+  /* ── Keyframes ────────────────────────────────────────────────────────────── */
   @keyframes spin    { to { transform: rotate(360deg); } }
   @keyframes fade-in { from { opacity: 0; } to { opacity: 1; } }
   @keyframes scale-in {
@@ -1057,9 +1156,16 @@
     50%       { opacity: 0.4; transform: scale(0.8); }
   }
 
+  /* ── Responsive ───────────────────────────────────────────────────────────── */
   @media (max-width: 480px) {
     .modal-backdrop { padding: 0.5rem; }
     .modal { max-width: 100%; border-radius: 1rem; }
     .bottom { padding: 1rem; }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .spinner, .searching-dot, .success-ring, .error-ring,
+    .modal, .modal-backdrop, .intro-content, .positioning-panel,
+    .hold-fill, .progress-fill, .dot { animation: none; transition: none; }
   }
 </style>

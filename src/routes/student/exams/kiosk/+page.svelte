@@ -5,10 +5,11 @@
   import {
     AlertTriangle, CheckCircle, ChevronLeft, ChevronRight,
     Send, Loader2, Clock, User, ArrowLeft, Trophy,
-    XCircle, Eye, EyeOff,
+    XCircle, Eye, EyeOff,Shield, CheckSquare, User as UserIcon,
   } from '@lucide/svelte';
 
   import KioskShell       from '$lib/components/exam/KioskShell.svelte';
+    import FaceVerifyModal from '$lib/components/exam/FaceVerifyModal.svelte';
   import FaceMonitor      from '$lib/components/exam/FaceMonitor.svelte';
   import ViolationWarning from '$lib/components/exam/ViolationWarning.svelte';
   import Watermark        from '$lib/components/exam/Watermark.svelte';
@@ -22,7 +23,34 @@
   let { data }: { data: PageData } = $props();
 
   // ─── Step ─────────────────────────────────────────────────────────────────
-  type KioskStep = 'starting' | 'exam' | 'paused' | 'submitted' | 'results' | 'flagged';
+  type KioskStep = 'lobby' | 'starting' | 'exam' | 'paused' | 'submitted' | 'results' | 'flagged';
+
+
+// ─── Lobby state ──────────────────────────────────────────────────────────
+  type LobbyPhase = 'verify' | 'rules' | 'ready';
+  let lobbyPhase      = $state<LobbyPhase>('verify');
+  let rulesAccepted   = $state(false);
+  let faceVerified    = $state(false);
+  let verifyError     = $state('');
+
+  function onFaceVerifySuccess() {
+    faceVerified = true;
+    lobbyPhase = 'rules';
+  }
+
+  function onFaceVerifyCancel() {
+    // Send them back to the exams list if they cancel verification
+    window.location.href = '/student/exams';
+  }
+
+   async function onRulesAccepted() {
+    rulesAccepted = true;
+    lobbyPhase = 'ready';
+    // Small delay so they see the "ready" state, then start
+    await new Promise(r => setTimeout(r, 800));
+    step = 'starting';
+    await startExam();
+  }
 
   type ClientQuestion = {
     id: string; type: 'mcq' | 'fill_in_the_blank';
@@ -490,6 +518,7 @@
   }
 
   // ─── Lifecycle ─────────────────────────────────────────────────────────────
+  // ─── onMount — go to lobby instead of direct startExam ───────────────────
   onMount(() => {
     isOnline = navigator.onLine;
     window.addEventListener('online',  () => { isOnline = true;  void syncOfflineQueue(); });
@@ -505,7 +534,8 @@
       step = 'flagged';
     } else if (s === 'paused') {
       step = 'paused';
-    } else if ((s === 'in_progress' || s === 'not_started') && data.sessionId) {
+    } else if ((s === 'in_progress') && data.sessionId) {
+      // Resume: skip lobby for in-progress sessions — face was already verified
       sessionId = data.sessionId;
       const stored = loadSession(data.sessionId);
       if (stored) { answers = stored.answers; currentIndex = stored.currentIndex; }
@@ -513,7 +543,8 @@
       startLocalTimer(); startTimerSync(); connectSSE();
       void fetchQuestion(currentIndex);
     } else {
-      void startExam();
+      // Fresh start — go to lobby first
+      step = 'lobby';
     }
 
     return () => {
@@ -557,8 +588,141 @@
   <title>{data.exam.title} — eTest Kiosk</title>
 </svelte:head>
 
+
+<!-- ═══ LOBBY ════════════════════════════════════════════════════════════════ -->
+{#if step === 'lobby'}
+
+  <!-- Phase 1: Face Verification -->
+  {#if lobbyPhase === 'verify'}
+    <div class="lobby-backdrop">
+      <FaceVerifyModal
+        examId={data.examId}
+        onSuccess={onFaceVerifySuccess}
+        onCancel={onFaceVerifyCancel}
+      />
+      <div class="lobby-context">
+        <div class="lobby-context-inner">
+          <div class="lc-icon"><Shield size={20} /></div>
+          <div>
+            <p class="lc-title">Identity Verification Required</p>
+            <p class="lc-sub">Step 1 of 2 — Verify your face to continue</p>
+          </div>
+        </div>
+      </div>
+    </div>
+
+  <!-- Phase 2: Rules -->
+  {:else if lobbyPhase === 'rules'}
+    <div class="lobby-screen">
+      <div class="lobby-card">
+        <div class="lobby-header">
+          <div class="lobby-check verified">
+            <CheckSquare size={18} />
+            <span>Identity Verified</span>
+          </div>
+          <h1 class="lobby-title">Exam Rules & Regulations</h1>
+          <p class="lobby-sub">Read carefully before entering the exam</p>
+        </div>
+
+        <div class="exam-preview">
+          <div class="ep-row">
+            <span class="ep-label">Exam</span>
+            <span class="ep-value">{data.exam.title}</span>
+          </div>
+          <div class="ep-row">
+            <span class="ep-label">Course</span>
+            <span class="ep-value">{data.exam.courseCode}</span>
+          </div>
+          <div class="ep-row">
+            <span class="ep-label">Duration</span>
+            <span class="ep-value">{data.exam.durationMinutes} minutes</span>
+          </div>
+          <div class="ep-row">
+            <span class="ep-label">Questions</span>
+            <span class="ep-value">{data.exam.questionsToPresent}</span>
+          </div>
+          <div class="ep-row">
+            <span class="ep-label">Total marks</span>
+            <span class="ep-value">{data.exam.totalMarks}</span>
+          </div>
+          <div class="ep-row">
+            <span class="ep-label">Pass mark</span>
+            <span class="ep-value">{data.exam.passMark}</span>
+          </div>
+        </div>
+
+        <div class="rules-list">
+          {#each [
+            { icon: '🖥️', rule: 'The exam runs in fullscreen mode. Exiting fullscreen will be logged as a violation.' },
+            { icon: '👁️', rule: 'Your face is monitored throughout the exam. Look directly at your camera.' },
+            { icon: '🚫', rule: 'No switching tabs, opening other windows, or using developer tools.' },
+            { icon: '👤', rule: 'Only one person must be visible to the camera at all times.' },
+            { icon: '📋', rule: 'Do not attempt to copy, screenshot, or record exam content.' },
+            { icon: '⚠️', rule: `You are allowed a maximum of ${data.exam.maxViolations} violations before automatic submission.` },
+            { icon: '✅', rule: 'Ensure you have a stable internet connection before starting.' },
+            { icon: '⏱️', rule: 'The timer will not stop once the exam begins. Submit before time runs out.' },
+            { icon: '🔒', rule: 'Once submitted, you cannot re-enter or change your answers.' },
+          ] as r}
+            <div class="rule-item">
+              <span class="rule-icon">{r.icon}</span>
+              <span class="rule-text">{r.rule}</span>
+            </div>
+          {/each}
+
+          {#if data.exam.instructions}
+            <div class="exam-instructions">
+              <p class="instructions-label">Additional Instructions from Lecturer</p>
+              <p class="instructions-text">{data.exam.instructions}</p>
+            </div>
+          {/if}
+        </div>
+
+        <div class="rules-footer">
+          <label class="accept-label">
+            <input
+              type="checkbox"
+              bind:checked={rulesAccepted}
+              class="accept-checkbox"
+            />
+            <span>
+              I have read and understood the rules. I agree to comply with the examination conduct policy.
+            </span>
+          </label>
+
+          <div class="lobby-actions">
+            <button
+              class="btn-back-lobby"
+              onclick={() => window.location.href = '/student/exams'}
+            >
+              <ArrowLeft size={16} /> Cancel
+            </button>
+            <button
+              class="btn-enter-exam"
+              disabled={!rulesAccepted}
+              onclick={onRulesAccepted}
+            >
+              <Shield size={16} />
+              Enter Exam &amp; Go Fullscreen
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+  <!-- Phase 3: Ready (brief transition) -->
+  {:else if lobbyPhase === 'ready'}
+    <div class="lobby-screen">
+      <div class="lobby-ready">
+        <div class="ready-ring">
+          <CheckSquare size={40} />
+        </div>
+        <p class="ready-text">Starting exam…</p>
+      </div>
+    </div>
+  {/if}
+
 <!-- ═══ STARTING ════════════════════════════════════════════════════════════ -->
-{#if step === 'starting'}
+{:else if step === 'starting'}
   <div class="splash">
     <Loader2 size={36} class="spin" />
     <p>{isResume ? 'Resuming exam…' : 'Starting exam…'}</p>
@@ -609,7 +773,7 @@
           <div class="confirm-keys"><kbd>Y</kbd> confirm &nbsp; <kbd>X</kbd> cancel</div>
           <div class="confirm-actions">
             <button class="btn-cancel" onclick={() => showSubmitConfirm = false} disabled={isSubmitting}>
-              Keep Working <kbd>X</kbd>
+              Return to exam <kbd>X</kbd>
             </button>
             <button class="btn-submit-confirm" onclick={() => void submitExam()} disabled={isSubmitting}>
               {#if isSubmitting}<Loader2 size={15} class="spin" /> Submitting…
@@ -1273,4 +1437,330 @@
 
   :global(.spin) { animation: spin 1s linear infinite; }
   @keyframes spin { to { transform: rotate(360deg); } }
+   /* ── Lobby backdrop (for verify phase) ──────────────────────────────────── */
+  .lobby-backdrop {
+    min-height: 100vh;
+    background: var(--color-bg);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 1rem;
+    position: relative;
+  }
+
+  .lobby-context {
+    position: fixed;
+    top: 1rem;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 200;
+  }
+
+  .lobby-context-inner {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    padding: 0.5rem 1.25rem;
+    background: var(--color-surface);
+    border: 1px solid var(--color-border);
+    border-radius: 999px;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.08);
+  }
+
+  .lc-icon {
+    color: var(--accent, #10b981);
+    display: flex;
+  }
+
+  .lc-title {
+    font-size: 0.82rem;
+    font-weight: 700;
+    color: var(--color-text);
+    margin: 0;
+  }
+
+  .lc-sub {
+    font-size: 0.72rem;
+    color: var(--color-muted);
+    margin: 0;
+  }
+
+  /* ── Lobby screen (rules phase) ─────────────────────────────────────────── */
+  .lobby-screen {
+    min-height: 100vh;
+    background: var(--color-bg);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 2rem 1rem;
+    overflow-y: auto;
+  }
+
+  .lobby-card {
+    width: 100%;
+    max-width: 640px;
+    background: var(--color-surface);
+    border: 1px solid var(--color-border);
+    border-radius: 1.25rem;
+    overflow: hidden;
+    box-shadow: 0 8px 32px rgba(0,0,0,0.06);
+    display: flex;
+    flex-direction: column;
+  }
+
+  .lobby-header {
+    padding: 2rem 2rem 1.25rem;
+    border-bottom: 1px solid var(--color-border);
+  }
+
+  .lobby-check {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    padding: 0.3rem 0.75rem;
+    border-radius: 999px;
+    font-size: 0.72rem;
+    font-weight: 700;
+    margin-bottom: 1rem;
+  }
+
+  .lobby-check.verified {
+    background: color-mix(in srgb, #10b981 10%, transparent);
+    color: #10b981;
+    border: 1px solid color-mix(in srgb, #10b981 25%, transparent);
+  }
+
+  .lobby-title {
+    font-size: 1.35rem;
+    font-weight: 900;
+    color: var(--color-text);
+    margin: 0 0 0.3rem;
+    letter-spacing: -0.02em;
+  }
+
+  .lobby-sub {
+    font-size: 0.85rem;
+    color: var(--color-muted);
+    margin: 0;
+  }
+
+  /* ── Exam preview ────────────────────────────────────────────────────────── */
+  .exam-preview {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr;
+    gap: 0;
+    border-bottom: 1px solid var(--color-border);
+  }
+
+  .ep-row {
+    display: flex;
+    flex-direction: column;
+    gap: 0.2rem;
+    padding: 0.875rem 1.25rem;
+    border-right: 1px solid var(--color-border);
+  }
+
+  .ep-row:last-child,
+  .ep-row:nth-child(3n) {
+    border-right: none;
+  }
+
+  .ep-label {
+    font-size: 0.62rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--color-muted);
+  }
+
+  .ep-value {
+    font-size: 0.92rem;
+    font-weight: 800;
+    color: var(--color-text);
+  }
+
+  /* ── Rules list ─────────────────────────────────────────────────────────── */
+  .rules-list {
+    padding: 1.25rem 2rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.625rem;
+    max-height: 340px;
+    overflow-y: auto;
+    border-bottom: 1px solid var(--color-border);
+  }
+
+  .rule-item {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.75rem;
+    padding: 0.625rem 0.875rem;
+    background: var(--color-bg);
+    border-radius: 0.5rem;
+    border: 1px solid var(--color-border);
+  }
+
+  .rule-icon {
+    font-size: 1rem;
+    flex-shrink: 0;
+    line-height: 1.4;
+  }
+
+  .rule-text {
+    font-size: 0.82rem;
+    color: var(--color-text);
+    line-height: 1.55;
+  }
+
+  .exam-instructions {
+    padding: 0.875rem;
+    background: color-mix(in srgb, var(--accent, #10b981) 6%, var(--color-bg));
+    border: 1px solid color-mix(in srgb, var(--accent, #10b981) 20%, transparent);
+    border-radius: 0.5rem;
+    margin-top: 0.25rem;
+  }
+
+  .instructions-label {
+    font-size: 0.7rem;
+    font-weight: 800;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--accent, #10b981);
+    margin: 0 0 0.375rem;
+  }
+
+  .instructions-text {
+    font-size: 0.82rem;
+    color: var(--color-text);
+    line-height: 1.6;
+    margin: 0;
+    white-space: pre-wrap;
+  }
+
+  /* ── Rules footer ────────────────────────────────────────────────────────── */
+  .rules-footer {
+    padding: 1.25rem 2rem;
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+  }
+
+  .accept-label {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.75rem;
+    cursor: pointer;
+    font-size: 0.82rem;
+    color: var(--color-text);
+    line-height: 1.55;
+    font-weight: 500;
+  }
+
+  .accept-checkbox {
+    width: 18px;
+    height: 18px;
+    flex-shrink: 0;
+    margin-top: 0.1rem;
+    accent-color: var(--accent, #10b981);
+    cursor: pointer;
+  }
+
+  .lobby-actions {
+    display: flex;
+    gap: 0.75rem;
+  }
+
+  .btn-back-lobby {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    padding: 0.75rem 1.25rem;
+    background: var(--color-bg);
+    color: var(--color-text);
+    border: 1.5px solid var(--color-border);
+    border-radius: 0.75rem;
+    font-weight: 700;
+    font-size: 0.875rem;
+    cursor: pointer;
+    font-family: inherit;
+    transition: all 0.15s;
+    white-space: nowrap;
+  }
+
+  .btn-back-lobby:hover {
+    border-color: var(--color-text);
+  }
+
+  .btn-enter-exam {
+    flex: 1;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+    padding: 0.875rem 1.5rem;
+    background: var(--accent, #10b981);
+    color: white;
+    border: none;
+    border-radius: 0.75rem;
+    font-weight: 800;
+    font-size: 0.95rem;
+    cursor: pointer;
+    font-family: inherit;
+    transition: all 0.2s;
+  }
+
+  .btn-enter-exam:hover:not(:disabled) {
+    filter: brightness(0.9);
+    transform: translateY(-1px);
+    box-shadow: 0 6px 20px color-mix(in srgb, var(--accent, #10b981) 35%, transparent);
+  }
+
+  .btn-enter-exam:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+    transform: none;
+  }
+
+  /* ── Ready state ─────────────────────────────────────────────────────────── */
+  .lobby-ready {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 1rem;
+    color: var(--accent, #10b981);
+  }
+
+  .ready-ring {
+    width: 80px;
+    height: 80px;
+    border-radius: 50%;
+    border: 3px solid var(--accent, #10b981);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    animation: scale-in 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
+  }
+
+  .ready-text {
+    font-size: 1rem;
+    font-weight: 700;
+    color: var(--color-text);
+    margin: 0;
+  }
+
+  @keyframes scale-in {
+    from { opacity: 0; transform: scale(0.8); }
+    to   { opacity: 1; transform: scale(1); }
+  }
+
+  @media (max-width: 640px) {
+    .lobby-card { border-radius: 0; min-height: 100vh; }
+    .lobby-header { padding: 1.25rem 1.25rem 1rem; }
+    .rules-list { padding: 1rem 1.25rem; max-height: none; }
+    .rules-footer { padding: 1rem 1.25rem; }
+    .lobby-actions { flex-direction: column; }
+    .btn-back-lobby { width: 100%; justify-content: center; }
+    .exam-preview { grid-template-columns: 1fr 1fr; }
+  }
 </style>

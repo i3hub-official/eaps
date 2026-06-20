@@ -1,29 +1,28 @@
 // src/routes/api/face/clear-verification/+server.ts
-import { json } from '@sveltejs/kit';
+//
+// Clears the face-verification session cookies so the student must
+// re-verify before re-entering a kiosk.
+//
+// IMPORTANT — verification logs are NOT modified here.
+//   FaceVerificationLog rows are an immutable audit trail. A successful
+//   verification that happened is a fact that must stay in the record.
+//   Cookie state and audit state are separate concerns:
+//     • Cookies  → "is this browser session currently verified?"
+//     • Audit log → "did this student pass face verification at time T?"
+//   Never retroactively flip audit rows to false — it corrupts integrity.
+
+import { json }             from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
-import { requireStudent } from '$lib/server/auth/guards.js';
-import { getPrismaClient } from '$lib/server/db/index.js';
+import { requireStudent }   from '$lib/server/auth/guards.js';
 
 export const POST: RequestHandler = async ({ locals, cookies }) => {
-  const user = await requireStudent(locals.user);
-          const prisma = await getPrismaClient();
+  requireStudent(locals.user);
 
-  // Invalidate recent verification logs (soft delete approach)
-  await prisma.faceVerificationLog.updateMany({
-    where: { 
-      studentId: user.id, 
-      success: true,
-      verifiedAt: {
-        gte: new Date(Date.now() - 10 * 60 * 1000) // last 10 min
-      }
-    },
-    data: { success: false },
-  });
+  const cookieOpts = { path: '/' };
 
-  // Clear face verification cookies
-  cookies.delete('face_verified', { path: '/' });
-  cookies.delete('face_verified_at', { path: '/' });
-  cookies.delete('face_similarity_score', { path: '/' });
-  
+  cookies.delete('face_verified',         cookieOpts);
+  cookies.delete('face_verified_at',      cookieOpts);
+  cookies.delete('face_similarity_score', cookieOpts);
+
   return json({ success: true, cleared: true });
 };
