@@ -51,6 +51,11 @@ const keys = [
     note:  '32 hex chars',
   },
   {
+    name: 'FIXED_IV_FACE',
+    value: randHex(16),
+    note: '32 hex chars',
+  },
+  {
     comment: '── Search hash pepper ───────────────────────────────────────',
     name:  'SEARCH_HASH_PEPPER',
     value: randBase64(32),    // 44 base64 chars — well above the 32-char minimum

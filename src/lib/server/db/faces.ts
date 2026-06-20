@@ -104,6 +104,70 @@ export async function logVerification(opts: {
   });
 }
 
+/**
+ * Returns all enrolled descriptors except the given student's own row.
+ * Used by the enrollment endpoint for the cross-student uniqueness scan.
+ */
+export async function getAllDescriptorsExcept(
+  excludeStudentId: string,
+): Promise<Array<{ studentId: string; descriptor: number[] }>> {
+  const prisma = await getPrismaClient();
+
+  const rows = await prisma.faceDescriptor.findMany({
+    where:  { studentId: { not: excludeStudentId } },
+    select: { studentId: true, descriptor: true },
+  });
+
+  return rows.map(r => ({
+    studentId:  r.studentId,
+    descriptor: Array.isArray(r.descriptor)
+      ? (r.descriptor as number[])
+      : JSON.parse(r.descriptor as string),
+  }));
+}
+
+/**
+ * Admin utility: find all pairs of enrolled students whose face descriptors
+ * are above the match threshold. Returns duplicate pairs so admins can
+ * investigate and revoke one of the accounts.
+ *
+ * O(N²) — only call from an admin-authenticated endpoint, not hot paths.
+ */
+export async function findAllDuplicateEnrollments(): Promise<Array<{
+  studentIdA:  string;
+  studentIdB:  string;
+  similarity:  number;
+}>> {
+  const prisma = await getPrismaClient();
+
+  const rows = await prisma.faceDescriptor.findMany({
+    select: { studentId: true, descriptor: true },
+  });
+
+  const parsed = rows.map(r => ({
+    studentId:  r.studentId,
+    descriptor: Array.isArray(r.descriptor)
+      ? (r.descriptor as number[])
+      : (JSON.parse(r.descriptor as string) as number[]),
+  }));
+
+  const duplicates: Array<{ studentIdA: string; studentIdB: string; similarity: number }> = [];
+
+  for (let i = 0; i < parsed.length; i++) {
+    for (let j = i + 1; j < parsed.length; j++) {
+      const a = parsed[i];
+      const b = parsed[j];
+      if (a.descriptor.length !== b.descriptor.length) continue;
+      const sim = cosineSimilarity(a.descriptor, b.descriptor);
+      if (sim >= FACE_THRESHOLDS.match) {
+        duplicates.push({ studentIdA: a.studentId, studentIdB: b.studentId, similarity: sim });
+      }
+    }
+  }
+
+  return duplicates.sort((a, b) => b.similarity - a.similarity);
+}
+
 // ─── Cosine similarity (server-side verify helper) ────────────────────────────
 
 export function cosineSimilarity(a: number[], b: number[]): number {
@@ -123,3 +187,4 @@ export const FACE_THRESHOLDS = {
   match: 0.72,   // cosine ≥ 0.72 → confident same person
   soft:  0.60,   // cosine < 0.60 → likely different person → flag
 } as const;
+
