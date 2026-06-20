@@ -1,28 +1,37 @@
 // src/routes/(auth)/login/+page.server.ts
 import { fail, redirect } from '@sveltejs/kit';
 import type { Actions, PageServerLoad } from './$types';
+import type { UserRole } from '@prisma/client';
 import { findUserByEmail } from '$lib/server/db/users.js';
 import { verifyPassword } from '$lib/server/auth/password.js';
 import { createSession, setSessionCookie, clearSessionCookie } from '$lib/server/auth/session.js';
 import { getPrismaClient } from '$lib/server/db/index.js';
 
-const ROLE_HOME: Record<string, string> = {
-  student:      '/student',
-  lecturer:     '/lecturer',
-  invigilator:  '/invigilator',
-  admin:        '/admin',
-  hod:          '/hod',
-  dean:         '/dean',
-  exam_officer: '/exam-officer',
-  vc_dvc:       '/vc-dvc',
-};
+function roleHome(role: UserRole): string {
+  switch (role) {
+    case 'student':      return '/student';
+    case 'lecturer':     return '/lecturer';
+    case 'invigilator':  return '/invigilator';
+    case 'admin':        return '/admin';
+    case 'hod':          return '/hod';
+    case 'dean':         return '/dean';
+    case 'exam_officer': return '/exam-officer';
+    case 'vc_dvc':       return '/vc-dvc';
+    // TypeScript will error here if a new role is added to the enum
+    // but not handled — exhaustiveness check at compile time
+    default: {
+      const _exhaustive: never = role;
+      return '/';
+    }
+  }
+}
 
 export const load: PageServerLoad = async ({ locals, cookies }) => {
   const user = locals.user;
 
   if (user) {
     if (user.isActive && !user.isSuspended) {
-      redirect(302, ROLE_HOME[user.role] ?? '/');
+      redirect(302, roleHome(user.role as UserRole));
     }
     clearSessionCookie(cookies);
   }
@@ -42,7 +51,7 @@ export const actions: Actions = {
 
     const prisma = await getPrismaClient();
 
-    const user = await findUserByEmail(email);
+    const user    = await findUserByEmail(email);
     const INVALID = fail(401, { error: 'Invalid email or password' });
     if (!user) return INVALID;
 
@@ -67,6 +76,7 @@ export const actions: Actions = {
       request.headers.get('user-agent') ?? ''
     );
     setSessionCookie(cookies, token);
-    redirect(302, ROLE_HOME[freshUser.role] ?? '/');
+
+    redirect(302, roleHome(freshUser.role));
   },
 };

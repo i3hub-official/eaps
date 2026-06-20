@@ -1,21 +1,25 @@
-<!-- src/routes/dean/+layout.svelte -->
+<!-- src/routes/exam-officer/+layout.svelte -->
 <script lang="ts">
   import type { LayoutData } from './$types';
   import { page } from '$app/stores';
-  import { Home, Layers, ClipboardList, BarChart2, Bell, User, LogOut, Menu, X, GraduationCap } from '@lucide/svelte';
+  import {
+    Home, ClipboardList, BarChart2,
+    Bell, User, LogOut, Menu, X
+  } from '@lucide/svelte';
 
   let { data, children }: { data: LayoutData; children: any } = $props();
   let sidebarOpen = $state(false);
 
   const navItems = [
-    { href: '/dean',             label: 'Dashboard',   icon: Home },
-    { href: '/dean/departments', label: 'Departments', icon: Layers },
-    { href: '/dean/exams',       label: 'Exams',       icon: ClipboardList },
-    { href: '/dean/results',     label: 'Results',     icon: BarChart2 },
+    { href: '/exam-officer',          label: 'Dashboard', icon: Home },
+    { href: '/exam-officer/exams',    label: 'Exams',     icon: ClipboardList },
+    { href: '/exam-officer/results',  label: 'Results',   icon: BarChart2 },
   ];
 
   function isActive(href: string) {
-    return href === '/dean' ? $page.url.pathname === '/dean' : $page.url.pathname.startsWith(href);
+    return href === '/exam-officer'
+      ? $page.url.pathname === '/exam-officer'
+      : $page.url.pathname.startsWith(href);
   }
 
   function initials(name: string) {
@@ -24,33 +28,40 @@
 </script>
 
 <svelte:head>
-  <style>:root{--p-accent:#10b981;--p-accent-dim:rgba(16,185,129,.12);--p-accent-hover:#059669;--p-accent-text:#065f46;}</style>
+  <style>:root{--p-accent:#0ea5e9;--p-accent-dim:rgba(14,165,233,.12);--p-accent-hover:#0284c7;--p-accent-text:#0c4a6e;}</style>
 </svelte:head>
 
 <div class="sidebar-overlay" class:open={sidebarOpen} onclick={() => sidebarOpen = false} role="none"></div>
 
 <div class="portal-shell">
   <aside class="sidebar" class:open={sidebarOpen}>
-    <a href="/dean" class="sidebar-logo">
-      <div class="sidebar-logo-icon"><GraduationCap size={17} /></div>
+    <a href="/exam-officer" class="sidebar-logo">
+      <div class="sidebar-logo-icon"><ClipboardList size={17} /></div>
       <div class="sidebar-logo-text">
         <span class="sidebar-logo-title">MOUAU eTest</span>
-        <span class="sidebar-logo-role">Dean Portal</span>
+        <span class="sidebar-logo-role">Exam Officer</span>
       </div>
     </a>
+
     <nav class="sidebar-nav">
       {#each navItems as item}
-        <a href={item.href} class="nav-link" class:active={isActive(item.href)} onclick={() => sidebarOpen = false}>
+        <a
+          href={item.href}
+          class="nav-link"
+          class:active={isActive(item.href)}
+          onclick={() => sidebarOpen = false}
+        >
           <item.icon size={15} />{item.label}
         </a>
       {/each}
     </nav>
+
     <div class="sidebar-foot">
-      <a href="/dean/notifications" class="nav-link" class:active={isActive('/dean/notifications')} onclick={() => sidebarOpen = false}>
+      <a href="/exam-officer/notifications" class="nav-link" class:active={isActive('/exam-officer/notifications')} onclick={() => sidebarOpen = false}>
         <Bell size={15} />Notifications
         {#if data.unreadCount > 0}<span class="notif-badge">{data.unreadCount}</span>{/if}
       </a>
-      <a href="/dean/profile" class="nav-link" class:active={isActive('/dean/profile')}><User size={15} />Profile</a>
+      <a href="/exam-officer/profile" class="nav-link" class:active={isActive('/exam-officer/profile')}><User size={15} />Profile</a>
       <a href="/logout" class="nav-link"><LogOut size={15} />Sign out</a>
     </div>
   </aside>
@@ -61,14 +72,18 @@
         <button class="mob-toggle" onclick={() => sidebarOpen = !sidebarOpen}>
           {#if sidebarOpen}<X size={18} />{:else}<Menu size={18} />{/if}
         </button>
-        <div class="topbar-breadcrumb">Dean Portal &rsaquo; <strong>{data.user?.fullName ?? ''}</strong></div>
+        <div class="topbar-breadcrumb">
+          Exam Officer &rsaquo; <strong>{data.user?.fullName ?? ''}</strong>
+        </div>
       </div>
       <div class="topbar-actions">
-        <a href="/dean/notifications" class="topbar-icon-btn">
+        <a href="/exam-officer/notifications" class="topbar-icon-btn">
           <Bell size={17} />
           {#if data.unreadCount > 0}<span class="topbar-badge">{data.unreadCount}</span>{/if}
         </a>
-        <a href="/dean/profile" class="topbar-avatar">{initials(data.user?.fullName ?? 'D')}</a>
+        <a href="/exam-officer/profile" class="topbar-avatar">
+          {initials(data.user?.fullName ?? 'E')}
+        </a>
       </div>
     </header>
     <main class="portal-content">{@render children()}</main>

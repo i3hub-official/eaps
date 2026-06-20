@@ -1,21 +1,22 @@
-<!-- src/routes/dean/+layout.svelte -->
+<!-- src/routes/vc-dvc/+layout.svelte -->
 <script lang="ts">
   import type { LayoutData } from './$types';
   import { page } from '$app/stores';
-  import { Home, Layers, ClipboardList, BarChart2, Bell, User, LogOut, Menu, X, GraduationCap } from '@lucide/svelte';
+  import { Home, BarChart2, ClipboardList, Bell, User, LogOut, Menu, X, Crown } from '@lucide/svelte';
 
   let { data, children }: { data: LayoutData; children: any } = $props();
   let sidebarOpen = $state(false);
 
   const navItems = [
-    { href: '/dean',             label: 'Dashboard',   icon: Home },
-    { href: '/dean/departments', label: 'Departments', icon: Layers },
-    { href: '/dean/exams',       label: 'Exams',       icon: ClipboardList },
-    { href: '/dean/results',     label: 'Results',     icon: BarChart2 },
+    { href: '/vc-dvc',          label: 'Dashboard', icon: Home },
+    { href: '/vc-dvc/results',  label: 'Results',   icon: BarChart2 },
+    { href: '/vc-dvc/reports',  label: 'Reports',   icon: ClipboardList },
   ];
 
   function isActive(href: string) {
-    return href === '/dean' ? $page.url.pathname === '/dean' : $page.url.pathname.startsWith(href);
+    return href === '/vc-dvc'
+      ? $page.url.pathname === '/vc-dvc'
+      : $page.url.pathname.startsWith(href);
   }
 
   function initials(name: string) {
@@ -24,33 +25,40 @@
 </script>
 
 <svelte:head>
-  <style>:root{--p-accent:#10b981;--p-accent-dim:rgba(16,185,129,.12);--p-accent-hover:#059669;--p-accent-text:#065f46;}</style>
+  <style>:root{--p-accent:#8b5cf6;--p-accent-dim:rgba(139,92,246,.12);--p-accent-hover:#7c3aed;--p-accent-text:#4c1d95;}</style>
 </svelte:head>
 
 <div class="sidebar-overlay" class:open={sidebarOpen} onclick={() => sidebarOpen = false} role="none"></div>
 
 <div class="portal-shell">
   <aside class="sidebar" class:open={sidebarOpen}>
-    <a href="/dean" class="sidebar-logo">
-      <div class="sidebar-logo-icon"><GraduationCap size={17} /></div>
+    <a href="/vc-dvc" class="sidebar-logo">
+      <div class="sidebar-logo-icon"><Crown size={17} /></div>
       <div class="sidebar-logo-text">
         <span class="sidebar-logo-title">MOUAU eTest</span>
-        <span class="sidebar-logo-role">Dean Portal</span>
+        <span class="sidebar-logo-role">VC / DVC Portal</span>
       </div>
     </a>
+
     <nav class="sidebar-nav">
       {#each navItems as item}
-        <a href={item.href} class="nav-link" class:active={isActive(item.href)} onclick={() => sidebarOpen = false}>
+        <a
+          href={item.href}
+          class="nav-link"
+          class:active={isActive(item.href)}
+          onclick={() => sidebarOpen = false}
+        >
           <item.icon size={15} />{item.label}
         </a>
       {/each}
     </nav>
+
     <div class="sidebar-foot">
-      <a href="/dean/notifications" class="nav-link" class:active={isActive('/dean/notifications')} onclick={() => sidebarOpen = false}>
+      <a href="/vc-dvc/notifications" class="nav-link" class:active={isActive('/vc-dvc/notifications')} onclick={() => sidebarOpen = false}>
         <Bell size={15} />Notifications
         {#if data.unreadCount > 0}<span class="notif-badge">{data.unreadCount}</span>{/if}
       </a>
-      <a href="/dean/profile" class="nav-link" class:active={isActive('/dean/profile')}><User size={15} />Profile</a>
+      <a href="/vc-dvc/profile" class="nav-link" class:active={isActive('/vc-dvc/profile')}><User size={15} />Profile</a>
       <a href="/logout" class="nav-link"><LogOut size={15} />Sign out</a>
     </div>
   </aside>
@@ -61,14 +69,18 @@
         <button class="mob-toggle" onclick={() => sidebarOpen = !sidebarOpen}>
           {#if sidebarOpen}<X size={18} />{:else}<Menu size={18} />{/if}
         </button>
-        <div class="topbar-breadcrumb">Dean Portal &rsaquo; <strong>{data.user?.fullName ?? ''}</strong></div>
+        <div class="topbar-breadcrumb">
+          VC / DVC &rsaquo; <strong>{data.user?.fullName ?? ''}</strong>
+        </div>
       </div>
       <div class="topbar-actions">
-        <a href="/dean/notifications" class="topbar-icon-btn">
+        <a href="/vc-dvc/notifications" class="topbar-icon-btn">
           <Bell size={17} />
           {#if data.unreadCount > 0}<span class="topbar-badge">{data.unreadCount}</span>{/if}
         </a>
-        <a href="/dean/profile" class="topbar-avatar">{initials(data.user?.fullName ?? 'D')}</a>
+        <a href="/vc-dvc/profile" class="topbar-avatar">
+          {initials(data.user?.fullName ?? 'V')}
+        </a>
       </div>
     </header>
     <main class="portal-content">{@render children()}</main>
