@@ -14,7 +14,7 @@
     Calendar, Clock, UserCheck, UserX, UserPlus, Bell,
     Shield, FileBarChart, BrainCircuit, BookMarked, Monitor,
     EyeOff, Fingerprint, Command, Search, Home,
-    ChevronRight, Settings, Pin, Key, PlayCircle, Plus, User, Database, PlusCircle
+    ChevronRight, Settings, Pin, Key, PlayCircle, Plus, User, Database, PlusCircle,
   } from '@lucide/svelte';
 
    import { setContext } from 'svelte';
@@ -238,6 +238,13 @@
         { href: '/admin/api-keys', label: 'Create Key', icon: PlusCircle },
         { href: '/admin/api-keys/playground', label: 'Playground', icon: PlayCircle },
       ],
+    },
+
+    {
+      href: '/seed',
+      label: 'Setup',
+      icon: Settings,
+      groupKey: 'setup'
     },
   ] as const;
 
