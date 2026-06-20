@@ -20,12 +20,10 @@ const ROLE_HOME: Record<string, string> = {
 export const load: PageServerLoad = async ({ locals, cookies }) => {
   const user = locals.user;
 
-  // Valid, active session → send them home
   if (user) {
     if (user.isActive && !user.isSuspended) {
       redirect(302, ROLE_HOME[user.role] ?? '/');
     }
-    // Session exists but account is suspended/inactive → clear cookie and show login
     clearSessionCookie(cookies);
   }
 
@@ -48,7 +46,6 @@ export const actions: Actions = {
     const INVALID = fail(401, { error: 'Invalid email or password' });
     if (!user) return INVALID;
 
-    // Re-verify account state from DB (not from stale locals)
     const freshUser = await prisma.user.findUnique({
       where: { id: user.id },
       select: { isActive: true, isSuspended: true, passwordHash: true, role: true },
@@ -61,8 +58,8 @@ export const actions: Actions = {
     const valid = await verifyPassword(password, freshUser.passwordHash);
     if (!valid) return INVALID;
 
-    // Invalidate any existing sessions for this user before creating a new one
-    await prisma.session.deleteMany({ where: { userId: user.id } });
+    // Invalidate any existing sessions before creating a new one
+    await prisma.authSession.deleteMany({ where: { userId: user.id } });
 
     const token = await createSession(
       user.id,
