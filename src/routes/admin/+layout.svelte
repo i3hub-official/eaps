@@ -591,19 +591,7 @@
       {@render children()}
     </div>
 
-    <!-- Quick actions -->
-    <div class="quick-actions" class:qa-visible={showQuickActions}>
-      <button class="qa-btn" onclick={() => goto('/admin/exams/create')}><Plus     size={15} /> New Exam</button>
-      <button class="qa-btn" onclick={() => goto('/admin/users/create')}><UserPlus size={15} /> Add User</button>
-      <button class="qa-btn" onclick={() => goto('/admin/reports')}     ><BarChart3 size={15} /> Reports</button>
-      <button
-        class="qa-toggle"
-        onclick={() => setShowQuickActions(!showQuickActions)}
-        title={showQuickActions ? 'Hide quick actions' : 'Show quick actions'}
-      >
-        {#if showQuickActions}▼{:else}▲{/if}
-      </button>
-    </div>
+    
   </main>
 
   <!-- ── Sign-out modal ────────────────────────────────────────── -->
@@ -920,32 +908,6 @@
 
   /* ── Page body ───────────────────────────────────────────────── */
   .page-body { flex: 1; padding: 2rem 1.5rem; }
-
-  /* ── Quick actions ───────────────────────────────────────────── */
-  .quick-actions {
-    position: fixed; bottom: 1.5rem; right: 1.5rem;
-    display: flex; flex-direction: column; gap: .5rem;
-    z-index: 40; align-items: flex-end;
-    transform: translateX(140px); transition: transform .25s ease;
-  }
-  .quick-actions.qa-visible { transform: translateX(0); }
-  .qa-btn {
-    display: flex; align-items: center; gap: .5rem;
-    padding: .55rem 1rem; background: #3b82f6;
-    border: none; border-radius: 2rem; color: white;
-    font-size: .78rem; font-weight: 600; cursor: pointer; font-family: inherit;
-    box-shadow: 0 4px 12px rgba(59, 130, 246, .35);
-    transition: all .15s;
-  }
-  .qa-btn:hover { background: #1d4ed8; transform: translateY(-2px); }
-  .qa-toggle {
-    width: 30px; height: 30px; border-radius: 50%;
-    background: var(--color-surface); border: 1px solid var(--color-border);
-    display: flex; align-items: center; justify-content: center;
-    cursor: pointer; font-size: .65rem; color: var(--color-muted);
-    box-shadow: 0 2px 8px rgba(0,0,0,.1);
-    align-self: flex-end;
-  }
 
   /* ── Modals ──────────────────────────────────────────────────── */
   .modal-bg {

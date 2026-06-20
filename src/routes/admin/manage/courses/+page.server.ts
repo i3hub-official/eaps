@@ -10,7 +10,7 @@ export const load: PageServerLoad = async ({ locals }) => {
           const prisma = await getPrismaClient();
 
 
-  const [courses, departments] = await Promise.all([
+  const [courses, departments, levels] = await Promise.all([
     prisma.course.findMany({
       include: {
         department: { include: { college: true } }
@@ -20,10 +20,14 @@ export const load: PageServerLoad = async ({ locals }) => {
     prisma.department.findMany({
       include: { college: true },
       orderBy: { name: 'asc' }
-    })
+    }),
+    prisma.level.findMany({ 
+      orderBy: { level: 'asc' }
+    }),
+
   ]);
 
-  return { courses, departments };
+  return { courses, departments, levels };
 };
 
 export const actions: Actions = {

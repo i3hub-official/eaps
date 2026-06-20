@@ -50,7 +50,10 @@
     };
   }
 
-  const LEVELS = [100, 200, 300, 400, 500, 600];
+   // ── Levels (DB-aware, lecturer-assigned) ──────────────────────────────────
+  const LEVELS = $derived(
+    (data.levels ?? []).map(l => l.value).sort((a, b) => a - b)
+  );
 </script>
 
 <svelte:head><title>Manage Courses — MOUAU eTest Admin</title></svelte:head>

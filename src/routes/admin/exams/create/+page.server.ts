@@ -6,6 +6,7 @@ import { getPrismaClient } from '$lib/server/db/index.js';
 
 export const load: PageServerLoad = async ({ locals, url }) => {
   await requireAdmin(locals.user);
+  const prisma = await getPrismaClient();
 
   const emulateLecturerId = url.searchParams.get('emulate');
 
@@ -55,7 +56,8 @@ export const load: PageServerLoad = async ({ locals, url }) => {
 
 export const actions: Actions = {
   default: async ({ request, locals }) => {
-    if (!locals.user || locals.user.role !== 'admin') return fail(403);
+    await requireAdmin(locals.user);
+  const prisma = await getPrismaClient();
 
     const fd = await request.formData();
     const get = (k: string) => String(fd.get(k) ?? '').trim();
