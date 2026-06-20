@@ -14,20 +14,26 @@ export const load: PageServerLoad = async (event) => {
 
   const [courses, levels, departments, sessions, activeSemester] = await Promise.all([
     getCoursesForLecturer(user),
-    // Fetch levels assigned to this lecturer (via LecturerLevel join)
-    prisma.lecturerLevel.findMany({
-      where: { lecturerId: user.id },
-      include: { level: true },
-      orderBy: { level: { order: 'asc' } },
-    }).then(rows => rows.map(r => ({ id: r.level.id, name: r.level.name, value: r.level.value }))),
-    // Fetch departments assigned to this lecturer (via LecturerDepartment join)
-    prisma.lecturerDepartment.findMany({
-      where: { lecturerId: user.id },
-      include: { department: true },
-      orderBy: { department: { name: 'asc' } },
-    }).then(rows => rows.map(r => ({ id: r.department.id, name: r.department.name, code: r.department.code }))),
-    // Fetch all academic sessions for the dropdown
-    prisma.academicSession.findMany({
+    // Fetch all levels - using the correct model name 'Level' and field 'level'
+    prisma.level.findMany({
+      orderBy: { order: 'asc' },
+      select: { 
+        id: true, 
+        name: true, 
+        level: true  // The field is 'level' not 'value'
+      },
+    }).then(rows => rows.map(r => ({ 
+      id: String(r.id),  // Convert Int to String for the frontend
+      name: r.name || `${r.level} Level`, 
+      value: r.level 
+    }))),
+    // Fetch all departments
+    prisma.department.findMany({
+      orderBy: { name: 'asc' },
+      select: { id: true, name: true, code: true },
+    }),
+    // Fetch all academic sessions
+    prisma.academicSemester.findMany({
       orderBy: { session: 'desc' },
       select: { id: true, session: true },
     }),
