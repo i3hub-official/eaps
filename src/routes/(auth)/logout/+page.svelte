@@ -1,14 +1,15 @@
 <!-- src/routes/(auth)/logout/+page.svelte -->
 <script lang="ts">
   import { enhance } from '$app/forms';
-  import { goto } from '$app/navigation';
   import { onMount } from 'svelte';
-  
-  let countdown = 3;
+  import type { PageData } from './$types';
+
+  let { data }: { data: PageData } = $props();
+
+  let countdown = $state(3);
   let timer: ReturnType<typeof setInterval>;
-  
+
   onMount(() => {
-    // Auto-submit the form after 3 seconds
     timer = setInterval(() => {
       countdown--;
       if (countdown <= 0) {
@@ -17,10 +18,7 @@
         if (form) form.requestSubmit();
       }
     }, 1000);
-    
-    return () => {
-      if (timer) clearInterval(timer);
-    };
+    return () => { if (timer) clearInterval(timer); };
   });
 </script>
 
@@ -33,18 +31,18 @@
         <line x1="21" y1="12" x2="9" y2="12" />
       </svg>
     </div>
-    
+
     <h2>Sign Out</h2>
     <p class="logout-message">Are you sure you want to sign out?</p>
     <p class="logout-warning">You'll need to verify your face again when you return.</p>
-    
+
     <form method="POST" use:enhance>
       <button type="submit" class="logout-btn">
         Sign Out ({countdown})
       </button>
     </form>
-    
-    <a href="/student" class="cancel-btn">Cancel</a>
+
+    <a href={data.cancelHref} class="cancel-btn">Cancel</a>
   </div>
 </div>
 
@@ -57,7 +55,7 @@
     padding: 1.5rem;
     background: var(--color-bg);
   }
-  
+
   .logout-card {
     max-width: 380px;
     width: 100%;
@@ -68,18 +66,12 @@
     text-align: center;
     animation: fade-in 0.3s ease;
   }
-  
+
   @keyframes fade-in {
-    from {
-      opacity: 0;
-      transform: translateY(10px);
-    }
-    to {
-      opacity: 1;
-      transform: translateY(0);
-    }
+    from { opacity: 0; transform: translateY(10px); }
+    to   { opacity: 1; transform: translateY(0); }
   }
-  
+
   .logout-icon {
     width: 64px;
     height: 64px;
@@ -91,20 +83,20 @@
     justify-content: center;
     color: #ef4444;
   }
-  
+
   h2 {
     font-size: 1.5rem;
     font-weight: 700;
     margin-bottom: 0.5rem;
     color: var(--color-text);
   }
-  
+
   .logout-message {
     color: var(--color-muted);
     font-size: 0.875rem;
     margin-bottom: 0.5rem;
   }
-  
+
   .logout-warning {
     color: #f59e0b;
     font-size: 0.75rem;
@@ -113,7 +105,7 @@
     padding: 0.5rem;
     border-radius: 0.5rem;
   }
-  
+
   .logout-btn {
     width: 100%;
     padding: 0.75rem 1.5rem;
@@ -128,16 +120,10 @@
     font-family: inherit;
     margin-bottom: 0.75rem;
   }
-  
-  .logout-btn:hover {
-    background: #dc2626;
-    transform: translateY(-1px);
-  }
-  
-  .logout-btn:active {
-    transform: translateY(0);
-  }
-  
+
+  .logout-btn:hover  { background: #dc2626; transform: translateY(-1px); }
+  .logout-btn:active { transform: translateY(0); }
+
   .cancel-btn {
     display: inline-block;
     background: none;
@@ -146,13 +132,8 @@
     font-size: 0.875rem;
     transition: color 0.15s;
   }
-  
-  .cancel-btn:hover {
-    color: var(--color-text);
-  }
-  
-  /* Dark mode adjustments */
-  :global(.dark) .logout-warning {
-    background: rgba(245, 158, 11, 0.15);
-  }
+
+  .cancel-btn:hover { color: var(--color-text); }
+
+  :global(.dark) .logout-warning { background: rgba(245, 158, 11, 0.15); }
 </style>

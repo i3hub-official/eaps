@@ -26,7 +26,7 @@ function roleHome(role: UserRole): string {
   }
 }
 
-export const load: PageServerLoad = async ({ locals, cookies }) => {
+export const load: PageServerLoad = async ({ locals, cookies, url }) => {
   const user = locals.user;
 
   if (user) {
@@ -36,7 +36,8 @@ export const load: PageServerLoad = async ({ locals, cookies }) => {
     clearSessionCookie(cookies);
   }
 
-  return {};
+  const roleHint = url.searchParams.get('role') ?? 'default';
+  return { roleHint };
 };
 
 export const actions: Actions = {
