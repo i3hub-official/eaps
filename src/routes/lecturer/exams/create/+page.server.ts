@@ -2,18 +2,17 @@
 import { error, fail, redirect } from '@sveltejs/kit';
 import type { Actions, PageServerLoad } from './$types';
 import { getPrismaClient } from '$lib/server/db/index.js';
+import { requireLecturer } from '$lib/server/auth/guards.js';
 import { createExam, getActiveAcademicSemester, getCoursesForLecturer } from '$lib/server/db/exams.js';
 import { parseExamForm } from '$lib/server/exam/exam-form.js';
 
 export const load: PageServerLoad = async (event) => {
-  const user = event.locals.user;
-  if (!user) throw redirect(303, '/login');
-  if (user.role !== 'lecturer') throw error(403, 'Lecturer access only');
-
+   const user = await requireLecturer(event.locals.user);
   const prisma = await getPrismaClient();
 
   const [courses, levels, departments, sessions, activeSemester] = await Promise.all([
-    getCoursesForLecturer(user),
+    // getCoursesForLecturer expects an object with departmentId
+    getCoursesForLecturer({ departmentId: (user as any).departmentId ?? null }),
     // Fetch all levels - using the correct model name 'Level' and field 'level'
     prisma.level.findMany({
       orderBy: { order: 'asc' },

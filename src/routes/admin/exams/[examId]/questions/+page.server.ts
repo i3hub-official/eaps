@@ -1,31 +1,52 @@
 // src/routes/admin/exams/[examId]/questions/+page.server.ts
-import type { PageServerLoad, Actions } from './$types';
-import { fail, error } from '@sveltejs/kit';
-import { requireAdmin } from '$lib/server/auth/guards.js';
+
+import { error, fail } from '@sveltejs/kit';
+import type { Actions, PageServerLoad } from './$types';
 import { getPrismaClient } from '$lib/server/db/index.js';
+import { UUID_RE } from '$lib/server/exam/session-engine.js';
+import { requireAdmin } from '$lib/server/auth/guards.js';
 
-export const load: PageServerLoad = async ({ locals, params }) => {
-  await requireAdmin(locals.user);
+type ActionEvent = {
+  locals: App.Locals;
+  params: { examId?: string };
+  request: Request;
+};
 
-      const prisma = await getPrismaClient();
+async function loadExam(event: ActionEvent) {
+ await requireAdmin(event.locals.user);
 
+
+  const { examId } = event.params;
+  if (!examId || !UUID_RE.test(examId)) throw error(400, 'Invalid exam id');
+
+  const prisma = await getPrismaClient();
+  const exam = await prisma.exam.findUnique({
+    where: { id: examId },
+    select: { id: true, status: true },
+  });
+  if (!exam) throw error(404, 'Exam not found');
+
+  return exam;
+}
+
+export const load: PageServerLoad = async (event) => {
+await requireAdmin(event.locals.user);
+
+
+  const { examId } = event.params;
+  if (!examId || !UUID_RE.test(examId)) throw error(400, 'Invalid exam id');
+
+  const prisma = await getPrismaClient();
 
   const exam = await prisma.exam.findUnique({
-    where: { id: params.examId },
+    where: { id: examId },
     include: {
-      course: { select: { code: true, title: true } },
-      lecturer: {
-        select: {
-          id: true,
-          fullName: true,
-          staffId: true,
-          department: { select: { name: true } },
-        },
-      },
+      course:   { select: { code: true, title: true } },
+      lecturer: { select: { fullName: true, staffId: true, department: { select: { name: true } } } },
       questions: {
         orderBy: { orderIndex: 'asc' },
         include: {
-          options: { orderBy: { orderIndex: 'asc' } },
+          options:     { orderBy: { orderIndex: 'asc' } },
           fitbAnswers: true,
         },
       },
@@ -33,243 +54,244 @@ export const load: PageServerLoad = async ({ locals, params }) => {
   });
 
   if (!exam) throw error(404, 'Exam not found');
-
   return { exam };
 };
 
+// ── Shared question action helpers ────────────────────────────────────────────
+
+// Admin can edit questions regardless of exam status
+async function getExamForAction(event: ActionEvent) {
+  return loadExam(event);
+}
+
 export const actions: Actions = {
-  // ── Add a single question ─────────────────────────────────────────────────
-  addQuestion: async ({ request, locals, params }) => {
-    await requireAdmin(locals.user);
 
-        const prisma = await getPrismaClient();
+  add_mcq: async (event) => {
+    const exam = await getExamForAction(event);
+    const prisma = await getPrismaClient();
+    const fd = await event.request.formData();
 
+    const body = fd.get('body')?.toString().trim() ?? '';
+    const topic = fd.get('topic')?.toString().trim() || null;
+    const marks = parseInt(fd.get('marks')?.toString() ?? '1') || 1;
+    const correctIndex = parseInt(fd.get('correctOption')?.toString() ?? '0');
 
-    const fd = await request.formData();
-    const type = String(fd.get('type') ?? '').trim() as 'mcq' | 'fill_in_the_blank';
-    const body = String(fd.get('body') ?? '').trim();
-    const topic = String(fd.get('topic') ?? '').trim() || undefined;
-    const marks = Number(fd.get('marks') ?? 1);
+    if (!body) return fail(400, { error: 'Question body is required.' });
 
-    if (!body) return fail(400, { error: 'Question body is required' });
-    if (!['mcq', 'fill_in_the_blank'].includes(type)) return fail(400, { error: 'Invalid question type' });
-
-    const exam = await prisma.exam.findUnique({ where: { id: params.examId } });
-    if (!exam) return fail(404, { error: 'Exam not found' });
-
-    const count = await prisma.question.count({ where: { examId: params.examId } });
-
-    if (type === 'mcq') {
-      const optionTexts: string[] = [];
-      const optionCorrect: boolean[] = [];
-
-      for (const [key, val] of fd.entries()) {
-        const m = key.match(/^option_text_(\d+)$/);
-        if (m) {
-          const idx = Number(m[1]);
-          optionTexts[idx] = String(val).trim();
-          optionCorrect[idx] = fd.get(`option_correct_${idx}`) === 'on';
-        }
-      }
-
-      const validOptions = optionTexts.filter(Boolean);
-      if (validOptions.length < 2) return fail(400, { error: 'MCQ requires at least 2 options' });
-      if (!optionCorrect.some(Boolean)) return fail(400, { error: 'At least one correct option is required' });
-
-      await prisma.question.create({
-        data: {
-          examId: params.examId,
-          type,
-          body,
-          topic,
-          marks,
-          orderIndex: count,
-          options: {
-            create: optionTexts
-              .map((text, i) => ({ optionText: text, isCorrect: !!optionCorrect[i], orderIndex: i }))
-              .filter(o => o.optionText),
-          },
-        },
-      });
-    } else {
-      const primaryAnswer = String(fd.get('fitb_primary') ?? '').trim();
-      const altAnswers: string[] = [];
-      for (const [key, val] of fd.entries()) {
-        if (key.startsWith('fitb_alt_')) altAnswers.push(String(val).trim());
-      }
-
-      if (!primaryAnswer) return fail(400, { error: 'Primary answer is required for fill-in-the-blank' });
-
-      await prisma.question.create({
-        data: {
-          examId: params.examId,
-          type,
-          body,
-          topic,
-          marks,
-          orderIndex: count,
-          fitbAnswers: {
-            create: [
-              { acceptedAnswer: primaryAnswer, isPrimary: true },
-              ...altAnswers.filter(Boolean).map(a => ({ acceptedAnswer: a, isPrimary: false })),
-            ],
-          },
-        },
-      });
+    const options: { text: string; correct: boolean }[] = [];
+    for (let i = 0; fd.has(`option_${i}`); i++) {
+      const text = fd.get(`option_${i}`)?.toString().trim() ?? '';
+      if (text) options.push({ text, correct: i === correctIndex });
     }
+    if (options.length < 2) return fail(400, { error: 'At least 2 options are required.' });
+    if (!options.some(o => o.correct)) return fail(400, { error: 'Mark a correct answer.' });
 
-    return { success: true };
+    const maxOrder = await prisma.question.aggregate({ where: { examId: exam.id }, _max: { orderIndex: true } });
+    const nextOrder = (maxOrder._max.orderIndex ?? -1) + 1;
+
+    await prisma.question.create({
+      data: {
+        examId: exam.id, type: 'mcq', body, topic, marks, orderIndex: nextOrder,
+        options: {
+          create: options.map((o, i) => ({ optionText: o.text, isCorrect: o.correct, orderIndex: i })),
+        },
+      },
+    });
+
+    return { success: true, action: 'add_mcq' };
   },
 
-  // ── Delete a question ─────────────────────────────────────────────────────
-  deleteQuestion: async ({ request, locals }) => {
-    await requireAdmin(locals.user);
+  add_truefalse: async (event) => {
+    const exam = await getExamForAction(event);
+    const prisma = await getPrismaClient();
+    const fd = await event.request.formData();
 
-        const prisma = await getPrismaClient();
+    const body = fd.get('body')?.toString().trim() ?? '';
+    const topic = fd.get('topic')?.toString().trim() || null;
+    const marks = parseInt(fd.get('marks')?.toString() ?? '1') || 1;
+    const correctAnswer = fd.get('correctAnswer')?.toString() === 'true' ? 'True' : 'False';
 
+    if (!body) return fail(400, { error: 'Question body is required.' });
 
-    const fd = await request.formData();
-    const questionId = String(fd.get('questionId') ?? '').trim();
-    if (!questionId) return fail(400, { error: 'Question ID required' });
+    const maxOrder = await prisma.question.aggregate({ where: { examId: exam.id }, _max: { orderIndex: true } });
+    const nextOrder = (maxOrder._max.orderIndex ?? -1) + 1;
+
+    await prisma.question.create({
+      data: {
+        examId: exam.id, type: 'mcq', body, topic, marks, orderIndex: nextOrder,
+        options: {
+          create: [
+            { optionText: 'True',  isCorrect: correctAnswer === 'True',  orderIndex: 0 },
+            { optionText: 'False', isCorrect: correctAnswer === 'False', orderIndex: 1 },
+          ],
+        },
+      },
+    });
+
+    return { success: true, action: 'add_truefalse' };
+  },
+
+  edit_question: async (event) => {
+    const exam = await getExamForAction(event);
+    const prisma = await getPrismaClient();
+    const fd = await event.request.formData();
+
+    const questionId = fd.get('questionId')?.toString() ?? '';
+    if (!UUID_RE.test(questionId)) return fail(400, { error: 'Invalid question.' });
+
+    const question = await prisma.question.findFirst({ where: { id: questionId, examId: exam.id }, include: { options: true } });
+    if (!question) return fail(404, { error: 'Question not found.' });
+
+    const body = fd.get('body')?.toString().trim() ?? '';
+    const topic = fd.get('topic')?.toString().trim() || null;
+    const marks = parseInt(fd.get('marks')?.toString() ?? '1') || 1;
+
+    if (!body) return fail(400, { error: 'Question body is required.' });
+
+    const isTF = question.options.length === 2 &&
+      question.options.some(o => o.optionText === 'True') &&
+      question.options.some(o => o.optionText === 'False');
+
+    if (isTF) {
+      const correctAnswer = fd.get('correctAnswer')?.toString() === 'true' ? 'True' : 'False';
+      await prisma.$transaction([
+        prisma.question.update({ where: { id: questionId }, data: { body, topic, marks } }),
+        ...question.options.map(o =>
+          prisma.questionOption.update({ where: { id: o.id }, data: { isCorrect: o.optionText === correctAnswer } })
+        ),
+      ]);
+    } else {
+      const correctIndex = parseInt(fd.get('correctOption')?.toString() ?? '0');
+      const options: string[] = [];
+      for (let i = 0; fd.has(`option_${i}`); i++) {
+        const text = fd.get(`option_${i}`)?.toString().trim() ?? '';
+        if (text) options.push(text);
+      }
+      if (options.length < 2) return fail(400, { error: 'At least 2 options are required.' });
+
+      await prisma.$transaction([
+        prisma.question.update({ where: { id: questionId }, data: { body, topic, marks } }),
+        prisma.questionOption.deleteMany({ where: { questionId } }),
+        prisma.questionOption.createMany({
+          data: options.map((text, i) => ({
+            questionId, optionText: text, isCorrect: i === correctIndex, orderIndex: i,
+          })),
+        }),
+      ]);
+    }
+
+    return { success: true, action: 'edit_question' };
+  },
+
+  delete_question: async (event) => {
+        await requireAdmin(event.locals.user);
+    const exam = await getExamForAction(event);
+    const prisma = await getPrismaClient();
+    const fd = await event.request.formData();
+
+    const questionId = fd.get('questionId')?.toString() ?? '';
+    if (!UUID_RE.test(questionId)) return fail(400, { error: 'Invalid question.' });
+
+    const question = await prisma.question.findFirst({ where: { id: questionId, examId: exam.id } });
+    if (!question) return fail(404, { error: 'Question not found.' });
 
     await prisma.question.delete({ where: { id: questionId } });
-    return { success: true };
+    return { success: true, action: 'delete_question' };
   },
 
-  // ── Bulk import via JSON payload ──────────────────────────────────────────
-  bulkImport: async ({ request, locals, params }) => {
-    await requireAdmin(locals.user);
+  reorder: async (event) => {
+        await requireAdmin(event.locals.user);
+    const exam = await getExamForAction(event);
+    const prisma = await getPrismaClient();
+    const fd = await event.request.formData();
 
-        const prisma = await getPrismaClient();
+    const order = fd.get('order')?.toString().split(',').filter(Boolean) ?? [];
+    if (order.length === 0) return fail(400, { error: 'No order provided.' });
 
+    await prisma.$transaction(
+      order.map((id, i) =>
+        prisma.question.updateMany({ where: { id, examId: exam.id }, data: { orderIndex: i } })
+      )
+    );
 
-    const fd = await request.formData();
-    const raw = String(fd.get('questions_json') ?? '').trim();
+    return { success: true, action: 'reorder' };
+  },
 
-    let questions: Array<{
-      type: string;
-      body: string;
-      topic?: string;
-      marks?: number;
-      options?: Array<{ text: string; correct: boolean }>;
-      answers?: string[];
-    }>;
+  bulk_import: async (event) => {
+    await requireAdmin(event.locals.user);
+    const exam = await getExamForAction(event);
+    const prisma = await getPrismaClient();
+    const fd = await event.request.formData();
 
+    const raw = fd.get('json')?.toString().trim() ?? '';
+    if (!raw) return fail(400, { error: 'No JSON provided.' });
+
+    let questions: any[];
     try {
       questions = JSON.parse(raw);
-      if (!Array.isArray(questions)) throw new Error('Expected array');
-    } catch {
-      return fail(400, { error: 'Invalid JSON. Expected an array of question objects.' });
+      if (!Array.isArray(questions)) throw new Error('Must be a JSON array');
+    } catch (e: any) {
+      return fail(400, { error: 'Invalid JSON: ' + e.message });
     }
 
-    const existing = await prisma.question.count({ where: { examId: params.examId } });
+    if (questions.length === 0) return fail(400, { error: 'No questions found in payload.' });
 
-    // ── Strategy: createMany for the question rows (one round-trip),
-    //    then createMany for options and fitbAnswers separately.
-    //    No interactive transaction — no timeout risk.
-    //
-    //    We need the inserted question IDs to attach child rows, so we
-    //    insert questions one-by-one in a plain Promise.all with a
-    //    concurrency cap of 10 to stay well within connection limits.
+    const maxOrder = await prisma.question.aggregate({ where: { examId: exam.id }, _max: { orderIndex: true } });
+    let nextOrder = (maxOrder._max.orderIndex ?? -1) + 1;
 
-    const CHUNK = 10;
-    const created: { id: string; index: number }[] = [];
+    let count = 0;
+    for (const q of questions) {
+      const body = q.body?.toString().trim();
+      if (!body) continue;
+      const marks = parseInt(q.marks) || 1;
+      const topic = q.topic?.toString().trim() || null;
 
-    for (let i = 0; i < questions.length; i += CHUNK) {
-      const slice = questions.slice(i, i + CHUNK);
-
-      const results = await Promise.all(
-        slice.map((q, j) => {
-          const type = q.type === 'fitb' ? 'fill_in_the_blank' : 'mcq';
-          return prisma.question.create({
-            data: {
-              examId: params.examId,
-              type: type as 'mcq' | 'fill_in_the_blank',
-              body: (q.body ?? '').trim(),
-              topic: q.topic?.trim() || undefined,
-              marks: Number(q.marks ?? 1),
-              orderIndex: existing + i + j,
+      if (q.type === 'truefalse') {
+        const correct = q.correctAnswer?.toString().toLowerCase() === 'true' ? 'True' : 'False';
+        await prisma.question.create({
+          data: {
+            examId: exam.id, type: 'mcq', body, topic, marks, orderIndex: nextOrder++,
+            options: {
+              create: [
+                { optionText: 'True',  isCorrect: correct === 'True',  orderIndex: 0 },
+                { optionText: 'False', isCorrect: correct === 'False', orderIndex: 1 },
+              ],
             },
-            select: { id: true },
-          });
-        })
-      );
-
-      results.forEach((r, j) => created.push({ id: r.id, index: i + j }));
-    }
-
-    // ── Attach child rows in bulk ─────────────────────────────────────────
-    const optionRows: {
-      questionId: string;
-      optionText: string;
-      isCorrect: boolean;
-      orderIndex: number;
-    }[] = [];
-
-    const fitbRows: {
-      questionId: string;
-      acceptedAnswer: string;
-      isPrimary: boolean;
-    }[] = [];
-
-    for (const { id, index } of created) {
-      const q = questions[index];
-      const type = q.type === 'fitb' ? 'fill_in_the_blank' : 'mcq';
-
-      if (type === 'mcq' && Array.isArray(q.options)) {
-        q.options.forEach((o, oi) => {
-          if (o.text?.trim()) {
-            optionRows.push({
-              questionId: id,
-              optionText: o.text.trim(),
-              isCorrect: !!o.correct,
-              orderIndex: oi,
-            });
-          }
+          },
         });
-      }
-
-      if (type === 'fill_in_the_blank' && Array.isArray(q.answers)) {
-        q.answers.forEach((a, ai) => {
-          if (a?.trim()) {
-            fitbRows.push({
-              questionId: id,
-              acceptedAnswer: a.trim(),
-              isPrimary: ai === 0,
-            });
-          }
+        count++;
+      } else if (q.type === 'mcq') {
+        const opts: string[] = Array.isArray(q.options) ? q.options.map((o: any) => o.toString().trim()).filter(Boolean) : [];
+        if (opts.length < 2) continue;
+        const correctIndex = Math.min(parseInt(q.correctIndex) || 0, opts.length - 1);
+        await prisma.question.create({
+          data: {
+            examId: exam.id, type: 'mcq', body, topic, marks, orderIndex: nextOrder++,
+            options: {
+              create: opts.map((text, i) => ({ optionText: text, isCorrect: i === correctIndex, orderIndex: i })),
+            },
+          },
         });
+        count++;
       }
     }
 
-    // createMany is a single INSERT per table — very fast, no timeout
-    await Promise.all([
-      optionRows.length > 0
-        ? prisma.questionOption.createMany({ data: optionRows })
-        : Promise.resolve(),
-      fitbRows.length > 0
-        ? prisma.fitbAnswer.createMany({ data: fitbRows })
-        : Promise.resolve(),
-    ]);
-
-    return { success: true, imported: questions.length };
+    if (count === 0) return fail(400, { error: 'No valid questions could be imported.' });
+    return { success: true, action: 'bulk_import', count };
   },
 
-  // ── Update exam status ────────────────────────────────────────────────────
-  updateStatus: async ({ request, locals, params }) => {
-    await requireAdmin(locals.user);
+  updateStatus: async (event) => {
+    await requireAdmin(event.locals.user);
+    const { examId } = event.params;
+    if (!examId || !UUID_RE.test(examId)) return fail(400, { error: 'Invalid exam id.' });
 
-        const prisma = await getPrismaClient();
+    const fd = await event.request.formData();
+    const status = fd.get('status')?.toString() ?? '';
+    const validStatuses = ['draft', 'scheduled', 'active', 'completed', 'cancelled'];
+    if (!validStatuses.includes(status)) return fail(400, { error: 'Invalid status.' });
 
-
-    const fd = await request.formData();
-    const status = String(fd.get('status') ?? '').trim() as
-      'draft' | 'scheduled' | 'active' | 'completed' | 'cancelled';
-
-    const valid = ['draft', 'scheduled', 'active', 'completed', 'cancelled'];
-    if (!valid.includes(status)) return fail(400, { error: 'Invalid status' });
-
-    await prisma.exam.update({ where: { id: params.examId }, data: { status } });
-    return { success: true };
+    const prisma = await getPrismaClient();
+    await prisma.exam.update({ where: { id: examId }, data: { status } });
+    return { success: true, action: 'updateStatus' };
   },
 };
