@@ -14,7 +14,7 @@
     Calendar, Clock, UserCheck, UserX, UserPlus, Bell,
     Shield, FileBarChart, BrainCircuit, BookMarked, Monitor,
     EyeOff, Fingerprint, Command, Search, Home,
-    ChevronRight, Settings, Pin, Key, PlayCircle, Plus, User, Hash, Database, PlusCircle
+    ChevronRight, Settings, Pin, Key, PlayCircle, Plus, User, Database, PlusCircle
   } from '@lucide/svelte';
 
    import { setContext } from 'svelte';
@@ -168,7 +168,8 @@
       icon: Users,
       groupKey: 'users',
       children: [
-        { href: '/admin/users', label: 'All Users', icon: Users },
+        { href: '/admin/users', label: 'User Overview', icon: LayoutDashboard },
+        { href: '/admin/users/create', label: 'Add/Create Users', icon: Users },
         { href: '/admin/users?role=student', label: 'Students', icon: GraduationCap },
         { href: '/admin/users?role=lecturer', label: 'Lecturers', icon: BookOpen },
         { href: '/admin/users?role=invigilator', label: 'Invigilators', icon: ShieldCheck },

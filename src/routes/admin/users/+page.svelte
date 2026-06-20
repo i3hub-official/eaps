@@ -225,13 +225,13 @@
         {/if}
         Export CSV
       </button>
-      <button class="btn-primary" onclick={() => { showCreate = !showCreate; showEdit = false; }} type="button">
+      <!-- <button class="btn-primary" onclick={() => { showCreate = !showCreate; showEdit = false; }} type="button">
         {#if showCreate}
           <X size={16} /> Cancel
         {:else}
           <UserPlus size={16} /> Add User
         {/if}
-      </button>
+      </button> -->
     </div>
   </header>
 
