@@ -331,8 +331,6 @@ model UserRoleAssignment {
   @@map("user_role_assignments")
 }
 
-// ─── (rest of models unchanged from original) ─────────────────────────────────
-
 model PasswordReset {
   token     String    @id
   userId    String    @map("user_id") @db.Uuid
@@ -348,7 +346,7 @@ model PasswordReset {
 
 model FaceDescriptor {
   studentId           String   @id @map("student_id") @db.Uuid
-  descriptor          Json
+  descriptor          String
   enrolledAt          DateTime @default(now()) @map("enrolled_at") @db.Timestamptz()
   updatedAt           DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz()
   embedding_dimension Int      @default(512) @map("embedding_dimension")

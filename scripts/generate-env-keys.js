@@ -50,11 +50,11 @@ const keys = [
     value: randHex(16),
     note:  '32 hex chars',
   },
-  {
-    name: 'FIXED_IV_FACE',
-    value: randHex(16),
-    note: '32 hex chars',
-  },
+  // {
+  //   name: 'FIXED_IV_FACE',
+  //   value: randHex(16),
+  //   note: '32 hex chars',
+  // },
   {
     comment: '── Search hash pepper ───────────────────────────────────────',
     name:  'SEARCH_HASH_PEPPER',

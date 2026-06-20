@@ -37,7 +37,6 @@ const FIXED_IV = {
   username: mustHexEnv('FIXED_IV_USERNAME', env.FIXED_IV_USERNAME, 16),
   nin:      mustHexEnv('FIXED_IV_NIN',      env.FIXED_IV_NIN,      16),
   bvn:      mustHexEnv('FIXED_IV_BVN',      env.FIXED_IV_BVN,      16),
-  face:     mustHexEnv('FIXED_IV_FACE',    env.FIXED_IV_FACE,     16),
 };
 
 const SEARCH_HASH_PEPPER = (() => {
@@ -62,7 +61,7 @@ function assertValidHex(str: string, field: string): void {
 // ─────────────────────────────────────────────────────────────────────────────
 // TIER 1: Searchable Deterministic Encryption (AES-256-CBC + Fixed IV)
 // ─────────────────────────────────────────────────────────────────────────────
-export type SearchableField = 'email' | 'phone' | 'username' | 'nin' | 'bvn' | 'face';
+export type SearchableField = 'email' | 'phone' | 'username' | 'nin' | 'bvn';
 
 export function encryptSearchable(data: string, field: SearchableField): string {
   if (!data) throw new Error(`Cannot encrypt empty ${field}`);
