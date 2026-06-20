@@ -40,6 +40,7 @@
   </div>
 {/if}
 <style>
+ @import '$lib/styles/portals.css';
   .fw{font-weight:600;} .sub,.pg{font-size:.75rem;color:var(--color-muted);}
   .code{font-size:.74rem;font-weight:700;color:#3b82f6;}
   .pagination{display:flex;align-items:center;gap:.75rem;justify-content:center;margin-top:1.25rem;}

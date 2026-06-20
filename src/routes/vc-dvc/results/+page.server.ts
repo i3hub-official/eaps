@@ -35,5 +35,12 @@ export const load: PageServerLoad = async ({ locals, url }) => {
     prisma.exam.findMany({ distinct: ['session'], select: { session: true }, orderBy: { session: 'desc' } }),
   ]);
 
-  return { results, total, page, take, session, passed, sessions: sessions.map(s => s.session) };
+  return {
+    total, page, take, session, passed,
+    sessions: sessions.map(s => s.session),
+    results: results.map(r => ({
+      ...r,
+      percentage: r.percentage !== null ? Number(r.percentage) : null,
+    })),
+  };
 };

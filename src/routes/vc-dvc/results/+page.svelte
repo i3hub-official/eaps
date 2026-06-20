@@ -72,6 +72,7 @@
 {/if}
 
 <style>
+ @import '$lib/styles/portals.css';
   .filters{display:flex;flex-direction:column;gap:.5rem;margin-bottom:1rem;}
   .filter-row{display:flex;align-items:center;gap:.4rem;flex-wrap:wrap;}
   .filter-label{font-size:.74rem;color:var(--color-muted);font-weight:600;}

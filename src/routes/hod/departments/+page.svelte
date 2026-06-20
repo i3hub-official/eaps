@@ -66,6 +66,7 @@
 {/if}
 
 <style>
+ @import '$lib/styles/portals.css';
   .dept-stats { display:grid; grid-template-columns:repeat(3,1fr); gap:1rem; margin-bottom:1.5rem; }
   .two-col { display:grid; grid-template-columns:1fr 1fr; gap:1.25rem; }
   .code-chip { font-size:.74rem; font-weight:700; color:#3b82f6; }

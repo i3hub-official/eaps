@@ -53,6 +53,7 @@
 </div>
 
 <style>
+ @import '$lib/styles/portals.css';
   .row-link{color:var(--p-accent);text-decoration:none;font-weight:600;}
   .row-link:hover{text-decoration:underline;}
   .sub-text{font-size:.72rem;color:var(--color-muted);margin-top:.1rem;}

@@ -112,6 +112,7 @@
 </div>
 
 <style>
+ @import '$lib/styles/portals.css';
   .two-col{display:grid;grid-template-columns:1fr 1fr;gap:1.25rem;}
   .row-link{color:var(--p-accent);text-decoration:none;font-weight:600;}
   .row-link:hover{text-decoration:underline;}

@@ -55,6 +55,7 @@
 </div>
 
 <style>
+ @import '$lib/styles/portals.css';
   .fw { font-weight:600; }
   .sub-text { font-size:.72rem; color:var(--color-muted); }
   .role-chip { font-size:.7rem; font-weight:700; padding:.2rem .55rem; border-radius:2rem; background:var(--p-accent-dim); color:var(--p-accent); }

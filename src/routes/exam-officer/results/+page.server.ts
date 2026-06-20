@@ -18,9 +18,9 @@ export const load: PageServerLoad = async ({ locals, url }) => {
     ...(passed === 'false' ? { passed: false } : {}),
     ...(search ? {
       OR: [
-        { student: { fullName:    { contains: search, mode: 'insensitive' } } },
-        { student: { matricNumber:{ contains: search, mode: 'insensitive' } } },
-        { exam:    { title:       { contains: search, mode: 'insensitive' } } },
+        { student: { fullName:     { contains: search, mode: 'insensitive' } } },
+        { student: { matricNumber: { contains: search, mode: 'insensitive' } } },
+        { exam:    { title:        { contains: search, mode: 'insensitive' } } },
       ],
     } : {}),
   };
@@ -49,5 +49,14 @@ export const load: PageServerLoad = async ({ locals, url }) => {
     prisma.exam.findMany({ distinct: ['session'], select: { session: true }, orderBy: { session: 'desc' } }),
   ]);
 
-  return { results, total, page, take, search, session, passed, sessions: sessions.map(s => s.session) };
+  return {
+    total, page, take, search, session, passed,
+    sessions: sessions.map(s => s.session),
+    results: results.map(r => ({
+      ...r,
+      score:       r.score      !== null ? Number(r.score)      : null,
+      percentage:  r.percentage !== null ? Number(r.percentage) : null,
+      submittedAt: r.submittedAt?.toISOString() ?? null,
+    })),
+  };
 };

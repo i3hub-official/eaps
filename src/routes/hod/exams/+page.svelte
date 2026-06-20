@@ -107,6 +107,7 @@
 {/if}
 
 <style>
+ @import '$lib/styles/portals.css';
   .header-actions { display:flex; gap:.625rem; align-items:center; }
   .filter-row { display:flex; align-items:center; gap:.5rem; flex-wrap:wrap; margin-bottom:1rem; }
   .filter-pill {

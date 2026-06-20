@@ -23,5 +23,11 @@ export const load: PageServerLoad = async ({ locals, url }) => {
     prisma.examResult.count({ where }),
   ]);
 
-  return { results, total, page, take };
+  return {
+    total, page, take,
+    results: results.map(r => ({
+      ...r,
+      percentage: r.percentage !== null ? Number(r.percentage) : null,
+    })),
+  };
 };

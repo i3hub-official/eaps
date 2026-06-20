@@ -29,6 +29,7 @@
 </div>
 
 <style>
+ @import '$lib/styles/portals.css';
   .report-grid{display:flex;flex-direction:column;gap:.625rem;}
   .report-card{display:flex;align-items:center;gap:1rem;padding:.875rem 1.125rem;background:var(--color-surface);border:1px solid var(--color-border);border-radius:.75rem;text-decoration:none;color:inherit;transition:border-color .15s,transform .15s;}
   .report-card:hover{border-color:var(--p-accent);transform:translateY(-1px);}

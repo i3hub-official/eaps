@@ -70,6 +70,7 @@
 {/if}
 
 <style>
+ @import '$lib/styles/portals.css';
   .fw { font-weight:600; }
   .sub-text { font-size:.72rem; color:var(--color-muted); }
   .code-chip { font-size:.74rem; font-weight:700; color:#3b82f6; }

@@ -134,6 +134,7 @@
 {/if}
 
 <style>
+ @import '$lib/styles/portals.css';
   .two-col{display:grid;grid-template-columns:1fr 1fr;gap:1.25rem;margin-bottom:1.25rem;}
   .fw{font-weight:600;} .sub,.dim{font-size:.74rem;color:var(--color-muted);}
 

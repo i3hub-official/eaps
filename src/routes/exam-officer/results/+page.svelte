@@ -133,6 +133,7 @@
 {/if}
 
 <style>
+  @import '$lib/styles/portals.css';
   .hdr-actions{display:flex;gap:.625rem;}
   .filters{display:flex;flex-direction:column;gap:.625rem;margin-bottom:1rem;}
   .search-box{display:flex;align-items:center;gap:.5rem;padding:.45rem .875rem;background:var(--color-surface);border:1px solid var(--color-border);border-radius:.5rem;max-width:360px;}

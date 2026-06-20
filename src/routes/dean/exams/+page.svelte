@@ -59,6 +59,7 @@
 {/if}
 
 <style>
+ @import '$lib/styles/portals.css';
   .filter-row{display:flex;align-items:center;gap:.5rem;flex-wrap:wrap;margin-bottom:1rem;}
   .filter-pill{padding:.3rem .75rem;border:1px solid var(--color-border);border-radius:2rem;font-size:.76rem;font-weight:600;background:none;color:var(--color-muted);cursor:pointer;font-family:inherit;transition:all .15s;text-transform:capitalize;}
   .filter-pill.active{background:var(--p-accent-dim);border-color:var(--p-accent);color:var(--p-accent);}

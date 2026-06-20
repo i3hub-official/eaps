@@ -21,4 +21,8 @@
     </tbody>
   </table>
 </div>
-<style>.fw{font-weight:600;}.code{font-size:.74rem;font-weight:700;color:#3b82f6;}</style>
+<style>
+ @import '$lib/styles/portals.css';
+.fw{font-weight:600;}
+.code{font-size:.74rem;font-weight:700;color:#3b82f6;}
+</style>
