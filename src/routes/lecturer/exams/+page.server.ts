@@ -7,9 +7,15 @@ import { sql } from '$lib/server/db/index.js';
 export const load: PageServerLoad = async ({ locals }) => {
   const user = requireLecturer(locals.user);
 
+  // Get ALL exams for this lecturer (including draft, scheduled, active, completed, cancelled)
   const exams = await listExamsByLecturer(user.id);
 
-  // Quick stats per exam
+  // If no exams, return empty stats
+  if (exams.length === 0) {
+    return { user, exams: [], statsMap: {} };
+  }
+
+  // Quick stats per exam - including all statuses
   const stats = await sql<{ exam_id: string; total: number; submitted: number; avg_pct: number }>(
     `SELECT
        es.exam_id,

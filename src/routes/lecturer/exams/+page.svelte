@@ -1,11 +1,11 @@
 <!-- src/routes/lecturer/+page.svelte -->
- 
 <script lang="ts">
   import type { PageData } from './$types';
   import {
     PlusCircle, ClipboardList, BookOpen, Clock, Users,
-    CheckCircle, TrendingUp, ChevronRight, BarChart2,
-    AlertCircle, Layers, FileText, Activity
+    CheckCircle, ChevronRight, BarChart2,
+    AlertCircle, Layers, FileText, Activity, Zap,
+    CalendarClock, FileEdit, XCircle
   } from '@lucide/svelte';
 
   let { data }: { data: PageData } = $props();
@@ -25,17 +25,41 @@
     return STATUS_META[status as StatusKey] ?? STATUS_META.draft;
   }
 
-  // Summary counts
-  const totalExams     = $derived(exams.length);
-  const activeCount    = $derived(exams.filter(e => e.status === 'active').length);
-  const scheduledCount = $derived(exams.filter(e => e.status === 'scheduled').length);
-  const draftCount     = $derived(exams.filter(e => e.status === 'draft').length);
+  // ── Summary counts ────────────────────────────────────────────────────────
+  const totalExams     = $derived(exams?.length ?? 0);
+  const activeCount    = $derived(exams?.filter(e => e.status === 'active').length ?? 0);
+  const scheduledCount = $derived(exams?.filter(e => e.status === 'scheduled').length ?? 0);
+  const draftCount     = $derived(exams?.filter(e => e.status === 'draft').length ?? 0);
+  const completedCount = $derived(exams?.filter(e => e.status === 'completed').length ?? 0);
+  const cancelledCount = $derived(exams?.filter(e => e.status === 'cancelled').length ?? 0);
 
-  // Total students across all exams
   const totalStudents = $derived(
-    Object.values(statsMap ?? {}).reduce((sum, s: any) => sum + (s?.total ?? 0), 0)
+    Object.values(statsMap ?? {}).reduce((sum: number, s: any) => sum + (s?.total ?? 0), 0)
   );
 
+  // ── Active filter tab ─────────────────────────────────────────────────────
+  type FilterKey = 'all' | StatusKey;
+  let activeFilter = $state<FilterKey>('all');
+
+  const FILTER_TABS: { key: FilterKey; label: string; icon: any; count: () => number; showAlways?: boolean }[] = [
+    { key: 'all',       label: 'All Exams', icon: ClipboardList, count: () => totalExams, showAlways: true },
+    { key: 'active',    label: 'Active Now', icon: Zap,           count: () => activeCount },
+    { key: 'scheduled', label: 'Scheduled', icon: CalendarClock, count: () => scheduledCount },
+    { key: 'draft',     label: 'Drafts',    icon: FileEdit,      count: () => draftCount },
+    { key: 'completed', label: 'Completed', icon: CheckCircle,   count: () => completedCount },
+    { key: 'cancelled', label: 'Cancelled', icon: XCircle,       count: () => cancelledCount },
+  ];
+
+  // Sort: active first, then scheduled, draft, completed, cancelled
+  const ORDER: Record<string, number> = { active: 0, scheduled: 1, draft: 2, completed: 3, cancelled: 4 };
+
+  const sortedExams = $derived(
+    [...(exams ?? [])]
+      .filter(e => activeFilter === 'all' || e.status === activeFilter)
+      .sort((a, b) => (ORDER[a.status] ?? 9) - (ORDER[b.status] ?? 9))
+  );
+
+  // ── Helpers ───────────────────────────────────────────────────────────────
   function formatDate(d: string | null | undefined) {
     if (!d) return null;
     return new Date(d).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
@@ -46,18 +70,17 @@
     return new Date(d).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
   }
 
-  // Sort: active first, then scheduled, draft, completed, cancelled
-  const ORDER: Record<string, number> = { active: 0, scheduled: 1, draft: 2, completed: 3, cancelled: 4 };
-  const sortedExams = $derived(
-    [...exams].sort((a, b) => (ORDER[a.status] ?? 9) - (ORDER[b.status] ?? 9))
-  );
+  // Helper to get status label for display
+  function getStatusLabel(status: string) {
+    return STATUS_META[status as StatusKey]?.label ?? status;
+  }
 </script>
 
 <svelte:head><title>Lecturer Dashboard — MOUAU eTest</title></svelte:head>
 
 <div class="page">
 
-   <!-- ── Summary cards ──────────────────────────────────────────── -->
+  <!-- ── Summary cards ──────────────────────────────────────────────────── -->
   <div class="summary-grid">
     <div class="summary-card">
       <div class="summary-icon" style="background: rgba(22,163,74,0.1); color: #16a34a;">
@@ -103,26 +126,63 @@
     </div>
   </div>
 
-  <!-- ── Exams section ──────────────────────────────────────────── -->
+  <!-- ── Exams section header ────────────────────────────────────────────── -->
   <div class="section-header">
     <div class="section-title">
       <ClipboardList size={16} />
       <h2>My Exams</h2>
-      <span class="section-count">{totalExams}</span>
+      <span class="section-count">{sortedExams.length}</span>
     </div>
-    <a href="/lecturer/exams" class="link-all">
-      View all <ChevronRight size={13} />
+    <a href="/lecturer/exams/create" class="btn-primary">
+      <PlusCircle size={13} /> Create Exam
     </a>
   </div>
 
+  <!-- ── Filter tabs ─────────────────────────────────────────────────────── -->
+  <div class="filter-tabs">
+    {#each FILTER_TABS as tab}
+      {@const count = tab.count()}
+      {#if count > 0 || tab.showAlways}
+        <button
+          type="button"
+          class="filter-tab"
+          class:active={activeFilter === tab.key}
+          class:tab-active={tab.key === 'active'}
+          class:tab-scheduled={tab.key === 'scheduled'}
+          class:tab-draft={tab.key === 'draft'}
+          class:tab-completed={tab.key === 'completed'}
+          class:tab-cancelled={tab.key === 'cancelled'}
+          onclick={() => (activeFilter = tab.key)}
+        >
+          <tab.icon size={13} strokeWidth={2} />
+          {tab.label}
+          <span class="tab-count">{count}</span>
+        </button>
+      {/if}
+    {/each}
+  </div>
+
+  <!-- ── Exam grid ────────────────────────────────────────────────────────── -->
   {#if sortedExams.length === 0}
     <div class="empty-state">
       <div class="empty-icon"><BookOpen size={36} strokeWidth={1.2} /></div>
-      <p class="empty-title">No exams yet</p>
-      <p class="empty-sub">Create your first exam to get started.</p>
-      <a href="/lecturer/exams/create" class="btn-primary">
-        <PlusCircle size={14} /> Create Exam
-      </a>
+      <p class="empty-title">
+        {activeFilter === 'all' ? 'No exams yet' : `No ${activeFilter} exams`}
+      </p>
+      <p class="empty-sub">
+        {activeFilter === 'all'
+          ? 'Create your first exam to get started.'
+          : `You have no exams with status "${getStatusLabel(activeFilter)}".`}
+      </p>
+      {#if activeFilter === 'all'}
+        <a href="/lecturer/exams/create" class="btn-primary">
+          <PlusCircle size={14} /> Create Exam
+        </a>
+      {:else}
+        <button type="button" class="btn-ghost" onclick={() => (activeFilter = 'all')}>
+          View all exams
+        </button>
+      {/if}
     </div>
   {:else}
     <div class="exam-grid">
@@ -131,13 +191,12 @@
         {@const s    = (statsMap ?? {})[exam.id]}
         <div class="exam-card" class:is-active={exam.status === 'active'}>
 
-          <!-- Top bar accent for active -->
           {#if exam.status === 'active'}
             <div class="card-accent"></div>
           {/if}
 
           <div class="card-top">
-            <span class="course-badge">{exam.course.code}</span>
+            <span class="course-badge">{exam.course?.code ?? exam.courseCode}</span>
             <span class="status-pill" style="background:{meta.bg}; color:{meta.color};">
               <span class="status-pip" style="background:{meta.dot};"></span>
               {meta.label}
@@ -163,7 +222,7 @@
             </div>
           {/if}
 
-          {#if s && (s.total > 0)}
+          {#if s && s.total > 0}
             <div class="stats-row">
               <div class="stat-item">
                 <span class="stat-val">{s.total}</span>
@@ -207,9 +266,8 @@
 </div>
 
 <style>
-  /* ── Tokens ──────────────────────────────────────────────────── */
   :root {
-    --lc-soft: rgba(99, 102, 241, 0.08);
+    --lc-soft: rgba(99,102,241,0.08);
     --lc-500: #6366f1;
     --lc-600: #4f46e5;
     --lc-700: #4338ca;
@@ -223,53 +281,14 @@
     flex-direction: column;
     gap: 1.5rem;
   }
+  @media (min-width: 1024px) { .page { padding: 2rem 2.5rem; } }
 
-  @media (min-width: 1024px) {
-    .page { padding: 2rem 2.5rem; }
-  }
-
-  /* ── Header ──────────────────────────────────────────────────── */
-  .page-header {
-    display: flex; justify-content: space-between;
-    align-items: flex-start; gap: 1rem; flex-wrap: wrap;
-  }
-
-  .header-text h1 {
-    font-size: 1.4rem; font-weight: 800; color: var(--color-text);
-    margin: 0; letter-spacing: -0.02em;
-  }
-
-  .sub {
-    font-size: 0.82rem; color: var(--color-muted);
-    margin: 0.2rem 0 0;
-  }
-  .sub strong { color: var(--color-text); font-weight: 700; }
-
-  /* ── Primary button ──────────────────────────────────────────── */
-  .btn-primary {
-    display: inline-flex; align-items: center; gap: 0.4rem;
-    padding: 0.55rem 1.1rem;
-    background: var(--lc-600); color: white;
-    border: none; border-radius: 0.6rem;
-    font-size: 0.82rem; font-weight: 700;
-    text-decoration: none; cursor: pointer;
-    font-family: inherit;
-    transition: background 0.15s, transform 0.15s, box-shadow 0.15s;
-    white-space: nowrap;
-  }
-  .btn-primary:hover {
-    background: var(--lc-700);
-    transform: translateY(-1px);
-    box-shadow: 0 4px 14px rgba(79, 70, 229, 0.3);
-  }
-
-  /* ── Summary cards ───────────────────────────────────────────── */
+  /* ── Summary cards ────────────────────────────────────────────────────── */
   .summary-grid {
     display: grid;
     grid-template-columns: repeat(4, 1fr);
     gap: 0.875rem;
   }
-
   @media (max-width: 768px) { .summary-grid { grid-template-columns: repeat(2, 1fr); } }
   @media (max-width: 420px) { .summary-grid { grid-template-columns: 1fr 1fr; } }
 
@@ -283,19 +302,16 @@
     transition: border-color 0.15s, box-shadow 0.15s;
   }
   .summary-card:hover {
-    border-color: rgba(79, 70, 229, 0.3);
-    box-shadow: 0 2px 12px rgba(79, 70, 229, 0.06);
+    border-color: rgba(79,70,229,0.3);
+    box-shadow: 0 2px 12px rgba(79,70,229,0.06);
   }
-
   .summary-icon {
     width: 38px; height: 38px; border-radius: 0.625rem; flex-shrink: 0;
     display: flex; align-items: center; justify-content: center;
   }
-
   .summary-body { display: flex; flex-direction: column; gap: 0.1rem; min-width: 0; }
-  .summary-num { font-size: 1.35rem; font-weight: 900; color: var(--color-text); line-height: 1; letter-spacing: -0.03em; }
-  .summary-lbl { font-size: 0.68rem; font-weight: 600; color: var(--color-muted); text-transform: uppercase; letter-spacing: 0.05em; }
-
+  .summary-num  { font-size: 1.35rem; font-weight: 900; color: var(--color-text); line-height: 1; letter-spacing: -0.03em; }
+  .summary-lbl  { font-size: 0.68rem; font-weight: 600; color: var(--color-muted); text-transform: uppercase; letter-spacing: 0.05em; }
   .summary-live-dot {
     position: absolute; top: 0.75rem; right: 0.75rem;
     width: 8px; height: 8px; border-radius: 50%;
@@ -307,40 +323,106 @@
     50%      { box-shadow: 0 0 0 5px rgba(34,197,94,0); }
   }
 
-  /* ── Section header ──────────────────────────────────────────── */
+  /* ── Section header ───────────────────────────────────────────────────── */
   .section-header {
     display: flex; align-items: center; justify-content: space-between; gap: 1rem;
   }
-
   .section-title {
-    display: flex; align-items: center; gap: 0.5rem;
-    color: var(--color-text);
+    display: flex; align-items: center; gap: 0.5rem; color: var(--color-text);
   }
   .section-title h2 { font-size: 0.95rem; font-weight: 700; margin: 0; }
-  .section-title :global(svg) { color: var(--color-muted); flex-shrink: 0; }
-
   .section-count {
     font-size: 0.7rem; font-weight: 700;
     background: var(--color-bg); border: 1px solid var(--color-border);
-    color: var(--color-muted); padding: 0.1rem 0.5rem;
-    border-radius: 999px;
+    color: var(--color-muted); padding: 0.1rem 0.5rem; border-radius: 999px;
   }
 
-  .link-all {
-    display: flex; align-items: center; gap: 0.2rem;
-    font-size: 0.75rem; font-weight: 600; color: var(--lc-600);
-    text-decoration: none; transition: gap 0.15s;
+  /* ── Filter tabs ──────────────────────────────────────────────────────── */
+  .filter-tabs {
+    display: flex; gap: 0.375rem; flex-wrap: wrap;
+    background: var(--color-surface);
+    border: 1px solid var(--color-border);
+    border-radius: 0.75rem;
+    padding: 0.375rem;
   }
-  .link-all:hover { gap: 0.35rem; }
 
-  /* ── Exam grid ───────────────────────────────────────────────── */
+  .filter-tab {
+    display: inline-flex; align-items: center; gap: 0.4rem;
+    padding: 0.45rem 0.875rem;
+    border-radius: 0.5rem;
+    border: none; background: none; cursor: pointer;
+    font-size: 0.78rem; font-weight: 600;
+    color: var(--color-muted); font-family: inherit;
+    transition: background 0.15s, color 0.15s;
+    white-space: nowrap;
+  }
+  .filter-tab:hover { background: var(--color-bg); color: var(--color-text); }
+
+  /* default active state — indigo */
+  .filter-tab.active {
+    background: var(--lc-soft);
+    color: var(--lc-600);
+    font-weight: 700;
+  }
+
+  /* per-status colour when active */
+  .filter-tab.active.tab-active    { background: rgba(22,163,74,0.1);  color: #16a34a; }
+  .filter-tab.active.tab-scheduled { background: rgba(37,99,235,0.08); color: #2563eb; }
+  .filter-tab.active.tab-draft     { background: rgba(100,116,139,0.1);color: #64748b; }
+  .filter-tab.active.tab-completed { background: rgba(124,58,237,0.08); color: #7c3aed; }
+  .filter-tab.active.tab-cancelled { background: rgba(220,38,38,0.08); color: #dc2626; }
+
+  .tab-count {
+    font-size: 0.62rem; font-weight: 800;
+    padding: 0.05rem 0.35rem; border-radius: 999px;
+    background: var(--color-border);
+    color: var(--color-muted);
+    transition: background 0.15s, color 0.15s;
+  }
+  .filter-tab.active .tab-count {
+    background: currentColor;
+    color: #fff;
+    opacity: 0.9;
+  }
+
+  /* ── Primary button ───────────────────────────────────────────────────── */
+  .btn-primary {
+    display: inline-flex; align-items: center; gap: 0.4rem;
+    padding: 0.55rem 1.1rem;
+    background: var(--lc-600); color: white;
+    border: none; border-radius: 0.6rem;
+    font-size: 0.82rem; font-weight: 700;
+    text-decoration: none; cursor: pointer; font-family: inherit;
+    transition: background 0.15s, transform 0.15s, box-shadow 0.15s;
+    white-space: nowrap;
+  }
+  .btn-primary:hover {
+    background: var(--lc-700);
+    transform: translateY(-1px);
+    box-shadow: 0 4px 14px rgba(79,70,229,0.3);
+  }
+
+  .btn-ghost {
+    display: inline-flex; align-items: center; gap: 0.4rem;
+    padding: 0.55rem 1.1rem;
+    background: var(--color-bg);
+    border: 1.5px solid var(--color-border);
+    border-radius: 0.6rem;
+    font-size: 0.82rem; font-weight: 700;
+    color: var(--color-text);
+    cursor: pointer; font-family: inherit;
+    transition: border-color 0.15s, color 0.15s;
+  }
+  .btn-ghost:hover { border-color: var(--lc-600); color: var(--lc-600); }
+
+  /* ── Exam grid ────────────────────────────────────────────────────────── */
   .exam-grid {
     display: grid;
     grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
     gap: 1rem;
   }
 
-  /* ── Exam card ───────────────────────────────────────────────── */
+  /* ── Exam card ────────────────────────────────────────────────────────── */
   .exam-card {
     background: var(--color-surface);
     border: 1px solid var(--color-border);
@@ -351,80 +433,52 @@
     transition: border-color 0.15s, box-shadow 0.15s, transform 0.15s;
   }
   .exam-card:hover {
-    border-color: rgba(79, 70, 229, 0.25);
+    border-color: rgba(79,70,229,0.25);
     box-shadow: 0 4px 20px rgba(0,0,0,0.06);
     transform: translateY(-1px);
   }
-
   .exam-card.is-active {
-    border-color: rgba(79, 70, 229, 0.35);
-    box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.06);
+    border-color: rgba(79,70,229,0.35);
+    box-shadow: 0 0 0 3px rgba(79,70,229,0.06);
   }
-
   .card-accent {
-    position: absolute; top: 0; left: 0; right: 0;
-    height: 2px;
+    position: absolute; top: 0; left: 0; right: 0; height: 2px;
     background: linear-gradient(90deg, var(--lc-600), var(--lc-500), #818cf8);
   }
-
-  /* Card top */
-  .card-top {
-    display: flex; justify-content: space-between; align-items: center; gap: 0.5rem;
-  }
-
+  .card-top { display: flex; justify-content: space-between; align-items: center; gap: 0.5rem; }
   .course-badge {
     font-size: 0.7rem; font-weight: 800; padding: 0.2rem 0.6rem;
-    background: var(--lc-soft);
-    color: var(--lc-600); border-radius: 999px;
-    letter-spacing: 0.04em;
+    background: var(--lc-soft); color: var(--lc-600);
+    border-radius: 999px; letter-spacing: 0.04em;
   }
-
   .status-pill {
     display: inline-flex; align-items: center; gap: 0.35rem;
     font-size: 0.68rem; font-weight: 700; padding: 0.2rem 0.6rem;
     border-radius: 999px; text-transform: capitalize; white-space: nowrap;
   }
-  .status-pip {
-    width: 5px; height: 5px; border-radius: 50%; flex-shrink: 0;
-  }
-
+  .status-pip { width: 5px; height: 5px; border-radius: 50%; flex-shrink: 0; }
   .exam-title {
-    font-size: 0.9rem; font-weight: 700;
-    color: var(--color-text); margin: 0;
-    line-height: 1.4;
+    font-size: 0.9rem; font-weight: 700; color: var(--color-text); margin: 0; line-height: 1.4;
     display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
   }
-
-  /* Meta chips */
-  .exam-meta-row {
-    display: flex; flex-wrap: wrap; gap: 0.4rem;
-  }
-
+  .exam-meta-row { display: flex; flex-wrap: wrap; gap: 0.4rem; }
   .meta-chip {
     display: inline-flex; align-items: center; gap: 0.3rem;
     font-size: 0.68rem; font-weight: 600; padding: 0.2rem 0.55rem;
     background: var(--color-bg); border: 1px solid var(--color-border);
     border-radius: 999px; color: var(--color-muted);
   }
-
-  /* Schedule row */
   .schedule-row {
-    display: flex; align-items: center; justify-content: space-between;
-    gap: 0.5rem;
+    display: flex; align-items: center; justify-content: space-between; gap: 0.5rem;
     padding: 0.45rem 0.75rem;
-    background: var(--color-bg); border-radius: 0.5rem;
-    border: 1px solid var(--color-border);
+    background: var(--color-bg); border-radius: 0.5rem; border: 1px solid var(--color-border);
   }
   .schedule-label { font-size: 0.65rem; font-weight: 700; color: var(--color-muted); text-transform: uppercase; letter-spacing: 0.05em; }
   .schedule-val   { font-size: 0.75rem; font-weight: 600; color: var(--color-text); }
-
-  /* Stats row */
   .stats-row {
     display: flex; align-items: center;
-    background: var(--color-bg); border: 1px solid var(--color-border);
-    border-radius: 0.625rem; overflow: hidden;
+    background: var(--color-bg); border: 1px solid var(--color-border); border-radius: 0.625rem; overflow: hidden;
   }
-
   .stat-item {
     flex: 1; display: flex; flex-direction: column; align-items: center;
     gap: 0.1rem; padding: 0.55rem 0.5rem;
@@ -433,59 +487,42 @@
   .stat-val.good-score { color: var(--lc-600); }
   .stat-label { font-size: 0.6rem; font-weight: 600; color: var(--color-muted); text-transform: uppercase; letter-spacing: 0.04em; }
   .stat-divider { width: 1px; height: 28px; background: var(--color-border); flex-shrink: 0; }
-
   .no-attempts {
     display: flex; align-items: center; gap: 0.35rem;
     font-size: 0.72rem; color: var(--color-muted);
     padding: 0.4rem 0.625rem;
-    background: var(--color-bg); border-radius: 0.45rem;
-    border: 1px solid var(--color-border);
+    background: var(--color-bg); border-radius: 0.45rem; border: 1px solid var(--color-border);
   }
-
-  /* Actions */
-  .card-actions {
-    display: flex; gap: 0.4rem; flex-wrap: wrap; margin-top: auto; padding-top: 0.25rem;
-  }
-
+  .card-actions { display: flex; gap: 0.4rem; flex-wrap: wrap; margin-top: auto; padding-top: 0.25rem; }
   .action-btn {
     display: inline-flex; align-items: center; gap: 0.35rem;
     padding: 0.4rem 0.75rem;
     background: var(--lc-600); color: white;
     border: none; border-radius: 0.5rem;
     font-size: 0.75rem; font-weight: 700;
-    text-decoration: none; cursor: pointer;
-    font-family: inherit; transition: background 0.15s;
-    white-space: nowrap;
+    text-decoration: none; cursor: pointer; font-family: inherit;
+    transition: background 0.15s; white-space: nowrap;
   }
   .action-btn:hover { background: var(--lc-700); }
-
   .action-btn.outline {
-    background: transparent;
-    border: 1px solid var(--color-border);
-    color: var(--color-text);
-    margin-left: auto;
+    background: transparent; border: 1px solid var(--color-border);
+    color: var(--color-text); margin-left: auto;
   }
-  .action-btn.outline:hover {
-    border-color: var(--lc-600); color: var(--lc-600);
-    background: var(--lc-soft);
-  }
+  .action-btn.outline:hover { border-color: var(--lc-600); color: var(--lc-600); background: var(--lc-soft); }
 
-  /* ── Empty state ─────────────────────────────────────────────── */
+  /* ── Empty state ──────────────────────────────────────────────────────── */
   .empty-state {
     display: flex; flex-direction: column; align-items: center;
     gap: 0.75rem; padding: 4rem 2rem; text-align: center;
-    background: var(--color-surface); border: 1px solid var(--color-border);
+    background: var(--color-surface); border: 1.5px dashed var(--color-border);
     border-radius: 0.875rem;
-    border-style: dashed;
   }
-
   .empty-icon {
     width: 64px; height: 64px; border-radius: 1rem;
-    background: var(--lc-soft); border: 1px solid rgba(79, 70, 229, 0.15);
+    background: var(--lc-soft); border: 1px solid rgba(79,70,229,0.15);
     display: flex; align-items: center; justify-content: center;
     color: var(--lc-600); margin-bottom: 0.25rem;
   }
-
   .empty-title { font-size: 1rem; font-weight: 700; color: var(--color-text); margin: 0; }
   .empty-sub   { font-size: 0.82rem; color: var(--color-muted); margin: 0; }
 </style>

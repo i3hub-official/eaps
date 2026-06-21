@@ -75,58 +75,59 @@ export const load: LayoutServerLoad = async (event) => {
           status: true,
           score: true,
           exam: {
+            select: { title: true }
+          },
+          // violations belong to ExamSession, not User
+          violations: {
             select: {
-              title: true,
+              id: true,
+              flagType: true,
+              actionTaken: true,
+              note: true,
+              flaggedAt: true,
             }
           }
         }
       },
-      violations: {
-        select: {
-          id: true,
-          flagType: true,
-          actionTaken: true,
-          note: true,
-          flaggedAt: true,
-          session: {
-            select: {
-              exam: {
-                select: {
-                  title: true,
-                }
-              }
-            }
-          }
-        }
-      }
     },
   });
 
-  // Transform data
-  const transformedStudents = students.map(s => ({
-    id: s.id,
-    fullName: s.fullName,
-    email: s.email,
-    matricNumber: s.matricNumber,
-    level: s.levelId,
-    departmentId: s.departmentId,
-    departmentName: s.department?.name,
-    isActive: s.isActive,
-    isSuspended: s.isSuspended,
-    courseIds: s.courseRegistrations.map(c => c.courseId),
-    courseCodes: s.courseRegistrations.map(c => c.course.code),
-    examCount: s.examSessions.length,
-    avgScore: s.examSessions.filter(e => e.score !== null).reduce((sum, e) => sum + (e.score || 0), 0) / (s.examSessions.filter(e => e.score !== null).length || 1),
-    violationCount: s.violations.length,
-    violations: s.violations.map(v => ({
-      id: v.id,
-      flagType: v.flagType,
-      actionTaken: v.actionTaken,
-      note: v.note,
-      flaggedAt: v.flaggedAt,
-      examTitle: v.session?.exam?.title,
-    })),
-  }));
+  // Transform — flatten violations out of examSessions
+  const transformedStudents = students.map(s => {
+    const allViolations = s.examSessions.flatMap(session =>
+      (session.violations ?? []).map(v => ({
+        id: v.id,
+        flagType: v.flagType,
+        actionTaken: v.actionTaken,
+        note: v.note,
+        flaggedAt: v.flaggedAt,
+        examTitle: session.exam?.title ?? null,
+      }))
+    );
+
+    const scoredSessions = s.examSessions.filter(e => e.score !== null);
+    const avgScore = scoredSessions.length
+      ? scoredSessions.reduce((sum, e) => sum + (Number(e.score) || 0), 0) / scoredSessions.length
+      : 0;
+
+    return {
+      id: s.id,
+      fullName: s.fullName,
+      email: s.email,
+      matricNumber: s.matricNumber,
+      level: s.levelId,
+      departmentId: s.departmentId,
+      departmentName: s.department?.name,
+      isActive: s.isActive,
+      isSuspended: s.isSuspended,
+      courseIds: s.courseRegistrations.map(c => c.courseId),
+      courseCodes: s.courseRegistrations.map(c => c.course.code),
+      examCount: s.examSessions.length,
+      avgScore,
+      violationCount: allViolations.length,
+      violations: allViolations,
+    };
+  });
 
   // Get exams for dropdowns
   const exams = await prisma.exam.findMany({

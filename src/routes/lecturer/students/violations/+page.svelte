@@ -493,4 +493,6 @@
     .student-info {
       flex-wrap: wrap;
     }
+}
+
   </style>
