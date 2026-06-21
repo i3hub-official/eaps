@@ -11,13 +11,17 @@
 
   let { question, answer, mode, onAnswer }: Props = $props();
 
-  const selected = $derived(answer?.textAnswer ?? null);
-  const isReview = $derived(mode === 'review');
+  const selected  = $derived(answer?.textAnswer ?? null);
+  const isReview  = $derived(mode === 'review');
   const isPreview = $derived(mode === 'preview');
 
   function select(val: 'true' | 'false') {
     if (isReview || isPreview) return;
-    onAnswer({ selectedOption: null, textAnswer: val });
+    onAnswer({
+      questionId:     question.id,
+      selectedOption: null,
+      textAnswer:     val,
+    });
   }
 </script>
 
@@ -57,9 +61,14 @@
     </button>
   </div>
 
-  {#if isReview && answer?.textAnswer}
+  {#if isReview}
     <div class="review-note">
-      You selected: <strong>{answer.textAnswer === 'true' ? 'True' : 'False'}</strong>
+      {#if answer?.textAnswer}
+        You selected: <strong>{answer.textAnswer === 'true' ? 'True' : 'False'}</strong>
+      {:else}
+        <em>Not answered</em>
+      {/if}
+      <!-- Correct answer is NEVER shown here — only after official result release. -->
     </div>
   {/if}
 </div>
@@ -92,12 +101,12 @@
     font-size: 1rem;
   }
   .tf-btn:hover:not(.disabled) { transform: translateY(-2px); box-shadow: 0 4px 12px rgba(0,0,0,0.08); }
-  .tf-btn.true:hover:not(.disabled) { border-color: var(--g400, #4ade80); }
+  .tf-btn.true:hover:not(.disabled)  { border-color: var(--g400, #4ade80); }
   .tf-btn.false:hover:not(.disabled) { border-color: #f87171; }
 
-  .tf-btn.true.selected { border-color: var(--g500, #22c55e); background: var(--g50, #f0fdf4); box-shadow: 0 0 0 3px rgba(34,197,94,0.15); }
+  .tf-btn.true.selected  { border-color: var(--g500, #22c55e); background: var(--g50, #f0fdf4); box-shadow: 0 0 0 3px rgba(34,197,94,0.15); }
   .tf-btn.false.selected { border-color: #ef4444; background: #fef2f2; box-shadow: 0 0 0 3px rgba(239,68,68,0.15); }
-  .tf-btn.disabled { cursor: default; opacity: 0.8; }
+  .tf-btn.disabled { cursor: default; }
 
   .tf-icon {
     width: 48px; height: 48px;
@@ -106,7 +115,7 @@
     font-size: 1.5rem; font-weight: 800;
     background: var(--color-bg, #f9fafb);
   }
-  .tf-btn.true.selected .tf-icon { background: var(--g500, #22c55e); color: white; }
+  .tf-btn.true.selected  .tf-icon { background: var(--g500, #22c55e); color: white; }
   .tf-btn.false.selected .tf-icon { background: #ef4444; color: white; }
 
   .tf-label { font-weight: 700; color: var(--color-text, #374151); }

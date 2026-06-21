@@ -549,6 +549,96 @@
     </div>
   {/if}
 
+  
+  <!-- ── Filter tabs ────────────────────────────────────────── -->
+  <div class="filter-bar">
+    {#each [['all','All'], ['passed','Passed'], ['failed','Failed']] as [val, label]}
+      <button
+        class="filter-btn"
+        class:active={filter === val}
+        onclick={() => filter = val as any}
+        type="button"
+      >{label}</button>
+    {/each}
+  </div>
+
+  <!-- ── Results list ───────────────────────────────────────── -->
+  {#if filtered.length === 0}
+    <div class="empty">
+      <Award size={36} strokeWidth={1.2} />
+      <h3>No results yet</h3>
+      <p>Complete an exam to see your results here.</p>
+    </div>
+  {:else}
+    <div class="results-list">
+      {#each filtered as result}
+        {@const pct = Math.round(Number(result.percentage ?? 0))}
+        {@const gradeInfo = getGradeInfo(pct)}
+        {@const examType = classifyExam(result)}
+        <div class="result-card">
+          <div class="result-left">
+            <div class="grade-circle {gradeColor(pct)}">
+              {result.grade ?? '?'}
+            </div>
+            <div class="grade-points">{gradeInfo.points} pts</div>
+            <div class="exam-type-badge type-{examType}">
+              {examType === 'past' ? '📚' : examType === 'current' ? '📝' : '🔮'}
+            </div>
+          </div>
+          <div class="result-main">
+            <div class="result-top">
+              <div class="result-title-row">
+                <span class="course-code">{result.exam?.course?.code}</span>
+                <h3 class="result-title">{result.exam?.title}</h3>
+                <span class="grade-label">{gradeInfo.label}</span>
+              </div>
+              <div class="result-score">
+                <span class="score-big {gradeColor(pct)}">{pct}%</span>
+                <span class="score-raw">{result.correct ?? '—'}/{result.totalQuestions ?? '—'} correct</span>
+              </div>
+            </div>
+
+            <div class="result-bar-wrap">
+              <div class="result-bar">
+                <div class="result-fill {gradeColor(pct)}-fill" style="width:{pct}%"></div>
+                <!-- MOUAU Pass mark line (40%) -->
+                <div class="pass-line" style="left:40%"></div>
+                <!-- Grade markers -->
+                <div class="grade-markers">
+                  <span class="marker" style="left:70%">A</span>
+                  <span class="marker" style="left:60%">B</span>
+                  <span class="marker" style="left:50%">C</span>
+                  <span class="marker" style="left:45%">D</span>
+                  <span class="marker" style="left:40%">E</span>
+                </div>
+              </div>
+            </div>
+
+            <div class="result-meta">
+              <span class="meta-item">
+                <Calendar size={11} />{formatDate(result.submittedAt)}
+              </span>
+              <span class="meta-item">
+                <Clock size={11} />{formatTime(result.timeTakenSecs)}
+              </span>
+              <span class="meta-item">
+                <Target size={11} />{result.answered ?? 0}/{result.totalQuestions ?? 0} answered
+              </span>
+              {#if result.violationCount > 0}
+                <span class="meta-item warn-item">
+                  <AlertTriangle size={11} />{result.violationCount} violation{result.violationCount !== 1 ? 's' : ''}
+                </span>
+              {/if}
+              <span class="status-chip" class:chip-pass={result.passed} class:chip-fail={!result.passed}>
+                {result.passed ? 'Passed' : 'Failed'}
+              </span>
+            </div>
+          </div>
+        </div>
+      {/each}
+    </div>
+  {/if}
+
   <!-- ── Charts Section ────────────────────────────────────── -->
   {#if (summary.total ?? 0) > 0}
     <div class="charts-section">
@@ -641,94 +731,6 @@
   {/if}
 
 
-  <!-- ── Filter tabs ────────────────────────────────────────── -->
-  <div class="filter-bar">
-    {#each [['all','All'], ['passed','Passed'], ['failed','Failed']] as [val, label]}
-      <button
-        class="filter-btn"
-        class:active={filter === val}
-        onclick={() => filter = val as any}
-        type="button"
-      >{label}</button>
-    {/each}
-  </div>
-
-  <!-- ── Results list ───────────────────────────────────────── -->
-  {#if filtered.length === 0}
-    <div class="empty">
-      <Award size={36} strokeWidth={1.2} />
-      <h3>No results yet</h3>
-      <p>Complete an exam to see your results here.</p>
-    </div>
-  {:else}
-    <div class="results-list">
-      {#each filtered as result}
-        {@const pct = Math.round(Number(result.percentage ?? 0))}
-        {@const gradeInfo = getGradeInfo(pct)}
-        {@const examType = classifyExam(result)}
-        <div class="result-card">
-          <div class="result-left">
-            <div class="grade-circle {gradeColor(pct)}">
-              {result.grade ?? '?'}
-            </div>
-            <div class="grade-points">{gradeInfo.points} pts</div>
-            <div class="exam-type-badge type-{examType}">
-              {examType === 'past' ? '📚' : examType === 'current' ? '📝' : '🔮'}
-            </div>
-          </div>
-          <div class="result-main">
-            <div class="result-top">
-              <div class="result-title-row">
-                <span class="course-code">{result.exam?.course?.code}</span>
-                <h3 class="result-title">{result.exam?.title}</h3>
-                <span class="grade-label">{gradeInfo.label}</span>
-              </div>
-              <div class="result-score">
-                <span class="score-big {gradeColor(pct)}">{pct}%</span>
-                <span class="score-raw">{result.correct ?? '—'}/{result.totalQuestions ?? '—'} correct</span>
-              </div>
-            </div>
-
-            <div class="result-bar-wrap">
-              <div class="result-bar">
-                <div class="result-fill {gradeColor(pct)}-fill" style="width:{pct}%"></div>
-                <!-- MOUAU Pass mark line (40%) -->
-                <div class="pass-line" style="left:40%"></div>
-                <!-- Grade markers -->
-                <div class="grade-markers">
-                  <span class="marker" style="left:70%">A</span>
-                  <span class="marker" style="left:60%">B</span>
-                  <span class="marker" style="left:50%">C</span>
-                  <span class="marker" style="left:45%">D</span>
-                  <span class="marker" style="left:40%">E</span>
-                </div>
-              </div>
-            </div>
-
-            <div class="result-meta">
-              <span class="meta-item">
-                <Calendar size={11} />{formatDate(result.submittedAt)}
-              </span>
-              <span class="meta-item">
-                <Clock size={11} />{formatTime(result.timeTakenSecs)}
-              </span>
-              <span class="meta-item">
-                <Target size={11} />{result.answered ?? 0}/{result.totalQuestions ?? 0} answered
-              </span>
-              {#if result.violationCount > 0}
-                <span class="meta-item warn-item">
-                  <AlertTriangle size={11} />{result.violationCount} violation{result.violationCount !== 1 ? 's' : ''}
-                </span>
-              {/if}
-              <span class="status-chip" class:chip-pass={result.passed} class:chip-fail={!result.passed}>
-                {result.passed ? 'Passed' : 'Failed'}
-              </span>
-            </div>
-          </div>
-        </div>
-      {/each}
-    </div>
-  {/if}
 </div>
 
 <style>

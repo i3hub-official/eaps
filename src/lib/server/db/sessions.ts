@@ -1,4 +1,6 @@
 // src/lib/server/db/sessions.ts
+// PATCH: replace saveAnswer and saveAnswerFlat only.
+// Everything else in sessions.ts stays exactly as-is.
 
 import { getPrismaClient, sql } from './index.js';
 import type { ExamSession, StudentAnswer } from '@prisma/client';
@@ -111,17 +113,54 @@ export async function saveSessionOrder(
 
 // ─── Prisma: answers ──────────────────────────────────────────────────────────
 
+/**
+ * Upsert a student answer.
+ *
+ * BUG FIX: the old implementation used `?? undefined` on nullable fields, which
+ * caused Prisma to omit the field from the UPDATE entirely. This meant:
+ *   - A student who cleared a text answer (set it to "") would keep the old value.
+ *   - A student who changed from a text answer to an MCQ selection (or vice versa)
+ *     would have both fields set simultaneously, causing incorrect grading.
+ *
+ * Now we always write both columns explicitly using `null` (not `undefined`).
+ * Prisma treats `null` as SET NULL; `undefined` means "don't touch this column".
+ */
 export async function saveAnswer(
   sessionId: string,
   questionId: string,
-  answer: { selectedOption?: string; textAnswer?: string; timeSpentSecs?: number }
+  answer: {
+    selectedOption?: string | null;
+    textAnswer?: string | null;
+    timeSpentSecs?: number;
+  }
 ) {
   const prisma = await getPrismaClient();
 
+  // Normalize: treat empty string the same as null for text answers.
+  const selectedOption = answer.selectedOption ?? null;
+  const textAnswer     = (answer.textAnswer ?? '').trim() || null;
+  const timeSpentSecs  = answer.timeSpentSecs ?? 0;
+
   return prisma.studentAnswer.upsert({
-    where: { sessionId_questionId: { sessionId, questionId } },
-    create: { sessionId, questionId, ...answer, answeredAt: new Date() },
-    update: { ...answer, answeredAt: new Date() },
+    where:  { sessionId_questionId: { sessionId, questionId } },
+    create: {
+      sessionId,
+      questionId,
+      selectedOption,
+      textAnswer,
+      timeSpentSecs,
+      answeredAt: new Date(),
+    },
+    update: {
+      // Explicitly set both columns so a changed answer type clears the old value.
+      selectedOption,
+      textAnswer,
+      timeSpentSecs,
+      answeredAt: new Date(),
+      // Reset grading fields — this answer now needs re-grading.
+      isCorrect:   null,
+      marksEarned: 0,
+    },
   });
 }
 
@@ -210,13 +249,18 @@ export async function getSessionByExamAndStudent(
   });
 }
 
-export const getSavedAnswers = getSessionAnswers;
-export const updateTimeRemaining = saveTimeRemaining;
+export const getSavedAnswers      = getSessionAnswers;
+export const updateTimeRemaining  = saveTimeRemaining;
 
 export async function forceSubmitSession(id: string) {
   return submitSession(id, 'force_submitted');
 }
 
+/**
+ * Flat-arg wrapper used by the answer API route.
+ * Explicitly passes null (not undefined) so the upsert always clears
+ * whichever column the student is not using for this question type.
+ */
 export async function saveAnswerFlat(
   sessionId: string,
   questionId: string,
@@ -225,8 +269,8 @@ export async function saveAnswerFlat(
   timeSpentSecs: number
 ) {
   return saveAnswer(sessionId, questionId, {
-    selectedOption: selectedOption ?? undefined,
-    textAnswer: textAnswer ?? undefined,
+    selectedOption,   // null is intentional — clears old MCQ choice
+    textAnswer,       // null is intentional — clears old text answer
     timeSpentSecs,
   });
 }

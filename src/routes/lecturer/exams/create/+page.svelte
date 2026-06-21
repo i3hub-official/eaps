@@ -750,8 +750,8 @@
               <label for="totalMarks"><FileText size={13} /> Total Marks</label>
               <div class="score-input-wrap">
                 <input id="totalMarks" name="totalMarks" type="number"
-                  bind:value={totalMarks} min="1" required readonly
-                  class="input-readonly" />
+                  bind:value={totalMarks} min="1" required
+                  class="input" />
                 <span class="score-unit">pts</span>
               </div>
               <p class="field-hint">Auto-calculated from questions per student</p>
@@ -1110,14 +1110,7 @@
   .field input:focus, .field textarea:focus { border-color: var(--lc-600); box-shadow: 0 0 0 3px var(--lc-soft); }
   .two-col { display: grid; grid-template-columns: 1fr 1fr; gap: .75rem; }
 
-  /* Readonly input styling */
-  .input-readonly {
-    background: var(--color-border) !important;
-    cursor: not-allowed;
-    opacity: 0.8;
-  }
-
-  /* ── Count badge ─────────────────────────────────────────────────────────── */
+   /* ── Count badge ─────────────────────────────────────────────────────────── */
   .count-badge { display: inline-flex; align-items: center; justify-content: center; min-width: 18px; height: 18px; padding: 0 .35rem; background: var(--lc-600); color: white; border-radius: 999px; font-size: .65rem; font-weight: 800; }
 
   /* ── Dropdown ────────────────────────────────────────────────────────────── */

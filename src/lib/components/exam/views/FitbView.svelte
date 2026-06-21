@@ -11,19 +11,35 @@
 
   let { question, answer, mode, onAnswer }: Props = $props();
 
-  const isReview = $derived(mode === 'review');
+  const isReview  = $derived(mode === 'review');
   const isPreview = $derived(mode === 'preview');
+  const blankCount = $derived((question.body.match(/_{2,}/g) || []).length);
 
-  let inputValue = $state(answer?.textAnswer ?? '');
+  // Sync local input whenever the question or saved answer changes.
+  // Using $derived keeps this reactive to both question navigation and
+  // external answer updates (e.g. resumed session), without the
+  // stale-state bug of a $state that only initialises once.
+  const syncedValue = $derived(answer?.textAnswer ?? '');
+
+  // Separate writable state for the live input — only updated by the student typing.
+  // Seeded from syncedValue whenever the question changes.
+  let inputValue = $state(syncedValue);
+
+  $effect(() => {
+    // When question.id changes (navigation) or the synced answer changes
+    // (resume), reset the local input to match.
+    // We key on both so that typing on the same question doesn't reset mid-edit.
+    inputValue = answer?.textAnswer ?? '';
+  });
 
   function submit() {
     if (isReview || isPreview) return;
-    onAnswer({ selectedOption: null, textAnswer: inputValue.trim() });
+    onAnswer({
+      questionId:     question.id,
+      selectedOption: null,
+      textAnswer:     inputValue.trim(),
+    });
   }
-
-  // Parse body to find blanks: "The capital of ___ is ___"
-  // For now, simple single-blank or show body as-is with input below
-  const blankCount = $derived((question.body.match(/_{2,}/g) || []).length);
 </script>
 
 <div class="fitb-view">
@@ -43,21 +59,25 @@
       id="fitb-input"
       type="text"
       bind:value={inputValue}
-      onchange={submit}
+      oninput={submit}
       disabled={isReview || isPreview}
-      placeholder={blankCount > 1 ? `Enter ${blankCount} answers separated by commas` : 'Type your answer'}
+      placeholder={blankCount > 1
+        ? `Enter ${blankCount} answers separated by commas`
+        : 'Type your answer'}
       autocomplete="off"
       spellcheck="false"
     />
   </div>
 
-  {#if isReview && answer?.textAnswer}
+  {#if isReview}
     <div class="review-note">
-      <strong>Your answer:</strong> {answer.textAnswer}
-      {#if question.fitbAnswers.length > 0}
-        <br />
-        <strong>Accepted:</strong> {question.fitbAnswers.map(f => f.acceptedAnswer).join(', ')}
+      {#if answer?.textAnswer}
+        <strong>Your answer:</strong> {answer.textAnswer}
+      {:else}
+        <em>Not answered</em>
       {/if}
+      <!-- fitbAnswers is intentionally empty during and after a live exam.
+           Correct answers are never exposed to the client. -->
     </div>
   {/if}
 </div>
@@ -78,7 +98,11 @@
   }
 
   .input-wrap { display: flex; flex-direction: column; gap: 0.5rem; }
-  .input-wrap label { font-size: 0.8rem; font-weight: 700; color: var(--color-muted, #6b7280); text-transform: uppercase; letter-spacing: 0.05em; }
+  .input-wrap label {
+    font-size: 0.8rem; font-weight: 700;
+    color: var(--color-muted, #6b7280);
+    text-transform: uppercase; letter-spacing: 0.05em;
+  }
   .input-wrap input {
     padding: 0.875rem 1rem;
     border: 2px solid var(--color-border, #e5e7eb);

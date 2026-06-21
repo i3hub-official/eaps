@@ -387,7 +387,7 @@ BEGIN
   SELECT * INTO v_session FROM exam_sessions WHERE id = p_session_id;
   SELECT * INTO v_exam FROM exams WHERE id = v_session.exam_id;
 
-  SELECT COUNT(*) INTO v_total FROM questions WHERE exam_id = v_exam.id;
+SELECT COUNT(*) INTO v_total FROM session_question_order WHERE session_id = p_session_id;
   SELECT COUNT(*) INTO v_answered FROM student_answers WHERE session_id = p_session_id;
   SELECT COUNT(*) INTO v_correct FROM student_answers WHERE session_id = p_session_id AND is_correct = true;
   SELECT SUM(marks_earned) INTO v_score FROM student_answers WHERE session_id = p_session_id;

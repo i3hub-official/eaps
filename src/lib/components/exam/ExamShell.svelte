@@ -1,5 +1,4 @@
 <!-- src/lib/components/exam/ExamShell.svelte -->
-<!-- Replace the <script> block only — template and styles stay the same -->
 <script lang="ts">
   import type { ExamConfig, ExamSessionState, Question, StudentAnswerInput } from '$lib/types/exam.js';
   import QuestionRenderer from './QuestionRenderer.svelte';
@@ -12,7 +11,8 @@
     examId:              string;
     config:              ExamConfig;
     session:             ExamSessionState | null;
-    questions:           Question[];
+    /** Total number of questions — known upfront, but NOT the question bodies. */
+    totalQuestions:      number;
     initialAnswers:      StudentAnswerInput[];
     faceVerified:        boolean;
     needsStart:          boolean;
@@ -23,7 +23,7 @@
     examId,
     config,
     session,
-    questions,
+    totalQuestions,
     initialAnswers,
     faceVerified: initialFaceVerified,
     needsStart,
@@ -39,17 +39,103 @@
   let timerRef: ExamTimer;
   let faceMonitorRef: FaceMonitor;
 
-  const totalQuestions = $derived(questions.length);
-  const currentQ       = $derived(questions[currentIdx] ?? null);
-  const currentAnswer  = $derived(
+  // ── Question cache ─────────────────────────────────────────────────────
+  // Key: display index. Value: fetched Question (no correct-answer data).
+  let questionCache = $state<Map<number, Question>>(new Map());
+  // Track which indices are currently being fetched to avoid duplicate requests.
+  const inflight = new Set<number>();
+  // How many questions to prefetch ahead and behind the current index.
+  const PREFETCH_WINDOW = 2;
+
+  const currentQ = $derived(questionCache.get(currentIdx) ?? null);
+  const currentAnswer = $derived(
     currentQ ? (answers.find(a => a.questionId === currentQ.id) ?? null) : null
   );
-  const answeredCount  = $derived(
+  const answeredCount = $derived(
     answers.filter(a =>
       a.selectedOption !== null ||
       (a.textAnswer !== null && a.textAnswer !== '')
     ).length
   );
+
+  // ── Fetch a single question by display index ───────────────────────────
+  async function fetchQuestion(index: number): Promise<void> {
+    if (!session) return;
+    if (index < 0 || index >= totalQuestions) return;
+    if (questionCache.has(index)) return;
+    if (inflight.has(index)) return;
+
+    inflight.add(index);
+    try {
+      const res = await fetch(
+        `/api/exam/${examId}/question?index=${index}&sessionId=${session.id}`
+      );
+
+      if (res.status === 409 || res.status === 410) {
+        // Session expired or already submitted
+        await submitExam();
+        return;
+      }
+      if (res.status === 423) {
+        // Session paused/flagged
+        goto('/student/exams');
+        return;
+      }
+      if (!res.ok) {
+        console.error(`Failed to fetch question ${index}: ${res.status}`);
+        return;
+      }
+
+      const data = await res.json() as {
+        index: number;
+        total: number;
+        question: {
+          id: string;
+          type: string;
+          body: string;
+          imageUrl: string | null;
+          marks: number;
+          options: Array<{ id: string; text: string }>;
+        };
+      };
+
+      // Shape the server response into our client Question type.
+      // fitbAnswers is intentionally empty — never revealed during a live exam.
+      const q: Question = {
+        id:           data.question.id,
+        examId:       examId,
+        type:         data.question.type as Question['type'],
+        body:         data.question.body,
+        topic:        null,
+        imageUrl:     data.question.imageUrl,
+        marks:        data.question.marks,
+        displayIndex: data.index,
+        options: data.question.options.map((o, i) => ({
+          id:           o.id,
+          optionText:   o.text,
+          displayIndex: i,
+        })),
+        fitbAnswers: [], // never populated client-side during a live exam
+      };
+
+      // Immutably update the cache so Svelte reactivity fires
+      questionCache = new Map(questionCache).set(index, q);
+    } finally {
+      inflight.delete(index);
+    }
+  }
+
+  // ── Prefetch window around current index ──────────────────────────────
+  function prefetchAround(index: number): void {
+    for (let i = index - PREFETCH_WINDOW; i <= index + PREFETCH_WINDOW; i++) {
+      fetchQuestion(i); // no-op if out of range, already cached, or inflight
+    }
+  }
+
+  // Trigger fetch + prefetch whenever currentIdx changes
+  $effect(() => {
+    prefetchAround(currentIdx);
+  });
 
   // ── Start exam if needed ──────────────────────────────────────────────
   onMount(async () => {
@@ -61,14 +147,14 @@
         return;
       }
       window.location.reload();
+      return;
     }
+    // Initial fetch for starting position + surrounding window
+    prefetchAround(currentIdx);
   });
 
   // ── Auto-submit on window close / unload ──────────────────────────────
-  // Saves whatever is in the offline queue before the page unloads.
-  // This is a best-effort — browsers limit how long beforeunload handlers run.
   function handleBeforeUnload(e: BeforeUnloadEvent) {
-    // Flush offline queue synchronously via sendBeacon
     if (offlineQueue.length > 0 && session) {
       for (const ans of offlineQueue) {
         navigator.sendBeacon(
@@ -82,7 +168,6 @@
         );
       }
     }
-    // Let the browser show its own "Leave?" prompt so the student knows
     e.preventDefault();
     e.returnValue = '';
   }
@@ -106,18 +191,16 @@
         await submitExam();
       } else if (data.sessionStatus === 'flagged') {
         faceMonitorRef?.pause();
-        goto('/student/exams?examId=' + examId); // will re-load and show 'flagged' state
+        goto('/student/exams?examId=' + examId);
       }
     } catch {
       // Network error — ignore, timer will still auto-submit
     }
   }
 
-  // ── Tab / window visibility violations ────────────────────────────────
+  // ── Tab / visibility violations ───────────────────────────────────────
   function handleVisibilityChange() {
     if (document.visibilityState === 'hidden') {
-      handleViolation('no_face_detected'); // reuse as "tab switched away"
-      // Better: log as tab_switch — but violation endpoint only accepts FlagType
       fetch(`/api/exam/${examId}/violation`, {
         method:  'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -170,7 +253,6 @@
           timerRef?.sync(result.timeRemainingSecs);
         }
       } else if (res.status === 410) {
-        // Time's up server-side
         await submitExam();
       } else {
         queueForRetry(ans);
@@ -207,7 +289,6 @@
     faceMonitorRef?.stop();
     faceMonitorRef?.pause();
 
-    // Exit fullscreen gracefully
     if (document.fullscreenElement) {
       await document.exitFullscreen().catch(() => {});
     }
@@ -220,18 +301,13 @@
         body:    JSON.stringify({ sessionId: session?.id }),
       });
 
-      if (res.ok) {
-        goto('/student/results?examId=' + examId);
-      } else if (res.status === 409) {
-        // Already submitted — go to results anyway
+      if (res.ok || res.status === 409) {
         goto('/student/results?examId=' + examId);
       } else {
-        // Keep trying — do not re-enable isSubmitting
         alert('Submit failed. Please try again or contact your invigilator.');
         isSubmitting = false;
       }
     } catch {
-      // Network failure — keep isSubmitting=true and retry in 5s
       setTimeout(submitExam, 5000);
     }
   }
@@ -247,6 +323,12 @@
     clearTimeout(saveTimeout);
     faceMonitorRef?.stop();
   });
+
+  // ── Review panel needs the full cached list ───────────────────────────
+  // Only questions already fetched are shown; others show a loading placeholder.
+  const cachedQuestions = $derived(
+    Array.from({ length: totalQuestions }, (_, i) => questionCache.get(i) ?? null)
+  );
 </script>
 
 <svelte:window
@@ -266,7 +348,6 @@
       </span>
     </div>
 
-    <!-- Face Monitor — shown in top bar during exam -->
     {#if session && enrolledDescriptor}
       <FaceMonitor
         bind:this={faceMonitorRef}
@@ -296,8 +377,9 @@
       <div class="overview-panel">
         <h2>Question Overview</h2>
         <div class="q-grid">
-          {#each questions as q, i}
-            {@const ans = answers.find(a => a.questionId === q.id)}
+          {#each { length: totalQuestions } as _, i}
+            {@const q = questionCache.get(i)}
+            {@const ans = q ? answers.find(a => a.questionId === q.id) : null}
             {@const hasAnswer = ans && (
               ans.selectedOption !== null ||
               (ans.textAnswer !== null && ans.textAnswer !== '')
@@ -318,15 +400,19 @@
     {:else if showReview}
       <div class="review-panel">
         <h2>Review Answers</h2>
-        {#each questions as q, i}
+        {#each cachedQuestions as q, i}
           <div class="review-item">
             <span class="review-num">{i + 1}</span>
-            <QuestionRenderer
-              question={q}
-              answer={answers.find(a => a.questionId === q.id) ?? null}
-              mode="review"
-              onAnswer={() => {}}
-            />
+            {#if q}
+              <QuestionRenderer
+                question={q}
+                answer={answers.find(a => a.questionId === q.id) ?? null}
+                mode="review"
+                onAnswer={() => {}}
+              />
+            {:else}
+              <span class="review-loading">Loading…</span>
+            {/if}
           </div>
         {/each}
         <div class="review-actions">
@@ -337,14 +423,25 @@
         </div>
       </div>
 
-    {:else if currentQ}
+    {:else}
       <div class="question-wrap">
-        <QuestionRenderer
-          question={currentQ}
-          answer={currentAnswer}
-          mode="exam"
-          onAnswer={handleAnswer}
-        />
+        {#if currentQ}
+          <QuestionRenderer
+            question={currentQ}
+            answer={currentAnswer}
+            mode="exam"
+            onAnswer={handleAnswer}
+          />
+        {:else}
+          <!-- Question is being fetched — show a non-revealing skeleton -->
+          <div class="question-skeleton" aria-busy="true" aria-label="Loading question">
+            <div class="skeleton-body"></div>
+            <div class="skeleton-option"></div>
+            <div class="skeleton-option"></div>
+            <div class="skeleton-option"></div>
+            <div class="skeleton-option"></div>
+          </div>
+        {/if}
       </div>
     {/if}
   </main>
@@ -367,3 +464,37 @@
     </footer>
   {/if}
 </div>
+
+<style>
+  .question-skeleton {
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+    padding: 1.5rem;
+    animation: pulse 1.5s ease-in-out infinite;
+  }
+
+  .skeleton-body {
+    height: 3.5rem;
+    border-radius: 0.5rem;
+    background: var(--color-border, #e5e7eb);
+  }
+
+  .skeleton-option {
+    height: 3rem;
+    border-radius: 0.75rem;
+    background: var(--color-border, #e5e7eb);
+    opacity: 0.6;
+  }
+
+  @keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50%       { opacity: 0.4; }
+  }
+
+  .review-loading {
+    color: var(--color-muted, #6b7280);
+    font-size: 0.875rem;
+    padding: 0.5rem 0;
+  }
+</style>

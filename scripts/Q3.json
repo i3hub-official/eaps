@@ -1,0 +1,772 @@
+[
+  {
+    "type": "mcq",
+    "body": "What is the value of 7 × 8 + 6?",
+    "topic": "Mathematics",
+    "marks": 2,
+    "options": ["56", "62", "58", "54"],
+    "correctIndex": 1
+  },
+  {
+    "type": "mcq",
+    "body": "What is the square root of 144?",
+    "topic": "Mathematics",
+    "marks": 2,
+    "options": ["10", "11", "12", "13"],
+    "correctIndex": 2
+  },
+  {
+    "type": "mcq",
+    "body": "What is the derivative of x²?",
+    "topic": "Mathematics",
+    "marks": 2,
+    "options": ["x", "2x", "x²", "2x²"],
+    "correctIndex": 1
+  },
+  {
+    "type": "mcq",
+    "body": "What is the value of log₁₀(100)?",
+    "topic": "Mathematics",
+    "marks": 2,
+    "options": ["1", "2", "3", "4"],
+    "correctIndex": 1
+  },
+  {
+    "type": "mcq",
+    "body": "What is the sum of angles in a triangle?",
+    "topic": "Mathematics",
+    "marks": 2,
+    "options": ["90°", "180°", "270°", "360°"],
+    "correctIndex": 1
+  },
+  {
+    "type": "mcq",
+    "body": "What is the value of 2⁵?",
+    "topic": "Mathematics",
+    "marks": 2,
+    "options": ["16", "24", "32", "64"],
+    "correctIndex": 2
+  },
+  {
+    "type": "mcq",
+    "body": "What is the formula for the area of a circle?",
+    "topic": "Mathematics",
+    "marks": 2,
+    "options": ["πr", "πr²", "2πr", "2πr²"],
+    "correctIndex": 1
+  },
+  {
+    "type": "mcq",
+    "body": "What is the greatest common divisor of 24 and 36?",
+    "topic": "Mathematics",
+    "marks": 2,
+    "options": ["6", "8", "12", "18"],
+    "correctIndex": 2
+  },
+  {
+    "type": "mcq",
+    "body": "What is the integral of 2x dx?",
+    "topic": "Mathematics",
+    "marks": 2,
+    "options": ["x²", "x² + C", "2x²", "2x² + C"],
+    "correctIndex": 1
+  },
+  {
+    "type": "mcq",
+    "body": "Which is the smallest prime number?",
+    "topic": "Mathematics",
+    "marks": 2,
+    "options": ["0", "1", "2", "3"],
+    "correctIndex": 2
+  },
+  {
+    "type": "mcq",
+    "body": "What is 15% of 200?",
+    "topic": "Mathematics",
+    "marks": 2,
+    "options": ["20", "25", "30", "35"],
+    "correctIndex": 2
+  },
+  {
+    "type": "mcq",
+    "body": "What is the binary representation of 10?",
+    "topic": "Mathematics",
+    "marks": 2,
+    "options": ["1000", "1010", "1100", "1001"],
+    "correctIndex": 1
+  },
+  {
+    "type": "mcq",
+    "body": "What is the value of sin(90°)?",
+    "topic": "Mathematics",
+    "marks": 2,
+    "options": ["0", "0.5", "1", "Undefined"],
+    "correctIndex": 2
+  },
+  {
+    "type": "mcq",
+    "body": "Which is the largest prime number less than 50?",
+    "topic": "Mathematics",
+    "marks": 2,
+    "options": ["43", "47", "49", "41"],
+    "correctIndex": 1
+  },
+  {
+    "type": "mcq",
+    "body": "What is the LCM of 6 and 8?",
+    "topic": "Mathematics",
+    "marks": 2,
+    "options": ["12", "18", "24", "48"],
+    "correctIndex": 2
+  },
+  {
+    "type": "mcq",
+    "body": "What is the SI unit of force?",
+    "topic": "Physics",
+    "marks": 2,
+    "options": ["Joule", "Watt", "Newton", "Pascal"],
+    "correctIndex": 2
+  },
+  {
+    "type": "mcq",
+    "body": "What is the speed of light approximately?",
+    "topic": "Physics",
+    "marks": 2,
+    "options": ["3 × 10⁸ m/s", "3 × 10⁶ m/s", "3 × 10¹⁰ m/s", "3 × 10⁴ m/s"],
+    "correctIndex": 0
+  },
+  {
+    "type": "mcq",
+    "body": "Which law states that energy cannot be created or destroyed?",
+    "topic": "Physics",
+    "marks": 2,
+    "options": ["Newton's First Law", "Law of Conservation of Energy", "Ohm's Law", "Law of Gravity"],
+    "correctIndex": 1
+  },
+  {
+    "type": "mcq",
+    "body": "What is the unit of electrical resistance?",
+    "topic": "Physics",
+    "marks": 2,
+    "options": ["Volt", "Ampere", "Ohm", "Watt"],
+    "correctIndex": 2
+  },
+  {
+    "type": "mcq",
+    "body": "What is the acceleration due to gravity on Earth?",
+    "topic": "Physics",
+    "marks": 2,
+    "options": ["9.8 m/s²", "8.9 m/s²", "10.8 m/s²", "7.8 m/s²"],
+    "correctIndex": 0
+  },
+  {
+    "type": "mcq",
+    "body": "What type of wave is sound?",
+    "topic": "Physics",
+    "marks": 2,
+    "options": ["Transverse", "Longitudinal", "Electromagnetic", "Standing"],
+    "correctIndex": 1
+  },
+  {
+    "type": "mcq",
+    "body": "What is the formula for kinetic energy?",
+    "topic": "Physics",
+    "marks": 2,
+    "options": ["½mv²", "mv²", "mgh", "½mgh"],
+    "correctIndex": 0
+  },
+  {
+    "type": "mcq",
+    "body": "Which particle has a negative charge?",
+    "topic": "Physics",
+    "marks": 2,
+    "options": ["Proton", "Neutron", "Electron", "Photon"],
+    "correctIndex": 2
+  },
+  {
+    "type": "mcq",
+    "body": "What is the unit of power?",
+    "topic": "Physics",
+    "marks": 2,
+    "options": ["Joule", "Watt", "Newton", "Pascal"],
+    "correctIndex": 1
+  },
+  {
+    "type": "mcq",
+    "body": "Which law relates voltage, current, and resistance?",
+    "topic": "Physics",
+    "marks": 2,
+    "options": ["Faraday's Law", "Ohm's Law", "Coulomb's Law", "Newton's Law"],
+    "correctIndex": 1
+  },
+  {
+    "type": "mcq",
+    "body": "What is the atomic number of Carbon?",
+    "topic": "Chemistry",
+    "marks": 2,
+    "options": ["4", "6", "8", "12"],
+    "correctIndex": 1
+  },
+  {
+    "type": "mcq",
+    "body": "What is the pH of pure water?",
+    "topic": "Chemistry",
+    "marks": 2,
+    "options": ["5", "6", "7", "8"],
+    "correctIndex": 2
+  },
+  {
+    "type": "mcq",
+    "body": "What is the chemical formula for methane?",
+    "topic": "Chemistry",
+    "marks": 2,
+    "options": ["CH₄", "C₂H₆", "CO₂", "CH₃OH"],
+    "correctIndex": 0
+  },
+  {
+    "type": "mcq",
+    "body": "Which element is the most abundant in the Earth's crust?",
+    "topic": "Chemistry",
+    "marks": 2,
+    "options": ["Silicon", "Aluminum", "Iron", "Oxygen"],
+    "correctIndex": 3
+  },
+  {
+    "type": "mcq",
+    "body": "What is the molecular weight of H₂O?",
+    "topic": "Chemistry",
+    "marks": 2,
+    "options": ["16 g/mol", "18 g/mol", "20 g/mol", "22 g/mol"],
+    "correctIndex": 1
+  },
+  {
+    "type": "mcq",
+    "body": "Which of the following is an alkali metal?",
+    "topic": "Chemistry",
+    "marks": 2,
+    "options": ["Calcium", "Sodium", "Iron", "Zinc"],
+    "correctIndex": 1
+  },
+  {
+    "type": "mcq",
+    "body": "What is the chemical formula for carbon dioxide?",
+    "topic": "Chemistry",
+    "marks": 2,
+    "options": ["CO", "CO₂", "C₂O", "C₂O₂"],
+    "correctIndex": 1
+  },
+  {
+    "type": "mcq",
+    "body": "What is the pH of a strong acid?",
+    "topic": "Chemistry",
+    "marks": 2,
+    "options": ["0-2", "5-7", "7-9", "12-14"],
+    "correctIndex": 0
+  },
+  {
+    "type": "mcq",
+    "body": "Which gas is responsible for the greenhouse effect?",
+    "topic": "Chemistry",
+    "marks": 2,
+    "options": ["Oxygen", "Nitrogen", "Carbon Dioxide", "Helium"],
+    "correctIndex": 2
+  },
+  {
+    "type": "mcq",
+    "body": "What is the symbol for Potassium?",
+    "topic": "Chemistry",
+    "marks": 2,
+    "options": ["P", "Po", "K", "Pt"],
+    "correctIndex": 2
+  },
+  {
+    "type": "mcq",
+    "body": "What is the basic unit of life?",
+    "topic": "Biology",
+    "marks": 2,
+    "options": ["Atom", "Molecule", "Cell", "Tissue"],
+    "correctIndex": 2
+  },
+  {
+    "type": "mcq",
+    "body": "What is the largest organ in the human body?",
+    "topic": "Biology",
+    "marks": 2,
+    "options": ["Heart", "Liver", "Skin", "Lung"],
+    "correctIndex": 2
+  },
+  {
+    "type": "mcq",
+    "body": "What is the function of red blood cells?",
+    "topic": "Biology",
+    "marks": 2,
+    "options": ["Transport Oxygen", "Fight Infection", "Clot Blood", "Carry Nutrients"],
+    "correctIndex": 0
+  },
+  {
+    "type": "mcq",
+    "body": "Which organ filters blood in the human body?",
+    "topic": "Biology",
+    "marks": 2,
+    "options": ["Liver", "Kidney", "Heart", "Lung"],
+    "correctIndex": 1
+  },
+  {
+    "type": "mcq",
+    "body": "What is the sugar found in DNA?",
+    "topic": "Biology",
+    "marks": 2,
+    "options": ["Glucose", "Ribose", "Deoxyribose", "Sucrose"],
+    "correctIndex": 2
+  },
+  {
+    "type": "mcq",
+    "body": "What is the normal human body temperature?",
+    "topic": "Biology",
+    "marks": 2,
+    "options": ["36.5°C", "37.0°C", "37.5°C", "38.0°C"],
+    "correctIndex": 1
+  },
+  {
+    "type": "mcq",
+    "body": "Which blood type is the universal donor?",
+    "topic": "Biology",
+    "marks": 2,
+    "options": ["A", "B", "AB", "O"],
+    "correctIndex": 3
+  },
+  {
+    "type": "mcq",
+    "body": "What is the function of the nervous system?",
+    "topic": "Biology",
+    "marks": 2,
+    "options": ["Transport Nutrients", "Control Body Functions", "Produce Hormones", "Filter Blood"],
+    "correctIndex": 1
+  },
+  {
+    "type": "mcq",
+    "body": "Which vitamin is produced by the skin when exposed to sunlight?",
+    "topic": "Biology",
+    "marks": 2,
+    "options": ["Vitamin A", "Vitamin B", "Vitamin C", "Vitamin D"],
+    "correctIndex": 3
+  },
+  {
+    "type": "mcq",
+    "body": "What is the powerhouse of the cell?",
+    "topic": "Biology",
+    "marks": 2,
+    "options": ["Nucleus", "Ribosome", "Mitochondria", "Golgi Apparatus"],
+    "correctIndex": 2
+  },
+  {
+    "type": "mcq",
+    "body": "What is the memory unit of a computer?",
+    "topic": "Computer Science",
+    "marks": 2,
+    "options": ["Bit", "Byte", "KB", "MB"],
+    "correctIndex": 0
+  },
+  {
+    "type": "mcq",
+    "body": "Which of the following is a programming language?",
+    "topic": "Computer Science",
+    "marks": 2,
+    "options": ["HTML", "CSS", "JavaScript", "XML"],
+    "correctIndex": 2
+  },
+  {
+    "type": "mcq",
+    "body": "What does HTTP stand for?",
+    "topic": "Computer Science",
+    "marks": 2,
+    "options": ["Hyper Text Transfer Protocol", "High Tech Transfer Protocol", "Hyper Text Transmission Protocol", "High Tech Transmission Protocol"],
+    "correctIndex": 0
+  },
+  {
+    "type": "mcq",
+    "body": "Which data structure follows FIFO?",
+    "topic": "Computer Science",
+    "marks": 2,
+    "options": ["Stack", "Queue", "Array", "Linked List"],
+    "correctIndex": 1
+  },
+  {
+    "type": "mcq",
+    "body": "What is the time complexity of binary search?",
+    "topic": "Computer Science",
+    "marks": 2,
+    "options": ["O(1)", "O(log n)", "O(n)", "O(n²)"],
+    "correctIndex": 1
+  },
+  {
+    "type": "mcq",
+    "body": "Which is NOT a Python data type?",
+    "topic": "Computer Science",
+    "marks": 2,
+    "options": ["int", "float", "char", "string"],
+    "correctIndex": 2
+  },
+  {
+    "type": "mcq",
+    "body": "What is the purpose of an IP address?",
+    "topic": "Computer Science",
+    "marks": 2,
+    "options": ["Identify Device", "Identify Website", "Identify User", "Identify Network"],
+    "correctIndex": 0
+  },
+  {
+    "type": "mcq",
+    "body": "Which of the following is a database management system?",
+    "topic": "Computer Science",
+    "marks": 2,
+    "options": ["MySQL", "HTML", "Python", "CSS"],
+    "correctIndex": 0
+  },
+  {
+    "type": "mcq",
+    "body": "What is the difference between RAM and ROM?",
+    "topic": "Computer Science",
+    "marks": 2,
+    "options": ["RAM is volatile, ROM is not", "RAM is non-volatile, ROM is volatile", "RAM is faster than ROM", "RAM is smaller than ROM"],
+    "correctIndex": 0
+  },
+  {
+    "type": "mcq",
+    "body": "What is an algorithm?",
+    "topic": "Computer Science",
+    "marks": 2,
+    "options": ["A programming language", "A set of instructions", "A data structure", "A software"],
+    "correctIndex": 1
+  },
+  {
+    "type": "mcq",
+    "body": "Which of these is NOT a search engine?",
+    "topic": "Computer Science",
+    "marks": 2,
+    "options": ["Google", "Bing", "Yahoo", "Windows"],
+    "correctIndex": 3
+  },
+  {
+    "type": "mcq",
+    "body": "What is the full form of URL?",
+    "topic": "Computer Science",
+    "marks": 2,
+    "options": ["Uniform Resource Locator", "Universal Resource Link", "Uniform Reference Link", "Universal Reference Locator"],
+    "correctIndex": 0
+  },
+  {
+    "type": "mcq",
+    "body": "Which is used to store data permanently?",
+    "topic": "Computer Science",
+    "marks": 2,
+    "options": ["RAM", "Cache", "Hard Disk", "CPU"],
+    "correctIndex": 2
+  },
+  {
+    "type": "mcq",
+    "body": "What does CSS stand for?",
+    "topic": "Computer Science",
+    "marks": 2,
+    "options": ["Cascading Style Sheets", "Creative Style Sheets", "Computer Style Sheets", "Cascading Script Sheets"],
+    "correctIndex": 0
+  },
+  {
+    "type": "mcq",
+    "body": "Which is a valid Java keyword?",
+    "topic": "Computer Science",
+    "marks": 2,
+    "options": ["main", "static", "void", "class"],
+    "correctIndex": 3
+  },
+  {
+    "type": "mcq",
+    "body": "What is the capital of Nigeria?",
+    "topic": "Geography",
+    "marks": 2,
+    "options": ["Lagos", "Abuja", "Kano", "Port Harcourt"],
+    "correctIndex": 1
+  },
+  {
+    "type": "mcq",
+    "body": "Which is the largest continent?",
+    "topic": "Geography",
+    "marks": 2,
+    "options": ["Africa", "Europe", "Asia", "North America"],
+    "correctIndex": 2
+  },
+  {
+    "type": "mcq",
+    "body": "What is the currency of the United Kingdom?",
+    "topic": "General Knowledge",
+    "marks": 2,
+    "options": ["Euro", "Dollar", "Pound Sterling", "Yen"],
+    "correctIndex": 2
+  },
+  {
+    "type": "mcq",
+    "body": "Which is the longest river in the world?",
+    "topic": "Geography",
+    "marks": 2,
+    "options": ["Amazon River", "Nile River", "Mississippi River", "Yangtze River"],
+    "correctIndex": 1
+  },
+  {
+    "type": "mcq",
+    "body": "Which country has the largest population?",
+    "topic": "Geography",
+    "marks": 2,
+    "options": ["India", "China", "United States", "Indonesia"],
+    "correctIndex": 0
+  },
+  {
+    "type": "mcq",
+    "body": "What is the smallest country in the world?",
+    "topic": "Geography",
+    "marks": 2,
+    "options": ["Vatican City", "Monaco", "San Marino", "Liechtenstein"],
+    "correctIndex": 0
+  },
+  {
+    "type": "mcq",
+    "body": "Which ocean is the largest?",
+    "topic": "Geography",
+    "marks": 2,
+    "options": ["Atlantic Ocean", "Indian Ocean", "Pacific Ocean", "Arctic Ocean"],
+    "correctIndex": 2
+  },
+  {
+    "type": "mcq",
+    "body": "What is the tallest mountain in the world?",
+    "topic": "Geography",
+    "marks": 2,
+    "options": ["K2", "Mount Everest", "Kangchenjunga", "Lhotse"],
+    "correctIndex": 1
+  },
+  {
+    "type": "mcq",
+    "body": "Which country is the largest by area?",
+    "topic": "Geography",
+    "marks": 2,
+    "options": ["China", "United States", "Canada", "Russia"],
+    "correctIndex": 3
+  },
+  {
+    "type": "mcq",
+    "body": "What is the national language of Brazil?",
+    "topic": "General Knowledge",
+    "marks": 2,
+    "options": ["Spanish", "Portuguese", "French", "Italian"],
+    "correctIndex": 1
+  },
+  {
+    "type": "truefalse",
+    "body": "Light travels faster than sound.",
+    "topic": "Physics",
+    "marks": 1,
+    "correctAnswer": "true"
+  },
+  {
+    "type": "truefalse",
+    "body": "The Earth rotates from east to west.",
+    "topic": "Physics",
+    "marks": 1,
+    "correctAnswer": "false"
+  },
+  {
+    "type": "truefalse",
+    "body": "Objects of different masses fall at the same speed in a vacuum.",
+    "topic": "Physics",
+    "marks": 1,
+    "correctAnswer": "true"
+  },
+  {
+    "type": "truefalse",
+    "body": "Water expands when it freezes.",
+    "topic": "Physics",
+    "marks": 1,
+    "correctAnswer": "true"
+  },
+  {
+    "type": "truefalse",
+    "body": "The Sun is a star.",
+    "topic": "Physics",
+    "marks": 1,
+    "correctAnswer": "true"
+  },
+  {
+    "type": "truefalse",
+    "body": "Sound waves can travel through vacuum.",
+    "topic": "Physics",
+    "marks": 1,
+    "correctAnswer": "false"
+  },
+  {
+    "type": "truefalse",
+    "body": "Water is a compound.",
+    "topic": "Chemistry",
+    "marks": 1,
+    "correctAnswer": "true"
+  },
+  {
+    "type": "truefalse",
+    "body": "Gold is the most reactive metal.",
+    "topic": "Chemistry",
+    "marks": 1,
+    "correctAnswer": "false"
+  },
+  {
+    "type": "truefalse",
+    "body": "Carbon dioxide is heavier than air.",
+    "topic": "Chemistry",
+    "marks": 1,
+    "correctAnswer": "true"
+  },
+  {
+    "type": "truefalse",
+    "body": "Acids taste sweet.",
+    "topic": "Chemistry",
+    "marks": 1,
+    "correctAnswer": "false"
+  },
+  {
+    "type": "truefalse",
+    "body": "Iron rusts when exposed to oxygen and water.",
+    "topic": "Chemistry",
+    "marks": 1,
+    "correctAnswer": "true"
+  },
+  {
+    "type": "truefalse",
+    "body": "Neon is a noble gas.",
+    "topic": "Chemistry",
+    "marks": 1,
+    "correctAnswer": "true"
+  },
+  {
+    "type": "truefalse",
+    "body": "DNA is double-stranded.",
+    "topic": "Biology",
+    "marks": 1,
+    "correctAnswer": "true"
+  },
+  {
+    "type": "truefalse",
+    "body": "The heart is in the center of the chest.",
+    "topic": "Biology",
+    "marks": 1,
+    "correctAnswer": "false"
+  },
+  {
+    "type": "truefalse",
+    "body": "Bacteria are multicellular organisms.",
+    "topic": "Biology",
+    "marks": 1,
+    "correctAnswer": "false"
+  },
+  {
+    "type": "truefalse",
+    "body": "Plants undergo cellular respiration.",
+    "topic": "Biology",
+    "marks": 1,
+    "correctAnswer": "true"
+  },
+  {
+    "type": "truefalse",
+    "body": "All cells have a nucleus.",
+    "topic": "Biology",
+    "marks": 1,
+    "correctAnswer": "false"
+  },
+  {
+    "type": "truefalse",
+    "body": "Hair and nails are made of the same substance.",
+    "topic": "Biology",
+    "marks": 1,
+    "correctAnswer": "true"
+  },
+  {
+    "type": "truefalse",
+    "body": "JavaScript is a compiled language.",
+    "topic": "Computer Science",
+    "marks": 1,
+    "correctAnswer": "false"
+  },
+  {
+    "type": "truefalse",
+    "body": "Linux is an operating system.",
+    "topic": "Computer Science",
+    "marks": 1,
+    "correctAnswer": "true"
+  },
+  {
+    "type": "truefalse",
+    "body": "HTTP uses port 80 by default.",
+    "topic": "Computer Science",
+    "marks": 1,
+    "correctAnswer": "true"
+  },
+  {
+    "type": "truefalse",
+    "body": "Python uses semicolons at the end of statements.",
+    "topic": "Computer Science",
+    "marks": 1,
+    "correctAnswer": "false"
+  },
+  {
+    "type": "truefalse",
+    "body": "Cloud computing uses the internet to store data.",
+    "topic": "Computer Science",
+    "marks": 1,
+    "correctAnswer": "true"
+  },
+  {
+    "type": "truefalse",
+    "body": "Java and JavaScript are the same language.",
+    "topic": "Computer Science",
+    "marks": 1,
+    "correctAnswer": "false"
+  },
+  {
+    "type": "truefalse",
+    "body": "Africa is the second largest continent.",
+    "topic": "Geography",
+    "marks": 1,
+    "correctAnswer": "true"
+  },
+  {
+    "type": "truefalse",
+    "body": "The Amazon River flows through Brazil.",
+    "topic": "Geography",
+    "marks": 1,
+    "correctAnswer": "true"
+  },
+  {
+    "type": "truefalse",
+    "body": "The capital of Australia is Sydney.",
+    "topic": "Geography",
+    "marks": 1,
+    "correctAnswer": "false"
+  },
+  {
+    "type": "truefalse",
+    "body": "Mount Everest is in the Himalayas.",
+    "topic": "Geography",
+    "marks": 1,
+    "correctAnswer": "true"
+  },
+  {
+    "type": "truefalse",
+    "body": "Russia spans two continents.",
+    "topic": "Geography",
+    "marks": 1,
+    "correctAnswer": "true"
+  },
+  {
+    "type": "truefalse",
+    "body": "The United States has 51 states.",
+    "topic": "Geography",
+    "marks": 1,
+    "correctAnswer": "false"
+  }
+]

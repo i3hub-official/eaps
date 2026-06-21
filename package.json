@@ -19,6 +19,7 @@
 		"db:fresh": "prisma db push && prisma generate && tsx prisma/seed.ts",
 		"seed:all": "prisma migrate dev && tsx prisma/seed.ts",
 		"initSetup": "prisma migrate reset --force && prisma db push && tsx prisma/apply-sql.ts && prisma generate",
+		"initSchema": "prisma db push && tsx prisma/apply-sql.ts && prisma generate",
 		"db:seed": "tsx prisma/seed.ts",
 		"studio": "prisma studio",
 		"db:setup": "prisma db push && pnpm initSchema && pnpm db:seed",
