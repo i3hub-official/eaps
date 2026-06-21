@@ -6,7 +6,7 @@
   import { 
     Search, AlertTriangle, ShieldAlert, 
     Eye, ChevronDown, ChevronRight,
-    FileSpreadsheet, FileText
+    FileSpreadsheet, FileText, Shield
   } from '@lucide/svelte';
 
   let { data }: { data: PageData } = $props();
@@ -123,7 +123,9 @@
 
   {#if filteredData().length === 0}
     <div class="empty-state">
-      <div class="empty-icon">🛡️</div>
+      <div class="empty-icon">
+        <Shield size={48} strokeWidth={1.2} />
+      </div>
       <p class="empty-title">No violations found</p>
       <p class="empty-sub">All students are in good standing.</p>
     </div>
@@ -289,7 +291,16 @@
   }
 
   .empty-icon {
-    font-size: 3rem;
+    width: 64px;
+    height: 64px;
+    border-radius: 1rem;
+    background: var(--lc-soft, rgba(79,70,229,0.08));
+    border: 1px solid rgba(79,70,229,0.15);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--lc-600, #4f46e5);
+    margin-bottom: 0.25rem;
   }
 
   .empty-title {
@@ -493,6 +504,5 @@
     .student-info {
       flex-wrap: wrap;
     }
-}
-
-  </style>
+  }
+</style>

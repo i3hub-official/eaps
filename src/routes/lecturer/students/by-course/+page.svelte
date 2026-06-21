@@ -5,7 +5,8 @@
   import { goto } from '$app/navigation';
   import { 
     Search, Users, ChevronDown, ChevronRight, 
-    FileSpreadsheet, FileText, UserCheck, UserX 
+    FileSpreadsheet, FileText, UserCheck, UserX,
+    BookOpen, AlertCircle, User
   } from '@lucide/svelte';
 
   let { data }: { data: PageData } = $props();
@@ -99,7 +100,9 @@
 
   {#if groupedStudents().length === 0}
     <div class="empty-state">
-      <div class="empty-icon">📚</div>
+      <div class="empty-icon">
+        <BookOpen size={36} strokeWidth={1.2} />
+      </div>
       <p class="empty-title">No students found</p>
       <p class="empty-sub">Try adjusting your filters or check back later.</p>
     </div>
@@ -122,7 +125,10 @@
               {/if}
               <span class="course-code">{group.courseCode}</span>
               <span class="course-title">{group.courseTitle}</span>
-              <span class="student-count">{group.students.length} student{group.students.length !== 1 ? 's' : ''}</span>
+              <span class="student-count">
+                <Users size={12} />
+                {group.students.length} student{group.students.length !== 1 ? 's' : ''}
+              </span>
             </div>
             <div class="course-actions" onclick={(e) => e.stopPropagation()}>
               <button
@@ -149,7 +155,7 @@
               <table>
                 <thead>
                   <tr>
-                    <th>S/N</th>
+                    <th>#</th>
                     <th>Student</th>
                     <th>Matric No.</th>
                     <th>Email</th>
@@ -161,15 +167,24 @@
                   {#each group.students as s, i}
                     <tr>
                       <td>{i + 1}</td>
-                      <td>{s.fullName}</td>
+                      <td>
+                        <User size={12} />
+                        {s.fullName}
+                      </td>
                       <td>{s.matricNumber || '—'}</td>
                       <td>{s.email}</td>
                       <td>{s.level || '—'}</td>
                       <td>
                         {#if s.isSuspended}
-                          <span class="badge danger">Suspended</span>
+                          <span class="badge danger">
+                            <UserX size={12} />
+                            Suspended
+                          </span>
                         {:else}
-                          <span class="badge success">Active</span>
+                          <span class="badge success">
+                            <UserCheck size={12} />
+                            Active
+                          </span>
                         {/if}
                       </td>
                     </tr>
@@ -186,76 +201,69 @@
 
 <style>
   .page {
-    display: flex;
-    flex-direction: column;
-    gap: 1.25rem;
+    padding: 2rem 1.5rem;
+    max-width: 1200px;
+    margin: 0 auto;
   }
 
   .filters {
     display: flex;
-    flex-wrap: wrap;
     gap: 1rem;
+    margin-bottom: 2rem;
+    flex-wrap: wrap;
     align-items: center;
-    padding: 1rem;
-    background: var(--color-surface);
-    border: 1px solid var(--color-border);
-    border-radius: 0.75rem;
   }
 
   .filter-group {
-    display: flex;
-    gap: 0.75rem;
-    flex-wrap: wrap;
     flex: 1;
+    min-width: 200px;
   }
 
   .filter-item {
     display: flex;
     align-items: center;
     gap: 0.5rem;
-    flex: 1;
-    min-width: 200px;
-    padding: 0.375rem 0.75rem;
-    border: 1.5px solid var(--color-border);
+    background: var(--color-surface);
+    border: 1px solid var(--color-border);
     border-radius: 0.5rem;
-    background: var(--color-bg);
-    color: var(--color-muted);
+    padding: 0.5rem 0.75rem;
     transition: border-color 0.15s;
   }
 
   .filter-item:focus-within {
-    border-color: var(--lc-600, #4f46e5);
+    border-color: var(--lc-500);
+    box-shadow: 0 0 0 3px rgba(99,102,241,0.1);
   }
 
   .filter-item input {
     border: none;
-    background: none;
-    outline: none;
-    font-size: 0.82rem;
-    color: var(--color-text);
-    font-family: inherit;
+    background: transparent;
+    font-size: 0.875rem;
     width: 100%;
+    outline: none;
+    color: var(--color-text);
+  }
+
+  .filter-item input::placeholder {
+    color: var(--color-muted);
   }
 
   .filter-group select {
-    padding: 0.5rem 2rem 0.5rem 0.75rem;
-    border: 1.5px solid var(--color-border);
+    width: 100%;
+    padding: 0.5rem 0.75rem;
+    border: 1px solid var(--color-border);
     border-radius: 0.5rem;
-    background: var(--color-bg);
+    background: var(--color-surface);
     color: var(--color-text);
-    font-size: 0.82rem;
-    font-family: inherit;
+    font-size: 0.875rem;
     cursor: pointer;
     outline: none;
-    appearance: none;
-    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E");
-    background-repeat: no-repeat;
-    background-position: right 0.75rem center;
-    min-width: 150px;
+    transition: border-color 0.15s;
   }
 
   .filter-group select:focus {
-    border-color: var(--lc-600, #4f46e5);
+    border-color: var(--lc-500);
+    box-shadow: 0 0 0 3px rgba(99,102,241,0.1);
   }
 
   .empty-state {
@@ -265,51 +273,63 @@
     gap: 0.75rem;
     padding: 4rem 2rem;
     text-align: center;
-    color: var(--color-muted);
+    background: var(--color-surface);
+    border: 1.5px dashed var(--color-border);
+    border-radius: 0.875rem;
   }
 
   .empty-icon {
-    font-size: 3rem;
+    width: 64px;
+    height: 64px;
+    border-radius: 1rem;
+    background: rgba(99,102,241,0.08);
+    border: 1px solid rgba(99,102,241,0.15);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--lc-600);
+    margin-bottom: 0.25rem;
   }
 
   .empty-title {
-    font-size: 1.1rem;
+    font-size: 1rem;
     font-weight: 700;
     color: var(--color-text);
     margin: 0;
   }
 
   .empty-sub {
-    font-size: 0.875rem;
+    font-size: 0.82rem;
+    color: var(--color-muted);
     margin: 0;
   }
 
   .student-list {
     display: flex;
     flex-direction: column;
-    gap: 0.5rem;
+    gap: 1rem;
   }
 
   .course-group {
+    background: var(--color-surface);
     border: 1px solid var(--color-border);
     border-radius: 0.75rem;
     overflow: hidden;
-    background: var(--color-surface);
+    transition: box-shadow 0.15s;
+  }
+
+  .course-group:hover {
+    box-shadow: 0 2px 12px rgba(0,0,0,0.05);
   }
 
   .course-header {
     display: flex;
-    align-items: center;
     justify-content: space-between;
-    width: 100%;
-    padding: 0.875rem 1rem;
-    background: none;
-    border: none;
+    align-items: center;
+    padding: 0.875rem 1.25rem;
     cursor: pointer;
-    font-family: inherit;
-    text-align: left;
-    transition: background 0.12s;
-    gap: 0.5rem;
+    user-select: none;
+    transition: background 0.15s;
   }
 
   .course-header:hover {
@@ -319,86 +339,91 @@
   .course-info {
     display: flex;
     align-items: center;
-    gap: 0.5rem;
-    flex: 1;
-    min-width: 0;
-    color: var(--color-text);
+    gap: 0.75rem;
+    flex-wrap: wrap;
   }
 
   .course-code {
+    font-size: 0.8rem;
     font-weight: 700;
-    color: var(--lc-600, #4f46e5);
-    font-size: 0.82rem;
+    padding: 0.2rem 0.6rem;
+    background: rgba(99,102,241,0.08);
+    color: var(--lc-600);
+    border-radius: 999px;
+    letter-spacing: 0.04em;
   }
 
   .course-title {
+    font-size: 0.9rem;
     font-weight: 600;
-    font-size: 0.85rem;
     color: var(--color-text);
   }
 
   .student-count {
-    font-size: 0.72rem;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3rem;
+    font-size: 0.75rem;
+    font-weight: 600;
     color: var(--color-muted);
+    padding: 0.15rem 0.6rem;
     background: var(--color-bg);
-    padding: 0.1rem 0.5rem;
     border-radius: 999px;
+    border: 1px solid var(--color-border);
   }
 
   .course-actions {
     display: flex;
-    gap: 0.25rem;
-    flex-shrink: 0;
+    gap: 0.5rem;
   }
 
   .btn-icon {
-    width: 30px;
-    height: 30px;
-    border-radius: 0.4rem;
-    border: 1px solid var(--color-border);
-    background: var(--color-bg);
-    display: flex;
+    display: inline-flex;
     align-items: center;
     justify-content: center;
-    cursor: pointer;
+    padding: 0.35rem;
+    border: 1px solid var(--color-border);
+    border-radius: 0.4rem;
+    background: transparent;
     color: var(--color-muted);
+    cursor: pointer;
     transition: all 0.15s;
   }
 
   .btn-icon:hover {
-    color: var(--lc-600, #4f46e5);
-    border-color: var(--lc-600, #4f46e5);
-    background: var(--lc-soft, rgba(79,70,229,0.06));
+    background: var(--color-bg);
+    border-color: var(--lc-500);
+    color: var(--lc-600);
   }
 
   .course-details {
-    padding: 0 1rem 1rem;
+    padding: 0 1.25rem 1.25rem;
     overflow-x: auto;
   }
 
   table {
     width: 100%;
     border-collapse: collapse;
-    font-size: 0.82rem;
+    font-size: 0.875rem;
   }
 
   thead {
     background: var(--color-bg);
+    border-bottom: 1px solid var(--color-border);
   }
 
   th {
     text-align: left;
-    padding: 0.625rem 0.75rem;
-    font-weight: 700;
+    padding: 0.75rem 0.75rem;
+    font-weight: 600;
     color: var(--color-muted);
-    font-size: 0.72rem;
+    font-size: 0.75rem;
     text-transform: uppercase;
     letter-spacing: 0.04em;
-    border-bottom: 1.5px solid var(--color-border);
   }
 
   td {
-    padding: 0.625rem 0.75rem;
+    padding: 0.75rem;
     border-bottom: 1px solid var(--color-border);
     color: var(--color-text);
   }
@@ -407,27 +432,36 @@
     border-bottom: none;
   }
 
+  td:first-child,
+  th:first-child {
+    padding-left: 0;
+  }
+
   .badge {
-    display: inline-block;
-    padding: 0.1rem 0.5rem;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3rem;
+    padding: 0.2rem 0.6rem;
     border-radius: 999px;
-    font-size: 0.62rem;
-    font-weight: 700;
-    text-transform: uppercase;
-    letter-spacing: 0.04em;
+    font-size: 0.7rem;
+    font-weight: 600;
   }
 
   .badge.success {
-    color: #065f46;
-    background: rgba(6,95,70,0.1);
+    background: rgba(22,163,74,0.08);
+    color: #16a34a;
   }
 
   .badge.danger {
+    background: rgba(220,38,38,0.08);
     color: #dc2626;
-    background: rgba(220,38,38,0.1);
   }
 
-  @media (max-width: 640px) {
+  @media (max-width: 768px) {
+    .page {
+      padding: 1rem;
+    }
+
     .filters {
       flex-direction: column;
     }
@@ -436,26 +470,41 @@
       width: 100%;
     }
 
-    .filter-item {
-      min-width: unset;
-    }
-
-    .filter-group select {
-      flex: 1;
-      min-width: unset;
-    }
-
     .course-header {
-      flex-wrap: wrap;
+      flex-direction: column;
+      align-items: stretch;
+      gap: 0.5rem;
+    }
+
+    .course-actions {
+      justify-content: flex-start;
     }
 
     .course-info {
       flex-wrap: wrap;
     }
 
+    table {
+      font-size: 0.75rem;
+    }
+
+    th,
+    td {
+      padding: 0.5rem;
+    }
+  }
+
+  @media (max-width: 480px) {
     .course-title {
-      width: 100%;
-      margin-left: 1.5rem;
+      font-size: 0.8rem;
+    }
+
+    .course-code {
+      font-size: 0.7rem;
+    }
+
+    td {
+      padding: 0.4rem;
     }
   }
 </style>

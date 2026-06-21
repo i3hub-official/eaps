@@ -3,7 +3,7 @@
   import type { PageData } from './$types';
   import { 
     Search, CheckCircle, XCircle, 
-    ChevronDown, ChevronRight 
+    ChevronDown, ChevronRight, Target
   } from '@lucide/svelte';
 
   let { data }: { data: PageData } = $props();
@@ -91,7 +91,9 @@
   <!-- Empty state -->
   {#if filtered.exams.length === 0}
     <div class="empty-state">
-      <div class="empty-icon">🎯</div>
+      <div class="empty-icon">
+        <Target size={48} strokeWidth={1.2} />
+      </div>
       <p class="empty-title">No exams found</p>
       <p class="empty-sub">Create an exam to check student eligibility.</p>
     </div>
@@ -215,7 +217,18 @@
     display: flex; flex-direction: column; align-items: center; gap: 0.75rem;
     padding: 4rem 2rem; text-align: center; color: var(--color-muted);
   }
-  .empty-icon { font-size: 3rem; }
+  .empty-icon {
+    width: 64px;
+    height: 64px;
+    border-radius: 1rem;
+    background: var(--lc-soft, rgba(79,70,229,0.08));
+    border: 1px solid rgba(79,70,229,0.15);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--lc-600, #4f46e5);
+    margin-bottom: 0.25rem;
+  }
   .empty-title { font-size: 1.1rem; font-weight: 700; color: var(--color-text); margin: 0; }
   .empty-sub   { font-size: 0.875rem; margin: 0; }
 

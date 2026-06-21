@@ -6,7 +6,8 @@
   import { 
     Search, Users, UserCheck, UserX, UserCog, 
     AlertTriangle, ChevronRight, Clock, 
-    FileText, TrendingUp, BarChart3 
+    FileText, TrendingUp, BarChart3, User,
+    BookOpen, GraduationCap, Mail, Hash
   } from '@lucide/svelte';
 
   let { data }: { data: PageData } = $props();
@@ -116,7 +117,9 @@
   <!-- Student List -->
   {#if filteredStudents().length === 0}
     <div class="empty-state">
-      <div class="empty-icon">👨‍🎓</div>
+      <div class="empty-icon">
+        <User size={48} strokeWidth={1.2} />
+      </div>
       <p class="empty-title">No students found</p>
       <p class="empty-sub">Try adjusting your filters or check back later.</p>
     </div>
@@ -131,12 +134,21 @@
             <div class="student-details">
               <div class="student-name">{student.fullName}</div>
               <div class="student-meta">
-                <span class="meta-item">{student.matricNumber || 'No matric'}</span>
+                <span class="meta-item">
+                  <Hash size={10} />
+                  {student.matricNumber || 'No matric'}
+                </span>
                 <span class="meta-dot">·</span>
-                <span class="meta-item">{student.email}</span>
+                <span class="meta-item">
+                  <Mail size={10} />
+                  {student.email}
+                </span>
                 {#if student.level}
                   <span class="meta-dot">·</span>
-                  <span class="meta-item">{student.level}L</span>
+                  <span class="meta-item">
+                    <GraduationCap size={10} />
+                    {student.level}L
+                  </span>
                 {/if}
               </div>
               <div class="student-courses">
@@ -332,7 +344,16 @@
   }
 
   .empty-icon {
-    font-size: 3rem;
+    width: 64px;
+    height: 64px;
+    border-radius: 1rem;
+    background: var(--lc-soft, rgba(79,70,229,0.08));
+    border: 1px solid rgba(79,70,229,0.15);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--lc-600, #4f46e5);
+    margin-bottom: 0.25rem;
   }
 
   .empty-title {
@@ -410,6 +431,12 @@
     flex-wrap: wrap;
     font-size: 0.72rem;
     color: var(--color-muted);
+  }
+
+  .meta-item {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.2rem;
   }
 
   .meta-dot {

@@ -3,6 +3,7 @@
   import type { LayoutData } from './$types';
   import { page } from '$app/stores';
   import { goto } from '$app/navigation';
+  import { ClipboardList } from '@lucide/svelte';
 
   let { data, children }: { data: LayoutData; children: import('svelte').Snippet } = $props();
 
@@ -34,7 +35,7 @@
     </div>
     <div class="header-actions">
       <a href="/lecturer/students/report" class="btn primary">
-        <span class="icon">📋</span> Report Student
+        <ClipboardList size={14} /> Report Student
       </a>
     </div>
   </header>
