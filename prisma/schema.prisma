@@ -23,7 +23,7 @@ enum UserRole {
   hod
   dean
   exam_officer
-  vc_dvc        // covers both VC and DVC — same permission set
+  vc_dvc // covers both VC and DVC — same permission set
 }
 
 // Secondary roles a user can hold in addition to their primary role.
@@ -294,6 +294,7 @@ model User {
   faceSimilaritiesA FaceSimilarity[]      @relation("StudentA")
   faceSimilaritiesB FaceSimilarity[]      @relation("StudentB")
   passwordResets    PasswordReset[]
+  caUploads         ExamResult[]          @relation("CaUploadedBy")
 
   lecturerCourses         LecturerCourse[] @relation("LecturerCourses")
   assignedLecturerCourses LecturerCourse[] @relation("LecturerCourseAssignedBy")
@@ -713,25 +714,34 @@ model ExamInvigilator {
 }
 
 model ExamResult {
-  id             String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  sessionId      String    @unique @map("session_id") @db.Uuid
-  studentId      String    @map("student_id") @db.Uuid
-  examId         String    @map("exam_id") @db.Uuid
-  totalQuestions Int?      @map("total_questions") @db.SmallInt
-  answered       Int?      @db.SmallInt
-  correct        Int?      @db.SmallInt
-  score          Decimal?  @db.Decimal(5, 2)
-  percentage     Decimal?  @db.Decimal(5, 2)
-  passed         Boolean?
-  grade          String?   @db.Char(2)
-  violationCount Int       @default(0) @map("violation_count") @db.SmallInt
-  timeTakenSecs  Int?      @map("time_taken_secs")
-  submittedAt    DateTime? @map("submitted_at") @db.Timestamptz()
-  generatedAt    DateTime  @default(now()) @map("generated_at") @db.Timestamptz()
+  id              String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  sessionId       String    @unique @map("session_id") @db.Uuid
+  studentId       String    @map("student_id") @db.Uuid
+  examId          String    @map("exam_id") @db.Uuid
+  totalQuestions  Int?      @map("total_questions") @db.SmallInt
+  answered        Int?      @db.SmallInt
+  correct         Int?      @db.SmallInt
+  score           Decimal?  @db.Decimal(5, 2)
+  percentage      Decimal?  @db.Decimal(5, 2)
+  caScore         Decimal?  @map("ca_score") @db.Decimal(5, 2)
+  caMaxScore      Decimal?  @map("ca_max_score") @db.Decimal(5, 2)
+  caUploadedAt    DateTime? @map("ca_uploaded_at") @db.Timestamptz()
+  caUploadedById  String?   @map("ca_uploaded_by_id") @db.Uuid
+  finalScore      Decimal?  @map("final_score") @db.Decimal(5, 2)
+  finalPercentage Decimal?  @map("final_percentage") @db.Decimal(5, 2)
+  finalGrade      String?   @map("final_grade") @db.Char(2)
+  finalPassed     Boolean?  @map("final_passed")
+  passed          Boolean?
+  grade           String?   @db.Char(2)
+  violationCount  Int       @default(0) @map("violation_count") @db.SmallInt
+  timeTakenSecs   Int?      @map("time_taken_secs")
+  submittedAt     DateTime? @map("submitted_at") @db.Timestamptz()
+  generatedAt     DateTime  @default(now()) @map("generated_at") @db.Timestamptz()
 
-  session ExamSession @relation(fields: [sessionId], references: [id])
-  student User        @relation(fields: [studentId], references: [id])
-  exam    Exam        @relation(fields: [examId], references: [id])
+  session      ExamSession @relation(fields: [sessionId], references: [id])
+  student      User        @relation(fields: [studentId], references: [id])
+  exam         Exam        @relation(fields: [examId], references: [id])
+  caUploadedBy User?       @relation("CaUploadedBy", fields: [caUploadedById], references: [id])
 
   @@index([examId])
   @@index([studentId])
