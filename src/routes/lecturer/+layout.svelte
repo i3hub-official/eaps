@@ -5,6 +5,8 @@
   import { goto } from '$app/navigation';
   import { initTheme, toggleTheme, getTheme } from '$lib/index.js';
   import { onMount } from 'svelte';
+  import { slide } from 'svelte/transition';
+  import { cubicOut } from 'svelte/easing';
   import {
     LayoutDashboard, BookOpen, ClipboardList, X,
     Sun, Moon, LogOut, ChevronRight, LoaderCircle,
@@ -23,6 +25,7 @@
 
   onMount(() => initTheme());
 
+  // ── Core UI State ─────────────────────────────────────────────────────────
   let theme         = $derived(getTheme());
   let collapsed     = $state(false);
   let mobileOpen    = $state(false);
@@ -33,10 +36,8 @@
   let notifications = $state<any[]>(data.notifications ?? []);
   let markingAll    = $state(false);
 
-  // Group open states
-  let examsOpen    = $state(false);
-  let resultsOpen  = $state(false);
-  let studentsOpen = $state(false);
+  // ── Accordion State ────────────────────────────────────────────────────────
+  let userOpenGroup = $state<string | null>(null);
 
   const unreadCount   = $derived(notifications.filter(n => !n.isRead).length);
   const activeExams   = $derived(data.stats?.activeExams   ?? 0);
@@ -57,102 +58,50 @@
 
   const currentPath = $derived($page.url.pathname);
 
-  // Auto-expand groups when on their routes
-  $effect(() => {
-    if (currentPath.startsWith('/lecturer/exams'))    examsOpen    = true;
-    if (currentPath.startsWith('/lecturer/results'))  resultsOpen  = true;
-    if (currentPath.startsWith('/lecturer/students')) studentsOpen = true;
+  // ── Derived: which group should be open ──────────────────────────────────
+  const routeGroup = $derived.by(() => {
+    if (currentPath.startsWith('/lecturer/exams'))    return 'Exams';
+    if (currentPath.startsWith('/lecturer/results'))   return 'Results';
+    if (currentPath.startsWith('/lecturer/students'))  return 'Students';
+    return null;
   });
 
-  // ── Nav structure ─────────────────────────────────────────────────────────
-  type NavChild = { href: string; label: string; icon: any; dividerBefore?: string };
-  type NavItem  = { href: string; label: string; icon: any; badge?: () => number | null; children?: NavChild[] };
+  const openGroup = $derived(userOpenGroup ?? routeGroup);
+
+  // ── Nav Structure ─────────────────────────────────────────────────────────
+  type NavItem = { href: string; label: string; icon: any; badge?: () => number | null };
 
   const nav: NavItem[] = [
-    {
-      href:  '/lecturer',
-      label: 'Dashboard',
-      icon:  LayoutDashboard,
-    },
-    {
-      href:  '/lecturer/exams',
-      label: 'Exams',
-      icon:  ClipboardList,
-      badge: () => activeExams || null,
-      children: [
-        // ── Manage group
-        { href: '/lecturer/exams',           label: 'All Exams',      icon: ClipboardList,  dividerBefore: 'Manage' },
-        { href: '/lecturer/exams?status=active',    label: 'Active Now',     icon: Zap             },
-        { href: '/lecturer/exams?status=scheduled', label: 'Scheduled',      icon: CalendarClock   },
-        { href: '/lecturer/exams?status=draft',     label: 'Drafts',         icon: FileEdit        },
-        // ── Build group
-        { href: '/lecturer/exams/create',    label: 'Create Exam',    icon: PlusCircle,     dividerBefore: 'Build' },
-        { href: '/lecturer/questions',       label: 'Question Bank',  icon: Library         },
-      ],
-    },
-    {
-      href:  '/lecturer/results',
-      label: 'Results',
-      icon:  BarChart2,
-      badge: () => pendingGrades || null,
-      children: [
-        { href: '/lecturer/results',              label: 'All Results',   icon: BarChart2,   dividerBefore: 'Results' },
-        { href: '/lecturer/results/by-course',    label: 'By Course',     icon: BookMarked   },
-        { href: '/lecturer/results/by-exam',      label: 'By Exam',       icon: BookCheck    },
-        { href: '/lecturer/results/grade-reports',label: 'Grade Reports', icon: TrendingUp,  dividerBefore: 'Reports' },
-        { href: '/lecturer/results/export',       label: 'Export',        icon: Download     },
-      ],
-    },
-    {
-      href:  '/lecturer/students',
-      label: 'Students',
-      icon:  GraduationCap,
-      children: [
-        { href: '/lecturer/students',              label: 'Overview',      icon: User,        dividerBefore: 'Students' },
-        { href: '/lecturer/students/by-course',    label: 'By Course',     icon: BookMarked   },
-        { href: '/lecturer/students/eligibility',  label: 'Eligibility',   icon: BookCheck,   dividerBefore: 'Monitoring' },
-        { href: '/lecturer/students/violations',   label: 'Violations',    icon: ShieldAlert  },
-        { href: '/lecturer/students/report',       label: 'Report Student',icon: Flag,        dividerBefore: 'Actions'   },
-      ],
-    },
-    { href: '/lecturer/notifications', label: 'Notifications', icon: Bell },
-    { href: '/lecturer/profile',       label: 'Profile',       icon: User },
+    { href: '/lecturer',              label: 'Dashboard',     icon: LayoutDashboard },
+    { href: '/lecturer/exams',        label: 'Exams',         icon: ClipboardList, badge: () => activeExams || null },
+    { href: '/lecturer/results',      label: 'Results',       icon: BarChart2,     badge: () => pendingGrades || null },
+    { href: '/lecturer/students',     label: 'Students',      icon: GraduationCap },
+    { href: '/lecturer/notifications',label: 'Notifications', icon: Bell },
+    { href: '/lecturer/profile',      label: 'Profile',       icon: User },
   ];
 
-  // ── Active / group helpers ────────────────────────────────────────────────
+  // ── Active Helper ────────────────────────────────────────────────────────
   function isActive(href: string) {
-    // Exact match for most routes
     const [path] = href.split('?');
     if (path === '/lecturer') return currentPath === '/lecturer';
-
-    // For parent anchors only match exactly
-    const parents = ['/lecturer/exams', '/lecturer/results', '/lecturer/students'];
-    if (parents.includes(path)) return currentPath === path;
-
-    return currentPath === path;
-  }
-
-  function isGroupActive(item: NavItem) {
-    if (!item.children) return isActive(item.href);
-    return item.children.some(c => isActive(c.href)) ||
-      currentPath.startsWith(item.href + '/') ||
-      currentPath.startsWith(item.href + '?');
+    return currentPath === path || currentPath.startsWith(path + '/') || currentPath.startsWith(path + '?');
   }
 
   function isGroupOpen(item: NavItem) {
-    if (item.label === 'Exams')    return examsOpen;
-    if (item.label === 'Results')  return resultsOpen;
-    if (item.label === 'Students') return studentsOpen;
-    return false;
+    return openGroup === item.label;
   }
 
-  function toggleGroup(item: NavItem) {
-    if (item.label === 'Exams')    examsOpen    = !examsOpen;
-    if (item.label === 'Results')  resultsOpen  = !resultsOpen;
-    if (item.label === 'Students') studentsOpen = !studentsOpen;
+  function toggleGroup(item: NavItem, e?: MouseEvent) {
+    e?.stopPropagation();
+    const label = item.label;
+    if (openGroup === label) {
+      userOpenGroup = null;
+    } else {
+      userOpenGroup = label;
+    }
   }
 
-  // ── Navigation ────────────────────────────────────────────────────────────
+  // ── Navigation ───────────────────────────────────────────────────────────
   async function navigate(href: string, e: MouseEvent) {
     e.preventDefault();
     if (navLoading) return;
@@ -162,11 +111,24 @@
     finally { setTimeout(() => (navLoading = null), 300); }
   }
 
+  // ── Sign Out ─────────────────────────────────────────────────────────────
   async function confirmSignout() {
+    if (isSigningOut) return;
     isSigningOut = true;
+    try {
+      await fetch('/logout', { method: 'POST', credentials: 'same-origin' });
+    } catch {
+      // Fallback to form
+    }
     const f = document.createElement('form');
-    f.method = 'POST'; f.action = '/logout';
-    document.body.appendChild(f); f.submit();
+    f.method = 'POST';
+    f.action = '/logout';
+    document.body.appendChild(f);
+    f.submit();
+  }
+
+  function cancelSignout() {
+    if (!isSigningOut) showSignout = false;
   }
 
   // ── Notifications ─────────────────────────────────────────────────────────
@@ -174,27 +136,38 @@
     if (markingAll || !unreadCount) return;
     markingAll = true;
     try {
-      await fetch('/api/notifications/read-all', { method: 'POST' });
-      notifications = notifications.map(n => ({ ...n, isRead: true }));
+      const res = await fetch('/api/notifications/read-all', { method: 'POST' });
+      if (res.ok) {
+        notifications = notifications.map(n => ({ ...n, isRead: true }));
+      }
     } finally { markingAll = false; }
   }
 
   async function markOneRead(id: string) {
+    const notif = notifications.find(n => n.id === id);
+    if (!notif || notif.isRead) return;
     notifications = notifications.map(n => (n.id === id ? { ...n, isRead: true } : n));
-    await fetch(`/api/notifications/${id}/read`, { method: 'POST' }).catch(() => {});
+    try {
+      await fetch(`/api/notifications/${id}/read`, { method: 'POST' });
+    } catch {
+      notifications = notifications.map(n => (n.id === id ? { ...n, isRead: false } : n));
+    }
   }
 
-  function closeNotifsOutside(e: MouseEvent) {
-    if (!(e.target as HTMLElement).closest('.notif-anchor')) showNotifs = false;
+  let notifRef = $state<HTMLDivElement | null>(null);
+  function handleDocClick(e: MouseEvent) {
+    if (showNotifs && notifRef && !notifRef.contains(e.target as Node)) {
+      showNotifs = false;
+    }
   }
   $effect(() => {
     if (showNotifs) {
-      document.addEventListener('click', closeNotifsOutside);
-      return () => document.removeEventListener('click', closeNotifsOutside);
+      document.addEventListener('click', handleDocClick, true);
+      return () => document.removeEventListener('click', handleDocClick, true);
     }
   });
 
-  // ── Breadcrumbs ───────────────────────────────────────────────────────────
+  // ── Breadcrumbs ─────────────────────────────────────────────────────────
   const breadcrumbs = $derived((() => {
     const parts = currentPath.replace(/^\/lecturer/, '').split('/').filter(Boolean);
     if (!parts.length) return [];
@@ -236,40 +209,102 @@
   );
 
   const firstName = $derived(data.user?.fullName?.split(' ')[0] ?? 'Lecturer');
+
+  // ── Keyboard Shortcuts ────────────────────────────────────────────────────
+  function handleKeydown(e: KeyboardEvent) {
+    if (e.key === 'Escape') {
+      if (showSignout) { showSignout = false; return; }
+      if (showNotifs) { showNotifs = false; return; }
+      if (mobileOpen) { mobileOpen = false; return; }
+    }
+    if ((e.ctrlKey || e.metaKey) && e.key === 'b') {
+      e.preventDefault();
+      collapsed = !collapsed;
+    }
+  }
 </script>
 
+<svelte:window onkeydown={handleKeydown} />
 <svelte:head><title>Lecturer — MOUAU eTest</title></svelte:head>
 
+<!-- ═══════════════════════════════════════════════════════════════════════ -->
+<!-- MOBILE OVERLAY                                                            -->
+<!-- ═══════════════════════════════════════════════════════════════════════ -->
 {#if mobileOpen}
-  <div class="mob-overlay" onclick={() => (mobileOpen = false)} aria-hidden="true"></div>
+  <div
+    class="mob-overlay"
+    onclick={() => (mobileOpen = false)}
+    aria-hidden="true"
+    transition:slide={{ duration: 200, easing: cubicOut }}
+  ></div>
 {/if}
 
-<!-- Sign-out modal -->
+<!-- ═══════════════════════════════════════════════════════════════════════ -->
+<!-- SIGN-OUT MODAL                                                            -->
+<!-- ═══════════════════════════════════════════════════════════════════════ -->
 {#if showSignout}
-  <div class="modal-bg" onclick={() => { if (!isSigningOut) showSignout = false; }}>
+  <div
+    class="modal-bg"
+    onclick={cancelSignout}
+    role="dialog"
+    aria-modal="true"
+    aria-labelledby="signout-title"
+  >
     <div class="modal" onclick={e => e.stopPropagation()}>
-      <div class="modal-ico"><LogOut size={20} /></div>
-      <h3>Sign out?</h3>
-      <p>You'll need to sign in again to access your dashboard.</p>
+      <div class="modal-ico" class:spinning={isSigningOut}>
+        {#if isSigningOut}
+          <LoaderCircle size={22} class="spin" />
+        {:else}
+          <LogOut size={22} />
+        {/if}
+      </div>
+
+      <h3 id="signout-title">Sign out?</h3>
+      <p>You will need to sign in again to access your dashboard.</p>
+
       <div class="modal-row">
-        <button class="btn-ghost" onclick={() => showSignout = false} disabled={isSigningOut} type="button">Cancel</button>
-        <button class="btn-danger" onclick={confirmSignout} disabled={isSigningOut} type="button">
-          {#if isSigningOut}<LoaderCircle size={14} class="spin" /> Signing out…{:else}<LogOut size={14} /> Sign out{/if}
+        <button
+          class="btn-ghost"
+          onclick={cancelSignout}
+          disabled={isSigningOut}
+          type="button"
+        >
+          Cancel
+        </button>
+
+        <button
+          class="btn-danger"
+          onclick={confirmSignout}
+          disabled={isSigningOut}
+          type="button"
+        >
+          {#if isSigningOut}
+            <LoaderCircle size={14} class="spin" />
+            <span>Signing out...</span>
+          {:else}
+            <LogOut size={14} />
+            <span>Sign out</span>
+          {/if}
         </button>
       </div>
     </div>
   </div>
 {/if}
 
-<div class="shell" class:collapsed>
+<!-- ═══════════════════════════════════════════════════════════════════════ -->
+<!-- MAIN SHELL                                                                -->
+<!-- ═══════════════════════════════════════════════════════════════════════ -->
+<div class="shell" class:collapsed class:signing-out={isSigningOut}>
 
   <!-- ═══ SIDEBAR ═══ -->
   <aside class="sidebar" class:collapsed class:mob-open={mobileOpen}>
 
     <!-- Brand -->
     <div class="sidebar-top">
-      <a href="/lecturer" class="brand" aria-label="Lecturer home">
-        <div class="brand-icon"><BookOpen size={17} strokeWidth={2} /></div>
+      <a href="/lecturer" class="brand" aria-label="Lecturer home" onclick={(e) => navigate('/lecturer', e)}>
+        <div class="brand-icon">
+          <BookOpen size={17} strokeWidth={2} />
+        </div>
         {#if !collapsed}
           <div class="brand-copy">
             <span class="brand-name">MOUAU <em>eTest</em></span>
@@ -277,20 +312,32 @@
           </div>
         {/if}
       </a>
+
       <button
         class="tog-btn desktop-only"
         type="button"
         onclick={() => (collapsed = !collapsed)}
-        aria-label={collapsed ? 'Expand' : 'Collapse'}
+        aria-label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+        title={collapsed ? 'Expand (Ctrl+B)' : 'Collapse (Ctrl+B)'}
       >
-        {#if collapsed}<PanelLeftOpen size={15} />{:else}<PanelLeftClose size={15} />{/if}
+        {#if collapsed}
+          <PanelLeftOpen size={15} />
+        {:else}
+          <PanelLeftClose size={15} />
+        {/if}
       </button>
-      <button class="tog-btn mobile-only" type="button" onclick={() => (mobileOpen = false)} aria-label="Close">
+
+      <button
+        class="tog-btn mobile-only"
+        type="button"
+        onclick={() => (mobileOpen = false)}
+        aria-label="Close menu"
+      >
         <X size={15} />
       </button>
     </div>
 
-    <!-- Stats strip — expanded only -->
+    <!-- Stats strip -->
     {#if !collapsed}
       <div class="stats-row">
         <div class="stat" class:pulse-stat={activeExams > 0}>
@@ -313,128 +360,66 @@
       </div>
     {/if}
 
-    <!-- Nav -->
+    <!-- Navigation -->
     <nav class="nav" aria-label="Lecturer navigation">
-      {#each nav as item}
-        {#if !item.children}
-          <!-- Flat link -->
-          {@const active  = isActive(item.href)}
-          {@const loading = navLoading === item.href}
-          <a
-            href={item.href}
-            class="nav-lnk"
-            class:active
-            class:loading
-            onclick={e => navigate(item.href, e)}
-            title={collapsed ? item.label : undefined}
-            aria-current={active ? 'page' : undefined}
-          >
-            <div class="nav-icon" class:active>
-              {#if loading}
-                <div class="spinner"></div>
-              {:else}
-                <item.icon size={16} strokeWidth={2} />
-              {/if}
-            </div>
-            {#if !collapsed}
-              <span class="nav-label">{item.label}</span>
-              {#if item.label === 'Notifications' && unreadCount > 0}
-                <span class="badge-count">{unreadCount > 99 ? '99+' : unreadCount}</span>
-              {/if}
-            {:else if item.label === 'Notifications' && unreadCount > 0}
-              <span class="collapsed-dot"></span>
-            {/if}
-          </a>
-
-        {:else if collapsed}
-          <!-- Collapsed: top-level link only -->
-          {@const active = isGroupActive(item)}
-          <a
-            href={item.href}
-            class="nav-lnk"
-            class:active
-            onclick={e => navigate(item.href, e)}
-            title={item.label}
-          >
-            <div class="nav-icon" class:active>
+      {#each nav as item (item.label)}
+        {@const active  = isActive(item.href)}
+        {@const loading = navLoading === item.href}
+        <a
+          href={item.href}
+          class="nav-lnk"
+          class:active
+          class:loading
+          onclick={e => navigate(item.href, e)}
+          title={collapsed ? item.label : undefined}
+          aria-current={active ? 'page' : undefined}
+        >
+          <div class="nav-icon" class:active>
+            {#if loading}
+              <div class="spinner"></div>
+            {:else}
               <item.icon size={16} strokeWidth={2} />
-            </div>
-            {#if item.badge?.()}
-              <span class="collapsed-dot"></span>
-            {/if}
-          </a>
-
-        {:else}
-          <!-- Expanded: collapsible group with labelled sections -->
-          {@const gopen  = isGroupOpen(item)}
-          {@const active = isGroupActive(item)}
-          <div class="nav-group" class:open={gopen}>
-            <button
-              class="nav-lnk group-trigger"
-              class:active
-              onclick={() => toggleGroup(item)}
-              type="button"
-            >
-              <div class="nav-icon" class:active>
-                <item.icon size={16} strokeWidth={2} />
-              </div>
-              <span class="nav-label">{item.label}</span>
-              {#if item.badge?.()}
-                <span class="badge-count badge-live">{item.badge()}</span>
-              {/if}
-              <ChevronDown size={13} class="chevron" style="margin-left: auto; transition: transform 0.2s; transform: rotate({gopen ? 180 : 0}deg)" />
-            </button>
-
-            {#if gopen}
-              <div class="nav-children">
-                {#each item.children as child}
-                  {@const cactive  = isActive(child.href)}
-                  {@const cloading = navLoading === child.href}
-
-                  {#if child.dividerBefore}
-                    <div class="nav-section-label">{child.dividerBefore}</div>
-                  {/if}
-
-                  <a
-                    href={child.href}
-                    class="nav-child"
-                    class:active={cactive}
-                    class:loading={cloading}
-                    onclick={e => navigate(child.href, e)}
-                    aria-current={cactive ? 'page' : undefined}
-                  >
-                    <span class="child-icon" class:active={cactive}>
-                      {#if cloading}
-                        <div class="spinner sm"></div>
-                      {:else}
-                        <child.icon size={13} strokeWidth={2} />
-                      {/if}
-                    </span>
-                    <span class="child-label">{child.label}</span>
-                    {#if cactive}
-                      <span class="child-active-pip"></span>
-                    {/if}
-                  </a>
-                {/each}
-              </div>
             {/if}
           </div>
-        {/if}
+          {#if !collapsed}
+            <span class="nav-label">{item.label}</span>
+            {#if item.label === 'Notifications' && unreadCount > 0}
+              <span class="badge-count">{unreadCount > 99 ? '99+' : unreadCount}</span>
+            {:else if item.badge?.()}
+              <span class="badge-count">{item.badge()}</span>
+            {/if}
+          {:else if (item.label === 'Notifications' && unreadCount > 0) || item.badge?.()}
+            <span class="collapsed-dot"></span>
+          {/if}
+        </a>
       {/each}
     </nav>
 
     <!-- Loading bar -->
     {#if navLoading}
-      <div class="load-bar"><div class="load-progress"></div></div>
+      <div class="load-bar">
+        <div class="load-progress"></div>
+      </div>
     {/if}
 
     <!-- Footer -->
     <div class="sidebar-foot">
-      <button class="foot-btn" type="button" onclick={toggleTheme} title={collapsed ? (theme === 'dark' ? 'Light mode' : 'Dark mode') : undefined}>
+      <button
+        class="foot-btn"
+        type="button"
+        onclick={toggleTheme}
+        title={collapsed ? (theme === 'dark' ? 'Light mode' : 'Dark mode') : undefined}
+      >
         <div class="foot-icon">
-          {#if theme === 'dark'}<Sun size={14} />{:else}<Moon size={14} />{/if}
+          {#if theme === 'dark'}
+            <Sun size={14} />
+          {:else}
+            <Moon size={14} />
+          {/if}
         </div>
-        {#if !collapsed}<span>{theme === 'dark' ? 'Light mode' : 'Dark mode'}</span>{/if}
+        {#if !collapsed}
+          <span>{theme === 'dark' ? 'Light mode' : 'Dark mode'}</span>
+        {/if}
       </button>
 
       <a
@@ -453,9 +438,18 @@
         {/if}
       </a>
 
-      <button class="foot-btn signout" type="button" onclick={() => (showSignout = true)} title={collapsed ? 'Sign out' : undefined}>
-        <div class="foot-icon"><LogOut size={14} /></div>
-        {#if !collapsed}<span>Sign out</span>{/if}
+      <button
+        class="foot-btn signout"
+        type="button"
+        onclick={() => (showSignout = true)}
+        title={collapsed ? 'Sign out' : undefined}
+      >
+        <div class="foot-icon">
+          <LogOut size={14} />
+        </div>
+        {#if !collapsed}
+          <span>Sign out</span>
+        {/if}
       </button>
     </div>
   </aside>
@@ -466,18 +460,31 @@
     <!-- Topbar -->
     <header class="topbar">
       <div class="topbar-l">
-        <button class="mob-menu mobile-only" type="button" onclick={() => (mobileOpen = true)} aria-label="Open menu">
+        <button
+          class="mob-menu mobile-only"
+          type="button"
+          onclick={() => (mobileOpen = true)}
+          aria-label="Open menu"
+        >
           <Menu size={17} />
         </button>
 
         {#if breadcrumbs.length}
           <nav class="bc" aria-label="Breadcrumb">
-            {#each breadcrumbs as crumb, i}
-              {#if i > 0}<ChevronRight size={11} class="bc-sep" />{/if}
+            {#each breadcrumbs as crumb, i (crumb.href)}
+              {#if i > 0}
+                <ChevronRight size={11} class="bc-sep" />
+              {/if}
               {#if i === breadcrumbs.length - 1}
                 <span class="bc-cur">{crumb.label}</span>
               {:else}
-                <a href={crumb.href} class="bc-lnk" onclick={e => navigate(crumb.href, e)}>{crumb.label}</a>
+                <a
+                  href={crumb.href}
+                  class="bc-lnk"
+                  onclick={e => navigate(crumb.href, e)}
+                >
+                  {crumb.label}
+                </a>
               {/if}
             {/each}
           </nav>
@@ -488,17 +495,22 @@
 
       <div class="topbar-r">
         {#if navLoading || $navigating}
-          <div class="load-pill"><LoaderCircle size={13} class="spin" /><span>Loading…</span></div>
+          <div class="load-pill">
+            <LoaderCircle size={13} class="spin" />
+            <span>Loading...</span>
+          </div>
         {/if}
 
         <!-- Notifications -->
-        <div class="notif-anchor">
+        <div class="notif-anchor" bind:this={notifRef}>
           <button
             class="icon-btn"
             class:notif-lit={unreadCount > 0}
             type="button"
             onclick={() => (showNotifs = !showNotifs)}
             aria-label="Notifications"
+            aria-haspopup="true"
+            aria-expanded={showNotifs}
           >
             <Bell size={16} />
             {#if unreadCount > 0}
@@ -507,22 +519,44 @@
           </button>
 
           {#if showNotifs}
-            <div class="notif-drop" onclick={e => e.stopPropagation()}>
+            <div
+              class="notif-drop"
+              onclick={e => e.stopPropagation()}
+              transition:slide={{ duration: 150, easing: cubicOut }}
+            >
               <div class="notif-head">
                 <span class="notif-title">Notifications</span>
                 {#if unreadCount > 0}
-                  <button class="mark-all" onclick={markAllRead} disabled={markingAll} type="button">
-                    {#if markingAll}<LoaderCircle size={11} class="spin" />{:else}<CheckCheck size={11} />{/if}
+                  <button
+                    class="mark-all"
+                    onclick={markAllRead}
+                    disabled={markingAll}
+                    type="button"
+                  >
+                    {#if markingAll}
+                      <LoaderCircle size={11} class="spin" />
+                    {:else}
+                      <CheckCheck size={11} />
+                    {/if}
                     Mark all read
                   </button>
                 {/if}
               </div>
+
               <div class="notif-list">
                 {#if !notifications.length}
-                  <div class="notif-empty"><Bell size={28} strokeWidth={1.2} /><p>No notifications</p></div>
+                  <div class="notif-empty">
+                    <Bell size={28} strokeWidth={1.2} />
+                    <p>No notifications</p>
+                  </div>
                 {:else}
                   {#each notifications.slice(0, 20) as n (n.id)}
-                    <button class="notif-item" class:unread={!n.isRead} onclick={() => markOneRead(n.id)} type="button">
+                    <button
+                      class="notif-item"
+                      class:unread={!n.isRead}
+                      onclick={() => markOneRead(n.id)}
+                      type="button"
+                    >
                       <div class="notif-pip" class:active={!n.isRead}></div>
                       <div class="notif-body">
                         <p class="notif-t">{n.title}</p>
@@ -533,222 +567,359 @@
                   {/each}
                 {/if}
               </div>
+
               {#if notifications.length}
                 <div class="notif-foot">
-                  <a href="/lecturer/notifications" onclick={() => { showNotifs = false; }}>All notifications</a>
+                  <a
+                    href="/lecturer/notifications"
+                    onclick={(e) => { showNotifs = false; navigate('/lecturer/notifications', e); }}
+                  >
+                    All notifications
+                  </a>
                 </div>
               {/if}
             </div>
           {/if}
         </div>
 
-        <button class="icon-btn" type="button" onclick={toggleTheme} aria-label="Toggle theme">
-          {#if theme === 'dark'}<Sun size={16} />{:else}<Moon size={16} />{/if}
+        <button
+          class="icon-btn"
+          type="button"
+          onclick={toggleTheme}
+          aria-label="Toggle theme"
+          title="Toggle theme"
+        >
+          {#if theme === 'dark'}
+            <Sun size={16} />
+          {:else}
+            <Moon size={16} />
+          {/if}
         </button>
 
-        <div class="role-pill"><BookOpen size={12} /><span>Lecturer</span></div>
+        <div class="role-pill">
+          <BookOpen size={12} />
+          <span>Lecturer</span>
+        </div>
       </div>
     </header>
 
     <main class="content">
-      {@render children()}
+      <div class="content-inner">
+        {@render children()}
+      </div>
     </main>
   </div>
 </div>
 
 <style>
-  /* ── Shell ──────────────────────────────────────────────────────────────── */
-  .shell { display: flex; height: 100dvh; overflow: hidden; background: var(--color-bg); }
-  .main  { flex: 1; display: flex; flex-direction: column; overflow: hidden; min-width: 0; }
+  /* ═══════════════════════════════════════════════════════════════════════ */
+  /* DESIGN TOKENS — Indigo/Purple only                                       */
+  /* ═══════════════════════════════════════════════════════════════════════ */
+  :global(:root) {
+    --lc-50:  #eef2ff;
+    --lc-100: #e0e7ff;
+    --lc-200: #c7d2fe;
+    --lc-300: #a5b4fc;
+    --lc-400: #818cf8;
+    --lc-500: #6366f1;
+    --lc-600: #4f46e5;
+    --lc-700: #4338ca;
+    --lc-800: #3730a3;
+    --lc-900: #312e81;
+    --lc-soft: rgba(79, 70, 229, 0.08);
+  }
 
-  /* ── Sidebar ────────────────────────────────────────────────────────────── */
+  /* ═══════════════════════════════════════════════════════════════════════ */
+  /* SHELL                                                                     */
+  /* ═══════════════════════════════════════════════════════════════════════ */
+  .shell {
+    display: flex;
+    height: 100dvh;
+    overflow: hidden;
+    background: var(--color-bg);
+  }
+  .shell.signing-out {
+    pointer-events: none;
+    opacity: 0.85;
+    transition: opacity 0.3s ease;
+  }
+  .main {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    min-width: 0;
+  }
+
+  /* ═══════════════════════════════════════════════════════════════════════ */
+  /* SIDEBAR                                                                   */
+  /* ═══════════════════════════════════════════════════════════════════════ */
   .sidebar {
-    width: 228px; flex-shrink: 0;
-    display: flex; flex-direction: column;
+    width: 240px;
+    flex-shrink: 0;
+    display: flex;
+    flex-direction: column;
     background: var(--color-surface);
     border-right: 1px solid var(--color-border);
-    transition: width 0.22s cubic-bezier(.4,0,.2,1);
-    overflow: hidden; position: relative; z-index: 40;
+    transition: width 0.25s cubic-bezier(.4,0,.2,1);
+    overflow: hidden;
+    position: relative;
+    z-index: 40;
   }
-  .sidebar.collapsed { width: 56px; }
+  .sidebar.collapsed { width: 60px; }
 
-  /* ── Brand ──────────────────────────────────────────────────────────────── */
+  /* ── Brand ─────────────────────────────────────────────────────────────── */
   .sidebar-top {
-    display: flex; align-items: center; gap: 0.5rem;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
     padding: 0.875rem 0.75rem 0.75rem;
     border-bottom: 1px solid var(--color-border);
     flex-shrink: 0;
   }
   .brand {
-    display: flex; align-items: center; gap: 0.55rem;
-    text-decoration: none; flex: 1; min-width: 0;
+    display: flex;
+    align-items: center;
+    gap: 0.55rem;
+    text-decoration: none;
+    flex: 1;
+    min-width: 0;
   }
   .brand-icon {
-    width: 30px; height: 30px; border-radius: 0.5rem; flex-shrink: 0;
-    background: linear-gradient(135deg, var(--lc-700, #4338ca), var(--lc-600, #4f46e5));
-    display: flex; align-items: center; justify-content: center; color: #fff;
+    width: 32px;
+    height: 32px;
+    border-radius: 0.5rem;
+    flex-shrink: 0;
+    background: linear-gradient(135deg, var(--lc-700), var(--lc-600));
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #fff;
+    box-shadow: 0 2px 8px rgba(79, 70, 229, 0.25);
   }
-  .brand-copy { display: flex; flex-direction: column; min-width: 0; overflow: hidden; }
+  .brand-copy {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+    overflow: hidden;
+  }
   .brand-name {
-    font-size: 0.82rem; font-weight: 800; color: var(--color-text);
-    white-space: nowrap; letter-spacing: -0.02em;
+    font-size: 0.85rem;
+    font-weight: 800;
+    color: var(--color-text);
+    white-space: nowrap;
+    letter-spacing: -0.02em;
   }
-  .brand-name em { font-style: normal; color: var(--lc-600, #4f46e5); }
-  .brand-role { font-size: 0.62rem; color: var(--color-muted); font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em; }
+  .brand-name em {
+    font-style: normal;
+    color: var(--lc-600);
+  }
+  .brand-role {
+    font-size: 0.62rem;
+    color: var(--color-muted);
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+  }
   .tog-btn {
-    width: 26px; height: 26px; border-radius: 0.4rem; flex-shrink: 0;
-    border: 1px solid var(--color-border); background: var(--color-bg);
-    display: flex; align-items: center; justify-content: center;
-    color: var(--color-muted); cursor: pointer; transition: all 0.15s;
+    width: 28px;
+    height: 28px;
+    border-radius: 0.4rem;
+    flex-shrink: 0;
+    border: 1px solid var(--color-border);
+    background: var(--color-bg);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--color-muted);
+    cursor: pointer;
+    transition: all 0.15s ease;
   }
-  .tog-btn:hover { color: var(--color-text); border-color: var(--lc-600, #4f46e5); }
+  .tog-btn:hover {
+    color: var(--color-text);
+    border-color: var(--lc-600);
+    background: var(--lc-soft);
+  }
+  .tog-btn:active { transform: scale(0.95); }
 
-  /* ── Stats row ──────────────────────────────────────────────────────────── */
+  /* ── Stats Row ─────────────────────────────────────────────────────────── */
   .stats-row {
-    display: flex; align-items: center;
+    display: flex;
+    align-items: center;
     padding: 0.625rem 0.875rem;
     border-bottom: 1px solid var(--color-border);
-    gap: 0.5rem; flex-shrink: 0;
+    gap: 0.5rem;
+    flex-shrink: 0;
   }
   .stat {
-    display: flex; flex-direction: column; align-items: center;
-    gap: 0.1rem; flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.1rem;
+    flex: 1;
   }
   .stat-dot {
-    width: 6px; height: 6px; border-radius: 50%;
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
     background: var(--color-muted);
   }
-  .stat-dot.pulse { background: #16a34a; animation: ring 1.8s ease-in-out infinite; }
-  @keyframes ring {
-    0%, 100% { box-shadow: 0 0 0 0 rgba(22,163,74,0.5); }
-    50%       { box-shadow: 0 0 0 5px rgba(22,163,74,0); }
+  .stat-dot.pulse {
+    background: var(--lc-600);
+    animation: ring 2s ease-in-out infinite;
   }
-  .stat-n { font-size: 0.875rem; font-weight: 800; color: var(--color-text); line-height: 1; }
-  .stat-l { font-size: 0.58rem; color: var(--color-muted); text-transform: uppercase; letter-spacing: 0.05em; font-weight: 600; }
-  .stat.amber .stat-n { color: #d97706; }
-  .stat.pulse-stat .stat-n { color: #16a34a; }
-  .stat-div { width: 1px; height: 20px; background: var(--color-border); flex-shrink: 0; }
+  @keyframes ring {
+    0%, 100% { box-shadow: 0 0 0 0 rgba(79, 70, 229, 0.5); }
+    50%       { box-shadow: 0 0 0 5px rgba(79, 70, 229, 0); }
+  }
+  .stat-n {
+    font-size: 0.875rem;
+    font-weight: 800;
+    color: var(--color-text);
+    line-height: 1;
+  }
+  .stat-l {
+    font-size: 0.58rem;
+    color: var(--color-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    font-weight: 600;
+  }
+  .stat.amber .stat-n { color: var(--lc-600); }
+  .stat.pulse-stat .stat-n { color: var(--lc-600); }
+  .stat-div {
+    width: 1px;
+    height: 20px;
+    background: var(--color-border);
+    flex-shrink: 0;
+  }
 
-  /* ── Nav ────────────────────────────────────────────────────────────────── */
+  /* ═══════════════════════════════════════════════════════════════════════ */
+  /* NAVIGATION — Flat links only, no children                                */
+  /* ═══════════════════════════════════════════════════════════════════════ */
   .nav {
-    flex: 1; overflow-y: auto; overflow-x: hidden;
-    padding: 0.5rem 0.5rem;
-    display: flex; flex-direction: column; gap: 1px;
+    flex: 1;
+    overflow-y: auto;
+    overflow-x: hidden;
+    padding: 0.5rem;
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
     scrollbar-width: thin;
     scrollbar-color: var(--color-border) transparent;
   }
+  .nav::-webkit-scrollbar { width: 4px; }
+  .nav::-webkit-scrollbar-thumb { background: var(--color-border); border-radius: 4px; }
 
-  /* flat link & group trigger share base */
   .nav-lnk {
-    display: flex; align-items: center; gap: 0.55rem;
-    padding: 0.5rem 0.5rem;
+    display: flex;
+    align-items: center;
+    gap: 0.55rem;
+    padding: 0.55rem 0.6rem;
     border-radius: 0.55rem;
-    text-decoration: none; font-size: 0.825rem; font-weight: 600;
+    text-decoration: none;
+    font-size: 0.825rem;
+    font-weight: 600;
     color: var(--color-muted);
-    border: none; background: none; cursor: pointer;
-    font-family: inherit; width: 100%; text-align: left;
-    transition: background 0.12s, color 0.12s;
+    border: none;
+    background: none;
+    cursor: pointer;
+    font-family: inherit;
+    width: 100%;
+    text-align: left;
+    transition: background 0.15s ease, color 0.15s ease, transform 0.1s ease;
     position: relative;
   }
-  .nav-lnk:hover { background: var(--color-bg); color: var(--color-text); }
-  .nav-lnk.active { background: var(--lc-soft, rgba(79,70,229,0.08)); color: var(--lc-600, #4f46e5); }
+  .nav-lnk:hover {
+    background: var(--color-bg);
+    color: var(--color-text);
+  }
+  .nav-lnk:active { transform: scale(0.98); }
+  .nav-lnk.active {
+    background: var(--lc-soft);
+    color: var(--lc-600);
+  }
+  .nav-lnk.loading {
+    opacity: 0.7;
+    pointer-events: none;
+  }
 
   .nav-icon {
-    width: 28px; height: 28px; border-radius: 0.4rem; flex-shrink: 0;
-    display: flex; align-items: center; justify-content: center;
-    background: transparent; color: inherit;
-    transition: background 0.12s;
+    width: 28px;
+    height: 28px;
+    border-radius: 0.4rem;
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: transparent;
+    color: inherit;
+    transition: background 0.15s ease;
   }
-  .nav-icon.active { background: var(--lc-soft, rgba(79,70,229,0.1)); color: var(--lc-600, #4f46e5); }
+  .nav-icon.active {
+    background: rgba(79, 70, 229, 0.12);
+    color: var(--lc-600);
+  }
   .nav-lnk:hover .nav-icon:not(.active) { background: var(--color-border); }
 
-  .nav-label { flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .nav-label {
+    flex: 1;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
 
-  /* badges */
+  /* ── Badges ──────────────────────────────────────────────────────────────── */
   .badge-count {
-    font-size: 0.6rem; font-weight: 800; padding: 0.1rem 0.4rem;
-    border-radius: 999px; background: var(--lc-soft, rgba(79,70,229,.1));
-    color: var(--lc-600, #4f46e5); flex-shrink: 0;
+    font-size: 0.6rem;
+    font-weight: 800;
+    padding: 0.1rem 0.4rem;
+    border-radius: 999px;
+    background: var(--lc-soft);
+    color: var(--lc-600);
+    flex-shrink: 0;
   }
-  .badge-live { background: rgba(22,163,74,.12); color: #16a34a; }
   .collapsed-dot {
-    position: absolute; top: 6px; right: 6px;
-    width: 6px; height: 6px; border-radius: 50%;
-    background: var(--lc-600, #4f46e5);
+    position: absolute;
+    top: 6px;
+    right: 6px;
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: var(--lc-600);
+    animation: pulse-dot 2s ease-in-out infinite;
+  }
+  @keyframes pulse-dot {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.5; }
   }
 
-  /* ── Groups ─────────────────────────────────────────────────────────────── */
-  .nav-group { display: flex; flex-direction: column; }
-
-  /* ── Children ───────────────────────────────────────────────────────────── */
-  .nav-children {
-    display: flex; flex-direction: column; gap: 1px;
-    padding: 0.25rem 0 0.25rem 0.875rem;
-    margin-left: 0.75rem;
-    border-left: 1.5px solid var(--color-border);
-    margin-bottom: 0.25rem;
-  }
-
-  /* Section divider label */
-  .nav-section-label {
-    font-size: 0.58rem; font-weight: 800; text-transform: uppercase;
-    letter-spacing: 0.08em; color: var(--color-muted);
-    padding: 0.6rem 0.5rem 0.2rem;
-    opacity: 0.6;
-  }
-  /* Remove top padding on the very first section label */
-  .nav-children .nav-section-label:first-child { padding-top: 0.2rem; }
-
-  .nav-child {
-    display: flex; align-items: center; gap: 0.5rem;
-    padding: 0.42rem 0.6rem;
-    border-radius: 0.45rem;
-    text-decoration: none; font-size: 0.8rem; font-weight: 500;
-    color: var(--color-muted);
-    transition: background 0.1s, color 0.1s;
-    position: relative;
-  }
-  .nav-child:hover { background: var(--color-bg); color: var(--color-text); }
-  .nav-child.active {
-    background: var(--lc-soft, rgba(79,70,229,0.07));
-    color: var(--lc-600, #4f46e5);
-    font-weight: 700;
-  }
-
-  .child-icon {
-    width: 22px; height: 22px; border-radius: 0.35rem; flex-shrink: 0;
-    display: flex; align-items: center; justify-content: center;
-    color: inherit; background: transparent;
-    transition: background 0.1s;
-  }
-  .child-icon.active { background: var(--lc-soft, rgba(79,70,229,0.1)); color: var(--lc-600, #4f46e5); }
-  .nav-child:hover .child-icon:not(.active) { background: var(--color-border); }
-
-  .child-label { flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-
-  .child-active-pip {
-    width: 5px; height: 5px; border-radius: 50%;
-    background: var(--lc-600, #4f46e5);
-    flex-shrink: 0; margin-left: auto;
-  }
-
-  /* ── Spinners ───────────────────────────────────────────────────────────── */
+  /* ═══════════════════════════════════════════════════════════════════════ */
+  /* SPINNERS & LOADING                                                        */
+  /* ═══════════════════════════════════════════════════════════════════════ */
   .spinner {
-    width: 14px; height: 14px; border-radius: 50%;
+    width: 14px;
+    height: 14px;
+    border-radius: 50%;
     border: 2px solid var(--color-border);
-    border-top-color: var(--lc-600, #4f46e5);
+    border-top-color: var(--lc-600);
     animation: spin 0.6s linear infinite;
   }
   .spinner.sm { width: 11px; height: 11px; }
   @keyframes spin { to { transform: rotate(360deg); } }
 
-  /* ── Load bar ───────────────────────────────────────────────────────────── */
   .load-bar {
-    position: absolute; bottom: 0; left: 0; right: 0;
-    height: 2px; background: var(--color-border);
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    height: 2px;
+    background: var(--color-border);
+    overflow: hidden;
   }
   .load-progress {
-    height: 100%; background: var(--lc-600, #4f46e5);
+    height: 100%;
+    background: linear-gradient(90deg, var(--lc-600), var(--lc-400));
     animation: loadbar 1.4s ease-in-out infinite;
   }
   @keyframes loadbar {
@@ -757,56 +928,126 @@
     100% { width: 0%; margin-left: 100%; }
   }
 
-  /* ── Footer ─────────────────────────────────────────────────────────────── */
+  /* ═══════════════════════════════════════════════════════════════════════ */
+  /* SIDEBAR FOOTER                                                            */
+  /* ═══════════════════════════════════════════════════════════════════════ */
   .sidebar-foot {
-    padding: 0.5rem; border-top: 1px solid var(--color-border);
-    display: flex; flex-direction: column; gap: 1px; flex-shrink: 0;
+    padding: 0.5rem;
+    border-top: 1px solid var(--color-border);
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+    flex-shrink: 0;
   }
   .foot-btn {
-    display: flex; align-items: center; gap: 0.55rem;
-    padding: 0.5rem 0.5rem; border-radius: 0.5rem;
-    border: none; background: none; cursor: pointer;
-    color: var(--color-muted); font-size: 0.8rem; font-weight: 600;
-    font-family: inherit; width: 100%; text-align: left;
-    transition: background 0.12s, color 0.12s;
+    display: flex;
+    align-items: center;
+    gap: 0.55rem;
+    padding: 0.5rem;
+    border-radius: 0.5rem;
+    border: none;
+    background: none;
+    cursor: pointer;
+    color: var(--color-muted);
+    font-size: 0.8rem;
+    font-weight: 600;
+    font-family: inherit;
+    width: 100%;
+    text-align: left;
+    transition: background 0.12s ease, color 0.12s ease;
     white-space: nowrap;
   }
-  .foot-btn:hover { background: var(--color-bg); color: var(--color-text); }
-  .foot-btn.signout:hover { color: #ef4444; }
+  .foot-btn:hover {
+    background: var(--color-bg);
+    color: var(--color-text);
+  }
+  .foot-btn.signout:hover {
+    color: #ef4444;
+    background: rgba(239, 68, 68, 0.06);
+  }
   .foot-icon {
-    width: 28px; height: 28px; border-radius: 0.4rem; flex-shrink: 0;
-    display: flex; align-items: center; justify-content: center;
+    width: 28px;
+    height: 28px;
+    border-radius: 0.4rem;
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
     background: var(--color-bg);
   }
 
   .profile-row {
-    display: flex; align-items: center; gap: 0.55rem;
-    padding: 0.5rem 0.5rem; border-radius: 0.5rem;
+    display: flex;
+    align-items: center;
+    gap: 0.55rem;
+    padding: 0.5rem;
+    border-radius: 0.5rem;
     text-decoration: none;
-    transition: background 0.12s;
+    transition: background 0.12s ease;
     cursor: pointer;
   }
   .profile-row:hover { background: var(--color-bg); }
   .avatar {
-    width: 28px; height: 28px; border-radius: 0.4rem; flex-shrink: 0;
-    background: linear-gradient(135deg, var(--lc-700, #4338ca), var(--lc-600, #4f46e5));
-    display: flex; align-items: center; justify-content: center;
-    font-size: 0.62rem; font-weight: 800; color: #fff; letter-spacing: 0.02em;
+    width: 28px;
+    height: 28px;
+    border-radius: 0.4rem;
+    flex-shrink: 0;
+    background: linear-gradient(135deg, var(--lc-700), var(--lc-600));
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 0.62rem;
+    font-weight: 800;
+    color: #fff;
+    letter-spacing: 0.02em;
   }
-  .profile-copy { flex: 1; display: flex; flex-direction: column; min-width: 0; overflow: hidden; }
-  .profile-name { font-size: 0.8rem; font-weight: 700; color: var(--color-text); white-space: nowrap; }
-  .profile-sub  { font-size: 0.62rem; color: var(--color-muted); font-weight: 600; }
+  .profile-copy {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+    overflow: hidden;
+  }
+  .profile-name {
+    font-size: 0.8rem;
+    font-weight: 700;
+    color: var(--color-text);
+    white-space: nowrap;
+  }
+  .profile-sub {
+    font-size: 0.62rem;
+    color: var(--color-muted);
+    font-weight: 600;
+  }
 
-  /* ── Mobile overlay ─────────────────────────────────────────────────────── */
+  /* ═══════════════════════════════════════════════════════════════════════ */
+  /* MOBILE OVERLAY                                                            */
+  /* ═══════════════════════════════════════════════════════════════════════ */
   .mob-overlay {
-    position: fixed; inset: 0; background: rgba(0,0,0,0.45);
-    z-index: 39; backdrop-filter: blur(2px);
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.45);
+    z-index: 39;
+    backdrop-filter: blur(3px);
   }
+
+  /* ═══════════════════════════════════════════════════════════════════════ */
+  /* RESPONSIVE                                                                */
+  /* ═══════════════════════════════════════════════════════════════════════ */
   @media (max-width: 768px) {
-    .sidebar { position: fixed; top: 0; left: 0; bottom: 0; z-index: 40; transform: translateX(-100%); transition: transform 0.22s cubic-bezier(.4,0,.2,1); width: 240px !important; }
+    .sidebar {
+      position: fixed;
+      top: 0;
+      left: 0;
+      bottom: 0;
+      z-index: 40;
+      transform: translateX(-100%);
+      transition: transform 0.25s cubic-bezier(.4,0,.2,1);
+      width: 260px !important;
+    }
     .sidebar.mob-open { transform: translateX(0); }
     .shell { display: block; }
-    .main  { height: 100dvh; }
+    .main { height: 100dvh; }
   }
   .desktop-only { display: flex; }
   .mobile-only  { display: none; }
@@ -815,137 +1056,412 @@
     .mobile-only  { display: flex; }
   }
 
-  /* ── Topbar ─────────────────────────────────────────────────────────────── */
+  /* ═══════════════════════════════════════════════════════════════════════ */
+  /* TOPBAR                                                                    */
+  /* ═══════════════════════════════════════════════════════════════════════ */
   .topbar {
-    display: flex; align-items: center; justify-content: space-between;
-    padding: 0 1.25rem; height: 52px; flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 1.25rem;
+    height: 52px;
+    flex-shrink: 0;
     border-bottom: 1px solid var(--color-border);
-    background: var(--color-surface); gap: 1rem;
+    background: var(--color-surface);
+    gap: 1rem;
   }
-  .topbar-l { display: flex; align-items: center; gap: 0.75rem; min-width: 0; }
-  .topbar-r { display: flex; align-items: center; gap: 0.5rem; flex-shrink: 0; }
+  .topbar-l {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    min-width: 0;
+  }
+  .topbar-r {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    flex-shrink: 0;
+  }
 
   .mob-menu {
-    width: 32px; height: 32px; border-radius: 0.5rem;
-    border: 1px solid var(--color-border); background: var(--color-bg);
-    display: flex; align-items: center; justify-content: center;
-    color: var(--color-muted); cursor: pointer;
+    width: 32px;
+    height: 32px;
+    border-radius: 0.5rem;
+    border: 1px solid var(--color-border);
+    background: var(--color-bg);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--color-muted);
+    cursor: pointer;
+    transition: all 0.15s ease;
+  }
+  .mob-menu:hover {
+    border-color: var(--lc-600);
+    color: var(--color-text);
   }
 
-  /* Breadcrumb */
-  .bc { display: flex; align-items: center; gap: 0.3rem; min-width: 0; }
-  .bc-lnk { font-size: 0.78rem; color: var(--color-muted); text-decoration: none; font-weight: 500; white-space: nowrap; transition: color 0.12s; }
-  .bc-lnk:hover { color: var(--lc-600, #4f46e5); }
-  .bc-cur { font-size: 0.78rem; color: var(--color-text); font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  .greet  { font-size: 0.82rem; color: var(--color-muted); }
+  /* ── Breadcrumb ────────────────────────────────────────────────────────── */
+  .bc {
+    display: flex;
+    align-items: center;
+    gap: 0.3rem;
+    min-width: 0;
+  }
+  .bc-lnk {
+    font-size: 0.78rem;
+    color: var(--color-muted);
+    text-decoration: none;
+    font-weight: 500;
+    white-space: nowrap;
+    transition: color 0.12s ease;
+  }
+  .bc-lnk:hover { color: var(--lc-600); }
+  .bc-cur {
+    font-size: 0.78rem;
+    color: var(--color-text);
+    font-weight: 700;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .greet {
+    font-size: 0.82rem;
+    color: var(--color-muted);
+  }
   .greet strong { color: var(--color-text); }
 
-  /* Topbar actions */
+  /* ── Topbar Actions ────────────────────────────────────────────────────── */
   .load-pill {
-    display: flex; align-items: center; gap: 0.35rem;
-    font-size: 0.72rem; color: var(--color-muted); font-weight: 600;
-    padding: 0.3rem 0.6rem; border-radius: 999px;
-    background: var(--color-bg); border: 1px solid var(--color-border);
+    display: flex;
+    align-items: center;
+    gap: 0.35rem;
+    font-size: 0.72rem;
+    color: var(--color-muted);
+    font-weight: 600;
+    padding: 0.3rem 0.6rem;
+    border-radius: 999px;
+    background: var(--color-bg);
+    border: 1px solid var(--color-border);
   }
   .icon-btn {
-    width: 32px; height: 32px; border-radius: 0.5rem;
-    border: 1px solid var(--color-border); background: var(--color-bg);
-    display: flex; align-items: center; justify-content: center;
-    color: var(--color-muted); cursor: pointer; position: relative;
-    transition: all 0.12s;
+    width: 32px;
+    height: 32px;
+    border-radius: 0.5rem;
+    border: 1px solid var(--color-border);
+    background: var(--color-bg);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--color-muted);
+    cursor: pointer;
+    position: relative;
+    transition: all 0.15s ease;
   }
-  .icon-btn:hover { color: var(--color-text); border-color: var(--lc-600, #4f46e5); }
-  .icon-btn.notif-lit { color: var(--lc-600, #4f46e5); border-color: var(--lc-600, #4f46e5); }
+  .icon-btn:hover {
+    color: var(--color-text);
+    border-color: var(--lc-600);
+    background: var(--lc-soft);
+  }
+  .icon-btn:active { transform: scale(0.95); }
+  .icon-btn.notif-lit {
+    color: var(--lc-600);
+    border-color: var(--lc-600);
+    background: var(--lc-soft);
+  }
   .notif-badge {
-    position: absolute; top: -4px; right: -4px;
-    font-size: 0.55rem; font-weight: 800; padding: 0.1rem 0.3rem;
-    background: #ef4444; color: #fff; border-radius: 999px; border: 1.5px solid var(--color-surface);
-    min-width: 14px; text-align: center;
+    position: absolute;
+    top: -4px;
+    right: -4px;
+    font-size: 0.55rem;
+    font-weight: 800;
+    padding: 0.1rem 0.3rem;
+    background: var(--lc-600);
+    color: #fff;
+    border-radius: 999px;
+    border: 1.5px solid var(--color-surface);
+    min-width: 14px;
+    text-align: center;
+    animation: pop-in 0.3s ease;
   }
-  .role-pill {
-    display: flex; align-items: center; gap: 0.3rem;
-    font-size: 0.68rem; font-weight: 700;
-    padding: 0.3rem 0.625rem; border-radius: 999px;
-    background: var(--lc-soft, rgba(79,70,229,0.08));
-    color: var(--lc-600, #4f46e5);
-    border: 1px solid color-mix(in srgb, var(--lc-600, #4f46e5) 20%, transparent);
+  @keyframes pop-in {
+    0% { transform: scale(0); }
+    80% { transform: scale(1.2); }
+    100% { transform: scale(1); }
   }
 
-  /* ── Notifications panel ────────────────────────────────────────────────── */
+  .role-pill {
+    display: flex;
+    align-items: center;
+    gap: 0.3rem;
+    font-size: 0.68rem;
+    font-weight: 700;
+    padding: 0.3rem 0.625rem;
+    border-radius: 999px;
+    background: var(--lc-soft);
+    color: var(--lc-600);
+    border: 1px solid color-mix(in srgb, var(--lc-600) 20%, transparent);
+  }
+
+  /* ═══════════════════════════════════════════════════════════════════════ */
+  /* NOTIFICATIONS PANEL                                                       */
+  /* ═══════════════════════════════════════════════════════════════════════ */
   .notif-anchor { position: relative; }
   .notif-drop {
-    position: absolute; top: calc(100% + 8px); right: 0;
-    width: 320px; background: var(--color-surface);
-    border: 1px solid var(--color-border); border-radius: 0.875rem;
-    box-shadow: 0 12px 40px rgba(0,0,0,0.16); z-index: 200; overflow: hidden;
+    position: absolute;
+    top: calc(100% + 8px);
+    right: 0;
+    width: 340px;
+    background: var(--color-surface);
+    border: 1px solid var(--color-border);
+    border-radius: 0.875rem;
+    box-shadow: 0 12px 40px rgba(0,0,0,0.16);
+    z-index: 200;
+    overflow: hidden;
   }
   .notif-head {
-    display: flex; align-items: center; justify-content: space-between;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
     padding: 0.875rem 1rem 0.625rem;
     border-bottom: 1px solid var(--color-border);
   }
-  .notif-title { font-size: 0.82rem; font-weight: 800; color: var(--color-text); }
-  .mark-all {
-    display: flex; align-items: center; gap: 0.3rem;
-    font-size: 0.7rem; font-weight: 600; color: var(--lc-600, #4f46e5);
-    background: none; border: none; cursor: pointer; font-family: inherit; padding: 0;
+  .notif-title {
+    font-size: 0.82rem;
+    font-weight: 800;
+    color: var(--color-text);
   }
-  .notif-list { max-height: 320px; overflow-y: auto; }
+  .mark-all {
+    display: flex;
+    align-items: center;
+    gap: 0.3rem;
+    font-size: 0.7rem;
+    font-weight: 600;
+    color: var(--lc-600);
+    background: none;
+    border: none;
+    cursor: pointer;
+    font-family: inherit;
+    padding: 0.25rem 0.4rem;
+    border-radius: 0.3rem;
+    transition: background 0.12s ease;
+  }
+  .mark-all:hover { background: var(--lc-soft); }
+  .mark-all:disabled { opacity: 0.5; cursor: not-allowed; }
+  .notif-list {
+    max-height: 320px;
+    overflow-y: auto;
+    scrollbar-width: thin;
+    scrollbar-color: var(--color-border) transparent;
+  }
   .notif-item {
-    display: flex; align-items: flex-start; gap: 0.625rem;
-    padding: 0.75rem 1rem; width: 100%;
-    border: none; background: none; cursor: pointer; text-align: left;
-    font-family: inherit; border-bottom: 1px solid var(--color-border);
-    transition: background 0.1s;
+    display: flex;
+    align-items: flex-start;
+    gap: 0.625rem;
+    padding: 0.75rem 1rem;
+    width: 100%;
+    border: none;
+    background: none;
+    cursor: pointer;
+    text-align: left;
+    font-family: inherit;
+    border-bottom: 1px solid var(--color-border);
+    transition: background 0.1s ease;
   }
   .notif-item:hover { background: var(--color-bg); }
-  .notif-item.unread { background: var(--lc-soft, rgba(79,70,229,0.04)); }
-  .notif-pip { width: 7px; height: 7px; border-radius: 50%; background: var(--color-border); flex-shrink: 0; margin-top: 4px; }
-  .notif-pip.active { background: var(--lc-600, #4f46e5); }
+  .notif-item.unread { background: rgba(79, 70, 229, 0.04); }
+  .notif-pip {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: var(--color-border);
+    flex-shrink: 0;
+    margin-top: 4px;
+  }
+  .notif-pip.active {
+    background: var(--lc-600);
+    animation: pulse-dot 2s ease-in-out infinite;
+  }
   .notif-body { flex: 1; min-width: 0; }
-  .notif-t  { font-size: 0.78rem; font-weight: 700; color: var(--color-text); margin: 0 0 0.15rem; }
-  .notif-m  { font-size: 0.72rem; color: var(--color-muted); margin: 0 0 0.25rem; line-height: 1.4; }
-  .notif-time { font-size: 0.65rem; color: var(--color-muted); font-weight: 600; }
-  .notif-empty { display: flex; flex-direction: column; align-items: center; gap: 0.5rem; padding: 2rem; color: var(--color-muted); font-size: 0.78rem; }
-  .notif-foot { padding: 0.625rem 1rem; border-top: 1px solid var(--color-border); }
-  .notif-foot a { font-size: 0.75rem; font-weight: 600; color: var(--lc-600, #4f46e5); text-decoration: none; }
+  .notif-t {
+    font-size: 0.78rem;
+    font-weight: 700;
+    color: var(--color-text);
+    margin: 0 0 0.15rem;
+  }
+  .notif-m {
+    font-size: 0.72rem;
+    color: var(--color-muted);
+    margin: 0 0 0.25rem;
+    line-height: 1.4;
+  }
+  .notif-time {
+    font-size: 0.65rem;
+    color: var(--color-muted);
+    font-weight: 600;
+  }
+  .notif-empty {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 2rem;
+    color: var(--color-muted);
+    font-size: 0.78rem;
+  }
+  .notif-foot {
+    padding: 0.625rem 1rem;
+    border-top: 1px solid var(--color-border);
+  }
+  .notif-foot a {
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: var(--lc-600);
+    text-decoration: none;
+    transition: opacity 0.12s ease;
+  }
+  .notif-foot a:hover { opacity: 0.8; }
 
-  /* ── Content ────────────────────────────────────────────────────────────── */
-  .content { flex: 1; overflow-y: auto; overflow-x: hidden; }
+  /* ═══════════════════════════════════════════════════════════════════════ */
+  /* CONTENT AREA                                                              */
+  /* ═══════════════════════════════════════════════════════════════════════ */
+  .content {
+    flex: 1;
+    overflow-y: auto;
+    overflow-x: hidden;
+    background: var(--color-bg);
+    scroll-behavior: smooth;
+  }
+  .content::-webkit-scrollbar { width: 6px; }
+  .content::-webkit-scrollbar-thumb { background: var(--color-border); border-radius: 6px; }
+  .content-inner {
+    padding: 1.5rem;
+    max-width: 1400px;
+    margin: 0 auto;
+  }
+  @media (max-width: 768px) {
+    .content-inner { padding: 1rem; }
+  }
 
-  /* ── Sign-out modal ─────────────────────────────────────────────────────── */
+  /* ═══════════════════════════════════════════════════════════════════════ */
+  /* SIGN-OUT MODAL                                                            */
+  /* ═══════════════════════════════════════════════════════════════════════ */
   .modal-bg {
-    position: fixed; inset: 0; background: rgba(0,0,0,0.5);
-    z-index: 300; display: flex; align-items: center; justify-content: center;
-    backdrop-filter: blur(3px);
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.5);
+    z-index: 300;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    backdrop-filter: blur(4px);
+    animation: fade-in 0.2s ease;
+  }
+  @keyframes fade-in {
+    from { opacity: 0; }
+    to { opacity: 1; }
   }
   .modal {
-    background: var(--color-surface); border: 1px solid var(--color-border);
-    border-radius: 1rem; padding: 1.75rem; width: min(360px, calc(100vw - 2rem));
-    display: flex; flex-direction: column; align-items: center; gap: 0.625rem;
-    text-align: center; box-shadow: 0 20px 60px rgba(0,0,0,0.2);
+    background: var(--color-surface);
+    border: 1px solid var(--color-border);
+    border-radius: 1rem;
+    padding: 1.75rem;
+    width: min(380px, calc(100vw - 2rem));
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.625rem;
+    text-align: center;
+    box-shadow: 0 24px 80px rgba(0,0,0,0.25);
+    animation: modal-in 0.25s cubic-bezier(.4,0,.2,1);
+  }
+  @keyframes modal-in {
+    from { opacity: 0; transform: translateY(-10px) scale(0.98); }
+    to { opacity: 1; transform: translateY(0) scale(1); }
   }
   .modal-ico {
-    width: 44px; height: 44px; border-radius: 50%;
-    background: rgba(239,68,68,0.1); color: #ef4444;
-    display: flex; align-items: center; justify-content: center; margin-bottom: 0.25rem;
+    width: 48px;
+    height: 48px;
+    border-radius: 50%;
+    background: rgba(239,68,68,0.1);
+    color: #ef4444;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin-bottom: 0.25rem;
+    transition: all 0.3s ease;
   }
-  .modal h3 { font-size: 1rem; font-weight: 800; color: var(--color-text); margin: 0; }
-  .modal p  { font-size: 0.82rem; color: var(--color-muted); margin: 0; }
-  .modal-row { display: flex; gap: 0.625rem; margin-top: 0.5rem; width: 100%; }
+  .modal-ico.spinning {
+    background: var(--lc-soft);
+    color: var(--lc-600);
+  }
+  .modal h3 {
+    font-size: 1.05rem;
+    font-weight: 800;
+    color: var(--color-text);
+    margin: 0;
+  }
+  .modal p {
+    font-size: 0.82rem;
+    color: var(--color-muted);
+    margin: 0;
+    line-height: 1.5;
+  }
+  .modal-row {
+    display: flex;
+    gap: 0.75rem;
+    margin-top: 0.75rem;
+    width: 100%;
+  }
   .btn-ghost {
-    flex: 1; padding: 0.625rem; border-radius: 0.625rem;
-    border: 1.5px solid var(--color-border); background: var(--color-bg);
-    font-size: 0.82rem; font-weight: 700; color: var(--color-text);
-    cursor: pointer; font-family: inherit;
+    flex: 1;
+    padding: 0.625rem;
+    border-radius: 0.625rem;
+    border: 1.5px solid var(--color-border);
+    background: var(--color-bg);
+    font-size: 0.82rem;
+    font-weight: 700;
+    color: var(--color-text);
+    cursor: pointer;
+    font-family: inherit;
+    transition: all 0.15s ease;
   }
+  .btn-ghost:hover:not(:disabled) {
+    border-color: var(--color-text);
+    background: var(--color-surface);
+  }
+  .btn-ghost:active:not(:disabled) { transform: scale(0.98); }
   .btn-danger {
-    flex: 1; padding: 0.625rem; border-radius: 0.625rem;
-    border: none; background: #ef4444; color: #fff;
-    font-size: 0.82rem; font-weight: 700; cursor: pointer;
-    font-family: inherit; display: flex; align-items: center; justify-content: center; gap: 0.4rem;
+    flex: 1;
+    padding: 0.625rem;
+    border-radius: 0.625rem;
+    border: none;
+    background: #ef4444;
+    color: #fff;
+    font-size: 0.82rem;
+    font-weight: 700;
+    cursor: pointer;
+    font-family: inherit;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.4rem;
+    transition: all 0.15s ease;
   }
-  .btn-danger:disabled, .btn-ghost:disabled { opacity: 0.6; cursor: not-allowed; }
+  .btn-danger:hover:not(:disabled) {
+    background: #dc2626;
+    box-shadow: 0 4px 12px rgba(239, 68, 68, 0.3);
+  }
+  .btn-danger:active:not(:disabled) { transform: scale(0.98); }
+  .btn-danger:disabled,
+  .btn-ghost:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+    transform: none !important;
+  }
 
-  :global(.spin) { animation: spin 0.7s linear infinite; display: inline-block; }
+  :global(.spin) {
+    animation: spin 0.7s linear infinite;
+    display: inline-block;
+  }
 </style>

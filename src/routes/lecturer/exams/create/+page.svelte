@@ -1028,7 +1028,7 @@
         <a href="/lecturer" class="btn ghost">Cancel</a>
         <button type="submit" class="btn primary">Create Exam &amp; Add Questions &rarr;</button>
       </div>
-    </div>
+    </div>  
   </form>
 </div>
 
@@ -1205,7 +1205,7 @@
   .pass-bar-wrap { display: flex; align-items: center; gap: .5rem; margin-top: .1rem; }
   .pass-bar-track { flex: 1; height: 4px; background: var(--color-border); border-radius: 2px; overflow: hidden; }
   .pass-bar-fill { height: 100%; border-radius: 2px; transition: width .3s ease, background .3s; }
-  .bar-ok   { background: #10b981; }
+  .bar-ok   { background: #4f46e5; }
   .bar-high { background: #f59e0b; }
   .bar-warn { background: #ef4444; }
   .pass-pct { font-size: .68rem; font-weight: 700; color: var(--color-muted); flex-shrink: 0; }
