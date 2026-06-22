@@ -1,4 +1,5 @@
 // src/lib/server/exam/exam-form.ts
+import type { ExamFormResult } from '$lib/types/exam.js';
 
 function num(formData: FormData, key: string, fallback: number): number {
   const raw = formData.get(key);
@@ -21,49 +22,83 @@ function dateOrNull(formData: FormData, key: string): Date | null {
 export function parseExamForm(formData: FormData): ExamFormResult {
   const errors: Record<string, string> = {};
 
-  const courseId = str(formData, 'courseId');
-  const title = str(formData, 'title');
-  const instructions = str(formData, 'instructions') || null;
-  const durationMinutes = num(formData, 'durationMinutes', 60);
-  const totalMarks = num(formData, 'totalMarks', 100);
-  const passMark = num(formData, 'passMark', 40);
-  const session = str(formData, 'session');
-  const semester = num(formData, 'semester', 1);
-  const scheduledStart = dateOrNull(formData, 'scheduledStart');
-  const scheduledEnd = dateOrNull(formData, 'scheduledEnd');
-  const allowLateEntry = formData.get('allowLateEntry') === 'on';
-  const lateEntryMinutes = num(formData, 'lateEntryMinutes', 10);
+  const courseId          = str(formData, 'courseId');
+  const title             = str(formData, 'title');
+  const instructions      = str(formData, 'instructions') || null;
+  const durationMinutes   = num(formData, 'durationMinutes', 60);
+  const totalMarks        = num(formData, 'totalMarks', 70);
+  const passMark          = num(formData, 'passMark', 28);  // 40% of 70
+  const session           = str(formData, 'session');
+  const semester          = num(formData, 'semester', 1);
+  const scheduledStart    = dateOrNull(formData, 'scheduledStart');
+  const scheduledEnd      = dateOrNull(formData, 'scheduledEnd');
+  const allowLateEntry    = formData.get('allowLateEntry')    === 'on';
+  const lateEntryMinutes  = num(formData, 'lateEntryMinutes', 30);
   const randomizeQuestions = formData.get('randomizeQuestions') === 'on';
-  const randomizeOptions = formData.get('randomizeOptions') === 'on';
-  const questionsToPresent = num(formData, 'questionsToPresent', 0);
-  const showResultAfter = formData.get('showResultAfter') === 'on';
-  const maxViolations = num(formData, 'maxViolations', 5);
+  const randomizeOptions  = formData.get('randomizeOptions')  === 'on';
+  const questionsToPresent = num(formData, 'questionsToPresent', 35);
+  // showResultAfter: checkbox sends "on" when checked, nothing when unchecked.
+  // formData.get returns null when unchecked — "on" check is correct.
+  const showResultAfter   = formData.get('showResultAfter')   === 'on';
+  const maxViolations     = num(formData, 'maxViolations', 5);
 
-  const levels = formData.getAll('levels').map((v) => Number(v)).filter((n) => Number.isFinite(n));
-  const departments = formData.getAll('departments').map((v) => v.toString().trim()).filter(Boolean);
+  const levels = formData
+    .getAll('levels')
+    .map(v => Number(v))
+    .filter(n => Number.isFinite(n));
+
+  const departments = formData
+    .getAll('departments')
+    .map(v => v.toString().trim())
+    .filter(Boolean);
+
   const department = departments.length > 0 ? departments.join(', ') : null;
 
+  // ── Validation ────────────────────────────────────────────────────────────
+
   if (!courseId) errors.courseId = 'Select a course';
-  if (!title) errors.title = 'Title is required';
-  if (!session) errors.session = 'Session is required (e.g. 2025/2026)';
-  if (semester !== 1 && semester !== 2) errors.semester = 'Semester must be 1 or 2';
-  if (durationMinutes <= 0) errors.durationMinutes = 'Duration must be greater than 0';
-  if (totalMarks <= 0) errors.totalMarks = 'Total marks must be greater than 0';
-  if (passMark < 0 || passMark > totalMarks) errors.passMark = 'Pass mark must be between 0 and total marks';
+  if (!title)    errors.title    = 'Title is required';
+  if (!session)  errors.session  = 'Session is required (e.g. 2025/2026)';
+
+  if (semester !== 1 && semester !== 2) {
+    errors.semester = 'Semester must be 1 or 2';
+  }
+
+  if (durationMinutes <= 0) {
+    errors.durationMinutes = 'Duration must be greater than 0';
+  }
+
+  // totalMarks = exam weight out of 100 final marks.
+  // Must be 1–99 so CA always contributes at least 1 mark.
+  if (totalMarks <= 0) {
+    errors.totalMarks = 'Exam weight must be greater than 0';
+  } else if (totalMarks >= 100) {
+    errors.totalMarks = 'Exam weight cannot be 100 — CA must contribute at least 1 mark';
+  }
+
+  if (passMark < 0 || passMark > totalMarks) {
+    errors.passMark = 'Pass mark must be between 0 and the exam weight';
+  }
+
   if (scheduledStart && scheduledEnd && scheduledEnd <= scheduledStart) {
     errors.scheduledEnd = 'End time must be after start time';
   }
-  if (maxViolations <= 0) errors.maxViolations = 'Max violations must be at least 1';
-  if (questionsToPresent < 0) errors.questionsToPresent = 'Cannot be negative';
+
+  if (maxViolations <= 0) {
+    errors.maxViolations = 'Max violations must be at least 1';
+  }
+
+  if (questionsToPresent < 0) {
+    errors.questionsToPresent = 'Cannot be negative';
+  }
 
   return {
     values: {
       courseId, title, instructions, durationMinutes, totalMarks, passMark,
-      session, semester, scheduledStart, scheduledEnd, allowLateEntry, lateEntryMinutes,
-      randomizeQuestions, randomizeOptions, questionsToPresent, showResultAfter,
-      maxViolations, levels, department,
+      session, semester, scheduledStart, scheduledEnd, allowLateEntry,
+      lateEntryMinutes, randomizeQuestions, randomizeOptions,
+      questionsToPresent, showResultAfter, maxViolations, levels, department,
     },
     errors,
   };
 }
-

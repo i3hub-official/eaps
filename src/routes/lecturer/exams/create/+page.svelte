@@ -7,7 +7,7 @@
     Calendar, Search, X, GraduationCap, Building2,
     FileText, Timer, BarChart3, ShieldAlert, Layers,
     Shuffle, Eye, LogIn, AlertTriangle, Zap,
-    TrendingUp,
+    TrendingUp, Scale,
   } from '@lucide/svelte';
   import { fly, fade, scale } from 'svelte/transition';
   import { flip } from 'svelte/animate';
@@ -26,13 +26,13 @@
   let toasts = $state<Toast[]>([]);
   let toastId = 0;
 
-  function toast(message: string, type: Toast['type'] = 'success', duration = 2600) {
+  function toast(message: string, type: Toast['type'] = 'info', duration = 2600) {
     const id = ++toastId;
     toasts = [...toasts, { id, message, type }];
     setTimeout(() => { toasts = toasts.filter(t => t.id !== id); }, duration);
   }
 
-  // ── Levels (DB-aware, lecturer-assigned) ──────────────────────────────────
+  // ── Levels ────────────────────────────────────────────────────────────────
   const LEVELS = $derived(
     (data.levels ?? []).map(l => l.value).sort((a, b) => a - b)
   );
@@ -41,14 +41,14 @@
 
   function toggleLevel(level: number) {
     const next = new Set(selectedLevels);
-    if (next.has(level)) { next.delete(level); toast(`${level} Level removed`, 'info'); }
-    else                 { next.add(level);    toast(`${level} Level added`, 'info'); }
+    if (next.has(level)) { next.delete(level); toast(`${level} Level removed`); }
+    else                 { next.add(level);    toast(`${level} Level added`); }
     selectedLevels = next;
   }
 
   function toggleAll() {
-    if (allLevels) { selectedLevels = new Set(); toast('All levels cleared', 'info'); }
-    else           { selectedLevels = new Set(LEVELS); toast('All levels selected', 'info'); }
+    if (allLevels) { selectedLevels = new Set(); toast('All levels cleared'); }
+    else           { selectedLevels = new Set(LEVELS); toast('All levels selected'); }
   }
 
   // ── Departments ───────────────────────────────────────────────────────────
@@ -66,8 +66,8 @@
   function toggleDept(id: string) {
     const dept = data.departments.find(d => d.id === id);
     const next = new Set(selectedDepartments);
-    if (next.has(id)) { next.delete(id); toast(`${dept?.code ?? 'Dept'} removed`, 'info'); }
-    else              { next.add(id);    toast(`${dept?.code ?? 'Dept'} added`, 'info'); }
+    if (next.has(id)) { next.delete(id); toast(`${dept?.code ?? 'Dept'} removed`); }
+    else              { next.add(id);    toast(`${dept?.code ?? 'Dept'} added`); }
     selectedDepartments = next;
   }
 
@@ -76,12 +76,10 @@
     const next = new Set(selectedDepartments);
     next.delete(id);
     selectedDepartments = next;
-    toast(`${dept?.code ?? 'Dept'} removed`, 'info');
+    toast(`${dept?.code ?? 'Dept'} removed`);
   }
 
-  // ── Course — scoped to courses assigned to this lecturer ─────────────────
-  // data.courses comes from getCoursesForLecturer which returns courses
-  // the lecturer is assigned to (via LecturerCourse join or createdBy exams).
+  // ── Course ────────────────────────────────────────────────────────────────
   let selectedCourse = $state('');
   let courseOpen   = $state(false);
   let courseSearch = $state('');
@@ -105,7 +103,8 @@
     SEMESTERS.find(s => s.value === selectedSemester)?.label ?? ''
   );
 
-  // ── Session (DB-aware dropdown) ──────────────────────────────────────────
+  // ── Session ───────────────────────────────────────────────────────────────
+  // Sessions are already deduplicated by the server — one entry per academic year.
   let selectedSession = $state(data.defaultSession ?? '');
   let sessionOpen = $state(false);
   let sessionSearch = $state('');
@@ -117,46 +116,57 @@
   );
 
   // ── Scoring ───────────────────────────────────────────────────────────────
-  let durationMinutes = $state<number>(Number(form?.values?.durationMinutes ?? 60));
-  let totalMarks      = $state<number>(Number(form?.values?.totalMarks ?? 70));
-  let passMark        = $state<number>(Number(form?.values?.passMark ?? 40));
-  let maxViolations   = $state<number>(Number(form?.values?.maxViolations ?? 5));
+  let durationMinutes    = $state<number>(Number(form?.values?.durationMinutes ?? 60));
+  let totalMarks         = $state<number>(Number(form?.values?.totalMarks ?? 70));
+  let passMark           = $state<number>(Number(form?.values?.passMark ?? 28));
+  let maxViolations      = $state<number>(Number(form?.values?.maxViolations ?? 5));
   let questionsToPresent = $state<number>(Number(form?.values?.questionsToPresent ?? 35));
 
-  // Auto-calculate marks based on questions per student
-  // 35 questions = 70 marks (2 marks each)
-  // 70 questions = 70 marks (1 mark each)
-  // 50 questions = 50 marks (1 mark each)
-  // etc.
+  // CA weight is always the complement of the exam weight.
+  // e.g. totalMarks = 70 → caWeight = 30
+  const caWeight      = $derived(Math.max(0, 100 - totalMarks));
+  const caWeightValid = $derived(totalMarks > 0 && totalMarks < 100);
+
+  // Auto-calculate marks based on questions per student (MOUAU convention).
+  // 35 questions → 2 marks each = 70 total (70% exam weight)
+  // >35 questions → 1 mark each
+  // passMark auto-sets to 40% of totalMarks (MOUAU minimum pass threshold).
   $effect(() => {
     if (questionsToPresent > 0) {
       const marksPerQuestion = questionsToPresent <= 35 ? 2 : 1;
       const calculated = questionsToPresent * marksPerQuestion;
       if (calculated !== totalMarks) {
         totalMarks = calculated;
-        // Auto-set pass mark to 50% of total, rounded
-        passMark = Math.round(totalMarks * 0.5);
+        // MOUAU pass = 40% of exam component
+        passMark = Math.round(totalMarks * 0.4);
       }
     }
   });
 
+  // totalMarks validation — must be 1–99
+  const totalMarksError = $derived(
+    totalMarks <= 0   ? 'Exam weight must be greater than 0'
+    : totalMarks >= 100 ? 'Exam weight cannot be 100 — CA must contribute at least 1 mark'
+    : null
+  );
+
   const passMarkWarning = $derived(
     passMark > totalMarks
-      ? `Pass mark (${passMark}) exceeds total marks (${totalMarks})`
+      ? `Pass mark (${passMark}) exceeds exam weight (${totalMarks})`
       : passMark > totalMarks * 0.75
-      ? `High pass mark — ${Math.round((passMark / totalMarks) * 100)}% required to pass`
+      ? `High pass mark — ${Math.round((passMark / totalMarks) * 100)}% of exam required`
       : null
   );
+
   const durationWarning = $derived(
     durationMinutes > 180 ? 'Very long exam — consider splitting into sections'
     : durationMinutes < 10 ? 'Very short — students may not have enough time'
     : null
   );
+
   const passPercent = $derived(totalMarks > 0 ? Math.round((passMark / totalMarks) * 100) : 0);
 
   // ── Toggles ───────────────────────────────────────────────────────────────
-  // FIX: Do NOT put onclick on the <label> — it fires twice (label + checkbox).
-  // Instead bind:checked directly and use oninput on the checkbox itself.
   let randomizeQuestions = $state(true);
   let randomizeOptions   = $state(true);
   let showResultAfter    = $state(false);
@@ -169,7 +179,7 @@
     onMsg: string,
     offMsg: string
   ) {
-    toast(newValue ? onMsg : offMsg, 'info');
+    toast(newValue ? onMsg : offMsg);
   }
 
   // ── Date/time ─────────────────────────────────────────────────────────────
@@ -204,24 +214,22 @@
 
   function selectStartDay(day: number) {
     startDate = fmtDate(startCalYear, startCalMonth, day);
-    toast(`Start: ${MONTH_SHORT[startCalMonth]} ${day}, ${startCalYear}`, 'info');
-    // Auto-adjust end date if it is before start
+    toast(`Start: ${MONTH_SHORT[startCalMonth]} ${day}, ${startCalYear}`);
     if (endDate && new Date(`${endDate}T${endTime}`) <= new Date(`${startDate}T${startTime}`)) {
-      // Set end to start + 2 hours
       const startDt = new Date(`${startDate}T${startTime}`);
-      const endDt = new Date(startDt.getTime() + 2 * 60 * 60 * 1000);
+      const endDt   = new Date(startDt.getTime() + 2 * 60 * 60 * 1000);
       endDate = fmtDate(endDt.getFullYear(), endDt.getMonth(), endDt.getDate());
       endTime = `${String(endDt.getHours()).padStart(2,'0')}:${String(endDt.getMinutes()).padStart(2,'0')}`;
-      endCalYear = endDt.getFullYear();
+      endCalYear  = endDt.getFullYear();
       endCalMonth = endDt.getMonth();
-      toast('End time auto-adjusted to be after start', 'info');
+      toast('End time auto-adjusted to be after start');
     }
   }
+
   function selectEndDay(day: number) {
     const candidate = fmtDate(endCalYear, endCalMonth, day);
-    // Prevent end date from being before start date
     if (startDate) {
-      const startDt = new Date(`${startDate}T${startTime}`);
+      const startDt     = new Date(`${startDate}T${startTime}`);
       const candidateDt = new Date(`${candidate}T${endTime}`);
       if (candidateDt <= startDt) {
         toast('End date must be after start date', 'warn');
@@ -229,7 +237,7 @@
       }
     }
     endDate = candidate;
-    toast(`End: ${MONTH_SHORT[endCalMonth]} ${day}, ${endCalYear}`, 'info');
+    toast(`End: ${MONTH_SHORT[endCalMonth]} ${day}, ${endCalYear}`);
   }
 
   const startValue    = $derived(startDate ? `${startDate}T${startTime}` : '');
@@ -285,6 +293,7 @@
   $effect(() => { void endDate; void endTime;       pulseRow('end'); });
   $effect(() => { void allowLateEntry; void lateEntryMinutes; pulseRow('late'); });
   $effect(() => { void questionsToPresent;         pulseRow('pool'); });
+  $effect(() => { void totalMarks;                 pulseRow('weight'); });
 </script>
 
 <svelte:head><title>Create Exam — MOUAU eTest</title></svelte:head>
@@ -348,7 +357,6 @@
             {#if form?.errors?.title}<span class="field-error">{form.errors.title}</span>{/if}
           </div>
 
-          <!-- Course dropdown — only lecturer's assigned courses -->
           <div class="field">
             <label>Course <span class="req">*</span>
               {#if (data.courses ?? []).length === 0}
@@ -388,7 +396,7 @@
                             const prev = selectedCourse;
                             selectedCourse = c.id;
                             courseOpen = false; courseSearch = '';
-                            if (prev !== c.id) toast(`Course set to ${c.code}`, 'info');
+                            if (prev !== c.id) toast(`Course set to ${c.code}`);
                           }}>
                           <span class="item-code">{c.code}</span>
                           <span class="item-label">{c.title}</span>
@@ -575,7 +583,7 @@
                   <div class="time-row">
                     <Clock size={13} />
                     <select class="time-sel" bind:value={startTime}
-                      onchange={() => startDate && toast(`Start time → ${startTime}`, 'info')}>
+                      onchange={() => startDate && toast(`Start time → ${startTime}`)}>
                       {#each TIME_OPTIONS as t}<option value={t}>{t}</option>{/each}
                     </select>
                     {#if startDate}<button type="button" class="dt-done-btn" onclick={() => startOpen = false}>Done</button>{/if}
@@ -621,13 +629,10 @@
                     <select class="time-sel" bind:value={endTime}
                       onchange={() => {
                         if (endDate && startDate) {
-                          const endDt = new Date(`${endDate}T${endTime}`);
+                          const endDt   = new Date(`${endDate}T${endTime}`);
                           const startDt = new Date(`${startDate}T${startTime}`);
-                          if (endDt <= startDt) {
-                            toast('End time must be after start time', 'warn');
-                          } else {
-                            toast(`End time → ${endTime}`, 'info');
-                          }
+                          if (endDt <= startDt) toast('End time must be after start time', 'warn');
+                          else toast(`End time → ${endTime}`);
                         }
                       }}>
                       {#each TIME_OPTIONS as t}<option value={t}>{t}</option>{/each}
@@ -647,7 +652,7 @@
           </div>
 
           <div class="two-col">
-            <!-- Session dropdown (DB-aware) -->
+            <!-- Session dropdown -->
             <div class="field">
               <label>Academic Session <span class="req">*</span></label>
               <input type="hidden" name="session" value={selectedSession} />
@@ -677,7 +682,7 @@
                               const prev = selectedSession;
                               selectedSession = s.session;
                               sessionOpen = false; sessionSearch = '';
-                              if (prev !== s.session) toast(`Session set to ${s.session}`, 'info');
+                              if (prev !== s.session) toast(`Session set to ${s.session}`);
                             }}>
                             <span class="item-label">{s.session}</span>
                             {#if selectedSession === s.session}<Check size={13} class="item-check" />{/if}
@@ -690,6 +695,8 @@
               </div>
               {#if form?.errors?.session}<span class="field-error">{form.errors.session}</span>{/if}
             </div>
+
+            <!-- Semester dropdown -->
             <div class="field">
               <label>Semester <span class="req">*</span></label>
               <input type="hidden" name="semester" value={selectedSemester} />
@@ -707,7 +714,7 @@
                           onclick={() => {
                             const prev = selectedSemester;
                             selectedSemester = s.value; semesterOpen = false;
-                            if (prev !== s.value) toast(`${s.label} selected`, 'info');
+                            if (prev !== s.value) toast(`${s.label} selected`);
                           }}>
                           <span class="item-label">{s.label}</span>
                           {#if selectedSemester === s.value}<Check size={13} class="item-check" />{/if}
@@ -723,7 +730,7 @@
         </div>
       </div>
 
-      <!-- Scoring -->
+      <!-- ── Scoring ──────────────────────────────────────────────────────── -->
       <div class="card">
         <div class="card-header">
           <span class="card-icon"><BarChart3 size={16} /></span>
@@ -746,17 +753,36 @@
               {/if}
             </div>
 
+            <!-- Total Marks = Exam Weight -->
             <div class="score-field">
-              <label for="totalMarks"><FileText size={13} /> Total Marks</label>
+              <label for="totalMarks">
+                <FileText size={13} /> Exam Weight
+                <span class="label-sub">out of 100</span>
+              </label>
               <div class="score-input-wrap">
                 <input id="totalMarks" name="totalMarks" type="number"
-                  bind:value={totalMarks} min="1" required
-                  class="input" />
+                  bind:value={totalMarks} min="1" max="99" required
+                  class:input-error={!!totalMarksError} />
                 <span class="score-unit">pts</span>
               </div>
-              <p class="field-hint">Auto-calculated from questions per student</p>
+              <!-- CA weight badge — live derived -->
+              {#if caWeightValid}
+                <div class="ca-weight-badge" transition:fly={{ y: -4, duration: 140 }}>
+                  <Scale size={11} />
+                  CA: <strong>{caWeight} pts</strong>
+                  <span class="ca-weight-split">{totalMarks}% exam + {caWeight}% CA = 100%</span>
+                </div>
+              {/if}
+              {#if totalMarksError}
+                <span class="field-error" transition:fly={{ y: -4, duration: 140 }}>
+                  <AlertTriangle size={10} /> {totalMarksError}
+                </span>
+              {:else}
+                <p class="field-hint">Auto-calculated from questions per student</p>
+              {/if}
             </div>
 
+            <!-- Pass Mark — exam component only -->
             <div class="score-field">
               <label for="passMark"><Check size={13} strokeWidth={2.5} /> Pass Mark</label>
               <div class="score-input-wrap">
@@ -777,6 +803,7 @@
                   <span class="pass-pct">{passPercent}%</span>
                 </div>
               {/if}
+              <p class="field-hint">Exam component only — final grade uses combined score</p>
               {#if passMarkWarning}
                 <span class="field-warn" transition:fly={{ y: -4, duration: 140 }}>
                   <AlertTriangle size={10} /> {passMarkWarning}
@@ -829,7 +856,7 @@
     <!-- ══ COLUMN 3 ════════════════════════════════════════════════════════ -->
     <div class="col">
 
-      <!-- Options — FIX: toggles use oninput on checkbox, NOT onclick on label -->
+      <!-- Options -->
       <div class="card">
         <div class="card-header">
           <span class="card-icon"><Settings size={16} /></span>
@@ -877,13 +904,24 @@
             </div>
           </label>
 
+          <!--
+            Show Result Immediately toggle.
+
+            How it works with the form:
+            - bind:checked keeps `showResultAfter` in sync as a boolean.
+            - The hidden checkbox with name="showResultAfter" is what gets submitted.
+            - When checked=true  → browser sends "showResultAfter=on"
+            - When checked=false → browser sends nothing for this field
+            - exam-form.ts reads: formData.get('showResultAfter') === 'on'
+              → true when checked, false when unchecked. Correct.
+          -->
           <label class="toggle-row">
             <div class="toggle-text">
               <span class="toggle-icon-wrap"><Eye size={14} /></span>
               <div>
                 <span class="toggle-label">Show Result Immediately</span>
                 <span class="toggle-desc">
-                  {showResultAfter ? 'Score shown after submission' : 'Results hidden until released'}
+                  {showResultAfter ? 'Results hidden until released':'Score shown after submission'}
                 </span>
               </div>
             </div>
@@ -891,7 +929,7 @@
               <input type="checkbox" name="showResultAfter"
                 bind:checked={showResultAfter}
                 oninput={() => onToggleChange('showResultAfter', showResultAfter,
-                  'Students will see their score immediately', 'Results hidden until you release them')}
+                  'Results hidden until you release them','Students will see their score immediately')}
                 class="toggle-cb" />
               <span class="toggle-knob"></span>
             </div>
@@ -987,10 +1025,25 @@
             <span>Duration</span>
             <span class="sum-val sum-val-set">{durationMinutes} min</span>
           </div>
+
+          <!-- Exam weight + CA weight rows -->
+          <div class="sum-row" class:sum-row-pulse={changedRow === 'weight'}>
+            <span>Exam weight</span>
+            <span class="sum-val sum-val-set" class:sum-val-warn={!!totalMarksError}>
+              {totalMarks} / 100
+            </span>
+          </div>
+          <div class="sum-row" class:sum-row-pulse={changedRow === 'weight'}>
+            <span>CA weight</span>
+            <span class="sum-val" class:sum-val-set={caWeightValid} class:sum-val-warn={!caWeightValid}>
+              {caWeightValid ? `${caWeight} / 100` : '—'}
+            </span>
+          </div>
+
           <div class="sum-row">
             <span>Pass threshold</span>
             <span class="sum-val sum-val-set" class:sum-val-warn={!!passMarkWarning}>
-              {passMark}/{totalMarks} &middot; {passPercent}%
+              {passMark}/{totalMarks} &middot; {passPercent}% (exam only)
             </span>
           </div>
           <div class="sum-row" class:sum-row-pulse={changedRow === 'late'}>
@@ -1003,6 +1056,12 @@
             <span>Question pool</span>
             <span class="sum-val" class:sum-val-set={questionsToPresent > 0}>
               {questionsToPresent > 0 ? `${questionsToPresent} per student` : 'All questions'}
+            </span>
+          </div>
+          <div class="sum-row">
+            <span>Show result</span>
+            <span class="sum-val" class:sum-val-set={showResultAfter}>
+              {showResultAfter ? '✓ Immediately' : 'After release'}
             </span>
           </div>
           <div class="sum-row">
@@ -1028,7 +1087,7 @@
         <a href="/lecturer" class="btn ghost">Cancel</a>
         <button type="submit" class="btn primary">Create Exam &amp; Add Questions &rarr;</button>
       </div>
-    </div>  
+    </div>
   </form>
 </div>
 
@@ -1045,8 +1104,8 @@
     font-size: .79rem; font-weight: 600; white-space: nowrap;
     box-shadow: 0 4px 14px rgba(0,0,0,.1); max-width: 300px;
   }
-  .toast-info    { background: var(--color-surface); color: var(--color-text); border: 1px solid var(--color-border); }
-  .toast-warn    { background: #fef3c7; color: #92400e; border: 1px solid #fde68a; }
+  .toast-info { background: var(--color-surface); color: var(--color-text); border: 1px solid var(--color-border); }
+  .toast-warn { background: #fef3c7; color: #92400e; border: 1px solid #fde68a; }
 
   /* ── Root ────────────────────────────────────────────────────────────────── */
   .page { padding: 1.75rem 2rem 4rem; max-width: 1400px; margin: 0 auto; }
@@ -1059,7 +1118,6 @@
   .page-header-main h1 { font-size: 1.85rem; font-weight: 900; letter-spacing: -.04em; color: var(--color-text); margin: 0 0 .2rem; }
   .page-header-main > div > p { font-size: .82rem; color: var(--color-muted); margin: 0; }
   .header-actions { display: flex; gap: .625rem; align-items: center; flex-shrink: 0; }
-
   .alert-error { display: flex; align-items: center; gap: .6rem; padding: .875rem 1rem; margin-bottom: 1.25rem; background: rgba(239,68,68,.08); border: 1px solid rgba(239,68,68,.25); border-radius: .75rem; font-size: .875rem; color: #dc2626; }
 
   /* ── Grid ────────────────────────────────────────────────────────────────── */
@@ -1083,12 +1141,13 @@
   .card-header { display: flex; align-items: flex-start; gap: .75rem; padding: 1rem 1.25rem .875rem; border-bottom: 1px solid var(--color-border); background: var(--color-bg); border-radius: 1rem 1rem 0 0; }
   .card-icon { width: 32px; height: 32px; flex-shrink: 0; display: flex; align-items: center; justify-content: center; background: var(--lc-soft); border-radius: .5rem; color: var(--lc-600); }
   .card-header h2 { font-size: .85rem; font-weight: 700; color: var(--color-text); margin: 0 0 .15rem; }
-  .card-header p { font-size: .73rem; color: var(--color-muted); margin: 0; }
+  .card-header p  { font-size: .73rem; color: var(--color-muted); margin: 0; }
   .card-body { padding: 1.125rem 1.25rem; display: flex; flex-direction: column; gap: .875rem; }
 
   /* ── Fields ──────────────────────────────────────────────────────────────── */
   .field { display: flex; flex-direction: column; gap: .35rem; }
   .field label { font-size: .8rem; font-weight: 600; color: var(--color-text); display: flex; align-items: center; gap: .35rem; flex-wrap: wrap; }
+  .label-sub { font-size: .68rem; font-weight: 500; color: var(--color-muted); }
   .req { color: #ef4444; }
   .opt { font-size: .7rem; font-weight: 500; color: var(--color-muted); margin-left: .2rem; }
   .opt-badge { font-size: .68rem; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; color: var(--color-muted); background: var(--color-border); padding: .12rem .45rem; border-radius: 999px; }
@@ -1110,7 +1169,7 @@
   .field input:focus, .field textarea:focus { border-color: var(--lc-600); box-shadow: 0 0 0 3px var(--lc-soft); }
   .two-col { display: grid; grid-template-columns: 1fr 1fr; gap: .75rem; }
 
-   /* ── Count badge ─────────────────────────────────────────────────────────── */
+  /* ── Count badge ─────────────────────────────────────────────────────────── */
   .count-badge { display: inline-flex; align-items: center; justify-content: center; min-width: 18px; height: 18px; padding: 0 .35rem; background: var(--lc-600); color: white; border-radius: 999px; font-size: .65rem; font-weight: 800; }
 
   /* ── Dropdown ────────────────────────────────────────────────────────────── */
@@ -1193,8 +1252,23 @@
   .score-input-wrap { position: relative; }
   .score-input-wrap input { width: 100%; padding: .575rem 2rem .575rem .875rem; border: 1px solid var(--color-border); border-radius: .6rem; background: var(--color-bg); color: var(--color-text); font-size: 1rem; font-weight: 700; font-family: inherit; outline: none; box-sizing: border-box; transition: border-color .15s, box-shadow .15s; }
   .score-input-wrap input:focus { border-color: var(--lc-600); box-shadow: 0 0 0 3px var(--lc-soft); }
-  .score-input-wrap input.input-warn { border-color: #f59e0b; }
+  .score-input-wrap input.input-warn  { border-color: #f59e0b; }
+  .score-input-wrap input.input-error { border-color: #ef4444; }
   .score-unit { position: absolute; right: .75rem; top: 50%; transform: translateY(-50%); font-size: .72rem; font-weight: 700; color: var(--color-muted); pointer-events: none; }
+
+  /* CA weight badge */
+  .ca-weight-badge {
+    display: flex; align-items: center; gap: .35rem;
+    font-size: .72rem; color: var(--lc-600);
+    background: rgba(79,70,229,.07);
+    border: 1px solid rgba(79,70,229,.2);
+    border-radius: .45rem;
+    padding: .3rem .6rem;
+    line-height: 1.3;
+  }
+  .ca-weight-badge strong { font-weight: 800; }
+  .ca-weight-split { color: var(--color-muted); font-size: .68rem; margin-left: .2rem; }
+
   .pass-bar-wrap { display: flex; align-items: center; gap: .5rem; margin-top: .1rem; }
   .pass-bar-track { flex: 1; height: 4px; background: var(--color-border); border-radius: 2px; overflow: hidden; }
   .pass-bar-fill { height: 100%; border-radius: 2px; transition: width .3s ease, background .3s; }
@@ -1202,6 +1276,7 @@
   .bar-high { background: #f59e0b; }
   .bar-warn { background: #ef4444; }
   .pass-pct { font-size: .68rem; font-weight: 700; color: var(--color-muted); flex-shrink: 0; }
+
   .qtp-wrap { display: flex; flex-direction: column; gap: .5rem; padding: .875rem; background: var(--color-bg); border: 1px solid var(--color-border); border-radius: .75rem; }
   .qtp-header { display: flex; align-items: center; justify-content: space-between; }
   .qtp-label-group { display: flex; align-items: center; gap: .35rem; font-size: .8rem; font-weight: 600; color: var(--color-text); }
@@ -1211,7 +1286,7 @@
   .qtp-hint-bubble.active { color: var(--lc-600); background: rgba(79,70,229,.05); border-color: rgba(79,70,229,.25); }
   .qtp-hint-bubble strong { font-weight: 800; }
 
-  /* ── Toggles — key fix: label has NO onclick; only the hidden checkbox fires ── */
+  /* ── Toggles ─────────────────────────────────────────────────────────────── */
   .toggles { display: flex; flex-direction: column; }
   .toggle-row {
     display: flex; align-items: center; justify-content: space-between; gap: 1rem;
@@ -1225,20 +1300,10 @@
   .toggle-row:hover .toggle-icon-wrap { background: var(--lc-soft); color: var(--lc-600); border-color: rgba(79,70,229,.2); }
   .toggle-label { display: block; font-size: .83rem; font-weight: 600; color: var(--color-text); margin-bottom: .1rem; }
   .toggle-desc  { display: block; font-size: .73rem; color: var(--color-muted); transition: color .2s; }
-
-  /* The track — driven by .on class which is bound to the $state variable */
   .toggle-track { position: relative; width: 40px; height: 22px; flex-shrink: 0; }
   .toggle-cb { position: absolute; opacity: 0; width: 0; height: 0; pointer-events: none; }
-  .toggle-knob {
-    position: absolute; inset: 0; background: var(--color-border);
-    border-radius: 999px; transition: background .2s; cursor: pointer;
-  }
-  .toggle-knob::after {
-    content: ''; position: absolute; width: 16px; height: 16px; top: 3px; left: 3px;
-    background: white; border-radius: 50%; transition: transform .2s;
-    box-shadow: 0 1px 3px rgba(0,0,0,.2);
-  }
-  /* .on class controls the visual — synced from bind:checked */
+  .toggle-knob { position: absolute; inset: 0; background: var(--color-border); border-radius: 999px; transition: background .2s; cursor: pointer; }
+  .toggle-knob::after { content: ''; position: absolute; width: 16px; height: 16px; top: 3px; left: 3px; background: white; border-radius: 50%; transition: transform .2s; box-shadow: 0 1px 3px rgba(0,0,0,.2); }
   .toggle-track.on .toggle-knob { background: var(--lc-600); }
   .toggle-track.on .toggle-knob::after { transform: translateX(18px); }
 

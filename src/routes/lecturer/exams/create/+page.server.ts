@@ -7,44 +7,70 @@ import { createExam, getActiveAcademicSemester, getCoursesForLecturer } from '$l
 import { parseExamForm } from '$lib/server/exam/exam-form.js';
 
 export const load: PageServerLoad = async (event) => {
-   const user = await requireLecturer(event.locals.user);
+  const user = await requireLecturer(event.locals.user);
   const prisma = await getPrismaClient();
 
-  const [courses, levels, departments, sessions, activeSemester] = await Promise.all([
-    // getCoursesForLecturer expects an object with departmentId
+  const [courses, levels, departments, semesterRows, activeSemester] = await Promise.all([
     getCoursesForLecturer({ departmentId: (user as any).departmentId ?? null }),
-    // Fetch all levels - using the correct model name 'Level' and field 'level'
+
     prisma.level.findMany({
       orderBy: { order: 'asc' },
-      select: { 
-        id: true, 
-        name: true, 
-        level: true  // The field is 'level' not 'value'
-      },
-    }).then(rows => rows.map(r => ({ 
-      id: String(r.id),  // Convert Int to String for the frontend
-      name: r.name || `${r.level} Level`, 
-      value: r.level 
+      select: { id: true, name: true, level: true },
+    }).then(rows => rows.map(r => ({
+      id:    String(r.id),
+      name:  r.name || `${r.level} Level`,
+      value: r.level,
     }))),
-    // Fetch all departments
+
     prisma.department.findMany({
       orderBy: { name: 'asc' },
-      select: { id: true, name: true, code: true },
+      select:  { id: true, name: true, code: true },
     }),
-    // Fetch all academic sessions
+
+    // Fetch all semester rows — we deduplicate into unique session strings below.
     prisma.academicSemester.findMany({
       orderBy: { session: 'desc' },
-      select: { id: true, session: true },
+      select:  { id: true, session: true, semester: true, isActive: true },
     }),
+
     getActiveAcademicSemester(),
   ]);
+
+  // Derive the current session from the active semester, or fall back to
+  // the most recent session in the DB, or generate it from the current year.
+  const currentYear  = new Date().getFullYear();
+  const derivedSession =
+    activeSemester?.session ??
+    semesterRows[0]?.session ??
+    `${currentYear}/${currentYear + 1}`;
+
+  // Deduplicate: the academic_semesters table has one row per (session, semester)
+  // pair, so "2025/2026" appears twice (once for each semester).
+  // The dropdown only needs unique session strings.
+  const seenSessions = new Set<string>();
+  const sessions: Array<{ id: string; session: string }> = [];
+  for (const row of semesterRows) {
+    if (!seenSessions.has(row.session)) {
+      seenSessions.add(row.session);
+      sessions.push({ id: String(row.id), session: row.session });
+    }
+  }
+
+  // If no sessions exist in DB yet, seed the UI with the current and next
+  // academic year so the lecturer isn't blocked.
+  if (sessions.length === 0) {
+    sessions.push(
+      { id: 'current', session: `${currentYear}/${currentYear + 1}` },
+      { id: 'next',    session: `${currentYear + 1}/${currentYear + 2}` },
+    );
+  }
 
   return {
     courses,
     levels,
     departments,
     sessions,
-    defaultSession: activeSemester?.session ?? '',
+    defaultSession:  activeSemester?.session  ?? derivedSession,
     defaultSemester: activeSemester?.semester ?? 1,
   };
 };
@@ -63,26 +89,26 @@ export const actions: Actions = {
     }
 
     const exam = await createExam({
-      courseId: values.courseId,
-      createdBy: user.id,
-      title: values.title,
-      instructions: values.instructions ?? undefined,
-      durationMinutes: values.durationMinutes,
-      totalMarks: values.totalMarks,
-      passMark: values.passMark,
-      scheduledStart: values.scheduledStart ?? undefined,
-      scheduledEnd: values.scheduledEnd ?? undefined,
-      allowLateEntry: values.allowLateEntry,
-      lateEntryMinutes: values.lateEntryMinutes,
+      courseId:           values.courseId,
+      createdBy:          user.id,
+      title:              values.title,
+      instructions:       values.instructions ?? undefined,
+      durationMinutes:    values.durationMinutes,
+      totalMarks:         values.totalMarks,
+      passMark:           values.passMark,
+      scheduledStart:     values.scheduledStart ?? undefined,
+      scheduledEnd:       values.scheduledEnd   ?? undefined,
+      allowLateEntry:     values.allowLateEntry,
+      lateEntryMinutes:   values.lateEntryMinutes,
       randomizeQuestions: values.randomizeQuestions,
-      randomizeOptions: values.randomizeOptions,
-      showResultAfter: values.showResultAfter,
-      maxViolations: values.maxViolations,
+      randomizeOptions:   values.randomizeOptions,
+      showResultAfter:    values.showResultAfter,
+      maxViolations:      values.maxViolations,
       questionsToPresent: values.questionsToPresent,
-      session: values.session,
-      semester: values.semester,
-      levels: values.levels,
-      department: values.department,
+      session:            values.session,
+      semester:           values.semester,
+      levels:             values.levels,
+      department:         values.department,
     });
 
     throw redirect(303, `/lecturer/exams/${exam.id}`);
@@ -93,6 +119,6 @@ function serialize(values: ReturnType<typeof parseExamForm>['values']) {
   return {
     ...values,
     scheduledStart: values.scheduledStart?.toISOString() ?? '',
-    scheduledEnd: values.scheduledEnd?.toISOString() ?? '',
+    scheduledEnd:   values.scheduledEnd?.toISOString()   ?? '',
   };
 }
