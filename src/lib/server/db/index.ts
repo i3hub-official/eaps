@@ -3,13 +3,13 @@ import { PrismaPg } from '@prisma/adapter-pg';
 import pg from 'pg';
 import { DATABASE_URL, DATABASE_URL_UNPOOLED } from '$env/static/private';
 
-// For Prisma 7, we need to handle the import differently
-let prismaPromise: Promise<any> | null = null;
+const isProd = process.env.NODE_ENV === 'production';
+const sslConfig = isProd ? { rejectUnauthorized: true } : undefined;
 
 // ─── Prisma pool ──────────────────────────────────────────────────────────────
 const prismaPool = new pg.Pool({
   connectionString: DATABASE_URL_UNPOOLED,
-  ssl: { rejectUnauthorized: false },
+  ...(sslConfig && { ssl: sslConfig }),
   max: 5,
   idleTimeoutMillis: 60_000,
   connectionTimeoutMillis: 30_000,
@@ -23,41 +23,36 @@ const adapter = new PrismaPg(prismaPool);
 
 const globalForPrisma = globalThis as unknown as { prisma?: any };
 
-// Create Prisma client with correct initialization
+let prismaPromise: Promise<any> | null = null;
+
 export const prisma = (() => {
   if (globalForPrisma.prisma) return globalForPrisma.prisma;
-  
+
   if (!prismaPromise) {
     prismaPromise = (async () => {
-      // Import the PrismaClient constructor
       const { PrismaClient } = await import('@prisma/client');
-      
-      // Create and return the client instance
-      const client = new PrismaClient({
+      return new PrismaClient({
         adapter,
-        log: process.env.NODE_ENV === 'development' ? ['warn', 'error'] : ['error'],
+        log: isProd ? ['error'] : ['warn', 'error'],
       });
-      
-      return client;
     })();
   }
-  
-  if (process.env.NODE_ENV !== 'production') {
-    prismaPromise.then(client => {
+
+  if (!isProd) {
+    prismaPromise.then((client) => {
       globalForPrisma.prisma = client;
     });
   }
-  
+
   return prismaPromise;
 })();
 
-// Export a function to get the client (for use in other files)
 export async function getPrismaClient() {
   return await prisma;
 }
 
-// ─── Neon keepalive ───────────────────────────────────────────────────────────
-if (typeof setInterval !== 'undefined') {
+// ─── Neon keepalive (prod only) ───────────────────────────────────────────────
+if (isProd && typeof setInterval !== 'undefined') {
   setInterval(() => {
     getRawPool()
       .query('SELECT 1')
@@ -71,13 +66,13 @@ let _rawPool: pg.Pool | null = null;
 function getRawPool(): pg.Pool {
   if (_rawPool) return _rawPool;
 
-  _rawPool = new pg.Pool({
-    connectionString: DATABASE_URL,
-    ssl: { rejectUnauthorized: false },
-    max: 10,
-    idleTimeoutMillis: 60_000,
-    connectionTimeoutMillis: 30_000,
-  });
+ _rawPool = new pg.Pool({
+  connectionString: DATABASE_URL,
+  ...(sslConfig && { ssl: sslConfig }),
+  max: 10,
+  idleTimeoutMillis: 60_000,
+  connectionTimeoutMillis: 30_000,
+});
 
   _rawPool.on('error', (err) => {
     console.error('[DB:raw-pool] idle client error:', err.message);

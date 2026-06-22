@@ -2,7 +2,6 @@ import tailwindcss from '@tailwindcss/vite';
 import { sveltekit } from '@sveltejs/kit/vite';
 import { defineConfig } from 'vite';
 import basicSsl from '@vitejs/plugin-basic-ssl';
-import path from 'path';
 
 export default defineConfig(() => {
   return {
