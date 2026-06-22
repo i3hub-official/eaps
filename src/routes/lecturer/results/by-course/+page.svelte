@@ -4,7 +4,12 @@
   import type { PageData } from './$types';
   import { page } from '$app/stores';
   import { goto } from '$app/navigation';
-  import { ChevronDown, ChevronRight, Search, Download, FileSpreadsheet, FileText, Eye } from '@lucide/svelte';
+  import { 
+    ChevronDown, ChevronRight, Search, Download, 
+    FileSpreadsheet, FileText, Eye, FileSearch, 
+    Users, AlertCircle, CheckCircle2, XCircle, 
+    Clock, BarChart3, Award
+  } from '@lucide/svelte';
 
   let { data }: { data: PageData } = $props();
 
@@ -137,7 +142,7 @@
 
   {#if groupedResults().length === 0}
     <div class="empty-state">
-      <div class="empty-icon">📝</div>
+      <FileSearch size={48} strokeWidth={1.2} />
       <p class="empty-title">No results found</p>
       <p class="empty-sub">Try adjusting your filters or check back later.</p>
     </div>
@@ -161,7 +166,10 @@
               <span class="exam-title">{group.examTitle}</span>
               <span class="course-code">{group.courseCode}</span>
               <span class="status-badge {getStatusBadge(group.status)}">{getStatusLabel(group.status)}</span>
-              <span class="student-count">{group.results.length} student{group.results.length !== 1 ? 's' : ''}</span>
+              <span class="student-count">
+                <Users size={12} />
+                {group.results.length} student{group.results.length !== 1 ? 's' : ''}
+              </span>
             </div>
             <div class="exam-actions" onclick={(e) => e.stopPropagation()}>
               <button
@@ -234,11 +242,17 @@
                       <td>{r.violationCount}</td>
                       <td>
                         {#if r.passed === true}
-                          <span class="badge success">Passed</span>
+                          <span class="badge success">
+                            <CheckCircle2 size={11} /> Passed
+                          </span>
                         {:else if r.passed === false}
-                          <span class="badge danger">Failed</span>
+                          <span class="badge danger">
+                            <XCircle size={11} /> Failed
+                          </span>
                         {:else}
-                          <span class="badge muted">Pending</span>
+                          <span class="badge muted">
+                            <Clock size={11} /> Pending
+                          </span>
                         {/if}
                       </td>
                     </tr>
@@ -370,8 +384,9 @@
     color: var(--color-muted);
   }
 
-  .empty-icon {
-    font-size: 3rem;
+  .empty-state :global(svg) {
+    color: var(--color-muted);
+    opacity: 0.5;
   }
 
   .empty-title {
@@ -459,11 +474,18 @@
   .badge-cancelled { background: rgba(239,68,68,0.1); color: #ef4444; }
 
   .student-count {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3rem;
     font-size: 0.72rem;
     color: var(--color-muted);
     background: var(--color-bg);
     padding: 0.1rem 0.5rem;
     border-radius: 999px;
+  }
+
+  .student-count :global(svg) {
+    flex-shrink: 0;
   }
 
   .exam-actions {
@@ -547,13 +569,19 @@
   .grade-f { color: #dc2626; background: rgba(220,38,38,0.08); }
 
   .badge {
-    display: inline-block;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.25rem;
     padding: 0.1rem 0.5rem;
     border-radius: 999px;
     font-size: 0.68rem;
     font-weight: 700;
     text-transform: uppercase;
     letter-spacing: 0.04em;
+  }
+
+  .badge :global(svg) {
+    flex-shrink: 0;
   }
 
   .badge.success {

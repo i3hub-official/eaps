@@ -478,7 +478,7 @@
       if (sortField === 'score')  v = (a.percentage ?? 0) - (b.percentage ?? 0);
       if (sortField === 'grade')  v = (a.grade ?? '').localeCompare(b.grade ?? '');
       if (sortField === 'date')   v = new Date(a.submittedAt ?? 0).getTime() - new Date(b.submittedAt ?? 0).getTime();
-      if (sortField === 'course') v = a.exam.course.code.localeCompare(b.exam.course.code);
+      if (sortField === 'course') v = (a.exam?.course?.code ?? '').localeCompare(b.exam?.course?.code ?? '');
       return sortDir === 'asc' ? v : -v;
     });
     return r;
@@ -512,7 +512,7 @@
   let currentPage = $state(1);
   const pageSize  = 25;
 
-  $effect(() => { sorted; currentPage = 1; });
+  $effect(() => { void sorted; currentPage = 1; });
 
   const pagedSorted = $derived(
     groupBy === 'none'

@@ -4,7 +4,8 @@ import { requireLecturer } from '$lib/server/auth/guards.js';
 import { getPrismaClient } from '$lib/server/db/index.js';
 
 export const load: PageServerLoad = async ({ locals, url }) => {
-  const user = requireLecturer(locals.user);
+  // FIX: Add await here
+  const user = await requireLecturer(locals.user);
   const prisma = await getPrismaClient();
 
   // ── Filters from query params ──────────────────────────────────

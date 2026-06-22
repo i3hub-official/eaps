@@ -1,13 +1,11 @@
 // src/routes/lecturer/results/+layout.server.ts
-import { error, redirect } from '@sveltejs/kit';
 import type { LayoutServerLoad } from './$types';
+import { requireLecturer } from '$lib/server/auth/guards.js';
+import { getPrismaClient } from '$lib/server/db/index.js';
 
 export const load: LayoutServerLoad = async (event) => {
-  const user = event.locals.user;
-  if (!user) throw redirect(303, '/login');
-  if (user.role !== 'lecturer') throw error(403, 'Lecturer access only');
-
-  const prisma = event.locals.prisma;
+     const user = await requireLecturer(event.locals.user);
+   const prisma = await getPrismaClient();
 
   const [courses, exams, results] = await Promise.all([
     // Courses with aggregated stats

@@ -5,7 +5,6 @@ import { getPrismaClient } from '$lib/server/db/index.js';
 
 export const load: PageServerLoad = async (event) => {
   const user = requireLecturer(event.locals.user);
-
   const prisma = await getPrismaClient();
 
   // Get all results for exams the lecturer created

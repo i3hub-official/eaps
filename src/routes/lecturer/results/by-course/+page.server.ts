@@ -4,7 +4,7 @@ import { requireLecturer } from '$lib/server/auth/guards.js';
 import { getPrismaClient } from '$lib/server/db/index.js';
 
 export const load: PageServerLoad = async (event) => {
- const user = requireLecturer(event.locals.user);
+ const user = await requireLecturer(event.locals.user);
 
   const prisma = await getPrismaClient();
 
