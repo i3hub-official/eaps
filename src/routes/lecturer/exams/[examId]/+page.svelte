@@ -2,24 +2,25 @@
 <script lang="ts">
   import type { ActionData, PageData } from './$types';
   import { enhance } from '$app/forms';
-  import { toDatetimeLocal } from '$lib/utils/datetime';
   import {
-    ChevronLeft, BarChart3, Clock, Settings, Users,
-    ShieldAlert, Layers, FileText, Timer, Check,
-    Shuffle, Eye, LogIn, AlertTriangle, TrendingUp,
-    Scale, BookOpen,
+    ChevronLeft, BarChart2, Clock, Users, ShieldAlert,
+    Layers, FileText, Timer, Check, Shuffle, Eye, LogIn,
+    AlertTriangle, TrendingUp, Scale, BookOpen, FileEdit,
+    Zap, X, CheckCircle2, XCircle, CalendarClock, Hash,
+    GripVertical, Info
   } from '@lucide/svelte';
-  import { fly } from 'svelte/transition';
+  import { fly, fade, scale } from 'svelte/transition';
+  import { cubicOut } from 'svelte/easing';
 
   let { data, form }: { data: PageData; form: ActionData } = $props();
 
   const exam = $derived(data.exam);
 
-  // ── Derived display values (read-only — set at creation) ──────────────────
+  // ── Display helpers ───────────────────────────────────────────────────────
   const levelDisplay = $derived(
     exam.levels.length === 0
       ? 'All levels'
-      : [...exam.levels].sort((a, b) => a.level - b.level).map(l => `${l.level}L`).join(', ')
+      : [...exam.levels].sort((a: any, b: any) => a.level - b.level).map((l: any) => `${l.level}L`).join(', ')
   );
   const deptDisplay = $derived(
     !exam.department || exam.department.trim() === ''
@@ -27,55 +28,99 @@
       : exam.department
   );
 
-  const STATUS_LABEL: Record<string, string> = {
-    draft: 'Draft', scheduled: 'Scheduled', active: 'Active',
-    completed: 'Completed', cancelled: 'Cancelled',
+  const STATUS_META: Record<string, { label: string; color: string; bg: string; dot: string }> = {
+    draft:     { label: 'Draft',     color: '#64748b', bg: 'rgba(100,116,139,0.12)', dot: '#94a3b8' },
+    scheduled: { label: 'Scheduled', color: '#2563eb', bg: 'rgba(37,99,235,0.1)',    dot: '#3b82f6' },
+    active:    { label: 'Active',    color: '#16a34a', bg: 'rgba(22,163,74,0.1)',    dot: '#22c55e' },
+    completed: { label: 'Completed', color: '#7c3aed', bg: 'rgba(124,58,237,0.1)',   dot: '#a78bfa' },
+    cancelled: { label: 'Cancelled', color: '#dc2626', bg: 'rgba(220,38,38,0.1)',    dot: '#f87171' },
   };
 
+  const meta = $derived(STATUS_META[exam.status] ?? STATUS_META.draft);
   const editable = $derived(exam.status === 'draft' || exam.status === 'scheduled');
-  const assignedIds = $derived(new Set(exam.invigilators.map((i: any) => i.invigilatorId)));
+
+  // ── Invigilators ──────────────────────────────────────────────────────────
+  const assignedIds           = $derived(new Set(exam.invigilators.map((i: any) => i.invigilatorId)));
   const availableInvigilators = $derived(data.invigilators.filter((i: any) => !assignedIds.has(i.id)));
 
-  // ── Local editable state (mirrors exam, updated by lecturer) ─────────────
-  let title            = $state(exam.title);
-  let instructions     = $state(exam.instructions ?? '');
-  let durationMinutes  = $state(exam.durationMinutes);
-  let totalMarks       = $state(exam.totalMarks);
-  let passMark         = $state(exam.passMark);
-  let maxViolations    = $state(exam.maxViolations);
-  let questionsToPresent = $state(exam.questionsToPresent);
-  let lateEntryMinutes = $state(exam.lateEntryMinutes);
+  // ── Confirm modals ────────────────────────────────────────────────────────
+  let confirmAction = $state<'publish' | 'cancel' | 'unpublish' | null>(null);
 
-  let randomizeQuestions = $state(exam.randomizeQuestions);
-  let randomizeOptions   = $state(exam.randomizeOptions);
-  let showResultAfter    = $state(exam.showResultAfter);
-  let allowLateEntry     = $state(exam.allowLateEntry);
+  const CONFIRM_COPY = {
+    publish:   {
+      title:   'Publish exam?',
+      body:    'This will make the exam visible to eligible students. It will go live automatically at the scheduled start time.',
+      confirm: 'Publish',
+      danger:  false,
+    },
+    unpublish: {
+      title:   'Move back to draft?',
+      body:    'The exam will become invisible to students again. You can re-publish it later.',
+      confirm: 'Move to draft',
+      danger:  false,
+    },
+    cancel: {
+      title:   'Cancel exam?',
+      body:    'This will permanently cancel the exam. Students will not be able to sit it. This cannot be undone.',
+      confirm: 'Yes, cancel exam',
+      danger:  true,
+    },
+  };
 
-  // ── Derived scoring values for preview ───────────────────────────────────
-  const caWeight       = $derived(Math.max(0, 100 - totalMarks));
-  const caWeightValid  = $derived(totalMarks > 0 && totalMarks < 100);
-  const passPercent    = $derived(totalMarks > 0 ? Math.round((passMark / totalMarks) * 100) : 0);
-  const totalMarksError = $derived(
-    totalMarks <= 0    ? 'Must be greater than 0'
-    : totalMarks >= 100 ? 'Cannot be 100 — CA must contribute at least 1 mark'
-    : null
-  );
-
-  // ── Date display ──────────────────────────────────────────────────────────
-  const MONTH_SHORT = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
-  function fmtDateDisplay(iso: string | null | undefined): string {
+  // ── Formatting ────────────────────────────────────────────────────────────
+  const MONTH = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  function fmtDate(iso: string | null | undefined): string {
     if (!iso) return '—';
     const d = new Date(iso);
     if (isNaN(d.getTime())) return '—';
-    return `${MONTH_SHORT[d.getMonth()]} ${d.getDate()}, ${d.getFullYear()} · ${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`;
+    return `${MONTH[d.getMonth()]} ${d.getDate()}, ${d.getFullYear()} · ${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`;
   }
+
+  const caWeight     = $derived(Math.max(0, 100 - exam.totalMarks));
+  const passPercent  = $derived(exam.totalMarks > 0 ? Math.round((exam.passMark / exam.totalMarks) * 100) : 0);
 </script>
 
 <svelte:head><title>{exam.title} — MOUAU eTest</title></svelte:head>
 
+<!-- ── Confirm modal ─────────────────────────────────────────────────────── -->
+{#if confirmAction}
+  {@const copy = CONFIRM_COPY[confirmAction]}
+  <div
+    class="modal-bg"
+    transition:fade={{ duration: 180 }}
+    onclick={() => (confirmAction = null)}
+    role="dialog" aria-modal="true"
+  >
+    <div
+      class="confirm-modal"
+      transition:scale={{ duration: 220, easing: cubicOut, start: 0.95 }}
+      onclick={e => e.stopPropagation()}
+    >
+      <div class="confirm-icon" class:danger={copy.danger}>
+        {#if copy.danger}<XCircle size={22} />{:else}<CheckCircle2 size={22} />{/if}
+      </div>
+      <h3>{copy.title}</h3>
+      <p>{copy.body}</p>
+      <div class="confirm-actions">
+        <button type="button" class="btn ghost" onclick={() => (confirmAction = null)}>
+          Cancel
+        </button>
+        <form method="POST" action="?/{confirmAction}" use:enhance={() => {
+          confirmAction = null;
+          return async ({ update }) => { await update(); };
+        }}>
+          <button type="submit" class="btn" class:primary={!copy.danger} class:danger={copy.danger}>
+            {copy.confirm}
+          </button>
+        </form>
+      </div>
+    </div>
+  </div>
+{/if}
+
 <div class="page">
 
-  <!-- ── Header ────────────────────────────────────────────────────────── -->
+  <!-- ── Back + title ──────────────────────────────────────────────────── -->
   <header class="page-header">
     <div class="header-left">
       <a class="back-link" href="/lecturer/exams">
@@ -87,10 +132,13 @@
         · {exam.session} · Semester {exam.semester}
       </p>
     </div>
-    <span class="status-badge status-{exam.status}">{STATUS_LABEL[exam.status]}</span>
+    <span class="status-pill" style="background:{meta.bg}; color:{meta.color};">
+      <span class="status-dot" style="background:{meta.dot};"></span>
+      {meta.label}
+    </span>
   </header>
 
-  <!-- ── Banners ────────────────────────────────────────────────────────── -->
+  <!-- ── Banners ───────────────────────────────────────────────────────── -->
   {#if form?.message}
     <div class="banner error" transition:fly={{ y: -6, duration: 180 }}>
       <AlertTriangle size={14} /> {form.message}
@@ -98,312 +146,196 @@
   {/if}
   {#if form?.success}
     <div class="banner success" transition:fly={{ y: -6, duration: 180 }}>
-      <Check size={14} /> Saved successfully.
+      <Check size={14} /> Done.
     </div>
   {/if}
 
-  <!-- ── Stats row ──────────────────────────────────────────────────────── -->
-  <div class="stats-row">
-    <div class="stat-card">
-      <span class="stat-num">{exam._count.questions}</span>
-      <span class="stat-label">Questions</span>
-    </div>
-    <div class="stat-card">
-      <span class="stat-num">{data.eligibleCount}</span>
-      <span class="stat-label">Eligible students</span>
-    </div>
-    <div class="stat-card">
-      <span class="stat-num">{exam._count.examSessions}</span>
-      <span class="stat-label">Sessions started</span>
-    </div>
-  </div>
-
+  <!-- ── Two-column layout ─────────────────────────────────────────────── -->
   <div class="main-grid">
 
-    <!-- ══ LEFT COLUMN — editable form ═══════════════════════════════════ -->
+    <!-- ══ LEFT — all config previews ══════════════════════════════════ -->
     <div class="left-col">
 
-      <!-- Status & Actions -->
-      <div class="card">
-        <div class="card-header">
-          <span class="card-icon"><BookOpen size={15} /></span>
-          <div>
-            <h2>Status &amp; Actions</h2>
-            <p>
-              {#if exam.status === 'draft'}Draft — invisible to students. Publish when ready.
-              {:else if exam.status === 'scheduled'}Scheduled — goes live at the scheduled start time.
-              {:else if exam.status === 'active'}Currently live for eligible students.
-              {:else if exam.status === 'completed'}This exam has ended.
-              {:else}This exam was cancelled.{/if}
-            </p>
-          </div>
+      <!-- Basics -->
+      <div class="preview-card">
+        <div class="preview-card-header">
+          <span class="pch-icon"><BookOpen size={14} /></span>
+          <span class="pch-title">Basics</span>
         </div>
-        <div class="card-body action-buttons">
-          {#if exam.status === 'draft'}
-            <form method="POST" action="?/publish" use:enhance>
-              <button class="btn primary" type="submit">Publish</button>
-            </form>
-            <form method="POST" action="?/cancel" use:enhance>
-              <button class="btn danger" type="submit">Cancel exam</button>
-            </form>
-          {:else if exam.status === 'scheduled'}
-            <form method="POST" action="?/unpublish" use:enhance>
-              <button class="btn ghost" type="submit">Move back to draft</button>
-            </form>
-            <form method="POST" action="?/cancel" use:enhance>
-              <button class="btn danger" type="submit">Cancel exam</button>
-            </form>
+        <div class="preview-rows">
+          <div class="preview-row">
+            <span class="pr-label">Title</span>
+            <span class="pr-value">{exam.title}</span>
+          </div>
+          <div class="preview-row">
+            <span class="pr-label">Course</span>
+            <span class="pr-value">{exam.course?.code} — {exam.course?.title}</span>
+          </div>
+          <div class="preview-row">
+            <span class="pr-label">Session</span>
+            <span class="pr-value">{exam.session}</span>
+          </div>
+          <div class="preview-row">
+            <span class="pr-label">Semester</span>
+            <span class="pr-value">{exam.semester === 1 ? 'First' : 'Second'} Semester</span>
+          </div>
+          {#if exam.instructions}
+            <div class="preview-row stacked">
+              <span class="pr-label">Instructions</span>
+              <span class="pr-value instructions-text">{exam.instructions}</span>
+            </div>
           {/if}
-          <a class="btn ghost" href="/lecturer/exams/{exam.id}/questions">
-            Manage questions ({exam._count.questions})
-          </a>
         </div>
       </div>
 
-      <!-- Main edit form -->
-      <form method="POST" action="?/update" use:enhance class="edit-form">
-        <!-- Hidden: session/semester are immutable -->
-        <input type="hidden" name="session"  value={exam.session} />
-        <input type="hidden" name="semester" value={exam.semester} />
-        <!-- Hidden: courseId required by parseExamForm -->
-        <input type="hidden" name="courseId" value={exam.courseId} />
-        <!-- Levels and departments are immutable — pass through as hidden inputs -->
-        {#each exam.levels as l}
-          <input type="hidden" name="levels" value={l.level} />
-        {/each}
-        {#if exam.department}
-          <input type="hidden" name="departments" value={exam.department} />
-        {/if}
-
-        <!-- Basics -->
-        <div class="card">
-          <div class="card-header">
-            <span class="card-icon"><BookOpen size={15} /></span>
-            <div><h2>Basics</h2><p>Title and instructions</p></div>
+      <!-- Scope -->
+      <div class="preview-card">
+        <div class="preview-card-header">
+          <span class="pch-icon"><Users size={14} /></span>
+          <span class="pch-title">Eligibility Scope</span>
+          <span class="pch-badge">Set at creation · read-only</span>
+        </div>
+        <div class="preview-rows">
+          <div class="preview-row">
+            <span class="pr-label">Eligible levels</span>
+            <span class="pr-value">{levelDisplay}</span>
           </div>
-          <div class="card-body">
-            <div class="field">
-              <label for="title">Exam Title</label>
-              <input id="title" name="title" type="text"
-                bind:value={title} required disabled={!editable} />
-            </div>
-            <div class="field">
-              <label for="instructions">Instructions <span class="opt">Optional</span></label>
-              <textarea id="instructions" name="instructions" rows="3"
-                bind:value={instructions} disabled={!editable}></textarea>
-            </div>
+          <div class="preview-row">
+            <span class="pr-label">Departments</span>
+            <span class="pr-value">{deptDisplay}</span>
+          </div>
+          <div class="preview-row">
+            <span class="pr-label">Eligible students</span>
+            <span class="pr-value accent">{data.eligibleCount}</span>
           </div>
         </div>
+      </div>
 
-        <!-- Timing & Scoring -->
-        <div class="card">
-          <div class="card-header">
-            <span class="card-icon"><Clock size={15} /></span>
-            <div><h2>Timing &amp; Scoring</h2><p>Duration, marks and schedule</p></div>
+      <!-- Timing -->
+      <div class="preview-card">
+        <div class="preview-card-header">
+          <span class="pch-icon"><Clock size={14} /></span>
+          <span class="pch-title">Timing</span>
+        </div>
+        <div class="preview-rows">
+          <div class="preview-row">
+            <span class="pr-label">Scheduled start</span>
+            <span class="pr-value">{fmtDate(exam.scheduledStart?.toString())}</span>
           </div>
-          <div class="card-body">
-
-            <div class="two-col">
-              <div class="field">
-                <label for="scheduledStart">Scheduled Start</label>
-                <input id="scheduledStart" name="scheduledStart" type="datetime-local"
-                  value={toDatetimeLocal(exam.scheduledStart)} disabled={!editable} />
-              </div>
-              <div class="field">
-                <label for="scheduledEnd">Scheduled End</label>
-                <input id="scheduledEnd" name="scheduledEnd" type="datetime-local"
-                  value={toDatetimeLocal(exam.scheduledEnd)} disabled={!editable} />
-              </div>
-            </div>
-
-            <div class="three-col">
-              <div class="field">
-                <label for="durationMinutes"><Timer size={12} /> Duration</label>
-                <div class="input-unit-wrap">
-                  <input id="durationMinutes" name="durationMinutes" type="number"
-                    bind:value={durationMinutes} min="5" max="300" disabled={!editable} />
-                  <span class="unit">min</span>
-                </div>
-              </div>
-
-              <div class="field">
-                <label for="totalMarks">
-                  <FileText size={12} /> Exam Weight
-                  <span class="label-sub">/ 100</span>
-                </label>
-                <div class="input-unit-wrap">
-                  <input id="totalMarks" name="totalMarks" type="number"
-                    bind:value={totalMarks} min="1" max="99" disabled={!editable}
-                    class:input-error={!!totalMarksError} />
-                  <span class="unit">pts</span>
-                </div>
-                {#if caWeightValid && editable}
-                  <div class="ca-badge" transition:fly={{ y: -4, duration: 140 }}>
-                    <Scale size={10} /> CA: <strong>{caWeight}pts</strong>
-                  </div>
-                {/if}
-                {#if totalMarksError}
-                  <span class="field-error"><AlertTriangle size={10} /> {totalMarksError}</span>
-                {/if}
-              </div>
-
-              <div class="field">
-                <label for="passMark"><Check size={12} strokeWidth={2.5} /> Pass Mark</label>
-                <div class="input-unit-wrap">
-                  <input id="passMark" name="passMark" type="number"
-                    bind:value={passMark} min="1" disabled={!editable} />
-                  <span class="unit">pts</span>
-                </div>
-                {#if totalMarks > 0 && passMark > 0 && editable}
-                  <span class="pass-pct">{passPercent}% of exam</span>
-                {/if}
-              </div>
-            </div>
-
-            <!-- Late entry -->
-            <div class="toggle-row" class:disabled={!editable}>
-              <div class="toggle-text">
-                <span class="toggle-icon-wrap"><LogIn size={14} /></span>
-                <div>
-                  <span class="toggle-label">Allow Late Entry</span>
-                  <span class="toggle-desc">
-                    {allowLateEntry ? `${lateEntryMinutes} min grace period` : 'Must join on time'}
-                  </span>
-                </div>
-              </div>
-              <div class="toggle-track" class:on={allowLateEntry}>
-                <input type="checkbox" name="allowLateEntry"
-                  bind:checked={allowLateEntry}
-                  disabled={!editable}
-                  class="toggle-cb" />
-                <span class="toggle-knob"></span>
-              </div>
-            </div>
-
-            {#if allowLateEntry}
-              <div class="field late-field" transition:fly={{ y: -6, duration: 160 }}>
-                <label for="lateEntryMinutes">Grace period after start</label>
-                <div class="input-unit-wrap" style="max-width: 140px">
-                  <input id="lateEntryMinutes" name="lateEntryMinutes" type="number"
-                    bind:value={lateEntryMinutes} min="1" max="60" disabled={!editable} />
-                  <span class="unit">min</span>
-                </div>
-              </div>
-            {/if}
+          <div class="preview-row">
+            <span class="pr-label">Scheduled end</span>
+            <span class="pr-value">{fmtDate(exam.scheduledEnd?.toString())}</span>
+          </div>
+          <div class="preview-row">
+            <span class="pr-label">Duration</span>
+            <span class="pr-value">{exam.durationMinutes} minutes</span>
+          </div>
+          <div class="preview-row">
+            <span class="pr-label">Late entry</span>
+            <span class="pr-value">
+              {exam.allowLateEntry ? `Allowed — ${exam.lateEntryMinutes} min grace` : 'Not allowed'}
+            </span>
           </div>
         </div>
+      </div>
 
-        <!-- Questions & Integrity -->
-        <div class="card">
-          <div class="card-header">
-            <span class="card-icon"><Settings size={15} /></span>
-            <div><h2>Questions &amp; Integrity</h2><p>Randomisation and violation limits</p></div>
+      <!-- Scoring -->
+      <div class="preview-card">
+        <div class="preview-card-header">
+          <span class="pch-icon"><Scale size={14} /></span>
+          <span class="pch-title">Scoring</span>
+        </div>
+        <div class="preview-rows">
+          <div class="preview-row">
+            <span class="pr-label">Exam weight</span>
+            <span class="pr-value">{exam.totalMarks} / 100 marks</span>
           </div>
-          <div class="card-body">
-
-            <div class="field">
-              <label for="questionsToPresent"><Layers size={12} /> Questions per student</label>
-              <div class="input-unit-wrap" style="max-width: 160px">
-                <input id="questionsToPresent" name="questionsToPresent" type="number"
-                  bind:value={questionsToPresent} min="0" disabled={!editable} />
-                <span class="unit">Qs</span>
-              </div>
-              <p class="field-hint">0 = present all questions</p>
-            </div>
-
-            <div class="field">
-              <label for="maxViolations"><ShieldAlert size={12} /> Max violations before auto-submit</label>
-              <div class="input-unit-wrap" style="max-width: 120px">
-                <input id="maxViolations" name="maxViolations" type="number"
-                  bind:value={maxViolations} min="1" max="20" disabled={!editable} />
-                <span class="unit">×</span>
-              </div>
-            </div>
-
-            <div class="toggles-group">
-              <label class="toggle-row" class:disabled={!editable}>
-                <div class="toggle-text">
-                  <span class="toggle-icon-wrap"><Shuffle size={14} /></span>
-                  <div>
-                    <span class="toggle-label">Randomize Questions</span>
-                    <span class="toggle-desc">{randomizeQuestions ? 'Shuffled per student' : 'Fixed order'}</span>
-                  </div>
-                </div>
-                <div class="toggle-track" class:on={randomizeQuestions}>
-                  <input type="checkbox" name="randomizeQuestions"
-                    bind:checked={randomizeQuestions} disabled={!editable} class="toggle-cb" />
-                  <span class="toggle-knob"></span>
-                </div>
-              </label>
-
-              <label class="toggle-row" class:disabled={!editable}>
-                <div class="toggle-text">
-                  <span class="toggle-icon-wrap"><TrendingUp size={14} /></span>
-                  <div>
-                    <span class="toggle-label">Randomize Options</span>
-                    <span class="toggle-desc">{randomizeOptions ? 'MCQ choices shuffled' : 'Fixed order'}</span>
-                  </div>
-                </div>
-                <div class="toggle-track" class:on={randomizeOptions}>
-                  <input type="checkbox" name="randomizeOptions"
-                    bind:checked={randomizeOptions} disabled={!editable} class="toggle-cb" />
-                  <span class="toggle-knob"></span>
-                </div>
-              </label>
-
-              <!--
-                showResultAfter: bind:checked keeps the boolean in sync.
-                The underlying checkbox sends "on" when checked, nothing when unchecked.
-                parseExamForm reads formData.get('showResultAfter') === 'on'. Correct.
-              -->
-              <label class="toggle-row" class:disabled={!editable}>
-                <div class="toggle-text">
-                  <span class="toggle-icon-wrap"><Eye size={14} /></span>
-                  <div>
-                    <span class="toggle-label">Show Result Immediately</span>
-                    <span class="toggle-desc">{showResultAfter ? 'Score shown after submission' : 'Results hidden until released'}</span>
-                  </div>
-                </div>
-                <div class="toggle-track" class:on={showResultAfter}>
-                  <input type="checkbox" name="showResultAfter"
-                    bind:checked={showResultAfter} disabled={!editable} class="toggle-cb" />
-                  <span class="toggle-knob"></span>
-                </div>
-              </label>
-            </div>
+          <div class="preview-row">
+            <span class="pr-label">CA weight</span>
+            <span class="pr-value">{caWeight} / 100 marks</span>
+          </div>
+          <div class="preview-row">
+            <span class="pr-label">Pass mark</span>
+            <span class="pr-value">
+              {exam.passMark} / {exam.totalMarks} ({passPercent}% of exam)
+            </span>
+          </div>
+          <div class="preview-row">
+            <span class="pr-label">Show result</span>
+            <span class="pr-value">
+              {exam.showResultAfter ? 'Immediately after submission' : 'After lecturer release'}
+            </span>
           </div>
         </div>
+      </div>
 
-        {#if editable}
-          <div class="save-row">
-            <button class="btn primary" type="submit">Save changes</button>
-          </div>
-        {/if}
-      </form>
-
-      <!-- Invigilators -->
-      <div class="card">
-        <div class="card-header">
-          <span class="card-icon"><Users size={15} /></span>
-          <div><h2>Invigilators</h2><p>Assigned to monitor this exam</p></div>
+      <!-- Questions & Integrity -->
+      <div class="preview-card">
+        <div class="preview-card-header">
+          <span class="pch-icon"><FileText size={14} /></span>
+          <span class="pch-title">Questions &amp; Integrity</span>
         </div>
-        <div class="card-body">
-          {#if exam.invigilators.length > 0}
+        <div class="preview-rows">
+          <div class="preview-row">
+            <span class="pr-label">Question pool</span>
+            <span class="pr-value">
+              {exam.questionsToPresent > 0
+                ? `${exam.questionsToPresent} per student (from ${exam._count.questions} total)`
+                : `All ${exam._count.questions} questions`}
+            </span>
+          </div>
+          <div class="preview-row">
+            <span class="pr-label">Randomize questions</span>
+            <span class="pr-value">{exam.randomizeQuestions ? 'Yes — shuffled per student' : 'No — fixed order'}</span>
+          </div>
+          <div class="preview-row">
+            <span class="pr-label">Randomize options</span>
+            <span class="pr-value">{exam.randomizeOptions ? 'Yes — MCQ choices shuffled' : 'No — fixed order'}</span>
+          </div>
+          <div class="preview-row">
+            <span class="pr-label">Max violations</span>
+            <span class="pr-value" class:warn={exam.maxViolations <= 2}>
+              {exam.maxViolations} before auto-submit
+            </span>
+          </div>
+          <div class="preview-row">
+            <span class="pr-label">Sessions started</span>
+            <span class="pr-value accent">{exam._count.examSessions}</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Invigilators — interactive -->
+      <div class="preview-card">
+        <div class="preview-card-header">
+          <span class="pch-icon"><Users size={14} /></span>
+          <span class="pch-title">Invigilators</span>
+          <span class="pch-count">{exam.invigilators.length}</span>
+        </div>
+
+        <div class="invig-body">
+          {#if exam.invigilators.length === 0}
+            <p class="invig-empty">No invigilators assigned yet.</p>
+          {:else}
             <ul class="invig-list">
-              {#each exam.invigilators as inv}
-                <li>
-                  <span>{inv.invigilator.fullName}
+              {#each exam.invigilators as inv (inv.invigilatorId)}
+                <li class="invig-item">
+                  <div class="invig-avatar">
+                    {inv.invigilator.fullName.split(' ').slice(0, 2).map((w: string) => w[0]).join('').toUpperCase()}
+                  </div>
+                  <div class="invig-info">
+                    <span class="invig-name">{inv.invigilator.fullName}</span>
                     <span class="invig-id">{inv.invigilator.staffId ?? inv.invigilator.email}</span>
-                  </span>
+                  </div>
                   <form method="POST" action="?/remove_invigilator" use:enhance>
                     <input type="hidden" name="invigilatorId" value={inv.invigilatorId} />
-                    <button class="btn danger small" type="submit">Remove</button>
+                    <button class="invig-remove" type="submit" title="Remove invigilator">
+                      <X size={13} />
+                    </button>
                   </form>
                 </li>
               {/each}
             </ul>
-          {:else}
-            <p class="field-hint">No invigilators assigned yet.</p>
           {/if}
 
           {#if availableInvigilators.length > 0}
@@ -414,132 +346,121 @@
                   <option value={inv.id}>{inv.fullName} ({inv.staffId ?? inv.email})</option>
                 {/each}
               </select>
-              <button class="btn ghost" type="submit">Assign</button>
+              <button class="btn primary small" type="submit">Assign</button>
             </form>
           {/if}
         </div>
       </div>
+
     </div>
 
-    <!-- ══ RIGHT COLUMN — configuration preview (read-only) ══════════════ -->
+    <!-- ══ RIGHT — sticky action panel ═════════════════════════════════ -->
     <div class="right-col">
-      <div class="summary-card">
-        <div class="summary-title">Configuration Preview</div>
-        <div class="summary-rows">
+      <div class="action-panel">
 
-          <div class="sum-row">
-            <span>Course</span>
-            <span class="sum-val sum-val-set">{exam.course?.code ?? '—'}</span>
-          </div>
-          <div class="sum-row">
-            <span>Session</span>
-            <span class="sum-val sum-val-set">{exam.session}</span>
-          </div>
-          <div class="sum-row">
-            <span>Semester</span>
-            <span class="sum-val sum-val-set">
-              {exam.semester === 1 ? 'First' : 'Second'} Semester
+        <!-- Status indicator -->
+        <div class="ap-status" style="background:{meta.bg}; border-color: color-mix(in srgb, {meta.color} 30%, transparent);">
+          <span class="ap-status-dot" style="background:{meta.dot};"></span>
+          <div class="ap-status-text">
+            <span class="ap-status-label">{meta.label}</span>
+            <span class="ap-status-desc">
+              {#if exam.status === 'draft'}Draft — invisible to students{:else if exam.status === 'scheduled'}Goes live at scheduled time{:else if exam.status === 'active'}Currently live for eligible students{:else if exam.status === 'completed'}This exam has ended{:else}Exam was cancelled{/if}
             </span>
           </div>
-
-          <!-- Scope — read-only, set at creation -->
-          <div class="sum-divider"></div>
-          <div class="sum-section-label">Scope (set at creation)</div>
-
-          <div class="sum-row">
-            <span>Eligible levels</span>
-            <span class="sum-val sum-val-set">{levelDisplay}</span>
-          </div>
-          <div class="sum-row">
-            <span>Departments</span>
-            <span class="sum-val sum-val-set">{deptDisplay}</span>
-          </div>
-
-          <!-- Live-updating fields -->
-          <div class="sum-divider"></div>
-          <div class="sum-section-label">Timing</div>
-
-          <div class="sum-row">
-            <span>Start</span>
-            <span class="sum-val sum-val-set">{fmtDateDisplay(exam.scheduledStart?.toString())}</span>
-          </div>
-          <div class="sum-row">
-            <span>End</span>
-            <span class="sum-val sum-val-set">{fmtDateDisplay(exam.scheduledEnd?.toString())}</span>
-          </div>
-          <div class="sum-row">
-            <span>Duration</span>
-            <span class="sum-val sum-val-set">{durationMinutes} min</span>
-          </div>
-          <div class="sum-row">
-            <span>Late entry</span>
-            <span class="sum-val" class:sum-val-set={allowLateEntry}>
-              {allowLateEntry ? `✓ ${lateEntryMinutes} min` : 'Off'}
-            </span>
-          </div>
-
-          <div class="sum-divider"></div>
-          <div class="sum-section-label">Scoring</div>
-
-          <div class="sum-row">
-            <span>Exam weight</span>
-            <span class="sum-val sum-val-set" class:sum-val-warn={!!totalMarksError}>
-              {totalMarks} / 100
-            </span>
-          </div>
-          <div class="sum-row">
-            <span>CA weight</span>
-            <span class="sum-val" class:sum-val-set={caWeightValid}>
-              {caWeightValid ? `${caWeight} / 100` : '—'}
-            </span>
-          </div>
-          <div class="sum-row">
-            <span>Pass threshold</span>
-            <span class="sum-val sum-val-set">
-              {passMark}/{totalMarks} · {passPercent}% (exam only)
-            </span>
-          </div>
-
-          <div class="sum-divider"></div>
-          <div class="sum-section-label">Questions</div>
-
-          <div class="sum-row">
-            <span>Question pool</span>
-            <span class="sum-val sum-val-set">
-              {questionsToPresent > 0 ? `${questionsToPresent} per student` : 'All questions'}
-            </span>
-          </div>
-          <div class="sum-row">
-            <span>Max violations</span>
-            <span class="sum-val sum-val-set" class:sum-val-warn={maxViolations <= 2}>
-              {maxViolations}
-            </span>
-          </div>
-
-          <div class="sum-divider"></div>
-          <div class="sum-section-label">Options</div>
-
-          <div class="sum-row">
-            <span>Randomize</span>
-            <span class="sum-val">
-              {randomizeQuestions && randomizeOptions ? 'Questions & options'
-              : randomizeQuestions ? 'Questions only'
-              : randomizeOptions  ? 'Options only'
-              : 'Off'}
-            </span>
-          </div>
-          <div class="sum-row">
-            <span>Show result</span>
-            <span class="sum-val" class:sum-val-set={showResultAfter}>
-              {showResultAfter ? '✓ Immediately' : 'After release'}
-            </span>
-          </div>
-          <div class="sum-row">
-            <span>Invigilators</span>
-            <span class="sum-val sum-val-set">{exam.invigilators.length}</span>
-          </div>
-
         </div>
+
+        <!-- Quick stats -->
+        <div class="ap-stats">
+          <div class="ap-stat">
+            <span class="ap-stat-n">{exam._count.questions}</span>
+            <span class="ap-stat-l">Questions</span>
+          </div>
+          <div class="ap-stat-div"></div>
+          <div class="ap-stat">
+            <span class="ap-stat-n">{data.eligibleCount}</span>
+            <span class="ap-stat-l">Eligible</span>
+          </div>
+          <div class="ap-stat-div"></div>
+          <div class="ap-stat">
+            <span class="ap-stat-n">{exam._count.examSessions}</span>
+            <span class="ap-stat-l">Started</span>
+          </div>
+        </div>
+
+        <div class="ap-divider"></div>
+
+        <!-- Primary actions -->
+        <div class="ap-actions">
+          <!-- Manage questions — always available -->
+          <a href="/lecturer/exams/{exam.id}/questions" class="btn primary full">
+            <FileEdit size={14} /> Manage Questions
+          </a>
+
+          {#if exam.status === 'draft'}
+            <button type="button" class="btn scheduled full"
+              onclick={() => (confirmAction = 'publish')}
+              disabled={!exam.scheduledStart || !exam.scheduledEnd || exam._count.questions === 0}
+            >
+              <Zap size={14} /> Publish Exam
+            </button>
+            <button type="button" class="btn danger full" onclick={() => (confirmAction = 'cancel')}>
+              <XCircle size={14} /> Cancel Exam
+            </button>
+          {:else if exam.status === 'scheduled'}
+            <button type="button" class="btn ghost full" onclick={() => (confirmAction = 'unpublish')}>
+              <FileText size={14} /> Move to Draft
+            </button>
+            <button type="button" class="btn danger full" onclick={() => (confirmAction = 'cancel')}>
+              <XCircle size={14} /> Cancel Exam
+            </button>
+          {:else if exam.status === 'active' || exam.status === 'completed'}
+            <a href="/lecturer/results/{exam.id}" class="btn ghost full">
+              <BarChart2 size={14} /> View Results
+            </a>
+          {/if}
+        </div>
+
+        <!-- Publish guard hints for draft -->
+        {#if exam.status === 'draft'}
+          <div class="ap-checklist">
+            <div class="ap-check" class:ok={!!exam.scheduledStart && !!exam.scheduledEnd}>
+              {#if exam.scheduledStart && exam.scheduledEnd}
+                <CheckCircle2 size={13} />
+              {:else}
+                <Info size={13} />
+              {/if}
+              Schedule set
+            </div>
+            <div class="ap-check" class:ok={exam._count.questions > 0}>
+              {#if exam._count.questions > 0}
+                <CheckCircle2 size={13} />
+              {:else}
+                <Info size={13} />
+              {/if}
+              At least 1 question
+            </div>
+          </div>
+        {/if}
+
+        <div class="ap-divider"></div>
+
+        <!-- Scoring summary -->
+        <div class="ap-summary">
+          <div class="ap-sum-title">Scoring</div>
+          <div class="ap-sum-row">
+            <span>Exam weight</span>
+            <strong>{exam.totalMarks}/100</strong>
+          </div>
+          <div class="ap-sum-row">
+            <span>Pass mark</span>
+            <strong>{exam.passMark} pts ({passPercent}%)</strong>
+          </div>
+          <div class="ap-sum-row">
+            <span>Duration</span>
+            <strong>{exam.durationMinutes} min</strong>
+          </div>
+        </div>
+
       </div>
     </div>
 
@@ -547,142 +468,257 @@
 </div>
 
 <style>
-  .page { max-width: 1100px; margin: 0 auto; padding: 1.75rem 2rem 4rem; display: flex; flex-direction: column; gap: 1.25rem; }
+  .page {
+    max-width: 1100px; margin: 0 auto;
+    padding: 1.75rem 2rem 4rem;
+    display: flex; flex-direction: column; gap: 1.25rem;
+  }
 
   /* ── Header ──────────────────────────────────────────────────────────────── */
-  .page-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 1rem; flex-wrap: wrap; padding-bottom: 1.25rem; border-bottom: 1px solid var(--color-border); }
-  .header-left { display: flex; flex-direction: column; gap: .2rem; }
-  .back-link { display: inline-flex; align-items: center; gap: .2rem; font-size: .75rem; font-weight: 600; color: var(--lc-600); text-decoration: none; margin-bottom: .25rem; transition: gap .12s; }
-  .back-link:hover { gap: .4rem; }
-  .page-header h1 { font-size: 1.6rem; font-weight: 900; letter-spacing: -.035em; color: var(--color-text); margin: 0; }
-  .course-meta { font-size: .82rem; color: var(--color-muted); margin: 0; }
+  .page-header {
+    display: flex; align-items: flex-start; justify-content: space-between;
+    gap: 1rem; flex-wrap: wrap;
+    padding-bottom: 1.25rem; border-bottom: 1px solid var(--color-border);
+  }
+  .header-left { display: flex; flex-direction: column; gap: 0.2rem; }
+  .back-link {
+    display: inline-flex; align-items: center; gap: 0.2rem;
+    font-size: 0.75rem; font-weight: 600; color: var(--lc-600, #4f46e5);
+    text-decoration: none; margin-bottom: 0.3rem; transition: gap 0.12s;
+  }
+  .back-link:hover { gap: 0.4rem; }
+  .page-header h1 {
+    font-size: 1.6rem; font-weight: 900; letter-spacing: -0.035em;
+    color: var(--color-text); margin: 0;
+  }
+  .course-meta { font-size: 0.82rem; color: var(--color-muted); margin: 0; }
 
-  .status-badge { font-size: .68rem; font-weight: 800; padding: .3rem .7rem; border-radius: 999px; text-transform: uppercase; letter-spacing: .04em; white-space: nowrap; flex-shrink: 0; margin-top: .25rem; }
-  .status-draft     { background: var(--color-bg); color: var(--color-muted); border: 1px solid var(--color-border); }
-  .status-scheduled { background: rgba(59,130,246,.1); color: #2563eb; }
-  .status-active    { background: rgba(34,197,94,.12); color: #15803d; }
-  .status-completed { background: rgba(107,114,128,.12); color: var(--color-muted); }
-  .status-cancelled { background: rgba(239,68,68,.1); color: #ef4444; }
+  .status-pill {
+    display: inline-flex; align-items: center; gap: 0.4rem;
+    font-size: 0.72rem; font-weight: 700;
+    padding: 0.35rem 0.75rem; border-radius: 999px;
+    flex-shrink: 0; margin-top: 0.25rem; white-space: nowrap;
+  }
+  .status-dot { width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; }
 
   /* ── Banners ─────────────────────────────────────────────────────────────── */
-  .banner { display: flex; align-items: center; gap: .5rem; padding: .75rem 1rem; border-radius: .625rem; font-size: .85rem; font-weight: 600; }
-  .banner.error   { background: rgba(239,68,68,.08);   color: #ef4444; border: 1px solid rgba(239,68,68,.2); }
-  .banner.success { background: rgba(34,197,94,.08);   color: #15803d; border: 1px solid rgba(34,197,94,.2); }
-
-  /* ── Stats ───────────────────────────────────────────────────────────────── */
-  .stats-row { display: flex; gap: 1rem; }
-  .stat-card { flex: 1; display: flex; flex-direction: column; align-items: center; gap: .25rem; padding: 1rem; border: 1.5px solid var(--color-border); border-radius: .875rem; background: var(--color-surface); }
-  .stat-num   { font-size: 1.4rem; font-weight: 800; color: var(--color-text); }
-  .stat-label { font-size: .7rem; color: var(--color-muted); text-transform: uppercase; letter-spacing: .04em; }
+  .banner {
+    display: flex; align-items: center; gap: 0.5rem;
+    padding: 0.75rem 1rem; border-radius: 0.625rem;
+    font-size: 0.85rem; font-weight: 600;
+  }
+  .banner.error   { background: rgba(239,68,68,0.08);  color: #ef4444; border: 1px solid rgba(239,68,68,0.2); }
+  .banner.success { background: rgba(34,197,94,0.08);  color: #15803d; border: 1px solid rgba(34,197,94,0.2); }
 
   /* ── Main grid ───────────────────────────────────────────────────────────── */
-  .main-grid { display: grid; grid-template-columns: 1fr 280px; gap: 1.25rem; align-items: start; }
-  @media (max-width: 860px) { .main-grid { grid-template-columns: 1fr; } .right-col { order: -1; } }
+  .main-grid {
+    display: grid;
+    grid-template-columns: 1fr 260px;
+    gap: 1.25rem;
+    align-items: start;
+  }
+  @media (max-width: 860px) {
+    .main-grid { grid-template-columns: 1fr; }
+    .right-col { order: -1; }
+  }
 
-  .left-col  { display: flex; flex-direction: column; gap: 1.25rem; }
+  .left-col  { display: flex; flex-direction: column; gap: 1rem; }
   .right-col { position: sticky; top: 1.25rem; }
-  .edit-form { display: flex; flex-direction: column; gap: 1.25rem; }
 
-  /* ── Cards ───────────────────────────────────────────────────────────────── */
-  .card { background: var(--color-surface); border: 1.5px solid var(--color-border); border-radius: 1rem; overflow: visible; }
-  .card-header { display: flex; align-items: flex-start; gap: .75rem; padding: .875rem 1.25rem; border-bottom: 1px solid var(--color-border); background: var(--color-bg); border-radius: 1rem 1rem 0 0; }
-  .card-icon { width: 30px; height: 30px; flex-shrink: 0; display: flex; align-items: center; justify-content: center; background: var(--lc-soft); border-radius: .45rem; color: var(--lc-600); }
-  .card-header h2 { font-size: .83rem; font-weight: 700; color: var(--color-text); margin: 0 0 .1rem; }
-  .card-header p  { font-size: .72rem; color: var(--color-muted); margin: 0; }
-  .card-body { padding: 1rem 1.25rem; display: flex; flex-direction: column; gap: .875rem; }
-
-  /* ── Action buttons ──────────────────────────────────────────────────────── */
-  .action-buttons { flex-direction: row !important; flex-wrap: wrap; gap: .625rem; }
-
-  /* ── Fields ──────────────────────────────────────────────────────────────── */
-  .field { display: flex; flex-direction: column; gap: .35rem; }
-  .field label { font-size: .78rem; font-weight: 600; color: var(--color-text); display: flex; align-items: center; gap: .3rem; flex-wrap: wrap; }
-  .label-sub { font-size: .67rem; font-weight: 500; color: var(--color-muted); }
-  .opt { font-size: .68rem; font-weight: 500; color: var(--color-muted); }
-  .field-hint { font-size: .71rem; color: var(--color-muted); margin: 0; }
-  .field-error { font-size: .72rem; color: #dc2626; display: flex; align-items: center; gap: .25rem; }
-
-  .field input, .field textarea, .field select {
-    padding: .575rem .75rem; border: 1.5px solid var(--color-border); border-radius: .6rem;
-    background: var(--color-bg); color: var(--color-text); font-size: .875rem;
-    font-family: inherit; outline: none; width: 100%; box-sizing: border-box; resize: vertical;
-    transition: border-color .15s, box-shadow .15s;
+  /* ── Preview cards ───────────────────────────────────────────────────────── */
+  .preview-card {
+    background: var(--color-surface);
+    border: 1.5px solid var(--color-border);
+    border-radius: 0.875rem;
+    overflow: hidden;
   }
-  .field input:focus, .field textarea:focus { border-color: var(--lc-600); box-shadow: 0 0 0 3px var(--lc-soft); }
-  .field input:disabled, .field textarea:disabled { opacity: .55; cursor: not-allowed; }
-  .field input.input-error { border-color: #ef4444; }
-
-  .two-col   { display: grid; grid-template-columns: 1fr 1fr; gap: .75rem; }
-  .three-col { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: .75rem; }
-  @media (max-width: 600px) { .two-col, .three-col { grid-template-columns: 1fr; } }
-
-  .input-unit-wrap { position: relative; }
-  .input-unit-wrap input { padding-right: 2.25rem; }
-  .unit { position: absolute; right: .75rem; top: 50%; transform: translateY(-50%); font-size: .7rem; font-weight: 700; color: var(--color-muted); pointer-events: none; }
-
-  .ca-badge { display: inline-flex; align-items: center; gap: .3rem; font-size: .7rem; color: var(--lc-600); background: rgba(79,70,229,.07); border: 1px solid rgba(79,70,229,.2); border-radius: .4rem; padding: .25rem .5rem; }
-  .ca-badge strong { font-weight: 800; }
-  .pass-pct { font-size: .7rem; color: var(--color-muted); }
-
-  .late-field { padding-top: .25rem; }
-
-  /* ── Toggles ─────────────────────────────────────────────────────────────── */
-  .toggles-group { display: flex; flex-direction: column; border: 1.5px solid var(--color-border); border-radius: .75rem; overflow: hidden; }
-  .toggle-row {
-    display: flex; align-items: center; justify-content: space-between; gap: 1rem;
-    padding: .75rem 1rem;
+  .preview-card-header {
+    display: flex; align-items: center; gap: 0.5rem;
+    padding: 0.625rem 1rem;
+    background: var(--color-bg);
     border-bottom: 1px solid var(--color-border);
-    transition: background .12s; user-select: none;
-    cursor: pointer;
   }
-  .toggle-row:last-child { border-bottom: none; }
-  .toggle-row:not(.disabled):hover { background: var(--lc-soft); }
-  .toggle-row.disabled { cursor: default; opacity: .7; }
-  .toggle-text { display: flex; align-items: flex-start; gap: .5rem; }
-  .toggle-icon-wrap { width: 26px; height: 26px; border-radius: .35rem; flex-shrink: 0; display: flex; align-items: center; justify-content: center; background: var(--color-bg); border: 1px solid var(--color-border); color: var(--color-muted); }
-  .toggle-label { display: block; font-size: .8rem; font-weight: 600; color: var(--color-text); }
-  .toggle-desc  { display: block; font-size: .71rem; color: var(--color-muted); }
-  .toggle-track { position: relative; width: 38px; height: 20px; flex-shrink: 0; }
-  .toggle-cb    { position: absolute; opacity: 0; width: 0; height: 0; pointer-events: none; }
-  .toggle-knob  { position: absolute; inset: 0; background: var(--color-border); border-radius: 999px; transition: background .2s; cursor: pointer; }
-  .toggle-knob::after { content: ''; position: absolute; width: 14px; height: 14px; top: 3px; left: 3px; background: white; border-radius: 50%; transition: transform .2s; box-shadow: 0 1px 3px rgba(0,0,0,.2); }
-  .toggle-track.on .toggle-knob { background: var(--lc-600); }
-  .toggle-track.on .toggle-knob::after { transform: translateX(18px); }
-  .toggle-row.disabled .toggle-knob { cursor: not-allowed; }
+  .pch-icon {
+    width: 26px; height: 26px; border-radius: 0.35rem; flex-shrink: 0;
+    display: flex; align-items: center; justify-content: center;
+    background: var(--lc-soft, rgba(79,70,229,0.08));
+    color: var(--lc-600, #4f46e5);
+  }
+  .pch-title { font-size: 0.78rem; font-weight: 700; color: var(--color-text); flex: 1; }
+  .pch-badge {
+    font-size: 0.6rem; font-weight: 700; padding: 0.1rem 0.45rem;
+    border-radius: 0.3rem; background: var(--color-border); color: var(--color-muted);
+    text-transform: uppercase; letter-spacing: 0.04em;
+  }
+  .pch-count {
+    font-size: 0.68rem; font-weight: 800;
+    padding: 0.1rem 0.45rem; border-radius: 999px;
+    background: var(--lc-soft, rgba(79,70,229,0.08));
+    color: var(--lc-600, #4f46e5);
+  }
 
-  /* ── Save row ────────────────────────────────────────────────────────────── */
-  .save-row { display: flex; justify-content: flex-end; }
+  /* ── Preview rows ────────────────────────────────────────────────────────── */
+  .preview-rows { display: flex; flex-direction: column; }
+  .preview-row {
+    display: flex; align-items: baseline; justify-content: space-between;
+    gap: 1rem; padding: 0.6rem 1rem;
+    border-bottom: 1px solid var(--color-border);
+    transition: background 0.1s;
+  }
+  .preview-row:last-child { border-bottom: none; }
+  .preview-row:hover { background: var(--lc-soft, rgba(79,70,229,0.03)); }
+  .preview-row.stacked { flex-direction: column; gap: 0.25rem; align-items: flex-start; }
+
+  .pr-label {
+    font-size: 0.75rem; font-weight: 600; color: var(--color-muted);
+    white-space: nowrap; flex-shrink: 0;
+  }
+  .pr-value {
+    font-size: 0.8rem; font-weight: 600; color: var(--color-text);
+    text-align: right; line-height: 1.4;
+  }
+  .pr-value.accent { color: var(--lc-600, #4f46e5); font-weight: 700; }
+  .pr-value.warn   { color: #d97706; }
+  .instructions-text {
+    font-size: 0.78rem; font-weight: 400; color: var(--color-muted);
+    text-align: left; line-height: 1.6; white-space: pre-wrap;
+  }
 
   /* ── Invigilators ────────────────────────────────────────────────────────── */
-  .invig-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: .5rem; }
-  .invig-list li { display: flex; align-items: center; justify-content: space-between; gap: 1rem; padding: .625rem .875rem; border: 1px solid var(--color-border); border-radius: .625rem; font-size: .85rem; color: var(--color-text); }
-  .invig-id { font-size: .75rem; color: var(--color-muted); margin-left: .4rem; }
-  .invig-add { display: flex; gap: .625rem; }
-  .invig-add select { flex: 1; padding: .575rem .75rem; border: 1.5px solid var(--color-border); border-radius: .5rem; background: var(--color-bg); color: var(--color-text); font-size: .83rem; font-family: inherit; outline: none; }
-  .invig-add select:focus { border-color: var(--lc-600); }
+  .invig-body { padding: 0.75rem 1rem; display: flex; flex-direction: column; gap: 0.625rem; }
+  .invig-empty { font-size: 0.78rem; color: var(--color-muted); margin: 0; }
+  .invig-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 0.4rem; }
+  .invig-item {
+    display: flex; align-items: center; gap: 0.625rem;
+    padding: 0.5rem 0.75rem;
+    border: 1px solid var(--color-border); border-radius: 0.625rem;
+    background: var(--color-bg);
+  }
+  .invig-avatar {
+    width: 28px; height: 28px; border-radius: 0.4rem; flex-shrink: 0;
+    background: var(--lc-soft, rgba(79,70,229,0.1));
+    color: var(--lc-600, #4f46e5);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 0.6rem; font-weight: 800;
+  }
+  .invig-info { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 0.05rem; }
+  .invig-name { font-size: 0.8rem; font-weight: 600; color: var(--color-text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .invig-id   { font-size: 0.68rem; color: var(--color-muted); }
+  .invig-remove {
+    width: 26px; height: 26px; border-radius: 0.375rem; flex-shrink: 0;
+    border: 1px solid transparent; background: none; cursor: pointer;
+    color: var(--color-muted); display: flex; align-items: center; justify-content: center;
+    transition: all 0.15s; padding: 0;
+  }
+  .invig-remove:hover { background: rgba(239,68,68,0.08); border-color: rgba(239,68,68,0.2); color: #ef4444; }
+  .invig-add {
+    display: flex; gap: 0.5rem; padding-top: 0.25rem;
+  }
+  .invig-add select {
+    flex: 1; padding: 0.5rem 0.75rem;
+    border: 1.5px solid var(--color-border); border-radius: 0.5rem;
+    background: var(--color-bg); color: var(--color-text);
+    font-size: 0.82rem; font-family: inherit; outline: none;
+    transition: border-color 0.15s;
+  }
+  .invig-add select:focus { border-color: var(--lc-600, #4f46e5); }
+
+  /* ── Action panel (right col) ────────────────────────────────────────────── */
+  .action-panel {
+    background: var(--color-surface);
+    border: 1.5px solid var(--color-border);
+    border-radius: 0.875rem;
+    overflow: hidden;
+    display: flex; flex-direction: column; gap: 0;
+  }
+
+  .ap-status {
+    display: flex; align-items: center; gap: 0.625rem;
+    padding: 0.875rem 1rem;
+    border-bottom: 1px solid var(--color-border);
+    border: 1.5px solid transparent;
+    border-radius: 0.875rem 0.875rem 0 0;
+  }
+  .ap-status-dot { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
+  .ap-status-text { display: flex; flex-direction: column; gap: 0.05rem; }
+  .ap-status-label { font-size: 0.8rem; font-weight: 800; color: var(--color-text); }
+  .ap-status-desc  { font-size: 0.68rem; color: var(--color-muted); }
+
+  .ap-stats {
+    display: flex; align-items: center;
+    padding: 0.75rem 0;
+    border-bottom: 1px solid var(--color-border);
+  }
+  .ap-stat { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 0.05rem; }
+  .ap-stat-n { font-size: 1.15rem; font-weight: 900; color: var(--color-text); letter-spacing: -0.03em; line-height: 1; }
+  .ap-stat-l { font-size: 0.58rem; font-weight: 600; color: var(--color-muted); text-transform: uppercase; letter-spacing: 0.05em; margin-top: 0.1rem; }
+  .ap-stat-div { width: 1px; height: 24px; background: var(--color-border); flex-shrink: 0; }
+
+  .ap-divider { height: 1px; background: var(--color-border); }
+
+  .ap-actions { padding: 0.875rem; display: flex; flex-direction: column; gap: 0.5rem; }
+
+  .ap-checklist {
+    padding: 0 0.875rem 0.875rem;
+    display: flex; flex-direction: column; gap: 0.35rem;
+  }
+  .ap-check {
+    display: flex; align-items: center; gap: 0.4rem;
+    font-size: 0.72rem; font-weight: 600; color: var(--color-muted);
+  }
+  .ap-check.ok { color: #16a34a; }
+
+  .ap-summary { padding: 0.875rem; display: flex; flex-direction: column; gap: 0.4rem; }
+  .ap-sum-title { font-size: 0.65rem; font-weight: 800; text-transform: uppercase; letter-spacing: 0.07em; color: var(--color-muted); margin-bottom: 0.15rem; }
+  .ap-sum-row {
+    display: flex; align-items: center; justify-content: space-between;
+    font-size: 0.75rem; color: var(--color-muted);
+  }
+  .ap-sum-row strong { font-weight: 700; color: var(--color-text); }
 
   /* ── Buttons ─────────────────────────────────────────────────────────────── */
-  .btn { display: inline-flex; align-items: center; gap: .4rem; padding: .575rem 1.1rem; border-radius: .6rem; font-size: .82rem; font-weight: 700; text-decoration: none; border: 1.5px solid var(--color-border); background: var(--color-surface); color: var(--color-text); cursor: pointer; font-family: inherit; transition: all .15s; white-space: nowrap; }
-  .btn.small   { padding: .35rem .7rem; font-size: .73rem; }
-  .btn.primary { background: var(--lc-600); border-color: var(--lc-600); color: white; }
-  .btn.primary:hover { background: var(--lc-700); border-color: var(--lc-700); }
-  .btn.ghost   { background: transparent; }
-  .btn.ghost:hover { border-color: var(--lc-600); color: var(--lc-600); }
-  .btn.danger  { background: rgba(239,68,68,.08); border-color: rgba(239,68,68,.25); color: #ef4444; }
-  .btn.danger:hover { background: rgba(239,68,68,.15); }
+  .btn {
+    display: inline-flex; align-items: center; justify-content: center; gap: 0.4rem;
+    padding: 0.575rem 1rem; border-radius: 0.6rem;
+    font-size: 0.82rem; font-weight: 700; text-decoration: none;
+    border: 1.5px solid var(--color-border); background: var(--color-surface);
+    color: var(--color-text); cursor: pointer; font-family: inherit;
+    transition: all 0.15s; white-space: nowrap;
+  }
+  .btn.full { width: 100%; }
+  .btn.small { padding: 0.4rem 0.75rem; font-size: 0.75rem; }
+  .btn.primary { background: var(--lc-600, #4f46e5); border-color: var(--lc-600, #4f46e5); color: white; }
+  .btn.primary:hover { background: var(--lc-700, #4338ca); border-color: var(--lc-700, #4338ca); }
+  .btn.scheduled { background: rgba(37,99,235,0.1); border-color: rgba(37,99,235,0.3); color: #2563eb; }
+  .btn.scheduled:hover { background: rgba(37,99,235,0.18); }
+  .btn.scheduled:disabled { opacity: 0.45; cursor: not-allowed; }
+  .btn.ghost { background: transparent; }
+  .btn.ghost:hover { border-color: var(--lc-600, #4f46e5); color: var(--lc-600, #4f46e5); }
+  .btn.danger { background: rgba(239,68,68,0.08); border-color: rgba(239,68,68,0.25); color: #ef4444; }
+  .btn.danger:hover { background: rgba(239,68,68,0.16); }
 
-  /* ── Configuration Preview (right col) ───────────────────────────────────── */
-  .summary-card { background: var(--color-surface); border: 1.5px solid var(--color-border); border-radius: .875rem; overflow: hidden; }
-  .summary-title { padding: .6rem 1rem; font-size: .7rem; font-weight: 800; text-transform: uppercase; letter-spacing: .06em; color: var(--color-muted); background: var(--color-bg); border-bottom: 1px solid var(--color-border); }
-  .summary-rows { padding: .4rem; }
-  .sum-row { display: flex; align-items: center; justify-content: space-between; padding: .35rem .5rem; border-radius: .35rem; gap: .5rem; }
-  .sum-row:hover { background: var(--lc-soft); }
-  .sum-row span:first-child { font-size: .74rem; color: var(--color-muted); white-space: nowrap; }
-  .sum-val { font-size: .74rem; font-weight: 600; color: var(--color-muted); text-align: right; transition: color .2s; }
-  .sum-val-set  { color: var(--color-text); }
-  .sum-val-warn { color: #d97706 !important; }
-  .sum-divider  { height: 1px; background: var(--color-border); margin: .35rem .5rem; }
-  .sum-section-label { font-size: .65rem; font-weight: 800; text-transform: uppercase; letter-spacing: .06em; color: var(--color-muted); padding: .1rem .5rem .25rem; }
-
-  :global(.dark) .toggle-knob::after { background: #e5e5e5; }
+  /* ── Confirm modal ───────────────────────────────────────────────────────── */
+  .modal-bg {
+    position: fixed; inset: 0; z-index: 400;
+    background: rgba(0,0,0,0.5); backdrop-filter: blur(4px);
+    display: flex; align-items: center; justify-content: center;
+  }
+  .confirm-modal {
+    background: var(--color-surface); border: 1.5px solid var(--color-border);
+    border-radius: 1rem; padding: 1.75rem;
+    width: min(400px, calc(100vw - 2rem));
+    display: flex; flex-direction: column; align-items: center; gap: 0.75rem;
+    text-align: center; box-shadow: 0 24px 80px rgba(0,0,0,0.25);
+  }
+  .confirm-icon {
+    width: 48px; height: 48px; border-radius: 50%;
+    background: rgba(79,70,229,0.1); color: var(--lc-600, #4f46e5);
+    display: flex; align-items: center; justify-content: center;
+    flex-shrink: 0;
+  }
+  .confirm-icon.danger { background: rgba(239,68,68,0.1); color: #ef4444; }
+  .confirm-modal h3 { font-size: 1rem; font-weight: 800; color: var(--color-text); margin: 0; }
+  .confirm-modal p  { font-size: 0.82rem; color: var(--color-muted); margin: 0; line-height: 1.55; }
+  .confirm-actions { display: flex; gap: 0.625rem; width: 100%; margin-top: 0.5rem; }
+  .confirm-actions .btn { flex: 1; }
 </style>
