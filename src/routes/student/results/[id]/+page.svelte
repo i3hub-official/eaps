@@ -6,7 +6,8 @@
     BarChart3, Clock, CheckCircle, 
     XCircle, AlertCircle, ChevronRight, 
     BookOpen, Target, Brain, Star, 
-    Calendar, FileText, Zap, Users, GraduationCap
+    Calendar, FileText, Zap, Users, GraduationCap,
+    Check, X, CircleOff, ThumbsUp, ThumbsDown
   } from '@lucide/svelte';
   import { error } from '@sveltejs/kit';
 
@@ -104,7 +105,11 @@
       <div class="exam-badge">
         <span class="course-code">{exam?.courseCode || 'Course'}</span>
         <span class="exam-status" class:status-passed={result.passed} class:status-failed={!result.passed}>
-          {result.passed ? '✅ Passed' : '❌ Failed'}
+          {#if result.passed}
+            <Check size={12} /> Passed
+          {:else}
+            <X size={12} /> Failed
+          {/if}
         </span>
       </div>
       <h1 class="exam-title">{exam?.title || 'Exam Results'}</h1>
@@ -403,6 +408,9 @@
   }
 
   .exam-status {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.25rem;
     font-size: 0.65rem;
     font-weight: 700;
     padding: 0.2rem 0.6rem;
