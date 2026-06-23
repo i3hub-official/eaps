@@ -33,7 +33,7 @@ export const load: PageServerLoad = async ({ locals, params }) => {
   return {
     certificate: {
       resultId:    result.id,
-      studentName: result.student.fullName.toUpperCase(),
+      studentName: result.student.fullName.toUppercase,
       matricNumber:result.student.matricNumber ?? '',
       department:  result.student.department?.name ?? '',
       level:       result.student.level?.level ? `${result.student.level.level} Level` : '',
@@ -45,10 +45,7 @@ export const load: PageServerLoad = async ({ locals, params }) => {
       session:     result.exam.session,
       semester:    result.exam.semester,
       submittedAt: result.submittedAt?.toISOString() ?? new Date().toISOString(),
-      verifyUrl:   `https://localhost:1209/s/verify/${result.id}`,
+      verifyUrl:   `https://mouauetest.vercel.app/s/verify/${result.id}`,
     },
   };
 };
-
-
-// verifyUrl:   `https://etest.mouau.edu.ng/verify/${result.id}`,
