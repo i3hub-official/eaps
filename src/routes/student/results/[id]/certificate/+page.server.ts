@@ -45,7 +45,7 @@ export const load: PageServerLoad = async ({ locals, params }) => {
       session:     result.exam.session,
       semester:    result.exam.semester,
       submittedAt: result.submittedAt?.toISOString() ?? new Date().toISOString(),
-      verifyUrl:   `https://localhost:1209/s/verify/${result.id}`,
+      verifyUrl:    `https://etest.mouau.edu.ng/verify/${result.id}`,
     },
   };
 };
