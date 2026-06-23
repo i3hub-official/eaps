@@ -21,6 +21,18 @@
     margin: 0;
     padding: 0;
     overflow: hidden;
+    height: 100vh;
+    width: 100vw;
+  }
+
+  :global(html) {
+    overflow: hidden;
+    height: 100vh;
+    width: 100vw;
+  }
+
+  /* Reset any potential inherited styles */
+  :global(*) {
+    box-sizing: border-box;
   }
 </style>
- 
