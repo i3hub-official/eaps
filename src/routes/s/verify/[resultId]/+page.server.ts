@@ -1,9 +1,10 @@
+// src/routes/s/verify/[resultId]/+page.server.ts
+// Public route — no auth required.
 import type { PageServerLoad } from './$types';
 import { error }               from '@sveltejs/kit';
 import { getPrismaClient }     from '$lib/server/db/index.js';
-import { percentageToGrade }   from '$lib/server/grading.js';
+import { mouauGrade }          from '$lib/server/exam/grader.js';
 
-// Public route — no auth required
 export const load: PageServerLoad = async ({ params }) => {
   const prisma = await getPrismaClient();
 
@@ -23,8 +24,10 @@ export const load: PageServerLoad = async ({ params }) => {
 
   if (!result) throw error(404, 'Result not found');
 
-  const pct   = result.percentage != null ? Number(result.percentage) : null;
-  const grade = pct != null ? percentageToGrade(pct) : (result.grade ?? null);
+  const pct        = result.percentage != null ? Number(result.percentage) : null;
+  const gradeInfo  = pct != null ? mouauGrade(pct) : null;
+  const grade      = gradeInfo?.grade ?? result.grade ?? null;
+  const passed     = gradeInfo?.passed ?? result.passed ?? null;
 
   return {
     verified: {
@@ -36,7 +39,7 @@ export const load: PageServerLoad = async ({ params }) => {
       examTitle:    result.exam.title,
       score:        pct != null ? Math.round(pct) : null,
       grade,
-      passed:       result.passed,
+      passed,
       session:      result.exam.session,
       semester:     result.exam.semester,
       submittedAt:  result.submittedAt?.toISOString() ?? null,
