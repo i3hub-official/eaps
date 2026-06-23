@@ -236,16 +236,13 @@
   async function saveAnswer(ans: StudentAnswerInput) {
     if (!session) return;
     try {
-      const res = await fetch(`/api/exam/${examId}/answer`, {
-        method:  'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          sessionId:      session.id,
-          questionId:     ans.questionId,
-          selectedOption: ans.selectedOption,
-          textAnswer:     ans.textAnswer,
-        }),
-      });
+   async function saveAnswer(idx: number, value: string) {
+  // ...
+  const res = await fetch(`/api/exam/${data.examId}/answer`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ sessionId, questionId, answer: value }),  // ← HERE
+  });
 
       if (res.ok) {
         const result = await res.json();

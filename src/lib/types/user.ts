@@ -73,6 +73,9 @@ export interface ProfileData {
   department?: string;
   faculty?: string;
   college?: string;
+  semester?: string;
+  session?: string;
+  programme?: string;
   level?: string;
   matricNumber?: string;
   staffId?: string;
@@ -125,12 +128,12 @@ export const STAFF_ROLES: UserRole[] = [
 
 /** URL home map per role — mirrors ROLE_HOME in login server. */
 export const ROLE_HOME: Record<UserRole, string> = {
-  student:      '/student',
-  lecturer:     '/lecturer',
-  invigilator:  '/invigilator',
-  admin:        '/admin',
-  hod:          '/hod',
-  dean:         '/dean',
+  student: '/student',
+  lecturer: '/lecturer',
+  invigilator: '/invigilator',
+  admin: '/admin',
+  hod: '/hod',
+  dean: '/dean',
   exam_officer: '/exam-officer',
-  vc_dvc:       '/vc-dvc',
+  vc_dvc: '/vc-dvc',
 };

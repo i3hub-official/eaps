@@ -21,7 +21,7 @@ const IMMEDIATE_PAUSE_FLAGS: FlagType[] = [
 
 const ViolationSchema = z.object({
   flagType: z.enum(FLAG_TYPES, {
-    errorMap: () => ({ message: `flagType must be one of: ${FLAG_TYPES.join(', ')}` }),
+    error: `flagType must be one of: ${FLAG_TYPES.join(', ')}`,
   }),
   note: z.string().max(500).optional(),
 });

@@ -2,10 +2,12 @@
 import { error, json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import { z } from 'zod';
+import { requireStudent } from '$lib/server/auth/guards.js';
 import { getPrismaClient } from '$lib/server/db/index.js';
 import { getSessionByExamAndStudent, saveAnswerFlat, updateTimeRemaining } from '$lib/server/db/sessions.js';
 import { getExamById } from '$lib/server/db/exams.js';
 import { computeDeadline, secondsRemaining, finalizeSession, UUID_RE } from '$lib/server/exam/session-engine.js';
+
 
 const UUIDSchema = z.string().regex(UUID_RE, 'Must be a valid UUID');
 
@@ -17,10 +19,7 @@ const AnswerSchema = z.object({
 });
 
 export const POST: RequestHandler = async (event) => {
-  const user = event.locals.user;
-  if (!user) throw error(401, 'Not authenticated');
-  if (user.role !== 'student') throw error(403, 'Only students can submit answers');
-
+ const user = await requireStudent(event.locals.user);
   const { examId } = event.params;
   if (!UUID_RE.test(examId)) throw error(400, 'Invalid exam id');
 

@@ -43,6 +43,9 @@ enum ExamStatus {
 enum QuestionType {
   mcq
   fill_in_the_blank
+  true_false
+  essay
+  generic
 }
 
 enum FlagType {
@@ -459,7 +462,7 @@ model CourseRegistration {
 model Programme {
   id            String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   departmentId  String   @map("department_id") @db.Uuid
-  name          String
+  name          String  @default("Full Time Regular")
   code          String?  @unique
   durationYears Int      @default(4) @map("duration_years") @db.SmallInt
   createdAt     DateTime @default(now()) @map("created_at") @db.Timestamptz()

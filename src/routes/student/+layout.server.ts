@@ -5,7 +5,7 @@ import { getPrismaClient } from '$lib/server/db/index.js';
 import { SessionStatus } from '$lib/constants/enums.js';
 
 export const load: LayoutServerLoad = async ({ locals }) => {
-  requireStudent(locals.user);
+  await requireStudent(locals.user);
   const user = locals.user!;
   const prisma = await getPrismaClient();
 
