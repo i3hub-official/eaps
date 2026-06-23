@@ -33,7 +33,7 @@ export const load: PageServerLoad = async ({ locals, params }) => {
   return {
     certificate: {
       resultId:    result.id,
-      studentName: result.student.fullName.toUppercase(),
+      studentName: result.student.fullName.toUpperCase(),
       matricNumber:result.student.matricNumber ?? '',
       department:  result.student.department?.name ?? '',
       level:       result.student.level?.level ? `${result.student.level.level} Level` : '',

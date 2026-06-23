@@ -31,7 +31,7 @@ export const load: PageServerLoad = async ({ params }) => {
 
   return {
     verified: {
-      studentName:  result.student.fullName.toUppercase(),
+      studentName:  result.student.fullName.toUpperCase(),
       matricNumber: result.student.matricNumber ?? '',
       department:   result.student.department?.name ?? '',
       courseCode:   result.exam.course.code,
