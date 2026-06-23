@@ -602,3 +602,26 @@ async function writeExamResult(
     },
   });
 }
+
+export type GradeLetter = 'A' | 'B' | 'C' | 'D' | 'E' | 'F';
+
+export function percentageToGrade(pct: number): GradeLetter {
+  if (pct >= 70) return 'A';
+  if (pct >= 60) return 'B';
+  if (pct >= 50) return 'C';
+  if (pct >= 45) return 'D';
+  if (pct >= 40) return 'E';
+  return 'F';
+}
+
+export function gradeToPoints(grade: GradeLetter): number {
+  return { A: 5, B: 4, C: 3, D: 2, E: 1, F: 0 }[grade];
+}
+
+export function computeGPA(
+  courses: { creditUnits: number; gradePoints: number }[]
+): number {
+  const totalUnits  = courses.reduce((s, c) => s + c.creditUnits, 0);
+  const totalPoints = courses.reduce((s, c) => s + c.creditUnits * c.gradePoints, 0);
+  return totalUnits === 0 ? 0 : totalPoints / totalUnits;
+}

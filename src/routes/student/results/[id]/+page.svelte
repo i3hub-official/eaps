@@ -120,9 +120,11 @@
       </div>
     </div>
     <div class="header-actions">
-      <a href={`/student/results/${result.id}/certificate`} class="btn-primary">
-        <FileText size={14} /> Certificate
-      </a>
+      {#if result.passed}
+  <a href={`/student/results/${result.id}/certificate`} class="btn-primary">
+    <FileText size={14} /> Certificate
+  </a>
+{/if}
     </div>
   </div>
 

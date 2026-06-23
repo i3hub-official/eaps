@@ -730,6 +730,84 @@
     </div>
   {/if}
 
+  <!-- ── Academic Record (GPA / CGPA) ──────────────────────── -->
+  {#if data.semesters && data.semesters.length > 0}
+    <div class="academic-record">
+      <div class="ar-header">
+        <div class="ar-title">
+          <GraduationCap size={18} />
+          <h2>Academic Record</h2>
+        </div>
+        <div class="cgpa-chip">
+          CGPA: <strong>{data.cgpa?.toFixed(2)}</strong>
+          <span class="cgpa-class">{
+            data.cgpa >= 4.5 ? 'First Class' :
+            data.cgpa >= 3.5 ? '2nd Upper' :
+            data.cgpa >= 2.5 ? '2nd Lower' :
+            data.cgpa >= 1.5 ? 'Third Class' : 'Pass'
+          }</span>
+        </div>
+      </div>
+
+      {#each data.semesters as sem}
+        <div class="sem-block">
+          <div class="sem-head">
+            <span class="sem-label">{sem.label}</span>
+            <span class="sem-gpa">GPA: {sem.gpa.toFixed(2)}</span>
+          </div>
+          <div class="sem-table-wrap">
+            <table class="sem-table">
+              <thead>
+                <tr>
+                  <th>Code</th><th>Course</th><th>Units</th>
+                  <th>Score</th><th>Grade</th><th>Points</th><th>Status</th>
+                </tr>
+              </thead>
+              <tbody>
+                {#each sem.courses as c}
+                  <tr>
+                    <td class="tc-code">{c.code}</td>
+                    <td class="tc-title">
+                      {#if c.resultId}
+                        <a href="/student/results/{c.resultId}">{c.title}</a>
+                      {:else}{c.title}{/if}
+                    </td>
+                    <td class="tc-center">{c.creditUnits}</td>
+                    <td class="tc-center">{c.percentage != null ? `${Math.round(c.percentage)}%` : 'N/A'}</td>
+                    <td class="tc-center">
+                      {#if c.grade}
+                        <span class="g-pill grade-{c.grade.toLowerCase()}">{c.grade}</span>
+                      {:else}<span class="tc-na">N/A</span>{/if}
+                    </td>
+                    <td class="tc-center">{c.gradePoints ?? 'N/A'}</td>
+                    <td class="tc-center">
+                      {#if c.passed === true}<CheckCircle2 size={13} color="#16a34a" />
+                      {:else if c.passed === false}<XCircle size={13} color="#dc2626" />
+                      {:else}<span class="tc-na">—</span>{/if}
+                    </td>
+                  </tr>
+                {/each}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      {/each}
+    </div>
+  {/if}
+
+  <!-- ── Groq Recommendations ──────────────────────────────── -->
+  {#if data.recommendations}
+    <div class="rec-block">
+      <div class="rec-head">
+        <Award size={16} /><h2>Study Recommendations</h2>
+      </div>
+      <div class="rec-body">
+        {#each data.recommendations.split('\n').filter(l => l.trim()) as line}
+          <p>{line}</p>
+        {/each}
+      </div>
+    </div>
+  {/if}
 
 </div>
 
@@ -1019,4 +1097,48 @@
     .grade-points { display: none; }
     .grade-legend { display: none; }
   }
+
+  /* ── Academic Record ─────────────────────────────────────────────────── */
+  .academic-record { display: flex; flex-direction: column; gap: 1rem; }
+  .ar-header { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: .75rem; }
+  .ar-title { display: flex; align-items: center; gap: .5rem; }
+  .ar-title h2 { font-size: 1rem; font-weight: 800; color: var(--color-text); margin: 0; }
+  .cgpa-chip { display: flex; align-items: center; gap: .5rem; padding: .35rem .875rem; background: color-mix(in srgb,#10b981 10%,var(--color-surface)); border: 1px solid color-mix(in srgb,#10b981 25%,transparent); border-radius: 999px; font-size: .8rem; color: var(--color-text); }
+  .cgpa-chip strong { font-size: 1rem; font-weight: 900; color: #10b981; }
+  .cgpa-class { font-size: .7rem; color: var(--color-muted); font-weight: 600; }
+
+  .sem-block { background: var(--color-surface); border: 1px solid var(--color-border); border-radius: 12px; overflow: hidden; }
+  .sem-head { display: flex; justify-content: space-between; align-items: center; padding: .75rem 1rem; border-bottom: 1px solid var(--color-border); background: var(--color-bg); }
+  .sem-label { font-size: .82rem; font-weight: 800; color: var(--color-text); }
+  .sem-gpa { font-size: .82rem; font-weight: 900; color: #10b981; }
+  .sem-table-wrap { overflow-x: auto; }
+  .sem-table { width: 100%; border-collapse: collapse; font-size: .8rem; }
+  .sem-table th { padding: .5rem .875rem; text-align: left; font-size: .62rem; font-weight: 700; text-transform: uppercase; letter-spacing: .05em; color: var(--color-muted); background: var(--color-bg); border-bottom: 1px solid var(--color-border); }
+  .sem-table td { padding: .625rem .875rem; border-bottom: 1px solid var(--color-border); color: var(--color-text); }
+  .sem-table tr:last-child td { border-bottom: none; }
+  .sem-table tr:hover td { background: color-mix(in srgb,var(--color-border) 25%,transparent); }
+  .tc-code { font-weight: 800; color: #10b981; font-size: .78rem; }
+  .tc-title a { color: var(--color-text); text-decoration: none; font-weight: 600; }
+  .tc-title a:hover { color: #10b981; text-decoration: underline; }
+  .tc-center { text-align: center; }
+  .tc-na { color: var(--color-muted); font-size: .75rem; }
+  .g-pill { padding: .15rem .5rem; border-radius: .3rem; font-weight: 800; font-size: .72rem; }
+  .g-pill.grade-a { background: rgba(22,163,74,.12); color: #065f46; }
+  .g-pill.grade-b { background: rgba(14,165,233,.12); color: #0369a1; }
+  .g-pill.grade-c { background: rgba(245,158,11,.12); color: #92400e; }
+  .g-pill.grade-d { background: rgba(249,115,22,.12); color: #9a3412; }
+  .g-pill.grade-e { background: rgba(234,179,8,.12);  color: #854d0e; }
+  .g-pill.grade-f { background: rgba(220,38,38,.12);  color: #991b1b; }
+  :global(.dark) .g-pill.grade-a { color: #4ade80; background: rgba(22,163,74,.2); }
+  :global(.dark) .g-pill.grade-b { color: #38bdf8; background: rgba(14,165,233,.2); }
+  :global(.dark) .g-pill.grade-c { color: #fbbf24; background: rgba(245,158,11,.2); }
+  :global(.dark) .g-pill.grade-d { color: #fb923c; background: rgba(249,115,22,.2); }
+  :global(.dark) .g-pill.grade-e { color: #fcd34d; background: rgba(234,179,8,.2); }
+  :global(.dark) .g-pill.grade-f { color: #f87171; background: rgba(220,38,38,.2); }
+
+  /* ── Recommendations ─────────────────────────────────────────────────── */
+  .rec-block { background: color-mix(in srgb,#10b981 6%,var(--color-surface)); border: 1px solid color-mix(in srgb,#10b981 22%,transparent); border-radius: 12px; padding: 1.25rem; }
+  .rec-head { display: flex; align-items: center; gap: .5rem; margin-bottom: .875rem; color: #10b981; }
+  .rec-head h2 { font-size: .95rem; font-weight: 800; color: var(--color-text); margin: 0; }
+  .rec-body p { font-size: .82rem; color: var(--color-text); line-height: 1.7; margin: 0 0 .3rem; }
 </style>

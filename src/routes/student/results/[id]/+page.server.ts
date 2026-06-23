@@ -74,18 +74,18 @@ export const load: PageServerLoad = async ({ params, locals }) => {
   }[] = [];
 
   if (result.session?.studentAnswers && result.session.studentAnswers.length > 0) {
-    const topicMap = new Map<string, { 
-      correct: number; 
-      wrong: number; 
-      total: number; 
+    const topicMap = new Map<string, {
+      correct: number;
+      wrong: number;
+      total: number;
       totalTime: number;
-      name: string 
+      name: string
     }>();
 
     for (const answer of result.session.studentAnswers) {
       const topicName = answer.question.topic || 'Uncategorized';
       const isCorrect = answer.isCorrect || false;
-      
+
       if (!topicMap.has(topicName)) {
         topicMap.set(topicName, {
           correct: 0,
@@ -109,7 +109,7 @@ export const load: PageServerLoad = async ({ params, locals }) => {
     for (const [id, topic] of topicMap) {
       const percentage = topic.total > 0 ? (topic.correct / topic.total) * 100 : 0;
       const avgTime = topic.total > 0 ? Math.round(topic.totalTime / topic.total) : 0;
-      
+
       topicAnalysis.push({
         id: id,
         name: topic.name,
@@ -132,8 +132,8 @@ export const load: PageServerLoad = async ({ params, locals }) => {
       totalQuestions: result.totalQuestions || 0,
       correctAnswers: result.correct || 0,
       wrongAnswers: (result.answered || 0) - (result.correct || 0),
-      avgTimePerQuestion: result.totalQuestions && result.timeTakenSecs 
-        ? Math.round(result.timeTakenSecs / result.totalQuestions) 
+      avgTimePerQuestion: result.totalQuestions && result.timeTakenSecs
+        ? Math.round(result.timeTakenSecs / result.totalQuestions)
         : 0,
       percentile: null,
       examId: result.examId,
@@ -143,7 +143,16 @@ export const load: PageServerLoad = async ({ params, locals }) => {
       grade: result.grade || null,
       submittedAt: result.submittedAt || null,
       answered: result.answered || 0,
-      violationCount: result.violationCount || 0
+      violationCount: result.violationCount || 0,
+      // add to the return object, inside result:
+      creditUnits: result.exam?.course?.creditUnits ?? null,
+      caScore: result.caScore != null ? Number(result.caScore) : null,
+      caMaxScore: result.caMaxScore != null ? Number(result.caMaxScore) : null,
+      finalScore: result.finalScore != null ? Number(result.finalScore) : null,
+      finalGrade: result.finalGrade ?? null,
+      finalPassed: result.finalPassed ?? null,
+      session: result.exam?.session ?? null,
+      semester: result.exam?.semester ?? null,
     },
     exam: result.exam ? {
       id: result.exam.id,
