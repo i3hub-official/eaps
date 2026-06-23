@@ -147,14 +147,6 @@
 	}
 
 	// ─── SSE — real-time backend commands ─────────────────────────────────────
-	// The server pushes events to this stream whenever session state changes:
-	//   { event: 'status', data: { status, timeRemaining?, action? } }
-	//
-	// Handles:
-	//   paused / unpaused   — invigilator toggled the session
-	//   force_submitted     — admin/invigilator auto-submitted
-	//   flagged             — session locked pending review
-	//   time_update         — authoritative timer correction
 	let sseSource: EventSource | null = null;
 	let sseReconnectTimer: ReturnType<typeof setTimeout> | null = null;
 	let sseConnected = $state(false);
@@ -190,7 +182,6 @@
 			sseConnected = false;
 			sseSource?.close();
 			sseSource = null;
-			// Reconnect after 5 s (capped at 30 s via exponential back-off handled by browser)
 			if (step === 'exam' || step === 'paused') {
 				sseReconnectTimer = setTimeout(connectSSE, 5_000);
 			}
@@ -209,22 +200,15 @@
 		sseConnected = false;
 	}
 
-	/**
-	 * Central handler for any server-pushed status change.
-	 * Called from both SSE events and the polling sync.
-	 */
 	function applyServerStatus(status: string, serverTimeRemaining?: number, action?: string) {
 		switch (status) {
 			case 'in_progress':
-				// Resume from paused — re-enter exam
 				if (step === 'paused') {
 					step = 'exam';
-					// Restart timer with server value
 					if (typeof serverTimeRemaining === 'number') timeRemaining = serverTimeRemaining;
 					startLocalTimer();
 					startTimerSync();
 				} else if (typeof serverTimeRemaining === 'number') {
-					// Timer correction — only apply if drift > 3 s
 					if (Math.abs(timeRemaining - serverTimeRemaining) > 3) {
 						timeRemaining = serverTimeRemaining;
 					}
@@ -332,9 +316,6 @@
   type: ClientQuestion['type'],
   value: string
 ) {
-  // selectedOption: mcq and true_false (answer is an option ID)
-  // textAnswer: everything else (fill_in_the_blank, essay, generic)
-  // Failsafe: if type is unrecognized, default to selectedOption (mcq is the only type in use)
   const isOption = type === 'mcq' || type === 'true_false';
   return {
     sessionId,
@@ -360,22 +341,6 @@
 		for (const item of batch) {
 			if (!item.questionId) continue;
 			try {
-				// const body =
-				// 	item.type === 'mcq'
-				// 		? {
-				// 				sessionId,
-				// 				questionId: item.questionId,
-				// 				selectedOption: item.value,
-				// 				textAnswer: null,
-				// 				timeSpentSecs: 0
-				// 			}
-				// 		: {
-				// 				sessionId,
-				// 				questionId: item.questionId,
-				// 				selectedOption: null,
-				// 				textAnswer: item.value,
-				// 				timeSpentSecs: 0
-				// 			};
 				const res = await fetch(`/api/exam/${data.examId}/answer`, {
 					method: 'POST',
 					headers: { 'Content-Type': 'application/json' },
@@ -429,7 +394,6 @@
 		await submitExam();
 	}
 
-	// Called whenever we know the session is definitively submitted (local or server).
 	async function handleServerSubmitted() {
 		if (!sessionId) return;
 		clearSession(sessionId);
@@ -439,7 +403,6 @@
 		await exitFullscreen();
 		notifyOpener('submitted');
 
-		// Fetch result to check showResultAfter
 		if (data.exam.showResultAfter) {
 			await fetchResult();
 			step = 'results';
@@ -565,7 +528,7 @@ async function saveAnswer(idx: number, value: string) {
   persistSession(buildPersistedState());
   const questionId   = question.id;
   const questionType = question.type;
-  const sid          = sessionId; // narrowed to string
+  const sid          = sessionId;
 
   if (!isOnline) {
     const queued = { index: idx, questionId, value, type: questionType };
@@ -694,22 +657,6 @@ async function saveAnswer(idx: number, value: string) {
 			if (!sessionId || step !== 'exam') return;
 			for (const item of offlineQueue) {
 				if (!item.questionId) continue;
-				// const body =
-				// 	item.type === 'mcq'
-				// 		? {
-				// 				sessionId,
-				// 				questionId: item.questionId,
-				// 				selectedOption: item.value,
-				// 				textAnswer: null,
-				// 				timeSpentSecs: 0
-				// 			}
-				// 		: {
-				// 				sessionId,
-				// 				questionId: item.questionId,
-				// 				selectedOption: null,
-				// 				textAnswer: item.value,
-				// 				timeSpentSecs: 0
-				// 			};
 				navigator.sendBeacon(
 					`/api/exam/${data.examId}/answer`,
 					JSON.stringify(buildAnswerBody(sessionId, item.questionId, item.type, item.value))
@@ -719,7 +666,6 @@ async function saveAnswer(idx: number, value: string) {
 	}
 
 	// ─── Lifecycle ─────────────────────────────────────────────────────────────
-	// ─── onMount — go to lobby instead of direct startExam ───────────────────
 	onMount(() => {
 		isOnline = navigator.onLine;
 		window.addEventListener('online', () => {
@@ -741,7 +687,6 @@ async function saveAnswer(idx: number, value: string) {
 		} else if (s === 'paused') {
 			step = 'paused';
 		} else if (s === 'in_progress' && data.sessionId) {
-			// Resume: skip lobby for in-progress sessions — face was already verified
 			sessionId = data.sessionId;
 			const stored = loadSession(data.sessionId);
 			if (stored) {
@@ -754,7 +699,6 @@ async function saveAnswer(idx: number, value: string) {
 			connectSSE();
 			void fetchQuestion(currentIndex);
 		} else {
-			// Fresh start — go to lobby first
 			step = 'lobby';
 		}
 
@@ -1011,11 +955,7 @@ async function saveAnswer(idx: number, value: string) {
 				{/if}
 
 				<div class="student-card">
-					{#if data.student.photoUrl}
 						<img src={data.student.photoUrl} alt={data.student.name} class="student-photo" />
-					{:else}
-						<div class="student-photo-placeholder"><User size={20} /></div>
-					{/if}
 					<div class="student-info">
 						<span class="student-name">{data.student.name}</span>
 						<span class="student-matric">{data.student.matricNumber ?? ''}</span>
@@ -1037,7 +977,7 @@ async function saveAnswer(idx: number, value: string) {
 						></div>
 					</div>
 					<div class="timer-display">
-						<Clock size={14} />
+						<Clock size={16} />
 						<span class="timer-digits">{formatTime(timeRemaining)}</span>
 					</div>
 					{#if timerWarning && !timerCritical}
@@ -1176,38 +1116,45 @@ async function saveAnswer(idx: number, value: string) {
 							</div>
 						{/if}
 
+						<!-- MOVED: Navigation buttons - NOW AT BOTTOM WITH LARGER FONTS -->
 						<div class="question-footer">
-							<button
-								class="btn-nav btn-prev"
-								disabled={currentIndex === 0 || questionLoading}
-								onclick={goPrev}
-								tabindex="-1"
-							>
-								<ChevronLeft size={18} /> Previous <kbd>P</kbd>
-							</button>
-							<div class="footer-center">
-								{#if !isOnline}<span class="offline-text">Offline — saved locally</span>{/if}
+							<div class="nav-buttons-wrapper">
+								<button
+									class="btn-nav btn-prev"
+									disabled={currentIndex === 0 || questionLoading}
+									onclick={goPrev}
+									tabindex="-1"
+								>
+									<ChevronLeft size={22} /> Previous
+								</button>
+								
+								<div class="footer-center">
+									<span class="question-counter-lg">{currentIndex + 1} / {totalQuestions}</span>
+									{#if !isOnline}
+										<span class="offline-text">Offline — saved locally</span>
+									{/if}
+								</div>
+
+								{#if currentIndex < totalQuestions - 1}
+									<button
+										class="btn-nav btn-next"
+										disabled={questionLoading}
+										onclick={goNext}
+										tabindex="-1"
+									>
+										Next <ChevronRight size={22} />
+									</button>
+								{:else}
+									<button
+										class="btn-nav btn-submit-footer"
+										disabled={isSubmitting}
+										onclick={() => (showSubmitConfirm = true)}
+										tabindex="-1"
+									>
+										<Send size={18} /> Submit Exam
+									</button>
+								{/if}
 							</div>
-							{#if currentIndex < totalQuestions - 1}
-								<button
-									class="btn-nav btn-next"
-									disabled={questionLoading}
-									onclick={goNext}
-									tabindex="-1"
-								>
-									Next <kbd>N</kbd>
-									<ChevronRight size={18} />
-								</button>
-							{:else}
-								<button
-									class="btn-nav btn-submit-footer"
-									disabled={isSubmitting}
-									onclick={() => (showSubmitConfirm = true)}
-									tabindex="-1"
-								>
-									<Send size={16} /> Submit <kbd>S</kbd>
-								</button>
-							{/if}
 						</div>
 					</div>
 				{/if}
@@ -1398,7 +1345,7 @@ async function saveAnswer(idx: number, value: string) {
 		color: var(--color-muted);
 	}
 	.splash p {
-		font-size: 1rem;
+		font-size: 1.2rem;
 		font-weight: 600;
 		color: var(--color-text);
 	}
@@ -1406,7 +1353,7 @@ async function saveAnswer(idx: number, value: string) {
 		display: flex;
 		align-items: center;
 		gap: 0.5rem;
-		font-size: 0.85rem;
+		font-size: 0.95rem;
 		color: #dc2626;
 		background: color-mix(in srgb, #ef4444 8%, var(--color-surface));
 		border: 1px solid color-mix(in srgb, #ef4444 30%, transparent);
@@ -1420,7 +1367,7 @@ async function saveAnswer(idx: number, value: string) {
 		color: white;
 		border: none;
 		border-radius: 0.375rem;
-		font-size: 0.78rem;
+		font-size: 0.88rem;
 		font-weight: 700;
 		cursor: pointer;
 	}
@@ -1434,7 +1381,7 @@ async function saveAnswer(idx: number, value: string) {
 		display: flex;
 		align-items: center;
 		gap: 0.4rem;
-		font-size: 0.68rem;
+		font-size: 0.78rem;
 		font-weight: 700;
 		padding: 0.3rem 0.7rem;
 		border-radius: 999px;
@@ -1488,7 +1435,7 @@ async function saveAnswer(idx: number, value: string) {
 		display: flex;
 		align-items: center;
 		gap: 0.4rem;
-		font-size: 0.65rem;
+		font-size: 0.75rem;
 		font-weight: 800;
 		text-transform: uppercase;
 		letter-spacing: 0.05em;
@@ -1510,16 +1457,16 @@ async function saveAnswer(idx: number, value: string) {
 		border-radius: 0.75rem;
 	}
 	.student-photo {
-		width: 38px;
-		height: 38px;
+		width: 42px;
+		height: 42px;
 		border-radius: 50%;
 		object-fit: cover;
 		border: 2px solid var(--accent, #10b981);
 		flex-shrink: 0;
 	}
 	.student-photo-placeholder {
-		width: 38px;
-		height: 38px;
+		width: 42px;
+		height: 42px;
 		border-radius: 50%;
 		background: var(--color-bg);
 		border: 2px solid var(--color-border);
@@ -1535,7 +1482,7 @@ async function saveAnswer(idx: number, value: string) {
 		min-width: 0;
 	}
 	.student-name {
-		font-size: 0.75rem;
+		font-size: 0.85rem;
 		font-weight: 800;
 		color: var(--color-text);
 		white-space: nowrap;
@@ -1543,7 +1490,7 @@ async function saveAnswer(idx: number, value: string) {
 		text-overflow: ellipsis;
 	}
 	.student-matric {
-		font-size: 0.68rem;
+		font-size: 0.75rem;
 		color: var(--color-muted);
 		font-weight: 600;
 	}
@@ -1558,14 +1505,14 @@ async function saveAnswer(idx: number, value: string) {
 		border-radius: 0.625rem;
 	}
 	.exam-code-pill {
-		font-size: 0.65rem;
+		font-size: 0.75rem;
 		font-weight: 800;
 		text-transform: uppercase;
 		letter-spacing: 0.06em;
 		color: var(--accent, #10b981);
 	}
 	.exam-title-text {
-		font-size: 0.78rem;
+		font-size: 0.88rem;
 		font-weight: 700;
 		color: var(--color-text);
 		line-height: 1.3;
@@ -1626,7 +1573,7 @@ async function saveAnswer(idx: number, value: string) {
 		color: var(--color-text);
 	}
 	.timer-digits {
-		font-size: 1.6rem;
+		font-size: 1.8rem;
 		font-weight: 900;
 		font-variant-numeric: tabular-nums;
 		letter-spacing: -0.02em;
@@ -1639,7 +1586,7 @@ async function saveAnswer(idx: number, value: string) {
 		color: #dc2626;
 	}
 	.timer-hint {
-		font-size: 0.68rem;
+		font-size: 0.78rem;
 		font-weight: 700;
 		margin-top: 0.375rem;
 		padding: 0.2rem 0.5rem;
@@ -1666,14 +1613,14 @@ async function saveAnswer(idx: number, value: string) {
 		align-items: center;
 	}
 	.progress-label {
-		font-size: 0.7rem;
+		font-size: 0.8rem;
 		font-weight: 600;
 		color: var(--color-muted);
 		text-transform: uppercase;
 		letter-spacing: 0.05em;
 	}
 	.progress-val {
-		font-size: 0.78rem;
+		font-size: 0.88rem;
 		font-weight: 800;
 		color: var(--color-text);
 	}
@@ -1699,7 +1646,7 @@ async function saveAnswer(idx: number, value: string) {
 		display: flex;
 		align-items: center;
 		gap: 0.5rem;
-		font-size: 0.62rem;
+		font-size: 0.72rem;
 		color: var(--color-muted);
 		font-weight: 600;
 		flex-wrap: wrap;
@@ -1730,7 +1677,7 @@ async function saveAnswer(idx: number, value: string) {
 		border: 1.5px solid var(--color-border);
 		background: var(--color-bg);
 		color: var(--color-muted);
-		font-size: 0.68rem;
+		font-size: 0.78rem;
 		font-weight: 700;
 		cursor: pointer;
 		transition: all 0.12s;
@@ -1758,7 +1705,7 @@ async function saveAnswer(idx: number, value: string) {
 
 	.offline-bar,
 	.syncing-bar {
-		font-size: 0.7rem;
+		font-size: 0.8rem;
 		font-weight: 700;
 		text-align: center;
 		padding: 0.4rem 0.75rem;
@@ -1779,7 +1726,7 @@ async function saveAnswer(idx: number, value: string) {
 		display: flex;
 		align-items: center;
 		gap: 0.35rem;
-		font-size: 0.72rem;
+		font-size: 0.82rem;
 		font-weight: 700;
 		padding: 0.35rem 0.75rem;
 		border-radius: 0.5rem;
@@ -1804,7 +1751,7 @@ async function saveAnswer(idx: number, value: string) {
 		color: white;
 		border: none;
 		border-radius: 0.75rem;
-		font-size: 0.85rem;
+		font-size: 0.95rem;
 		font-weight: 800;
 		cursor: pointer;
 		font-family: inherit;
@@ -1814,7 +1761,7 @@ async function saveAnswer(idx: number, value: string) {
 		filter: brightness(0.88);
 	}
 	.btn-submit-side kbd {
-		font-size: 0.62rem;
+		font-size: 0.72rem;
 		padding: 0.1rem 0.35rem;
 		background: rgba(255, 255, 255, 0.2);
 		border-radius: 3px;
@@ -1831,7 +1778,7 @@ async function saveAnswer(idx: number, value: string) {
 		margin-top: auto;
 	}
 	.key-row {
-		font-size: 0.65rem;
+		font-size: 0.75rem;
 		color: var(--color-muted);
 		display: flex;
 		align-items: center;
@@ -1839,7 +1786,7 @@ async function saveAnswer(idx: number, value: string) {
 		flex-wrap: wrap;
 	}
 	.key-row kbd {
-		font-size: 0.6rem;
+		font-size: 0.7rem;
 		padding: 0.1rem 0.35rem;
 		background: var(--color-surface);
 		border: 1px solid var(--color-border);
@@ -1871,7 +1818,7 @@ async function saveAnswer(idx: number, value: string) {
 		color: #dc2626;
 	}
 	.q-error p {
-		font-size: 0.95rem;
+		font-size: 1.05rem;
 		font-weight: 600;
 		margin: 0;
 	}
@@ -1885,7 +1832,7 @@ async function saveAnswer(idx: number, value: string) {
 		border: 1.5px solid var(--color-border);
 		border-radius: 0.625rem;
 		font-weight: 700;
-		font-size: 0.875rem;
+		font-size: 0.95rem;
 		cursor: pointer;
 		font-family: inherit;
 	}
@@ -1909,13 +1856,13 @@ async function saveAnswer(idx: number, value: string) {
 		gap: 0.5rem;
 	}
 	.q-number {
-		font-size: 1rem;
+		font-size: 1.15rem;
 		font-weight: 900;
 		color: var(--color-text);
 		letter-spacing: -0.01em;
 	}
 	.q-of {
-		font-size: 0.8rem;
+		font-size: 0.9rem;
 		color: var(--color-muted);
 		font-weight: 600;
 	}
@@ -1925,7 +1872,7 @@ async function saveAnswer(idx: number, value: string) {
 		gap: 0.75rem;
 	}
 	.q-marks {
-		font-size: 0.78rem;
+		font-size: 0.88rem;
 		font-weight: 700;
 		padding: 0.25rem 0.65rem;
 		background: color-mix(in srgb, var(--accent, #10b981) 12%, transparent);
@@ -1936,7 +1883,7 @@ async function saveAnswer(idx: number, value: string) {
 		display: flex;
 		align-items: center;
 		gap: 0.3rem;
-		font-size: 0.72rem;
+		font-size: 0.82rem;
 		font-weight: 700;
 		color: var(--accent, #10b981);
 		background: color-mix(in srgb, var(--accent, #10b981) 10%, transparent);
@@ -1948,8 +1895,8 @@ async function saveAnswer(idx: number, value: string) {
 		flex-shrink: 0;
 	}
 	.question-text {
-		font-size: 1.25rem;
-		line-height: 1.75;
+		font-size: 1.4rem;
+		line-height: 1.8;
 		color: var(--color-text);
 		font-weight: 500;
 		margin: 0;
@@ -1973,7 +1920,7 @@ async function saveAnswer(idx: number, value: string) {
 		display: flex;
 		align-items: center;
 		gap: 1rem;
-		padding: 1rem 1.25rem;
+		padding: 1.1rem 1.25rem;
 		background: var(--color-surface);
 		border: 1.5px solid var(--color-border);
 		border-radius: 0.875rem;
@@ -1994,14 +1941,14 @@ async function saveAnswer(idx: number, value: string) {
 		background: color-mix(in srgb, var(--accent, #10b981) 10%, var(--color-surface));
 	}
 	.option-letter {
-		width: 36px;
-		height: 36px;
+		width: 38px;
+		height: 38px;
 		border-radius: 50%;
 		border: 1.5px solid var(--color-border);
 		display: flex;
 		align-items: center;
 		justify-content: center;
-		font-size: 0.88rem;
+		font-size: 0.95rem;
 		font-weight: 900;
 		flex-shrink: 0;
 		color: var(--color-muted);
@@ -2014,7 +1961,7 @@ async function saveAnswer(idx: number, value: string) {
 	}
 	.option-text {
 		flex: 1;
-		font-size: 1rem;
+		font-size: 1.1rem;
 		line-height: 1.5;
 	}
 	.option-btn :global(.option-check) {
@@ -2029,13 +1976,13 @@ async function saveAnswer(idx: number, value: string) {
 		flex-shrink: 0;
 	}
 	.fitb-label {
-		font-size: 0.78rem;
+		font-size: 0.88rem;
 		font-weight: 700;
 		color: var(--color-muted);
 	}
 	.fitb-input {
 		padding: 1rem 1.25rem;
-		font-size: 1.1rem;
+		font-size: 1.2rem;
 		font-family: inherit;
 		color: var(--color-text);
 		background: var(--color-surface);
@@ -2048,77 +1995,112 @@ async function saveAnswer(idx: number, value: string) {
 	.fitb-input:focus {
 		border-color: var(--accent, #10b981);
 	}
+
+	/* ── NEW: Footer with prominent navigation buttons ────────────────────── */
 	.question-footer {
+		flex-shrink: 0;
+		margin-top: auto;
+		padding-top: 1.25rem;
+		border-top: 2px solid var(--color-border);
+	}
+
+	.nav-buttons-wrapper {
 		display: flex;
 		align-items: center;
 		justify-content: space-between;
-		padding-top: 1rem;
-		border-top: 1px solid var(--color-border);
-		flex-shrink: 0;
-		margin-top: auto;
 		gap: 1rem;
 	}
+
 	.footer-center {
-		flex: 1;
-		text-align: center;
+		display: flex;
+		flex-direction: column;
+		align-items: center;
+		gap: 0.25rem;
 	}
+
+	.question-counter-lg {
+		font-size: 1.1rem;
+		font-weight: 800;
+		color: var(--color-text);
+	}
+
 	.offline-text {
-		font-size: 0.78rem;
+		font-size: 0.85rem;
 		color: #dc2626;
 		font-weight: 600;
 	}
+
 	.btn-nav {
 		display: inline-flex;
 		align-items: center;
-		gap: 0.5rem;
-		padding: 0.75rem 1.5rem;
+		gap: 0.75rem;
+		padding: 0.9rem 2rem;
 		border-radius: 0.75rem;
-		font-size: 0.9rem;
-		font-weight: 700;
+		font-size: 1.05rem;
+		font-weight: 800;
 		cursor: pointer;
 		font-family: inherit;
 		transition: all 0.2s;
-		border: 1.5px solid var(--color-border);
+		border: 2px solid var(--color-border);
 		background: var(--color-surface);
 		color: var(--color-text);
+		min-width: 140px;
+		justify-content: center;
 	}
+
 	.btn-nav:disabled {
 		opacity: 0.35;
 		cursor: not-allowed;
 	}
+
 	.btn-nav kbd {
-		font-size: 0.65rem;
-		padding: 0.1rem 0.35rem;
+		font-size: 0.72rem;
+		padding: 0.1rem 0.4rem;
 		background: rgba(0, 0, 0, 0.06);
 		border-radius: 3px;
 		font-family: monospace;
 	}
+
 	.btn-prev:hover:not(:disabled) {
 		border-color: var(--accent, #10b981);
 		color: var(--accent, #10b981);
+		background: color-mix(in srgb, var(--accent, #10b981) 5%, var(--color-surface));
 	}
+
 	.btn-next {
 		background: var(--accent, #10b981);
 		color: white;
 		border-color: var(--accent, #10b981);
 	}
+
 	.btn-next:hover:not(:disabled) {
 		filter: brightness(0.9);
+		transform: translateY(-2px);
+		box-shadow: 0 4px 16px color-mix(in srgb, var(--accent, #10b981) 30%, transparent);
 	}
+
 	.btn-next kbd {
 		background: rgba(255, 255, 255, 0.2);
 	}
+
 	.btn-submit-footer {
 		background: color-mix(in srgb, var(--accent, #10b981) 85%, #000);
 		color: white;
 		border-color: transparent;
+		font-size: 1.05rem;
+		min-width: 160px;
 	}
+
 	.btn-submit-footer:hover:not(:disabled) {
 		filter: brightness(0.9);
+		transform: translateY(-2px);
+		box-shadow: 0 4px 16px color-mix(in srgb, var(--accent, #10b981) 30%, transparent);
 	}
+
 	.btn-submit-footer:disabled {
 		opacity: 0.5;
 	}
+
 	.btn-submit-footer kbd {
 		background: rgba(255, 255, 255, 0.2);
 	}
@@ -2148,7 +2130,7 @@ async function saveAnswer(idx: number, value: string) {
 		box-shadow: 0 24px 64px rgb(0 0 0/0.2);
 	}
 	.confirm-modal h2 {
-		font-size: 1.15rem;
+		font-size: 1.25rem;
 		font-weight: 900;
 		margin: 0;
 		color: var(--color-text);
@@ -2157,7 +2139,7 @@ async function saveAnswer(idx: number, value: string) {
 		display: flex;
 		align-items: center;
 		gap: 0.5rem;
-		font-size: 0.875rem;
+		font-size: 0.95rem;
 		background: color-mix(in srgb, #f59e0b 8%, var(--color-surface));
 		color: #92400e;
 		border: 1px solid color-mix(in srgb, #f59e0b 30%, transparent);
@@ -2166,17 +2148,17 @@ async function saveAnswer(idx: number, value: string) {
 		margin: 0;
 	}
 	.confirm-ok {
-		font-size: 0.875rem;
+		font-size: 0.95rem;
 		color: var(--color-muted);
 		margin: 0;
 	}
 	.submit-err {
-		font-size: 0.8rem;
+		font-size: 0.9rem;
 		color: #dc2626;
 		margin: 0;
 	}
 	.confirm-keys {
-		font-size: 0.72rem;
+		font-size: 0.82rem;
 		color: var(--color-muted);
 	}
 	.confirm-keys kbd {
@@ -2185,7 +2167,7 @@ async function saveAnswer(idx: number, value: string) {
 		border: 1px solid var(--color-border);
 		border-radius: 3px;
 		font-family: monospace;
-		font-size: 0.7rem;
+		font-size: 0.8rem;
 	}
 	.confirm-actions {
 		display: flex;
@@ -2202,12 +2184,12 @@ async function saveAnswer(idx: number, value: string) {
 		border: 1.5px solid var(--color-border);
 		border-radius: 0.625rem;
 		font-weight: 700;
-		font-size: 0.875rem;
+		font-size: 0.95rem;
 		cursor: pointer;
 		font-family: inherit;
 	}
 	.btn-cancel kbd {
-		font-size: 0.65rem;
+		font-size: 0.72rem;
 		padding: 0.1rem 0.3rem;
 		background: var(--color-surface);
 		border: 1px solid var(--color-border);
@@ -2227,7 +2209,7 @@ async function saveAnswer(idx: number, value: string) {
 		border: none;
 		border-radius: 0.625rem;
 		font-weight: 800;
-		font-size: 0.875rem;
+		font-size: 0.95rem;
 		cursor: pointer;
 		font-family: inherit;
 		transition: filter 0.2s;
@@ -2240,7 +2222,7 @@ async function saveAnswer(idx: number, value: string) {
 		cursor: not-allowed;
 	}
 	.btn-submit-confirm kbd {
-		font-size: 0.65rem;
+		font-size: 0.72rem;
 		padding: 0.1rem 0.3rem;
 		background: rgba(255, 255, 255, 0.2);
 		border-radius: 3px;
@@ -2289,16 +2271,16 @@ async function saveAnswer(idx: number, value: string) {
 		margin: 0;
 	}
 	.terminal-card p {
-		font-size: 0.95rem;
+		font-size: 1.05rem;
 		color: var(--color-muted);
 		margin: 0;
 		line-height: 1.6;
 	}
 	.terminal-sub {
-		font-size: 0.85rem;
+		font-size: 0.95rem;
 	}
 	.terminal-close {
-		font-size: 0.78rem;
+		font-size: 0.88rem;
 		font-weight: 700;
 		color: var(--color-muted);
 		padding: 0.5rem 1rem;
@@ -2338,7 +2320,7 @@ async function saveAnswer(idx: number, value: string) {
 		display: flex;
 		align-items: center;
 		gap: 0.5rem;
-		font-size: 0.82rem;
+		font-size: 0.92rem;
 		color: var(--color-muted);
 		background: var(--color-surface);
 		border: 1px solid var(--color-border);
@@ -2354,7 +2336,7 @@ async function saveAnswer(idx: number, value: string) {
 		flex-direction: column;
 		gap: 0.5rem;
 		align-items: center;
-		font-size: 0.8rem;
+		font-size: 0.9rem;
 		color: var(--color-muted);
 	}
 	.redirect-bar {
@@ -2394,7 +2376,7 @@ async function saveAnswer(idx: number, value: string) {
 		border: 1.5px solid var(--color-border);
 		border-radius: 0.625rem;
 		font-weight: 700;
-		font-size: 0.875rem;
+		font-size: 0.95rem;
 		cursor: pointer;
 		font-family: inherit;
 		transition: background 0.15s;
@@ -2431,14 +2413,14 @@ async function saveAnswer(idx: number, value: string) {
 		gap: 0.25rem;
 	}
 	.results-course {
-		font-size: 0.68rem;
+		font-size: 0.78rem;
 		font-weight: 800;
 		text-transform: uppercase;
 		letter-spacing: 0.06em;
 		color: var(--accent, #10b981);
 	}
 	.results-title {
-		font-size: 1.1rem;
+		font-size: 1.2rem;
 		font-weight: 900;
 		color: var(--color-text);
 		margin: 0;
@@ -2452,7 +2434,7 @@ async function saveAnswer(idx: number, value: string) {
 		align-items: center;
 		gap: 0.75rem;
 		padding: 2.5rem;
-		font-size: 0.9rem;
+		font-size: 1rem;
 		color: var(--color-muted);
 		justify-content: center;
 	}
@@ -2461,7 +2443,7 @@ async function saveAnswer(idx: number, value: string) {
 		align-items: center;
 		gap: 0.625rem;
 		padding: 1.5rem;
-		font-size: 0.88rem;
+		font-size: 0.95rem;
 		color: #dc2626;
 		background: color-mix(in srgb, #ef4444 6%, var(--color-surface));
 	}
@@ -2520,7 +2502,7 @@ async function saveAnswer(idx: number, value: string) {
 		display: flex;
 		align-items: center;
 		gap: 0.5rem;
-		font-size: 0.95rem;
+		font-size: 1.05rem;
 		font-weight: 800;
 	}
 
@@ -2549,14 +2531,14 @@ async function saveAnswer(idx: number, value: string) {
 		background: color-mix(in srgb, #f59e0b 5%, var(--color-surface));
 	}
 	.stat-label {
-		font-size: 0.7rem;
+		font-size: 0.8rem;
 		font-weight: 700;
 		text-transform: uppercase;
 		letter-spacing: 0.05em;
 		color: var(--color-muted);
 	}
 	.stat-val {
-		font-size: 1.1rem;
+		font-size: 1.2rem;
 		font-weight: 900;
 		color: var(--color-text);
 	}
@@ -2580,7 +2562,7 @@ async function saveAnswer(idx: number, value: string) {
 		border: 1.5px solid var(--color-border);
 		border-radius: 0.625rem;
 		font-weight: 700;
-		font-size: 0.875rem;
+		font-size: 0.95rem;
 		cursor: pointer;
 		font-family: inherit;
 		transition: background 0.15s;
@@ -2598,7 +2580,7 @@ async function saveAnswer(idx: number, value: string) {
 		border: none;
 		border-radius: 0.625rem;
 		font-weight: 700;
-		font-size: 0.875rem;
+		font-size: 0.95rem;
 		cursor: pointer;
 		font-family: inherit;
 		transition: filter 0.15s;
@@ -2652,14 +2634,14 @@ async function saveAnswer(idx: number, value: string) {
 	}
 
 	.lc-title {
-		font-size: 0.82rem;
+		font-size: 0.92rem;
 		font-weight: 700;
 		color: var(--color-text);
 		margin: 0;
 	}
 
 	.lc-sub {
-		font-size: 0.72rem;
+		font-size: 0.82rem;
 		color: var(--color-muted);
 		margin: 0;
 	}
@@ -2698,7 +2680,7 @@ async function saveAnswer(idx: number, value: string) {
 		gap: 0.4rem;
 		padding: 0.3rem 0.75rem;
 		border-radius: 999px;
-		font-size: 0.72rem;
+		font-size: 0.82rem;
 		font-weight: 700;
 		margin-bottom: 1rem;
 	}
@@ -2710,7 +2692,7 @@ async function saveAnswer(idx: number, value: string) {
 	}
 
 	.lobby-title {
-		font-size: 1.35rem;
+		font-size: 1.5rem;
 		font-weight: 900;
 		color: var(--color-text);
 		margin: 0 0 0.3rem;
@@ -2718,7 +2700,7 @@ async function saveAnswer(idx: number, value: string) {
 	}
 
 	.lobby-sub {
-		font-size: 0.85rem;
+		font-size: 0.95rem;
 		color: var(--color-muted);
 		margin: 0;
 	}
@@ -2745,7 +2727,7 @@ async function saveAnswer(idx: number, value: string) {
 	}
 
 	.ep-label {
-		font-size: 0.62rem;
+		font-size: 0.72rem;
 		font-weight: 700;
 		text-transform: uppercase;
 		letter-spacing: 0.06em;
@@ -2753,7 +2735,7 @@ async function saveAnswer(idx: number, value: string) {
 	}
 
 	.ep-value {
-		font-size: 0.92rem;
+		font-size: 1rem;
 		font-weight: 800;
 		color: var(--color-text);
 	}
@@ -2780,13 +2762,13 @@ async function saveAnswer(idx: number, value: string) {
 	}
 
 	.rule-icon {
-		font-size: 1rem;
+		font-size: 1.1rem;
 		flex-shrink: 0;
 		line-height: 1.4;
 	}
 
 	.rule-text {
-		font-size: 0.82rem;
+		font-size: 0.92rem;
 		color: var(--color-text);
 		line-height: 1.55;
 	}
@@ -2800,7 +2782,7 @@ async function saveAnswer(idx: number, value: string) {
 	}
 
 	.instructions-label {
-		font-size: 0.7rem;
+		font-size: 0.8rem;
 		font-weight: 800;
 		text-transform: uppercase;
 		letter-spacing: 0.05em;
@@ -2809,7 +2791,7 @@ async function saveAnswer(idx: number, value: string) {
 	}
 
 	.instructions-text {
-		font-size: 0.82rem;
+		font-size: 0.92rem;
 		color: var(--color-text);
 		line-height: 1.6;
 		margin: 0;
@@ -2829,7 +2811,7 @@ async function saveAnswer(idx: number, value: string) {
 		align-items: flex-start;
 		gap: 0.75rem;
 		cursor: pointer;
-		font-size: 0.82rem;
+		font-size: 0.92rem;
 		color: var(--color-text);
 		line-height: 1.55;
 		font-weight: 500;
@@ -2859,7 +2841,7 @@ async function saveAnswer(idx: number, value: string) {
 		border: 1.5px solid var(--color-border);
 		border-radius: 0.75rem;
 		font-weight: 700;
-		font-size: 0.875rem;
+		font-size: 0.95rem;
 		cursor: pointer;
 		font-family: inherit;
 		transition: all 0.15s;
@@ -2882,7 +2864,7 @@ async function saveAnswer(idx: number, value: string) {
 		border: none;
 		border-radius: 0.75rem;
 		font-weight: 800;
-		font-size: 0.95rem;
+		font-size: 1.05rem;
 		cursor: pointer;
 		font-family: inherit;
 		transition: all 0.2s;
@@ -2921,7 +2903,7 @@ async function saveAnswer(idx: number, value: string) {
 	}
 
 	.ready-text {
-		font-size: 1rem;
+		font-size: 1.1rem;
 		font-weight: 700;
 		color: var(--color-text);
 		margin: 0;

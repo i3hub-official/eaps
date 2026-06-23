@@ -10,7 +10,8 @@
 
   // ── QR code ───────────────────────────────────────────────────────────────
   let canvasEl = $state<HTMLCanvasElement | null>(null);
-  let qrUrl    = $state('');
+  let qrUrl = $state('');
+  let isQrReady = $state(false);
 
   onMount(async () => {
     // Build the full public verification URL from the current page URL
@@ -22,10 +23,11 @@
       const QRCode = (await import('qrcode')).default;
       if (canvasEl) {
         await QRCode.toCanvas(canvasEl, qrUrl, {
-          width:  160,
+          width: 160,
           margin: 2,
-          color:  { dark: '#111827', light: '#ffffff' },
+          color: { dark: '#111827', light: '#ffffff' },
         });
+        isQrReady = true;
       }
     } catch (e) {
       console.warn('QR code generation failed:', e);
@@ -33,26 +35,38 @@
   });
 
   function downloadQR() {
-    if (!canvasEl) return;
-    const link = document.createElement('a');
-    link.download = `result-${v.matricNumber}.png`;
-    link.href = canvasEl.toDataURL('image/png');
-    link.click();
+    if (!canvasEl) {
+      console.warn('Canvas element not ready');
+      return;
+    }
+    try {
+      const link = document.createElement('a');
+      link.download = `result-${v.matricNumber || 'verification'}.png`;
+      link.href = canvasEl.toDataURL('image/png');
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+    } catch (e) {
+      console.error('Failed to download QR code:', e);
+    }
   }
 
   function formatDate(iso: string | null) {
     if (!iso) return 'N/A';
     return new Date(iso).toLocaleDateString('en-NG', {
-      day: 'numeric', month: 'long', year: 'numeric',
+      day: 'numeric',
+      month: 'long',
+      year: 'numeric',
     });
   }
 </script>
 
-<svelte:head><title>Verify Result — MOUAU eTest</title></svelte:head>
+<svelte:head>
+  <title>Verify Result — MOUAU eTest</title>
+</svelte:head>
 
 <div class="verify-page">
   <div class="verify-card">
-
     <div class="verify-header">
       <Shield size={40} color="#10b981" />
       <h1>Result Verification</h1>
@@ -88,7 +102,12 @@
           <canvas bind:this={canvasEl} class="qr-canvas"></canvas>
         </div>
         <p class="qr-label">Scan to verify</p>
-        <button class="qr-download" onclick={downloadQR} type="button">
+        <button 
+          class="qr-download" 
+          onclick={downloadQR} 
+          type="button"
+          disabled={!isQrReady}
+        >
           <Download size={12} /> Save QR
         </button>
       </div>
@@ -106,32 +125,54 @@
 <style>
   .verify-page {
     min-height: 100vh;
-    display: flex; align-items: center; justify-content: center;
+    display: flex;
+    align-items: center;
+    justify-content: center;
     background: var(--color-bg, #f9fafb);
     padding: 2rem 1rem;
   }
 
   .verify-card {
-    width: 100%; max-width: 640px;
+    width: 100%;
+    max-width: 640px;
     background: white;
     border: 1px solid #e5e7eb;
     border-radius: 1.25rem;
     overflow: hidden;
-    box-shadow: 0 8px 32px rgba(0,0,0,.08);
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.08);
   }
 
   /* ── Header ──────────────────────────────────────────────────────────── */
   .verify-header {
-    display: flex; flex-direction: column; align-items: center; gap: .5rem;
-    padding: 2rem; border-bottom: 1px solid #e5e7eb; text-align: center;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 2rem;
+    border-bottom: 1px solid #e5e7eb;
+    text-align: center;
   }
-  .verify-header h1 { font-size: 1.35rem; font-weight: 900; color: #111827; margin: 0; }
-  .verify-header p  { font-size: .8rem; color: #6b7280; margin: 0; }
+  .verify-header h1 {
+    font-size: 1.35rem;
+    font-weight: 900;
+    color: #111827;
+    margin: 0;
+  }
+  .verify-header p {
+    font-size: 0.8rem;
+    color: #6b7280;
+    margin: 0;
+  }
 
   /* ── Status bar ──────────────────────────────────────────────────────── */
   .verify-status {
-    display: flex; align-items: center; justify-content: center; gap: .5rem;
-    padding: .875rem; font-weight: 700; font-size: .9rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+    padding: 0.875rem;
+    font-weight: 700;
+    font-size: 0.9rem;
   }
   .verify-status.pass {
     background: color-mix(in srgb, #10b981 10%, white);
@@ -146,45 +187,68 @@
 
   /* ── Body: result rows + QR side by side ─────────────────────────────── */
   .verify-body {
-    display: flex; align-items: flex-start; gap: 0;
+    display: flex;
+    align-items: stretch;
+    gap: 0;
     padding: 0;
   }
 
   /* ── Result rows ─────────────────────────────────────────────────────── */
   .verify-grid {
     flex: 1;
-    display: flex; flex-direction: column;
+    display: flex;
+    flex-direction: column;
     padding: 1.25rem 1.5rem;
-    gap: .25rem;
+    gap: 0.25rem;
     border-right: 1px solid #f3f4f6;
   }
 
   .vrow {
-    display: flex; justify-content: space-between; align-items: center;
-    padding: .45rem 0; border-bottom: 1px solid #f3f4f6;
-    font-size: .875rem; gap: 1rem;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 0.45rem 0;
+    border-bottom: 1px solid #f3f4f6;
+    font-size: 0.875rem;
+    gap: 1rem;
   }
-  .vrow:last-child { border-bottom: none; }
-  .vrow span   { color: #6b7280; flex-shrink: 0; }
-  .vrow strong { color: #111827; text-align: right; }
+  .vrow:last-child {
+    border-bottom: none;
+  }
+  .vrow span {
+    color: #6b7280;
+    flex-shrink: 0;
+  }
+  .vrow strong {
+    color: #111827;
+    text-align: right;
+    word-break: break-word;
+  }
 
   /* ── QR panel ────────────────────────────────────────────────────────── */
   .qr-panel {
-    flex-shrink: 0; width: 160px;
-    display: flex; flex-direction: column; align-items: center;
-    gap: .625rem;
+    flex-shrink: 0;
+    width: 160px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.625rem;
     padding: 1.25rem 1rem;
     background: #f9fafb;
+    justify-content: center;
   }
 
   .qr-wrap {
-    width: 140px; height: 140px;
+    width: 140px;
+    height: 140px;
     background: white;
     border: 1px solid #e5e7eb;
-    border-radius: .5rem;
-    display: flex; align-items: center; justify-content: center;
+    border-radius: 0.5rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
     overflow: hidden;
-    box-shadow: 0 1px 4px rgba(0,0,0,.06);
+    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.06);
   }
 
   .qr-canvas {
@@ -194,34 +258,105 @@
   }
 
   .qr-label {
-    font-size: .68rem; font-weight: 600;
-    color: #6b7280; text-align: center; margin: 0;
-    text-transform: uppercase; letter-spacing: .04em;
+    font-size: 0.68rem;
+    font-weight: 600;
+    color: #6b7280;
+    text-align: center;
+    margin: 0;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
   }
 
   .qr-download {
-    display: inline-flex; align-items: center; gap: .3rem;
-    padding: .35rem .75rem;
-    background: white; border: 1px solid #e5e7eb;
-    border-radius: .4rem; font-size: .72rem; font-weight: 700;
-    color: #374151; cursor: pointer; font-family: inherit;
-    transition: all .15s;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3rem;
+    padding: 0.35rem 0.75rem;
+    background: white;
+    border: 1px solid #e5e7eb;
+    border-radius: 0.4rem;
+    font-size: 0.72rem;
+    font-weight: 700;
+    color: #374151;
+    cursor: pointer;
+    font-family: inherit;
+    transition: all 0.15s;
   }
-  .qr-download:hover { border-color: #10b981; color: #10b981; }
+
+  .qr-download:hover:not(:disabled) {
+    border-color: #10b981;
+    color: #10b981;
+    background: #f0fdf4;
+  }
+
+  .qr-download:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
 
   /* ── Disclaimer ──────────────────────────────────────────────────────── */
   .verify-disclaimer {
-    display: flex; align-items: flex-start; gap: .5rem;
+    display: flex;
+    align-items: flex-start;
+    gap: 0.5rem;
     padding: 1rem 1.5rem;
     background: #fef3c7;
-    font-size: .72rem; color: #92400e; line-height: 1.55;
+    font-size: 0.72rem;
+    color: #92400e;
+    line-height: 1.55;
     border-top: 1px solid #fde68a;
   }
 
   /* ── Responsive ──────────────────────────────────────────────────────── */
   @media (max-width: 520px) {
-    .verify-body   { flex-direction: column; }
-    .verify-grid   { border-right: none; border-bottom: 1px solid #f3f4f6; }
-    .qr-panel      { width: 100%; flex-direction: row; flex-wrap: wrap; justify-content: center; }
+    .verify-body {
+      flex-direction: column;
+    }
+    .verify-grid {
+      border-right: none;
+      border-bottom: 1px solid #f3f4f6;
+    }
+    .qr-panel {
+      width: 100%;
+      flex-direction: row;
+      flex-wrap: wrap;
+      justify-content: center;
+      padding: 1rem;
+    }
+
+    .qr-wrap {
+      width: 120px;
+      height: 120px;
+    }
+
+    .qr-canvas {
+      width: 120px !important;
+      height: 120px !important;
+    }
+
+    .vrow {
+      font-size: 0.8rem;
+    }
+  }
+
+  @media (max-width: 400px) {
+    .verify-header h1 {
+      font-size: 1.1rem;
+    }
+
+    .verify-grid {
+      padding: 1rem;
+    }
+
+    .vrow {
+      flex-direction: column;
+      align-items: flex-start;
+      gap: 0.2rem;
+    }
+
+    .vrow strong {
+      text-align: left;
+      width: 100%;
+    }
   }
 </style>
