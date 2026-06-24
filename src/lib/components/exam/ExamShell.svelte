@@ -233,31 +233,34 @@
     saveTimeout = setTimeout(() => saveAnswer(ans), 800);
   }
 
-  async function saveAnswer(ans: StudentAnswerInput) {
+async function saveAnswer(ans: StudentAnswerInput) {
     if (!session) return;
     try {
-   async function saveAnswer(idx: number, value: string) {
-  // ...
-  const res = await fetch(`/api/exam/${data.examId}/answer`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ sessionId, questionId, answer: value }),  // ← HERE
-  });
+        const res = await fetch(`/api/exam/${examId}/answer`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                sessionId: session.id,
+                questionId: ans.questionId,
+                selectedOption: ans.selectedOption ?? null,
+                textAnswer: ans.textAnswer ?? null,
+            }),
+        });
 
-      if (res.ok) {
-        const result = await res.json();
-        if (typeof result.timeRemainingSecs === 'number') {
-          timerRef?.sync(result.timeRemainingSecs);
+        if (res.ok) {
+            const result = await res.json();
+            if (typeof result.timeRemainingSecs === 'number') {
+                timerRef?.sync(result.timeRemainingSecs);
+            }
+        } else if (res.status === 410) {
+            await submitExam();
+        } else {
+            queueForRetry(ans);
         }
-      } else if (res.status === 410) {
-        await submitExam();
-      } else {
-        queueForRetry(ans);
-      }
     } catch {
-      queueForRetry(ans);
+        queueForRetry(ans);
     }
-  }
+}
 
   let offlineQueue: StudentAnswerInput[] = [];
   function queueForRetry(ans: StudentAnswerInput) {
@@ -351,6 +354,9 @@
         {examId}
         sessionId={session.id}
         {enrolledDescriptor}
+        maxViolations={3}
+        onAutoSubmit={submitExam}
+        onFlagged={() => goto('/student/exams?examId=' + examId)}
         onViolation={handleViolation}
       />
     {/if}

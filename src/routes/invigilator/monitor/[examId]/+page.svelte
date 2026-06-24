@@ -41,14 +41,9 @@
   let showCameras  = $state(false);
   let expandedFeed = $state<string | null>(null);
 
-  // ── Announcements & chat ──────────────────────────────────────────────────
+  // ── Announcements ──────────────────────────────────────────────────────────
   let announcement = $state('');
   let announceSent = $state(false);
-  interface ChatMsg { session_id: string; from: string; message: string; time: Date; }
-  let chatMessages = $state<ChatMsg[]>([]);
-  let chatTarget   = $state<string | null>(null);
-  let chatInput    = $state('');
-  let unreadChats  = $state<Set<string>>(new Set());
 
   // ── Derived: filter + sort + paginate ────────────────────────────────────
   const filtered = $derived.by(() => {
@@ -193,13 +188,6 @@
           status: msg.status, violation_count: msg.violation_count, updated_at: Date.now(),
         });
         break;
-
-      case 'chat':
-        chatMessages = [...chatMessages, { session_id: msg.session_id, from: msg.from, message: msg.message, time: new Date() }];
-        if (msg.from === 'student' && chatTarget !== msg.session_id) {
-          unreadChats = new Set([...unreadChats, msg.session_id]);
-        }
-        break;
     }
   }
 
@@ -268,20 +256,8 @@
     setTimeout(() => announceSent = false, 2_000);
   }
 
-  function sendChat() {
-    if (!chatInput.trim() || !chatTarget) return;
-    wsSend({ type: 'chat', session_id: chatTarget, from: 'invigilator', message: chatInput.trim() });
-    chatMessages = [...chatMessages, { session_id: chatTarget, from: 'invigilator', message: chatInput.trim(), time: new Date() }];
-    chatInput = '';
-  }
-
   function giveTime(session_id: string, secs: number) {
     wsSend({ type: 'time_correction', session_id, add_secs: secs });
-  }
-
-  function openChat(session_id: string) {
-    chatTarget  = session_id;
-    unreadChats = new Set([...unreadChats].filter(id => id !== session_id));
   }
 
   function toggleSort(field: typeof sortBy) {
@@ -326,41 +302,6 @@
       </div>
     </div>
   {/if}
-{/if}
-
-<!-- ══ CHAT PANEL ══ -->
-{#if chatTarget}
-  {@const msgs    = chatMessages.filter(m => m.session_id === chatTarget)}
-  {@const student = (students as any[]).find((s: any) => s.sessionId === chatTarget)}
-  <div class="chat-panel">
-    <div class="chat-header">
-      <MessageSquare size={13} />
-      <span>{student?.fullName ?? 'Student'}</span>
-      <button class="chat-close" onclick={() => chatTarget = null}><X size={14} /></button>
-    </div>
-    <div class="chat-msgs">
-      {#if msgs.length === 0}
-        <p class="chat-empty">No messages yet.</p>
-      {:else}
-        {#each msgs as m}
-          <div class="chat-msg" class:from-inv={m.from === 'invigilator'}>
-            <span class="chat-bubble">{m.message}</span>
-            <span class="chat-time">{m.time.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}</span>
-          </div>
-        {/each}
-      {/if}
-    </div>
-    <div class="chat-input-row">
-      <input
-        class="chat-input" type="text" placeholder="Message…"
-        bind:value={chatInput}
-        onkeydown={e => e.key === 'Enter' && sendChat()}
-      />
-      <button class="chat-send" onclick={sendChat} disabled={!chatInput.trim()}>
-        <Send size={13} />
-      </button>
-    </div>
-  </div>
 {/if}
 
 <div class="monitor">
@@ -441,10 +382,6 @@
           {announceSent ? '✓' : 'Send'}
         </button>
       </div>
-
-      {#if unreadChats.size > 0}
-        <span class="unread-pill"><MessageSquare size={12} /> {unreadChats.size}</span>
-      {/if}
     </div>
 
     <!-- ══ CAMERA GRID ══ -->
@@ -466,7 +403,6 @@
               {/if}
               <div class="cam-actions">
                 <button class="cam-btn" onclick={() => expandedFeed = sid} title="Expand"><Maximize2 size={11} /></button>
-                <button class="cam-btn" onclick={() => openChat(sid)} title="Chat"><MessageSquare size={11} /></button>
               </div>
             </div>
           {/each}
@@ -533,7 +469,6 @@
       <div class="tile-grid" style="--tile-size: {tileSize}px">
         {#each paginated as s (s.studentId)}
           {@const cfg = sc(s.status)}
-          {@const hasUnread = unreadChats.has(s.sessionId ?? '')}
           <div class="tile" style="width:{tileSize}px">
             <!-- Passport photo -->
             <div class="tile-photo">
@@ -557,9 +492,6 @@
             {#if !isCompleted}
               <div class="tile-actions">
                 {#if s.sessionId}
-                  <button class="ta-btn" onclick={() => openChat(s.sessionId)} class:unread={hasUnread} title="Chat">
-                    <MessageSquare size={12} />
-                  </button>
                   <button class="ta-btn" onclick={() => giveTime(s.sessionId, 300)} title="+5 min">
                     <TimerReset size={12} />
                   </button>
@@ -582,7 +514,6 @@
       <div class="card-grid" style="--card-size: {tileSize}px">
         {#each paginated as s (s.studentId)}
           {@const cfg = sc(s.status)}
-          {@const hasUnread = unreadChats.has(s.sessionId ?? '')}
           <div class="card-item">
             <div class="card-top-row">
               <!-- Passport photo -->
@@ -621,10 +552,6 @@
             {#if !isCompleted}
               <div class="card-actions">
                 {#if s.sessionId}
-                  <button class="ca-btn" onclick={() => openChat(s.sessionId)} class:unread={hasUnread} title="Chat">
-                    <MessageSquare size={12} />
-                    {#if hasUnread}<span class="unread-dot"></span>{/if}
-                  </button>
                   <button class="ca-btn" onclick={() => giveTime(s.sessionId, 300)} title="+5 min">
                     <TimerReset size={12} />
                   </button>
@@ -669,7 +596,6 @@
           <tbody>
             {#each paginated as s (s.studentId)}
               {@const cfg = sc(s.status)}
-              {@const hasUnread = unreadChats.has(s.sessionId ?? '')}
               <tr class="list-row">
                 <td class="td-photo">
                   {#if s.photoUrl}
@@ -709,10 +635,6 @@
                 <td>
                   <div class="list-actions">
                     {#if !isCompleted && s.sessionId}
-                      <button class="la-btn" onclick={() => openChat(s.sessionId)} class:unread={hasUnread} title="Chat">
-                        <MessageSquare size={12} />
-                        {#if hasUnread}<span class="unread-dot"></span>{/if}
-                      </button>
                       <button class="la-btn" onclick={() => giveTime(s.sessionId, 300)} title="+5 min">
                         <TimerReset size={12} />
                       </button>
@@ -877,12 +799,6 @@
   }
   .announce-btn:disabled { opacity: 0.5; cursor: not-allowed; }
   .announce-btn:not(:disabled):hover { filter: brightness(0.9); }
-  .unread-pill {
-    display: inline-flex; align-items: center; gap: 0.3rem;
-    font-size: 0.7rem; font-weight: 700; padding: 0.2rem 0.5rem;
-    background: rgba(220,38,38,0.08); color: #dc2626;
-    border: 1px solid rgba(220,38,38,0.2); border-radius: 999px;
-  }
 
   /* ── Camera grid ─────────────────────────────────────────────────────────── */
   .cam-grid {
@@ -1136,11 +1052,6 @@
   .ta-btn.ok:hover,   .ca-btn.ok:hover,   .la-btn.ok:hover   { background: rgba(22,163,74,0.08); }
   .ta-btn.danger, .ca-btn.danger, .la-btn.danger { color: #dc2626; border-color: rgba(220,38,38,0.3); }
   .ta-btn.danger:hover, .ca-btn.danger:hover, .la-btn.danger:hover { background: rgba(220,38,38,0.08); }
-  .ta-btn.unread, .ca-btn.unread, .la-btn.unread { color: #4f46e5; border-color: rgba(79,70,229,0.3); }
-  .unread-dot {
-    position: absolute; top: 1px; right: 1px;
-    width: 5px; height: 5px; border-radius: 50%; background: #dc2626;
-  }
 
   /* ── Empty ───────────────────────────────────────────────────────────────── */
   .empty {
@@ -1179,42 +1090,6 @@
   .pg-btn.pg-active { background: #4f46e5; border-color: #4f46e5; color: white; }
   .pg-ellipsis { font-size: 0.8rem; color: var(--color-muted); padding: 0 0.25rem; }
   .pg-info { font-size: 0.7rem; color: var(--color-muted); margin-left: 0.5rem; white-space: nowrap; }
-
-  /* ── Chat panel ──────────────────────────────────────────────────────────── */
-  .chat-panel {
-    position: fixed; bottom: 1rem; right: 1rem; z-index: 400;
-    width: min(320px, calc(100vw - 2rem));
-    background: var(--color-surface); border: 1px solid var(--color-border);
-    border-radius: 0.875rem; box-shadow: 0 8px 32px rgba(0,0,0,0.15);
-    display: flex; flex-direction: column; overflow: hidden;
-  }
-  .chat-header {
-    display: flex; align-items: center; gap: 0.4rem;
-    padding: 0.625rem 0.875rem;
-    background: #4f46e5; color: white;
-    font-size: 0.8rem; font-weight: 700;
-  }
-  .chat-close { margin-left: auto; background: none; border: none; color: white; cursor: pointer; display: flex; padding: 0; }
-  .chat-msgs { flex: 1; overflow-y: auto; padding: 0.75rem; display: flex; flex-direction: column; gap: 0.4rem; max-height: 240px; min-height: 80px; }
-  .chat-empty { font-size: 0.75rem; color: var(--color-muted); text-align: center; margin: auto; }
-  .chat-msg { display: flex; flex-direction: column; gap: 0.1rem; }
-  .chat-msg.from-inv { align-items: flex-end; }
-  .chat-bubble { font-size: 0.8rem; padding: 0.375rem 0.625rem; border-radius: 0.5rem; background: var(--color-bg); color: var(--color-text); max-width: 85%; }
-  .chat-msg.from-inv .chat-bubble { background: #4f46e5; color: white; }
-  .chat-time { font-size: 0.58rem; color: var(--color-muted); }
-  .chat-input-row { display: flex; gap: 0.375rem; padding: 0.5rem 0.75rem; border-top: 1px solid var(--color-border); }
-  .chat-input {
-    flex: 1; padding: 0.35rem 0.6rem; border: 1px solid var(--color-border); border-radius: 0.375rem;
-    background: var(--color-bg); color: var(--color-text); font-size: 0.78rem; font-family: inherit; outline: none;
-  }
-  .chat-input:focus { border-color: #4f46e5; }
-  .chat-send {
-    width: 30px; height: 30px; flex-shrink: 0; border-radius: 0.35rem;
-    background: #4f46e5; color: white; border: none; cursor: pointer;
-    display: flex; align-items: center; justify-content: center; transition: filter 0.15s;
-  }
-  .chat-send:disabled { opacity: 0.45; cursor: not-allowed; }
-  .chat-send:not(:disabled):hover { filter: brightness(0.9); }
 
   /* ── Expanded camera overlay ─────────────────────────────────────────────── */
   .overlay-bg {

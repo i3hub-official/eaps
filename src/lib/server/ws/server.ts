@@ -26,7 +26,6 @@ export type WsMessage =
   | { type: 'resume_session';   session_id: string }
   | { type: 'force_submit';     session_id: string }
   | { type: 'time_correction';  session_id: string; add_secs: number }
-  | { type: 'chat';             session_id: string; exam_id?: string; from: 'invigilator' | 'student'; message: string }
   | { type: 'announcement';     exam_id: string; message: string }
   | { type: 'flag_student';     session_id: string; reason: string }
   // Time
@@ -313,21 +312,6 @@ export function getWss(): WebSocketServer {
           const studentWs = studentConns.get(msg.session_id)?.ws;
           if (studentWs?.readyState === WebSocket.OPEN) {
             studentWs.send(JSON.stringify(msg));
-          }
-          return;
-        }
-
-        // ── Direct chat (invigilator ↔ student) ────────────────────
-        if (msg.type === 'chat') {
-          if (msg.from === 'invigilator' && msg.session_id) {
-            // Route to student
-            const studentWs = studentConns.get(msg.session_id)?.ws;
-            if (studentWs?.readyState === WebSocket.OPEN) {
-              studentWs.send(JSON.stringify(msg));
-            }
-          } else if (msg.from === 'student' && joinedExamId) {
-            // Route to all invigilators
-            broadcastToInvigilators(joinedExamId, msg);
           }
           return;
         }
