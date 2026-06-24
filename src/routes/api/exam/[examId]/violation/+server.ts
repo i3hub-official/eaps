@@ -15,8 +15,18 @@ const FLAG_TYPES = [
   'invigilator_manual',
 ] as const;
 
+const SECURITY_VIOLATIONS: FlagType[] = [
+  'tab_switch', 'window_blur', 'fullscreen_exit',
+  'copy_attempt', 'devtools_open', 'screenshot_attempt',
+];
+
+const FACE_VIOLATIONS: FlagType[] = [
+  'multiple_faces', 'no_face_detected', 'face_mismatch',
+];
+
+// Only invigilator manual flag pauses immediately.
 const IMMEDIATE_PAUSE_FLAGS: FlagType[] = [
-  'multiple_faces', 'face_mismatch', 'invigilator_manual',
+  'invigilator_manual',
 ];
 
 const ViolationSchema = z.object({
@@ -71,10 +81,25 @@ export const POST: RequestHandler = async (event) => {
     await flagSession(session.id);
     action        = 'exam_paused';
     sessionStatus = 'flagged';
-  } else if (violationCount >= exam.maxViolations) {
+  } else if (
+    SECURITY_VIOLATIONS.includes(flagType as FlagType) &&
+    violationCount >= exam.maxViolations
+  ) {
+    // Security violations: auto-submit at maxViolations
     await finalizeSession(session.id, 'force_submitted');
     action        = 'auto_submitted';
     sessionStatus = 'force_submitted';
+  } else if (
+    FACE_VIOLATIONS.includes(flagType as FlagType) &&
+    violationCount >= exam.maxViolations * 2
+  ) {
+    // Face violations: auto-submit at double threshold (more lenient)
+    await finalizeSession(session.id, 'force_submitted');
+    action        = 'auto_submitted';
+    sessionStatus = 'force_submitted';
+  } else if (violationCount >= exam.maxViolations) {
+    // Any violation at threshold: alert invigilator
+    action = 'invigilator_alerted';
   } else if (violationCount >= Math.ceil(exam.maxViolations / 2)) {
     action = 'invigilator_alerted';
   } else {

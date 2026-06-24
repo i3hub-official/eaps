@@ -59,7 +59,6 @@
 	let frameInterval: ReturnType<typeof setInterval> | null = null;
 	let heartbeatInterval: ReturnType<typeof setInterval> | null = null;
 	let frameCanvas: HTMLCanvasElement | null = null;
-	let chatReplyHandler: ((e: Event) => void) | null = null;
 
 	const statusColor = $derived(
 		status === 'error'
@@ -155,56 +154,61 @@
 	}
 
 	// ── Face check ────────────────────────────────────────────────────────────
-async function runCheck() {
-  if (!ready || !human || !videoEl || videoEl.readyState < 2) return;
-  let result: any;
-  try { result = await human.detect(videoEl); } catch { return; }
+	async function runCheck() {
+		if (!ready || !human || !videoEl || videoEl.readyState < 2) return;
 
-  const faces = result?.face ?? [];
-  const count = faces.length;
+		let result: any;
+		try {
+			result = await human.detect(videoEl);
+		} catch {
+			return;
+		}
 
-  if (count === 0) {
-    consecutiveNoFace++;
-    status = consecutiveNoFace >= 2 ? 'warning' : 'ok';
-    if (!warmingUp && consecutiveNoFace >= NO_FACE_GRACE) {
-      consecutiveNoFace = 0;   // reset only after firing
-      onViolation('no_face_detected');
-    }
-    return;
-  }
+		const faces = result?.face ?? [];
+		const count = faces.length;
 
-  // Face found — reset counter
-  consecutiveNoFace = 0;
+		if (count === 0) {
+			consecutiveNoFace++;
+			status = consecutiveNoFace >= 2 ? 'warning' : 'ok';
+			if (!warmingUp && consecutiveNoFace >= NO_FACE_GRACE) {
+				consecutiveNoFace = 0;
+				onViolation('no_face_detected');
+			}
+			return;
+		}
 
-  if (count > 1) {
-    status = 'warning';
-    if (!warmingUp) onViolation('multiple_faces');
-    return;
-  }
+		// ← FIX: Reset counter when face IS found
+		consecutiveNoFace = 0;
 
-  const face   = faces[0];
-  const isLive = face.liveness?.score  != null ? face.liveness.score  > 0.60 : true;
-  const isReal = face.antispoof?.score != null ? face.antispoof.score > 0.60 : true;
+		if (count > 1) {
+			status = 'warning';
+			if (!warmingUp) onViolation('multiple_faces');
+			return;
+		}
 
-  if (!isLive || !isReal) {
-    status = 'warning';
-    if (!warmingUp) onViolation('face_mismatch', { reason: 'spoof_attempt' });
-    return;
-  }
+		const face = faces[0];
+		const isLive = face.liveness?.score != null ? face.liveness.score > 0.60 : true;
+		const isReal = face.antispoof?.score != null ? face.antispoof.score > 0.60 : true;
 
-  if (face.mesh?.length) updateLiveness(meanEAR(face.mesh as number[][]));
+		if (!isLive || !isReal) {
+			status = 'warning';
+			if (!warmingUp) onViolation('face_mismatch', { reason: 'spoof_attempt' });
+			return;
+		}
 
-  if (enrolledDescriptor && face.embedding?.length) {
-    const sim = cosine(enrolledDescriptor, Array.from(face.embedding as number[]));
-    if (sim < COSINE_SOFT) {
-      status = 'warning';
-      if (!warmingUp) onViolation('face_mismatch', { reason: 'identity_mismatch', similarity: sim });
-      return;
-    }
-  }
+		if (face.mesh?.length) updateLiveness(meanEAR(face.mesh as number[][]));
 
-  status = 'ok';
-}
+		if (enrolledDescriptor && face.embedding?.length) {
+			const sim = cosine(enrolledDescriptor, Array.from(face.embedding as number[]));
+			if (sim < COSINE_SOFT) {
+				status = 'warning';
+				if (!warmingUp) onViolation('face_mismatch', { reason: 'identity_mismatch', similarity: sim });
+				return;
+			}
+		}
+
+		status = 'ok';
+	}
 
 	// ── WS camera streaming ────────────────────────────────────────────────────
 	function getWsUrl(): string {
@@ -213,70 +217,70 @@ async function runCheck() {
 		return `${proto}//${window.location.hostname}:${port}`;
 	}
 
-function connectFrameWs() {
-    try {
-        frameWs = new WebSocket(getWsUrl());
+	function connectFrameWs() {
+		try {
+			frameWs = new WebSocket(getWsUrl());
 
-        frameWs.onopen = () => {
-            frameWs!.send(
-                JSON.stringify({
-                    type: 'join_exam',
-                    exam_id: examId,
-                    role: 'student',
-                    session_id: sessionId,
-                    student_name: studentName,
-                    matric
-                })
-            );
+			frameWs.onopen = () => {
+				frameWs!.send(
+					JSON.stringify({
+						type: 'join_exam',
+						exam_id: examId,
+						role: 'student',
+						session_id: sessionId,
+						student_name: studentName,
+						matric
+					})
+				);
 
-            frameInterval = setInterval(captureAndSendFrame, 3_000);
+				frameInterval = setInterval(captureAndSendFrame, 3_000);
 
-            heartbeatInterval = setInterval(() => {
-                if (frameWs?.readyState === WebSocket.OPEN) {
-                    frameWs.send(
-                        JSON.stringify({
-                            type: 'heartbeat',
-                            session_id: sessionId,
-                            role: 'student'
-                        })
-                    );
-                }
-            }, 30_000);
-        };
+				heartbeatInterval = setInterval(() => {
+					if (frameWs?.readyState === WebSocket.OPEN) {
+						frameWs.send(
+							JSON.stringify({
+								type: 'heartbeat',
+								session_id: sessionId,
+								role: 'student'
+							})
+						);
+					}
+				}, 30_000);
+			};
 
-        frameWs.onmessage = (e) => {
-            try {
-                const msg = JSON.parse(e.data);
-                if (msg.type === 'time_correction') {
-                    window.dispatchEvent(
-                        new CustomEvent('ws:time_correction', {
-                            detail: { add_secs: msg.add_secs }
-                        })
-                    );
-                }
-                if (msg.type === 'announcement') {
-                    window.dispatchEvent(
-                        new CustomEvent('ws:announcement', {
-                            detail: { message: msg.message }
-                        })
-                    );
-                }
-            } catch {
-                /* ignore */
-            }
-        };
+			frameWs.onmessage = (e) => {
+				try {
+					const msg = JSON.parse(e.data);
+					if (msg.type === 'time_correction') {
+						window.dispatchEvent(
+							new CustomEvent('ws:time_correction', {
+								detail: { add_secs: msg.add_secs }
+							})
+						);
+					}
+					if (msg.type === 'announcement') {
+						window.dispatchEvent(
+							new CustomEvent('ws:announcement', {
+								detail: { message: msg.message }
+							})
+						);
+					}
+				} catch {
+					/* ignore */
+				}
+			};
 
-        frameWs.onclose = () => {
-            if (ready) setTimeout(connectFrameWs, 5_000);
-        };
+			frameWs.onclose = () => {
+				if (ready) setTimeout(connectFrameWs, 5_000);
+			};
 
-        frameWs.onerror = () => {
-            /* silent */
-        };
-    } catch {
-        /* ignore */
-    }
-}
+			frameWs.onerror = () => {
+				/* silent */
+			};
+		} catch {
+			/* ignore */
+		}
+	}
 
 	function captureAndSendFrame() {
 		if (!videoEl || videoEl.readyState < 2 || frameWs?.readyState !== WebSocket.OPEN) return;
@@ -300,46 +304,60 @@ function connectFrameWs() {
 	}
 
 	// ── Lifecycle ──────────────────────────────────────────────────────────────
-onMount(async () => {
-    if (!browser) return;
-    try {
-        human = await getModel();
-        stream = await navigator.mediaDevices.getUserMedia({
-            video: { facingMode: 'user', width: { ideal: 320 }, height: { ideal: 240 } },
-            audio: false
-        });
-        videoEl.srcObject = stream;
-        await videoEl.play();
-        
-        ready = true;
-        status = 'ok';
-        
-        // Warmup period: no violations for first 20s
-        warmupTimer = setTimeout(() => { warmingUp = false; }, WARMUP_MS);
-        
-        // First check after 5s, then every checkInterval
-        setTimeout(runCheck, 5_000);
-        checkTimer = setInterval(runCheck, checkInterval);
-        
-        connectFrameWs();
-    } catch (e: any) {
-        status = 'error';
-        onCameraError?.(e?.message ?? 'Camera unavailable');
-    }
-});
+	onMount(async () => {
+		if (!browser) return;
+		try {
+			human = await getModel();
+			stream = await navigator.mediaDevices.getUserMedia({
+				video: { facingMode: 'user', width: { ideal: 320 }, height: { ideal: 240 } },
+				audio: false
+			});
+			videoEl.srcObject = stream;
+			await videoEl.play();
 
-export function stop() {
-    ready = false;
-    if (warmupTimer) { clearTimeout(warmupTimer); warmupTimer = null; }
-    if (checkTimer) { clearInterval(checkTimer); checkTimer = null; }
-    if (frameInterval) { clearInterval(frameInterval); frameInterval = null; }
-    if (heartbeatInterval) { clearInterval(heartbeatInterval); heartbeatInterval = null; }
+			ready = true;
+			status = 'ok';
 
-    stream?.getTracks().forEach((t) => t.stop());
-    stream = null;
-    frameWs?.close();
-    frameWs = null;
-}
+			// Warmup period: no violations for first 20s
+			warmupTimer = setTimeout(() => {
+				warmingUp = false;
+			}, WARMUP_MS);
+
+			// First check after 5s, then every checkInterval
+			setTimeout(runCheck, 5_000);
+			checkTimer = setInterval(runCheck, checkInterval);
+
+			connectFrameWs();
+		} catch (e: any) {
+			status = 'error';
+			onCameraError?.(e?.message ?? 'Camera unavailable');
+		}
+	});
+
+	export function stop() {
+		ready = false;
+		if (warmupTimer) {
+			clearTimeout(warmupTimer);
+			warmupTimer = null;
+		}
+		if (checkTimer) {
+			clearInterval(checkTimer);
+			checkTimer = null;
+		}
+		if (frameInterval) {
+			clearInterval(frameInterval);
+			frameInterval = null;
+		}
+		if (heartbeatInterval) {
+			clearInterval(heartbeatInterval);
+			heartbeatInterval = null;
+		}
+
+		stream?.getTracks().forEach((t) => t.stop());
+		stream = null;
+		frameWs?.close();
+		frameWs = null;
+	}
 
 	export function pause() {
 		if (checkTimer) {
