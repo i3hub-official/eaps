@@ -169,7 +169,11 @@
 
   function toggleDropReg(regId: string) {
     const s = new Set(updateDropIds);
-    s.has(regId) ? s.delete(regId) : s.add(regId);
+    if (s.has(regId)) {
+      s.delete(regId);
+    } else {
+      s.add(regId);
+    }
     updateDropIds = s;
   }
 
