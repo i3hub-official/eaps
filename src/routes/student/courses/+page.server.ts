@@ -12,7 +12,14 @@ export const load: PageServerLoad = async ({ locals }) => {
   const { session: currentSession, semester: currentSemester } = await getActiveSemester();
 
   // ── Student profile (for print slip) ──────────────────────────────────
-  const studentProfile = await prisma.user.findUnique({
+  const studentProfile: {
+    fullName: string | null;
+    matricNumber: string | null;
+    level: { level: number | null; name: string | null } | null;
+    college: { name: string | null } | null;
+    department: { name: string | null } | null;
+    programme: { name: string | null } | null;
+  } | null = await prisma.user.findUnique({
     where: { id: user.id },
     select: {
       fullName:     true,
@@ -38,10 +45,13 @@ export const load: PageServerLoad = async ({ locals }) => {
 
   // ── Level credit config ───────────────────────────────────────────────
   let levelConfig = null;
-  if (user.levelId) {
+  // `user` may not always have a `levelId` property on the typed object returned
+  // from guards. Safely read it and use only when present.
+  const userLevelId = (user as any).levelId as string | undefined;
+  if (userLevelId) {
     try {
       levelConfig = await prisma.levelSemesterConfig.findUnique({
-        where: { levelId_semester: { levelId: user.levelId, semester: currentSemester } },
+        where: { levelId_semester: { levelId: userLevelId, semester: currentSemester } },
         select: { maxCredits: true, maxCarryOver: true, maxBorrowed: true },
       });
     } catch (err) { console.warn('Could not fetch LevelSemesterConfig:', err); }
@@ -101,7 +111,7 @@ export const load: PageServerLoad = async ({ locals }) => {
   return {
     // ── Print slip ──────────────────────────────────────────────────────
     student: {
-      name:       studentProfile?.fullName         ?? user.fullName ?? '—',
+      name:       studentProfile?.fullName         ?? '—',
       regNumber:  studentProfile?.matricNumber     ?? '—',
       faculty:    studentProfile?.college?.name    ?? '—',
       department: studentProfile?.department?.name ?? '—',

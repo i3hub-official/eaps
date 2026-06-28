@@ -39,7 +39,7 @@
 
   // ── WebSocket ──────────────────────────────────────────────────────────────
   function connectWs() {
-    ws = new WebSocket('ws://localhost:3001');
+    ws = new WebSocket('ws://localhost:2605');
 
     ws.onopen = () => {
       ws!.send(JSON.stringify({ type: 'join_exam', exam_id: exam.id, role: 'invigilator' }));

@@ -36,7 +36,7 @@ onwarn: (warning, handler) => {
       'style-src':   ['self', 'unsafe-inline'],
       'img-src':     ['self', 'data:', 'blob:'],
       'media-src':   ['self', 'blob:'],
-      'connect-src': ['self', 'ws://localhost:3001', 'wss://localhost:3001'],
+      'connect-src': ['self', 'ws://localhost:2605', 'wss://localhost:2605'],
       'frame-src':   ['none'],
       'object-src':  ['none'],
     },

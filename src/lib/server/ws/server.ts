@@ -171,7 +171,7 @@ function startHeartbeatSweeper() {
 export function getWss(): WebSocketServer {
   if (wss) return wss;
 
-  const port = Number(process.env.WS_PORT ?? 3001);
+  const port = Number(process.env.WS_PORT ?? 2605);
   wss = new WebSocketServer({ port });
   startHeartbeatSweeper();
 

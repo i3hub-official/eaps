@@ -17,6 +17,8 @@ import { getActiveSemester } from '$lib/server/academic/semester.js';
 type RegPhase = 'draft' | 'submitted' | 'locked';
 
 async function getRegPhase(userId: string, key: string): Promise<RegPhase> {
+    const prisma = await getPrismaClient();
+  
   const pref = await prisma.userPreference.findUnique({
     where: { userId },
     select: { prefs: true },

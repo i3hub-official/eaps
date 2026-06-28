@@ -213,7 +213,7 @@
 	// ── WS camera streaming ────────────────────────────────────────────────────
 	function getWsUrl(): string {
 		const proto = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-		const port = import.meta.env.VITE_WS_PORT ?? 3001;
+		const port = import.meta.env.VITE_WS_PORT ?? 2605;
 		return `${proto}//${window.location.hostname}:${port}`;
 	}
 
