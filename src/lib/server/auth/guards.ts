@@ -8,7 +8,17 @@ import type { UserRole, User } from '@prisma/client';
 import type { ApiScope } from '@prisma/client';
 import { requireApiKey } from './api-key-guard.js';
 
-type MaybeUser = { id: string; role: UserRole; isActive: boolean; isSuspended: boolean } | null | undefined;
+// guards.ts — update MaybeUser
+type MaybeUser = {
+  id: string;
+  role: UserRole;
+  isActive: boolean;
+  isSuspended: boolean;
+  collegeId?: number | null;   // Int? in schema
+  levelId?: number | null;     // Int? in schema
+  departmentId?: string | null; // String (Uuid)? in schema
+} | null | undefined;
+
 
 function assertActive(user: MaybeUser, loginPath = '/login'): asserts user is NonNullable<MaybeUser> {
   if (!user) redirect(303, loginPath);

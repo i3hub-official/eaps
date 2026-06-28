@@ -12,14 +12,7 @@ export const load: PageServerLoad = async ({ locals }) => {
   const { session: currentSession, semester: currentSemester } = await getActiveSemester();
 
   // ── Student profile (for print slip) ──────────────────────────────────
-  const studentProfile: {
-    fullName: string | null;
-    matricNumber: string | null;
-    level: { level: number | null; name: string | null } | null;
-    college: { name: string | null } | null;
-    department: { name: string | null } | null;
-    programme: { name: string | null } | null;
-  } | null = await prisma.user.findUnique({
+  const studentProfile = await prisma.user.findUnique({
     where: { id: user.id },
     select: {
       fullName:     true,
@@ -45,13 +38,10 @@ export const load: PageServerLoad = async ({ locals }) => {
 
   // ── Level credit config ───────────────────────────────────────────────
   let levelConfig = null;
-  // `user` may not always have a `levelId` property on the typed object returned
-  // from guards. Safely read it and use only when present.
-  const userLevelId = (user as any).levelId as string | undefined;
-  if (userLevelId) {
+  if (user.levelId) {
     try {
       levelConfig = await prisma.levelSemesterConfig.findUnique({
-        where: { levelId_semester: { levelId: userLevelId, semester: currentSemester } },
+        where: { levelId_semester: { levelId: user.levelId, semester: currentSemester } },
         select: { maxCredits: true, maxCarryOver: true, maxBorrowed: true },
       });
     } catch (err) { console.warn('Could not fetch LevelSemesterConfig:', err); }
