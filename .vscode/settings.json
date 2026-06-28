@@ -1,5 +1,16 @@
 {
 	"files.associations": {
 		"*.css": "tailwindcss"
-	}
+	},
+	"dbExplorer.profiles": [
+		{
+			"id": "local-postgres",
+			"label": "Local Postgres",
+			"engine": "postgres",
+			"host": "localhost",
+			"port": 55432,
+			"database": "test",
+			"user": "postgres"
+		}
+	]
 }

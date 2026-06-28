@@ -30,7 +30,7 @@ setInterval(() => {
 
 console.log('[Cron] Exam scheduler starting');
 safeTick('Scheduler', tickExamScheduler);
-setInterval(() => safeTick('Scheduler', tickExamScheduler), 60_000);
+setInterval(() => safeTick('Scheduler', tickExamScheduler), 30_000);
 
 console.log('[Cron] API key expiration job registered (every 5 min)');
 safeTick('API Keys', expireApiKeys);

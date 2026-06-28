@@ -201,7 +201,7 @@
                 pointStyle: 'circle',
                 padding: 16,
                 color: text,
-                font: { size: 11, weight: '600' },
+                font: { size: 11, weight: 'bolder' },
               },
             },
             tooltip: {
@@ -237,14 +237,14 @@
           scales: {
             x: {
               grid: { display: false },
-              ticks: { color: muted, font: { size: 10, weight: '600' } },
+              ticks: { color: muted, font: { size: 10, weight: 'bolder' } },
               border: { display: false },
             },
             y: {
               min: 0,
               max: 100,
               grid: { color: gridColor },
-              ticks: { color: muted, font: { size: 10, weight: '600' }, stepSize: 20, callback: (v) => `${v}%` },
+              ticks: { color: muted, font: { size: 10, weight: 'bolder' }, stepSize: 20, callback: (v) => `${v}%` },
               border: { display: false },
             },
           },
@@ -288,7 +288,7 @@
                 pointStyle: 'rectRounded',
                 padding: 16,
                 color: text,
-                font: { size: 11, weight: '600' },
+                font: { size: 11, weight: 'bolder' },
               },
             },
             tooltip: {
@@ -310,14 +310,14 @@
           scales: {
             x: {
               grid: { display: false },
-              ticks: { color: muted, font: { size: 10, weight: '600' } },
+              ticks: { color: muted, font: { size: 10, weight: 'bolder' } },
               border: { display: false },
             },
             y: {
               min: 0,
               max: 100,
               grid: { color: gridColor },
-              ticks: { color: muted, font: { size: 10, weight: '600' }, stepSize: 20, callback: (v) => `${v}%` },
+              ticks: { color: muted, font: { size: 10, weight: 'bolder' }, stepSize: 20, callback: (v) => `${v}%` },
               border: { display: false },
             },
           },
@@ -371,7 +371,7 @@
                 pointStyle: 'circle',
                 padding: 16,
                 color: text,
-                font: { size: 11, weight: '600' },
+                font: { size: 11, weight: 'bolder' },
               },
             },
             tooltip: {
@@ -387,21 +387,21 @@
           scales: {
             x: {
               grid: { display: false },
-              ticks: { color: muted, font: { size: 10, weight: '600' } },
+              ticks: { color: muted, font: { size: 10, weight: 'bolder' } },
               border: { display: false },
             },
             y: {
               min: 0,
               max: 100,
               grid: { color: gridColor },
-              ticks: { color: muted, font: { size: 10, weight: '600' }, stepSize: 20, callback: (v) => `${v}%` },
+              ticks: { color: muted, font: { size: 10, weight: 'bolder' }, stepSize: 20, callback: (v) => `${v}%` },
               border: { display: false },
             },
             y1: {
               position: 'right',
               min: 0,
               grid: { display: false },
-              ticks: { color: muted, font: { size: 10, weight: '600' }, stepSize: 1 },
+              ticks: { color: muted, font: { size: 10, weight: 'bolder' }, stepSize: 1 },
               border: { display: false },
             },
           },
@@ -440,7 +440,7 @@
                 pointStyle: 'circle',
                 padding: 20,
                 color: text,
-                font: { size: 11, weight: '600' },
+                font: { size: 11, weight: 'bolder' },
               },
             },
             tooltip: {

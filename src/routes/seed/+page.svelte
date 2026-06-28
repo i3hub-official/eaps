@@ -7,8 +7,8 @@
     Database, Loader2, CheckCircle2, AlertCircle, Trash2, Sprout,
     GraduationCap, Building2, Users, BookOpen, FileCheck, HelpCircle,
     ChevronRight, RotateCcw, ShieldCheck, Bell, Settings2, CalendarDays,
-    Calendar, BookMarked, Library, Layers, CreditCard, Terminal, Activity,
-    ArrowRight, Sparkles, ShieldAlert, Info, X
+    FlaskConical, BookMarked, Library, Layers, CreditCard, Terminal, Activity,
+    ArrowRight, Sparkles, ShieldAlert, Info, UserX, BookX,
   } from '@lucide/svelte';
 
   let { data }: { data: PageData } = $props();
@@ -45,7 +45,7 @@
   ];
 
   const creditCapRows = [
-    { level: '100L', sem1: 20, sem2: 20, carryOver: 0,  borrowed: 6  },
+    { level: '100L', sem1: 25, sem2: 25, carryOver: 0,  borrowed: 6  },
     { level: '200L', sem1: 24, sem2: 24, carryOver: 6,  borrowed: 6  },
     { level: '300L', sem1: 24, sem2: 24, carryOver: 6,  borrowed: 6  },
     { level: '400L', sem1: 24, sem2: 24, carryOver: 6,  borrowed: 6  },

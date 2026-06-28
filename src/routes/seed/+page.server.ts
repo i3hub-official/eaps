@@ -93,8 +93,8 @@ export const actions: Actions = {
       // 3. LEVEL SEMESTER CONFIGS
       // ══════════════════════════════════════════════════════════════════════
       const creditCaps = [
-        { levelNum: 100, semester: 1, maxCredits: 25, maxCarryOver: 0, maxBorrowed: 6 },
-        { levelNum: 100, semester: 2, maxCredits: 25, maxCarryOver: 0, maxBorrowed: 6 },
+        { levelNum: 100, semester: 1, maxCredits: 27, maxCarryOver: 0, maxBorrowed: 6 },
+        { levelNum: 100, semester: 2, maxCredits: 27, maxCarryOver: 0, maxBorrowed: 6 },
         { levelNum: 200, semester: 1, maxCredits: 24, maxCarryOver: 6, maxBorrowed: 6 },
         { levelNum: 200, semester: 2, maxCredits: 24, maxCarryOver: 6, maxBorrowed: 6 },
         { levelNum: 300, semester: 1, maxCredits: 24, maxCarryOver: 6, maxBorrowed: 6 },
