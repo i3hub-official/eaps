@@ -1,6 +1,6 @@
 <script lang="ts">
   import { enhance } from '$app/forms';
-  import { fade, fly, scale, slide } from 'svelte/transition';
+  import { fade, fly, slide } from 'svelte/transition';
   import { cubicOut } from 'svelte/easing';
   import type { PageData, ActionData } from './$types';
   import {
@@ -16,7 +16,7 @@
   let seeding = $state(false);
   let resetting = $state(false);
 
-  let progress = $state({ current: 0, total: 0, step: '', detail: '' });
+  let progress = $state({ current: 0, total: 13, step: '', detail: '' });
   let logs = $state<string[]>([]);
   let showLogs = $state(false);
 
@@ -24,20 +24,18 @@
   let seedResults = $state<string[]>([]);
 
   const seedSteps = [
-  { key: 'levels',        label: 'Levels',          icon: GraduationCap, total: 8,     emoji: '📊', color: '#8b5cf6' },
-  { key: 'semesters',     label: 'Semesters',       icon: CalendarDays,  total: 2,     emoji: '📅', color: '#06b6d4' },
-  { key: 'colleges',      label: 'Colleges',        icon: Building2,     total: 12,    emoji: '🏛️', color: '#f59e0b' },
-  { key: 'departments',   label: 'Departments',     icon: Building2,     total: 61,    emoji: '🏢', color: '#f97316' },
-  { key: 'Credit Unit',   label: 'Credit Caps',     icon: CreditCard,    total: 16,    emoji: '🎯', color: '#ec4899' },
-  { key: 'users',         label: 'Users',           icon: Users,         total: 110,   emoji: '👥', color: '#6366f1' },
-  { key: 'roles',         label: 'Role Assignments',icon: ShieldCheck,   total: 6,     emoji: '🎓', color: '#3b82f6' },
-  { key: 'courses',       label: 'Courses',         icon: BookOpen,      total: 1100,  emoji: '📚', color: '#10b981' },
-  { key: 'registrations', label: 'Registrations',   icon: FileCheck,     total: null,  emoji: '📋', color: '#14b8a6' },
-  { key: 'exam',          label: 'Exams',           icon: ShieldCheck,   total: 6,     emoji: '📝', color: '#ef4444' },
-  { key: 'questions',     label: 'Questions',       icon: HelpCircle,    total: 65,    emoji: '❓', color: '#a855f7' },
-  { key: 'notifications', label: 'Notifications',   icon: Bell,          total: null,  emoji: '🔔', color: '#eab308' },
-  { key: 'preferences',   label: 'Preferences',     icon: Settings2,     total: null,  emoji: '⚙️', color: '#64748b' },
-];
+    { key: 'levels',        label: 'Levels',          icon: GraduationCap, total: 2,     emoji: '📊', color: '#8b5cf6' },
+    { key: 'semesters',     label: 'Semesters',       icon: CalendarDays,  total: 2,     emoji: '📅', color: '#06b6d4' },
+    { key: 'colleges',      label: 'Colleges',        icon: Building2,     total: 12,    emoji: '🏛️', color: '#f59e0b' },
+    { key: 'departments',   label: 'Departments',     icon: Building2,     total: 62,    emoji: '🏢', color: '#f97316' },
+    { key: 'Credit Unit',   label: 'Credit Caps',     icon: CreditCard,    total: 4,     emoji: '🎯', color: '#ec4899' },
+    { key: 'users',         label: 'Users',           icon: Users,         total: null,  emoji: '👥', color: '#6366f1' },
+    { key: 'courses',       label: 'Courses',         icon: BookOpen,      total: null,  emoji: '📚', color: '#10b981' },
+    { key: 'exam',          label: 'Exams',           icon: ShieldCheck,   total: 6,     emoji: '📝', color: '#ef4444' },
+    { key: 'questions',     label: 'Questions',       icon: HelpCircle,    total: 65,    emoji: '❓', color: '#a855f7' },
+    { key: 'notifications', label: 'Notifications',   icon: Bell,          total: null,  emoji: '🔔', color: '#eab308' },
+    { key: 'preferences',   label: 'Preferences',     icon: Settings2,     total: null,  emoji: '⚙️', color: '#64748b' },
+  ];
 
   const semesterDefs = [
     { name: 'First Semester',  months: 'September – January', icon: BookMarked, color: '#3b82f6', short: 'Sem 1' },
@@ -45,14 +43,8 @@
   ];
 
   const creditCapRows = [
-    { level: '100L', sem1: 25, sem2: 25, carryOver: 0,  borrowed: 6  },
+    { level: '100L', sem1: 27, sem2: 27, carryOver: 0,  borrowed: 6  },
     { level: '200L', sem1: 24, sem2: 24, carryOver: 6,  borrowed: 6  },
-    { level: '300L', sem1: 24, sem2: 24, carryOver: 6,  borrowed: 6  },
-    { level: '400L', sem1: 24, sem2: 24, carryOver: 6,  borrowed: 6  },
-    { level: '500L', sem1: 21, sem2: 21, carryOver: 6,  borrowed: 6  },
-    { level: '600L', sem1: 21, sem2: 21, carryOver: 6,  borrowed: 6  },
-    { level: '700L', sem1: 18, sem2: 18, carryOver: 6,  borrowed: 6  },
-    { level: '800L', sem1: 18, sem2: 18, carryOver: 6,  borrowed: 6  },
   ];
 
   function addLog(msg: string, isError = false) {
@@ -96,7 +88,7 @@
         eventSource?.close();
         setTimeout(() => window.location.reload(), 1500);
       } else if (d.type === 'error') {
-        addLog(`Error: ${d.message}`, true);
+        addLog(`❌ Error: ${d.message}`, true);
         seeding = false;
         eventSource?.close();
       }
@@ -105,10 +97,10 @@
     eventSource.onerror = () => {
       if (reconnectAttempts < 3) {
         reconnectAttempts++;
-        addLog(`Connection lost, reconnecting... (${reconnectAttempts}/3)`, true);
+        addLog(`⚠️ Connection lost, reconnecting... (${reconnectAttempts}/3)`, true);
         setTimeout(() => startSSE(), 2000);
       } else {
-        addLog('Failed to maintain progress connection. Please refresh.', true);
+        addLog('❌ Failed to maintain progress connection. Please refresh.', true);
         seeding = false;
         eventSource?.close();
       }
@@ -174,7 +166,7 @@
       </div>
       <div class="stat-divider"></div>
       <div class="stat-item">
-        <span class="stat-value" class:live={data.isFirstRun}>{data.isFirstRun ? 'Ready' : 'Locked'}</span>
+        <span class="stat-value" class:live={data.isFirstRun}>{data.isFirstRun ? '✅ Ready' : '🔒 Locked'}</span>
         <span class="stat-label">Status</span>
       </div>
     </section>
@@ -262,13 +254,13 @@
             <Terminal size={14}/>
             <span>Live Terminal</span>
             <span class="logs-badge">{logs.length}</span>
-            <ChevronRight size={14} class={"logs-chevron" + (showLogs ? ' rotated' : '')}/>
+<ChevronRight size={14} class={`logs-chevron ${showLogs ? 'rotated' : ''}`}/>
           </button>
           
           {#if showLogs}
             <div class="logs-panel" transition:slide={{ duration: 200 }}>
               {#if logs.length === 0}
-                <div class="log-empty">Waiting for server response...</div>
+                <div class="log-empty">⏳ Waiting for server response...</div>
               {:else}
                 {#each logs as log, i}
                   <div class="log-entry" in:fade={{ delay: i * 20 }}>
@@ -289,7 +281,7 @@
           <Sparkles size={24}/>
         </div>
         <div class="result-content">
-          <h3>Seed Complete!</h3>
+          <h3>✨ Seed Complete!</h3>
           <div class="result-lines">
             {#each form.results as line}
               <p>{line}</p>
@@ -307,7 +299,7 @@
           <ShieldAlert size={24}/>
         </div>
         <div class="result-content">
-          <h3>Seed Failed</h3>
+          <h3>❌ Seed Failed</h3>
           <p class="error-message">{form.error}</p>
         </div>
       </section>
@@ -319,7 +311,7 @@
         <form method="POST" action="?/seed" use:enhance={() => {
           resetProgress();
           seeding = true;
-          addLog('Starting seed process...');
+          addLog('🚀 Starting seed process...');
           startSSE();
           return async ({ update }) => update();
         }}>
@@ -336,12 +328,17 @@
         </form>
 
         <form method="POST" action="?/reset" use:enhance={() => {
-          if (!confirm('DANGER: This will permanently delete all data. This action cannot be undone. Continue?')) return () => {};
+          if (!confirm('⚠️ DANGER: This will permanently delete ALL data. This action cannot be undone. Continue?')) return () => {};
           resetting = true;
-          addLog('Resetting database...');
+          addLog('🗑️ Resetting database...');
           return async ({ update }) => {
             const result = await update();
             resetting = false;
+            if (result.success) {
+              addLog('✅ Database reset complete!');
+            } else {
+              addLog('❌ Reset failed: ' + (result.error || 'Unknown error'), true);
+            }
             setTimeout(() => window.location.reload(), 1500);
             return result;
           };
@@ -388,7 +385,7 @@
         <section class="info-card wide">
           <div class="info-header">
             <CreditCard size={16}/>
-            <h3>Credit Caps per Level</h3>
+            <h3>Credit Caps per Level (100L & 200L)</h3>
           </div>
           <div class="caps-grid">
             {#each creditCapRows as row}
@@ -451,131 +448,123 @@
     {/if}
 
     <!-- Test Scenarios Panel -->
-{#if !seeding && !form}
-  <section class="info-card wide test-scenarios">
-    <div class="info-header">
-      <FlaskConical size={16} />
-      <h3>What This Seed Sets Up for Testing</h3>
-      <span class="seed-total">Read before testing</span>
-    </div>
-
-    <div class="scenario-grid">
-
-      <div class="scenario-card">
-        <div class="scenario-icon" style="background: rgba(239,68,68,0.1); color:#ef4444;">
-          <UserX size={18} />
+    {#if !seeding && !form}
+      <section class="info-card wide test-scenarios">
+        <div class="info-header">
+          <FlaskConical size={16} />
+          <h3>What This Seed Sets Up for Testing</h3>
+          <span class="seed-total">Read before testing</span>
         </div>
-        <div class="scenario-body">
-          <h4>Eligibility Testing — Unregistered Students</h4>
-          <p>
-            ~30% of students have <strong>3–5 courses intentionally skipped</strong> during registration.
-            100-level students only have gaps in <strong>Semester 2</strong> (they can't have carry-overs yet).
-            Higher-level students may have gaps in either semester.
+
+        <div class="scenario-grid">
+          <div class="scenario-card">
+            <div class="scenario-icon" style="background: rgba(239,68,68,0.1); color:#ef4444;">
+              <UserX size={18} />
+            </div>
+            <div class="scenario-body">
+              <h4>🧪 Eligibility Testing — Unregistered Students</h4>
+              <p>
+                ~30% of students have <strong>3–5 courses intentionally skipped</strong> during registration.
+                100-level students only have gaps in <strong>Semester 2</strong>.
+              </p>
+              <div class="scenario-tip">
+                <span class="tip-label">Test:</span>
+                Set an exam on a skipped course — those students should be <strong>ineligible</strong>.
+              </div>
+            </div>
+          </div>
+
+          <div class="scenario-card">
+            <div class="scenario-icon" style="background: rgba(245,158,11,0.1); color:#d97706;">
+              <BookX size={18} />
+            </div>
+            <div class="scenario-body">
+              <h4>📚 Carry-Over Students — 200L</h4>
+              <p>
+                Every 200L student has <strong>2 carry-over registrations</strong> from 100L
+                with <code>status: pending</code> and <code>registrationType: carry_over</code>.
+              </p>
+              <div class="scenario-tip">
+                <span class="tip-label">Test:</span>
+                Set an exam on a carry-over course — student should appear eligible with carry-over status.
+              </div>
+            </div>
+          </div>
+
+          <div class="scenario-card">
+            <div class="scenario-icon" style="background: rgba(16,185,129,0.1); color:#10b981;">
+              <GraduationCap size={18} />
+            </div>
+            <div class="scenario-body">
+              <h4>📖 Universal GST Courses — All 100L Students</h4>
+              <p>
+                All 100-level students across every college are registered for:
+              </p>
+              <ul class="scenario-list">
+                <li><code>GST111</code> — Communication in English I <span class="sem-tag">Sem 1</span></li>
+                <li><code>GST112</code> — Nigerian History and Culture <span class="sem-tag">Sem 1</span></li>
+                <li><code>GST121</code> — Communication in English II <span class="sem-tag">Sem 2</span></li>
+              </ul>
+              <div class="scenario-tip">
+                <span class="tip-label">Test:</span>
+                Set a GST111 exam — students from ALL colleges should be eligible.
+              </div>
+            </div>
+          </div>
+
+          <div class="scenario-card">
+            <div class="scenario-icon" style="background: rgba(99,102,241,0.1); color:#6366f1;">
+              <Users size={18} />
+            </div>
+            <div class="scenario-body">
+              <h4>🏛️ Multi-College Student Coverage</h4>
+              <p>
+                Students spread across <strong>12 colleges and 60+ departments</strong> including:
+                COLPAS, CEET, COLMAS, COLNAS, CAFST, CCSS, CAERSE, CASAP, CNREM, COED, CVM, SGS.
+              </p>
+              <div class="scenario-tip">
+                <span class="tip-label">Test:</span>
+                Set department-specific exam — only students from that department should be eligible.
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="credential-block">
+          <h4>🔑 Default Login Credentials</h4>
+          <div class="cred-grid">
+            {#each [
+              { role: 'Admin',        email: 'admin@mouau.edu.ng',        pass: 'admin123',       color: '#6366f1' },
+              { role: 'HOD',          email: 'hod.csc@mouau.edu.ng',      pass: 'hod123',         color: '#7c3aed' },
+              { role: 'Dean',         email: 'dean.colpas@mouau.edu.ng',  pass: 'dean123',        color: '#0ea5e9' },
+              { role: 'Exam Officer', email: 'examofficer1@mouau.edu.ng', pass: 'examofficer123', color: '#f97316' },
+              { role: 'VC/DVC',       email: 'vc@mouau.edu.ng',           pass: 'vcdvc123',       color: '#e11d48' },
+              { role: 'Lecturer',     email: 'dr.okafor.csc@mouau.edu.ng', pass: 'lecturer123',   color: '#8b5cf6' },
+              { role: 'Invigilator',  email: 'invig1@mouau.edu.ng',       pass: 'invigilator123', color: '#f59e0b' },
+              { role: 'Student (CSC)',email: 'adebayo.adekunle@student.mouau.edu.ng', pass: 'student123', color: '#10b981' },
+              { role: 'Student (GAP)',email: 'ade.adeleke@student.mouau.edu.ng', pass: 'student123', color: '#ef4444' },
+            ] as cred}
+              <div class="cred-row">
+                <span class="cred-role" style="color:{cred.color}">{cred.role}</span>
+                <code class="cred-email">{cred.email}</code>
+                <code class="cred-pass">{cred.pass}</code>
+              </div>
+            {/each}
+          </div>
+          <p class="cred-note">
+            <Info size={12} />
+            "Student (GAP)" = <code>ade.adeleke@student.mouau.edu.ng</code> has intentional course gaps — use to test ineligibility.
+            "Ogwo" accounts exist for every role for easy testing across all portals.
           </p>
-          <div class="scenario-tip">
-            <span class="tip-label">Test:</span>
-            Set an exam on a skipped course — those students should be <strong>ineligible</strong>.
-          </div>
         </div>
-      </div>
-
-      <div class="scenario-card">
-        <div class="scenario-icon" style="background: rgba(245,158,11,0.1); color:#d97706;">
-          <BookX size={18} />
-        </div>
-        <div class="scenario-body">
-          <h4>Carry-Over Students — 200L and Above</h4>
-          <p>
-            Every 200L+ student has <strong>2 carry-over registrations</strong> from their previous level
-            (e.g. a 300L student carries over 2 courses from 200L).
-            These are registered with <code>status: pending</code> and <code>registrationType: carry_over</code>.
-          </p>
-          <div class="scenario-tip">
-            <span class="tip-label">Test:</span>
-            Set an exam on a carry-over course — the student should appear as eligible (registered) but with carry-over status visible.
-          </div>
-        </div>
-      </div>
-
-      <div class="scenario-card">
-        <div class="scenario-icon" style="background: rgba(16,185,129,0.1); color:#10b981;">
-          <GraduationCap size={18} />
-        </div>
-        <div class="scenario-body">
-          <h4>Universal GST Courses — All 100L Students</h4>
-          <p>
-            All 100-level students across every college are registered for:
-          </p>
-          <ul class="scenario-list">
-            <li><code>GST111</code> — Communication in English I <span class="sem-tag">Sem 1</span></li>
-            <li><code>GST112</code> — Nigerian History and Culture <span class="sem-tag">Sem 1</span></li>
-            <li><code>GST121</code> — Communication in English II <span class="sem-tag">Sem 2</span> <span class="note-tag">History dropped in Sem 2</span></li>
-          </ul>
-          <div class="scenario-tip">
-            <span class="tip-label">Test:</span>
-            Set a GST111 exam — students from ALL colleges should be eligible regardless of department.
-          </div>
-        </div>
-      </div>
-
-      <div class="scenario-card">
-        <div class="scenario-icon" style="background: rgba(99,102,241,0.1); color:#6366f1;">
-          <Users size={18} />
-        </div>
-        <div class="scenario-body">
-          <h4>Multi-College Student Coverage</h4>
-          <p>
-            Students are spread across <strong>12 colleges and 20+ departments</strong>:
-            COLPAS (CSC, PHY, MTH, CHM, STA, GLG), CEET (EEE, CPE, CVE),
-            COLMAS (ACC, BUS, HRM, MKT), COLNAS (BCH, MCB),
-            CAFST (FST), CCSS (AGR), CAERSE (ABM), CASAP (APL),
-            CNREM (EMT), COED (ACE), CVM (VET).
-          </p>
-          <div class="scenario-tip">
-            <span class="tip-label">Test:</span>
-            Set a department-specific exam (e.g. CSC311) — only CSC students should be eligible. Students from PHY or EEE should be ineligible.
-          </div>
-        </div>
-      </div>
-
-    </div>
-
-    <div class="credential-block">
-      <h4>Default Login Credentials</h4>
-      <div class="cred-grid">
-        {#each [
-          { role: 'Admin',        email: 'admin@mouau.edu.ng',        pass: 'admin123',       color: '#6366f1' },
-          { role: 'HOD',          email: 'hod.csc@mouau.edu.ng',      pass: 'hod123',         color: '#7c3aed' },
-          { role: 'Dean',         email: 'dean.colpas@mouau.edu.ng',  pass: 'dean123',        color: '#0ea5e9' },
-          { role: 'Exam Officer', email: 'examofficer1@mouau.edu.ng', pass: 'examofficer123', color: '#f97316' },
-          { role: 'VC/DVC',       email: 'vc@mouau.edu.ng',           pass: 'vcdvc123',       color: '#e11d48' },
-          { role: 'Lecturer',     email: 'dr.okafor@mouau.edu.ng',    pass: 'lecturer123',    color: '#8b5cf6' },
-          { role: 'Invigilator',  email: 'invig1@mouau.edu.ng',       pass: 'invigilator123', color: '#f59e0b' },
-          { role: 'Student (CSC)',email: 'kayode.oguns@student.mouau.edu.ng', pass: 'student123', color: '#10b981' },
-          { role: 'Student (PHY)',email: 'ogwo_phy@mouau.edu.ng',     pass: 'student123',     color: '#10b981' },
-          { role: 'Student (GAP)',email: 'ade.adeleke@student.mouau.edu.ng', pass: 'student123', color: '#ef4444' },
-        ] as cred}
-          <div class="cred-row">
-            <span class="cred-role" style="color:{cred.color}">{cred.role}</span>
-            <code class="cred-email">{cred.email}</code>
-            <code class="cred-pass">{cred.pass}</code>
-          </div>
-        {/each}
-      </div>
-      <p class="cred-note">
-        <Info size={12} />
-        "Student (GAP)" = ade.adeleke has intentional course gaps — use to test ineligibility.
-        "Ogwo" accounts exist for every role for easy testing across all portals.
-      </p>
-    </div>
-  </section>
-{/if}
+      </section>
+    {/if}
 
     <!-- Warning -->
     <div class="warning-banner">
       <ShieldAlert size={16}/>
       <div class="warning-content">
-        <strong>Production Notice</strong>
+        <strong>⚠️ Production Notice</strong>
         <span>Remove or protect this route before deploying to production.</span>
       </div>
     </div>
@@ -695,6 +684,8 @@
     background: var(--color-surface);
     border: 1px solid var(--color-border);
     border-radius: 1rem;
+    flex-wrap: wrap;
+    gap: 0.5rem;
   }
 
   .stat-item {
@@ -727,6 +718,11 @@
     width: 1px;
     height: 2rem;
     background: var(--color-border);
+  }
+
+  @media (max-width: 500px) {
+    .stat-divider { display: none; }
+    .stats-bar { gap: 0.75rem; }
   }
 
   /* ── Counts ───────────────────────────────────────────────────────────── */
@@ -943,6 +939,8 @@
     background: var(--color-border);
   }
 
+  .timeline-connector.hidden { display: none; }
+
   .timeline-item.completed .timeline-connector {
     background: #3b82f6;
   }
@@ -1023,6 +1021,7 @@
     cursor: pointer;
     padding: 0;
     transition: color 0.15s;
+    width: 100%;
   }
 
   .logs-toggle:hover {
@@ -1224,6 +1223,10 @@
     box-shadow: 0 4px 14px -2px rgba(220, 38, 38, 0.15);
   }
 
+  @media (max-width: 500px) {
+    .actions-grid { grid-template-columns: 1fr; }
+  }
+
   /* ── Info Grid ────────────────────────────────────────────────────────── */
   .info-grid {
     display: grid;
@@ -1267,6 +1270,10 @@
     background: rgba(59, 130, 246, 0.1);
     padding: 0.25rem 0.75rem;
     border-radius: 0.5rem;
+  }
+
+  @media (max-width: 640px) {
+    .info-grid { grid-template-columns: 1fr; }
   }
 
   /* Semesters */
@@ -1326,6 +1333,10 @@
     font-weight: 700;
     color: var(--sem-color);
     opacity: 0.5;
+  }
+
+  @media (max-width: 500px) {
+    .semesters-grid { grid-template-columns: 1fr; }
   }
 
   /* Credit Caps */
@@ -1455,79 +1466,6 @@
     background: var(--color-bg);
   }
 
-  /* ── Warning ─────────────────────────────────────────────────────────── */
-  .warning-banner {
-    display: flex;
-    align-items: center;
-    gap: 0.875rem;
-    padding: 1rem 1.25rem;
-    background: linear-gradient(135deg, rgba(245, 158, 11, 0.08) 0%, rgba(245, 158, 11, 0.04) 100%);
-    border: 1px solid rgba(245, 158, 11, 0.2);
-    border-radius: 1rem;
-    color: #d97706;
-  }
-
-  .warning-content {
-    display: flex;
-    flex-direction: column;
-    gap: 0.125rem;
-  }
-
-  .warning-content strong {
-    font-size: 0.8rem;
-    font-weight: 700;
-  }
-
-  .warning-content span {
-    font-size: 0.75rem;
-    opacity: 0.9;
-  }
-
-  /* ── Responsive ───────────────────────────────────────────────────────── */
-  @media (max-width: 640px) {
-    .page { padding: 1rem; }
-    
-    .hero {
-      flex-direction: column;
-      text-align: center;
-      gap: 1.5rem;
-    }
-    
-    .hero-desc { max-width: none; }
-    
-    .stats-bar {
-      display: grid;
-      grid-template-columns: 1fr 1fr;
-      gap: 1rem;
-    }
-    
-    .stat-divider { display: none; }
-    
-    .counts-grid {
-      grid-template-columns: repeat(2, 1fr);
-    }
-    
-    .actions-grid {
-      grid-template-columns: 1fr;
-    }
-    
-    .info-grid {
-      grid-template-columns: 1fr;
-    }
-    
-    .semesters-grid {
-      grid-template-columns: 1fr;
-    }
-    
-    .caps-grid {
-      grid-template-columns: 1fr 1fr;
-    }
-    
-    .step-timeline {
-      max-height: 250px;
-    }
-  }
-
   /* ── Test Scenarios ───────────────────────────────────────────────────── */
   .test-scenarios {
     background: linear-gradient(135deg, var(--color-surface) 0%, rgba(99,102,241,0.02) 100%);
@@ -1626,15 +1564,6 @@
     border-radius: 0.25rem;
   }
 
-  .note-tag {
-    font-size: 0.65rem;
-    font-weight: 600;
-    padding: 0.1rem 0.4rem;
-    background: rgba(245,158,11,0.1);
-    color: #d97706;
-    border-radius: 0.25rem;
-  }
-
   .scenario-tip {
     display: flex;
     gap: 0.4rem;
@@ -1652,6 +1581,10 @@
     font-weight: 800;
     color: #6366f1;
     flex-shrink: 0;
+  }
+
+  @media (max-width: 640px) {
+    .scenario-grid { grid-template-columns: 1fr; }
   }
 
   /* ── Credentials ──────────────────────────────────────────────────────── */
@@ -1725,7 +1658,34 @@
   }
 
   @media (max-width: 640px) {
-    .scenario-grid { grid-template-columns: 1fr; }
     .cred-row { grid-template-columns: 1fr; gap: 0.25rem; }
+  }
+
+  /* ── Warning ─────────────────────────────────────────────────────────── */
+  .warning-banner {
+    display: flex;
+    align-items: center;
+    gap: 0.875rem;
+    padding: 1rem 1.25rem;
+    background: linear-gradient(135deg, rgba(245, 158, 11, 0.08) 0%, rgba(245, 158, 11, 0.04) 100%);
+    border: 1px solid rgba(245, 158, 11, 0.2);
+    border-radius: 1rem;
+    color: #d97706;
+  }
+
+  .warning-content {
+    display: flex;
+    flex-direction: column;
+    gap: 0.125rem;
+  }
+
+  .warning-content strong {
+    font-size: 0.8rem;
+    font-weight: 700;
+  }
+
+  .warning-content span {
+    font-size: 0.75rem;
+    opacity: 0.9;
   }
 </style>

@@ -7,7 +7,7 @@
     Calendar, Search, X, GraduationCap, Building2,
     FileText, Timer, BarChart3, ShieldAlert, Layers,
     Shuffle, Eye, LogIn, AlertTriangle, Zap,
-    TrendingUp, Scale,
+    TrendingUp, Scale, Award,
   } from '@lucide/svelte';
   import { fly, fade, scale } from 'svelte/transition';
   import { flip } from 'svelte/animate';
@@ -17,6 +17,10 @@
       departments: Array<{ id: string; name: string; code: string }>;
       levels: Array<{ id: string; name: string; value: number }>;
       sessions: Array<{ id: string; session: string }>;
+      courses: Array<{ id: string; code: string; title: string }>;
+      examTotal: number;
+      caTotal: number;
+      totalMarks: number;
     };
     form: ActionData;
   } = $props();
@@ -104,7 +108,6 @@
   );
 
   // ── Session ───────────────────────────────────────────────────────────────
-  // Sessions are already deduplicated by the server — one entry per academic year.
   let selectedSession = $state(data.defaultSession ?? '');
   let sessionOpen = $state(false);
   let sessionSearch = $state('');
@@ -117,38 +120,21 @@
 
   // ── Scoring ───────────────────────────────────────────────────────────────
   let durationMinutes    = $state<number>(Number(form?.values?.durationMinutes ?? 60));
-  let totalMarks         = $state<number>(Number(form?.values?.totalMarks ?? 70));
+  // FIXED: Exam is ALWAYS 70 marks at MOUAU
+  const totalMarks       = 70;
   let passMark           = $state<number>(Number(form?.values?.passMark ?? 28));
   let maxViolations      = $state<number>(Number(form?.values?.maxViolations ?? 5));
   let questionsToPresent = $state<number>(Number(form?.values?.questionsToPresent ?? 35));
 
-  // CA weight is always the complement of the exam weight.
-  // e.g. totalMarks = 70 → caWeight = 30
-  const caWeight      = $derived(Math.max(0, 100 - totalMarks));
-  const caWeightValid = $derived(totalMarks > 0 && totalMarks < 100);
+  // CA weight is ALWAYS 30 at MOUAU
+  const caWeight = 30;
 
-  // Auto-calculate marks based on questions per student (MOUAU convention).
-  // 35 questions → 2 marks each = 70 total (70% exam weight)
-  // >35 questions → 1 mark each
-  // passMark auto-sets to 40% of totalMarks (MOUAU minimum pass threshold).
-  $effect(() => {
-    if (questionsToPresent > 0) {
-      const marksPerQuestion = questionsToPresent <= 35 ? 2 : 1;
-      const calculated = questionsToPresent * marksPerQuestion;
-      if (calculated !== totalMarks) {
-        totalMarks = calculated;
-        // MOUAU pass = 40% of exam component
-        passMark = Math.round(totalMarks * 0.4);
-      }
-    }
-  });
-
-  // totalMarks validation — must be 1–99
-  const totalMarksError = $derived(
-    totalMarks <= 0   ? 'Exam weight must be greater than 0'
-    : totalMarks >= 100 ? 'Exam weight cannot be 100 — CA must contribute at least 1 mark'
-    : null
+  // Calculate marks per question
+  const marksPerQuestion = $derived(
+    questionsToPresent > 0 ? totalMarks / questionsToPresent : 0
   );
+
+  const passPercent = $derived(totalMarks > 0 ? Math.round((passMark / totalMarks) * 100) : 0);
 
   const passMarkWarning = $derived(
     passMark > totalMarks
@@ -163,8 +149,6 @@
     : durationMinutes < 10 ? 'Very short — students may not have enough time'
     : null
   );
-
-  const passPercent = $derived(totalMarks > 0 ? Math.round((passMark / totalMarks) * 100) : 0);
 
   // ── Toggles ───────────────────────────────────────────────────────────────
   let randomizeQuestions = $state(true);
@@ -293,7 +277,6 @@
   $effect(() => { void endDate; void endTime;       pulseRow('end'); });
   $effect(() => { void allowLateEntry; void lateEntryMinutes; pulseRow('late'); });
   $effect(() => { void questionsToPresent;         pulseRow('pool'); });
-  $effect(() => { void totalMarks;                 pulseRow('weight'); });
 </script>
 
 <svelte:head><title>Create Exam — MOUAU eTest</title></svelte:head>
@@ -734,11 +717,12 @@
       <div class="card">
         <div class="card-header">
           <span class="card-icon"><BarChart3 size={16} /></span>
-          <div><h2>Scoring</h2><p>Marks, pass threshold and duration</p></div>
+          <div><h2>Scoring</h2><p>MOUAU Standard: Exam = 70 marks, CA = 30 marks</p></div>
         </div>
         <div class="card-body">
           <div class="score-grid">
 
+            <!-- Duration -->
             <div class="score-field">
               <label for="durationMinutes"><Timer size={13} /> Duration</label>
               <div class="score-input-wrap">
@@ -753,43 +737,50 @@
               {/if}
             </div>
 
-            <!-- Total Marks = Exam Weight -->
+            <!-- Exam Weight - FIXED at 70 (display only) -->
             <div class="score-field">
-              <label for="totalMarks">
+              <label>
                 <FileText size={13} /> Exam Weight
-                <span class="label-sub">out of 100</span>
+                <span class="label-sub">(Fixed)</span>
               </label>
-              <div class="score-input-wrap">
-                <input id="totalMarks" name="totalMarks" type="number"
-                  bind:value={totalMarks} min="1" max="99" required
-                  class:input-error={!!totalMarksError} />
-                <span class="score-unit">pts</span>
+              <div class="exam-weight-display">
+                <span class="exam-weight-value">70</span>
+                <span class="exam-weight-label">marks</span>
+                <div class="exam-weight-badge">MOUAU Standard</div>
               </div>
-              <!-- CA weight badge — live derived -->
-              {#if caWeightValid}
-                <div class="ca-weight-badge" transition:fly={{ y: -4, duration: 140 }}>
-                  <Scale size={11} />
-                  CA: <strong>{caWeight} pts</strong>
-                  <span class="ca-weight-split">{totalMarks}% exam + {caWeight}% CA = 100%</span>
-                </div>
-              {/if}
-              {#if totalMarksError}
-                <span class="field-error" transition:fly={{ y: -4, duration: 140 }}>
-                  <AlertTriangle size={10} /> {totalMarksError}
-                </span>
-              {:else}
-                <p class="field-hint">Auto-calculated from questions per student</p>
-              {/if}
+              <input type="hidden" name="totalMarks" value="70" />
+              <p class="field-hint">Fixed at 70 marks as per MOUAU grading policy</p>
             </div>
 
-            <!-- Pass Mark — exam component only -->
+            <!-- CA Weight - FIXED at 30 (display only) -->
             <div class="score-field">
-              <label for="passMark"><Check size={13} strokeWidth={2.5} /> Pass Mark</label>
+              <label>
+                <Scale size={13} /> CA Weight
+                <span class="label-sub">(Fixed)</span>
+              </label>
+              <div class="exam-weight-display ca">
+                <span class="exam-weight-value">30</span>
+                <span class="exam-weight-label">marks</span>
+                <div class="exam-weight-badge ca">Continuous Assessment</div>
+              </div>
+              <p class="field-hint">Fixed at 30 marks as per MOUAU grading policy</p>
+            </div>
+
+            <!-- Total Display -->
+            <div class="score-field total-display">
+              <label><Award size={13} /> Total Available</label>
+              <div class="total-display-value">100 marks</div>
+              <p class="field-hint">Exam (70) + CA (30) = 100</p>
+            </div>
+
+            <!-- Pass Mark -->
+            <div class="score-field">
+              <label for="passMark"><Check size={13} strokeWidth={2.5} /> Pass Mark (Exam)</label>
               <div class="score-input-wrap">
                 <input id="passMark" name="passMark" type="number"
-                  bind:value={passMark} min="1" required
+                  bind:value={passMark} min="1" max="70" required
                   class:input-warn={!!passMarkWarning} />
-                <span class="score-unit">pts</span>
+                <span class="score-unit">/70</span>
               </div>
               {#if totalMarks > 0 && passMark > 0}
                 <div class="pass-bar-wrap">
@@ -800,10 +791,10 @@
                       class:bar-warn={passPercent > 80}
                       style="width:{Math.min(passPercent,100)}%"></div>
                   </div>
-                  <span class="pass-pct">{passPercent}%</span>
+                  <span class="pass-pct">{passPercent}% of exam</span>
                 </div>
               {/if}
-              <p class="field-hint">Exam component only — final grade uses combined score</p>
+              <p class="field-hint">Minimum 40% of exam weight (28 marks) as per MOUAU policy</p>
               {#if passMarkWarning}
                 <span class="field-warn" transition:fly={{ y: -4, duration: 140 }}>
                   <AlertTriangle size={10} /> {passMarkWarning}
@@ -811,6 +802,7 @@
               {/if}
             </div>
 
+            <!-- Max Violations -->
             <div class="score-field">
               <label for="maxViolations"><ShieldAlert size={13} /> Max Violations</label>
               <div class="score-input-wrap">
@@ -824,8 +816,10 @@
                 </span>
               {/if}
             </div>
+
           </div>
 
+          <!-- Questions Per Student & Mark Distribution -->
           <div class="qtp-wrap">
             <div class="qtp-header">
               <div class="qtp-label-group"><Layers size={14} /><span>Questions Per Student</span></div>
@@ -840,14 +834,19 @@
               <div class="qtp-hint-bubble" class:active={questionsToPresent > 0}>
                 {#if questionsToPresent > 0}
                   Each student gets <strong>{questionsToPresent}</strong> questions
-                  {#if questionsToPresent <= 35}
-                    &middot; <strong>2 marks each</strong> = {questionsToPresent * 2} total
-                  {:else}
-                    &middot; <strong>1 mark each</strong> = {questionsToPresent} total
-                  {/if}
-                {:else}<span class="muted">Set questions to auto-calculate marks</span>{/if}
+                  &middot; <strong>{marksPerQuestion.toFixed(2)}</strong> marks each
+                  = <strong>{totalMarks}</strong> exam marks total
+                {:else}
+                  <span class="muted">Set questions to calculate marks distribution</span>
+                {/if}
               </div>
             </div>
+            <p class="field-hint">
+              Total exam marks is always <strong>{totalMarks}</strong>. Marks per question = {totalMarks} ÷ number of questions.
+              {#if questionsToPresent > 0}
+                Current: <strong>{marksPerQuestion.toFixed(2)}</strong> marks per question
+              {/if}
+            </p>
           </div>
         </div>
       </div>
@@ -904,17 +903,6 @@
             </div>
           </label>
 
-          <!--
-            Show Result Immediately toggle.
-
-            How it works with the form:
-            - bind:checked keeps `showResultAfter` in sync as a boolean.
-            - The hidden checkbox with name="showResultAfter" is what gets submitted.
-            - When checked=true  → browser sends "showResultAfter=on"
-            - When checked=false → browser sends nothing for this field
-            - exam-form.ts reads: formData.get('showResultAfter') === 'on'
-              → true when checked, false when unchecked. Correct.
-          -->
           <label class="toggle-row">
             <div class="toggle-text">
               <span class="toggle-icon-wrap"><Eye size={14} /></span>
@@ -1027,17 +1015,13 @@
           </div>
 
           <!-- Exam weight + CA weight rows -->
-          <div class="sum-row" class:sum-row-pulse={changedRow === 'weight'}>
+          <div class="sum-row">
             <span>Exam weight</span>
-            <span class="sum-val sum-val-set" class:sum-val-warn={!!totalMarksError}>
-              {totalMarks} / 100
-            </span>
+            <span class="sum-val sum-val-set">{totalMarks} / 100</span>
           </div>
-          <div class="sum-row" class:sum-row-pulse={changedRow === 'weight'}>
+          <div class="sum-row">
             <span>CA weight</span>
-            <span class="sum-val" class:sum-val-set={caWeightValid} class:sum-val-warn={!caWeightValid}>
-              {caWeightValid ? `${caWeight} / 100` : '—'}
-            </span>
+            <span class="sum-val sum-val-set">{caWeight} / 100</span>
           </div>
 
           <div class="sum-row">
@@ -1056,6 +1040,12 @@
             <span>Question pool</span>
             <span class="sum-val" class:sum-val-set={questionsToPresent > 0}>
               {questionsToPresent > 0 ? `${questionsToPresent} per student` : 'All questions'}
+            </span>
+          </div>
+          <div class="sum-row">
+            <span>Marks per Q</span>
+            <span class="sum-val" class:sum-val-set={questionsToPresent > 0}>
+              {questionsToPresent > 0 ? `${marksPerQuestion.toFixed(2)}` : '—'}
             </span>
           </div>
           <div class="sum-row">
@@ -1256,18 +1246,64 @@
   .score-input-wrap input.input-error { border-color: #ef4444; }
   .score-unit { position: absolute; right: .75rem; top: 50%; transform: translateY(-50%); font-size: .72rem; font-weight: 700; color: var(--color-muted); pointer-events: none; }
 
-  /* CA weight badge */
-  .ca-weight-badge {
-    display: flex; align-items: center; gap: .35rem;
-    font-size: .72rem; color: var(--lc-600);
-    background: rgba(79,70,229,.07);
-    border: 1px solid rgba(79,70,229,.2);
-    border-radius: .45rem;
-    padding: .3rem .6rem;
-    line-height: 1.3;
+  /* Exam Weight Display */
+  .exam-weight-display {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    padding: 0.75rem 1rem;
+    background: var(--color-bg);
+    border: 2px solid var(--color-border);
+    border-radius: 0.75rem;
+    transition: border-color 0.15s;
   }
-  .ca-weight-badge strong { font-weight: 800; }
-  .ca-weight-split { color: var(--color-muted); font-size: .68rem; margin-left: .2rem; }
+  .exam-weight-display.ca {
+    border-color: rgba(79,70,229,0.3);
+    background: rgba(79,70,229,0.05);
+  }
+  .exam-weight-value {
+    font-size: 1.5rem;
+    font-weight: 900;
+    color: var(--lc-600);
+    line-height: 1;
+  }
+  .exam-weight-display.ca .exam-weight-value {
+    color: #7c3aed;
+  }
+  .exam-weight-label {
+    font-size: 0.85rem;
+    font-weight: 600;
+    color: var(--color-muted);
+  }
+  .exam-weight-badge {
+    font-size: 0.65rem;
+    font-weight: 700;
+    padding: 0.15rem 0.6rem;
+    background: rgba(79,70,229,0.1);
+    color: var(--lc-600);
+    border-radius: 999px;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    margin-left: auto;
+  }
+  .exam-weight-badge.ca {
+    background: rgba(124,58,237,0.1);
+    color: #7c3aed;
+  }
+
+  .total-display {
+    grid-column: 1 / -1;
+  }
+  .total-display-value {
+    font-size: 1.75rem;
+    font-weight: 900;
+    color: var(--color-text);
+    padding: 0.5rem 1rem;
+    background: linear-gradient(135deg, rgba(79,70,229,0.05), rgba(124,58,237,0.05));
+    border: 2px solid rgba(79,70,229,0.15);
+    border-radius: 0.75rem;
+    text-align: center;
+  }
 
   .pass-bar-wrap { display: flex; align-items: center; gap: .5rem; margin-top: .1rem; }
   .pass-bar-track { flex: 1; height: 4px; background: var(--color-border); border-radius: 2px; overflow: hidden; }
@@ -1282,9 +1318,9 @@
   .qtp-label-group { display: flex; align-items: center; gap: .35rem; font-size: .8rem; font-weight: 600; color: var(--color-text); }
   .qtp-row { display: flex; align-items: center; gap: .75rem; }
   .qtp-input-wrap { width: 100px; flex-shrink: 0; }
-  .qtp-hint-bubble { flex: 1; font-size: .75rem; color: var(--color-muted); padding: .45rem .75rem; background: var(--color-surface); border: 1px solid var(--color-border); border-radius: .5rem; line-height: 1.4; transition: all .2s; }
+  .qtp-hint-bubble { flex: 1; font-size: .82rem; font-weight: 600; color: var(--color-muted); padding: .45rem .75rem; background: var(--color-surface); border: 1px solid var(--color-border); border-radius: .5rem; line-height: 1.5; transition: all .2s; }
   .qtp-hint-bubble.active { color: var(--lc-600); background: rgba(79,70,229,.05); border-color: rgba(79,70,229,.25); }
-  .qtp-hint-bubble strong { font-weight: 800; }
+  .qtp-hint-bubble strong { font-weight: 800; color: var(--color-text); }
 
   /* ── Toggles ─────────────────────────────────────────────────────────────── */
   .toggles { display: flex; flex-direction: column; }

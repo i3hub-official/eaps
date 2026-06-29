@@ -252,9 +252,10 @@ export async function createExam(input: {
   semester: number;
   levels?: number[];
   department?: string | null;
+  marksPerQuestion?: number;
 }) {
   const prisma = await getPrismaClient();
-  const { levels, department, questionsToPresent, ...rest } = input;
+  const { levels, department, questionsToPresent, marksPerQuestion, ...rest } = input;
   const levelConnect =
     levels && levels.length > 0
       ? { connect: levels.map((l) => ({ level: l })) }
@@ -265,6 +266,7 @@ export async function createExam(input: {
       ...rest,
       department: department ?? null,
       questionsToPresent: questionsToPresent ?? 0,
+      marksPerQuestion: marksPerQuestion ?? 0,
       ...(levelConnect ? { levels: levelConnect } : {}),
     },
   });
@@ -290,10 +292,11 @@ export async function updateExam(
     questionsToPresent: number;
     levels: number[];
     department: string | null;
+    marksPerQuestion: number;
   }>,
 ) {
   const prisma = await getPrismaClient();
-  const { levels, ...rest } = input;
+  const { levels, marksPerQuestion, ...rest } = input;
   const levelConnect =
     levels !== undefined ? { set: levels.map((l) => ({ level: l })) } : undefined;
 
@@ -302,6 +305,7 @@ export async function updateExam(
     data: {
       ...rest,
       ...(levelConnect ? { levels: levelConnect } : {}),
+      marksPerQuestion: marksPerQuestion ?? 0,
     },
   });
 }

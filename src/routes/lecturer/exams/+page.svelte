@@ -1,24 +1,27 @@
-<!-- src/routes/lecturer/+page.svelte -->
+<!-- src/routes/lecturer/exams/+page.svelte -->
 <script lang="ts">
   import type { PageData } from './$types';
   import {
     PlusCircle, ClipboardList, BookOpen, Clock, Users,
     CheckCircle, ChevronRight, BarChart2,
     AlertCircle, Layers, FileText, Activity, Zap,
-    CalendarClock, FileEdit, XCircle
+    CalendarClock, FileEdit, XCircle, Eye, Edit, Trash2,
+    Calendar, Award, HelpCircle, Copy, Link2, Settings,
+    ShieldCheck, Timer, TrendingUp, Scale
   } from '@lucide/svelte';
+  import { fly, fade } from 'svelte/transition';
 
   let { data }: { data: PageData } = $props();
   const { exams, statsMap } = data;
 
   type StatusKey = 'draft' | 'scheduled' | 'active' | 'completed' | 'cancelled';
 
-  const STATUS_META: Record<StatusKey, { label: string; color: string; bg: string; dot: string }> = {
-    draft:     { label: 'Draft',     color: '#64748b', bg: 'rgba(100,116,139,0.1)', dot: '#94a3b8' },
-    scheduled: { label: 'Scheduled', color: '#2563eb', bg: 'rgba(37,99,235,0.08)',  dot: '#3b82f6' },
-    active:    { label: 'Active',    color: '#16a34a', bg: 'rgba(22,163,74,0.08)',  dot: '#22c55e' },
-    completed: { label: 'Completed', color: '#7c3aed', bg: 'rgba(124,58,237,0.08)', dot: '#a78bfa' },
-    cancelled: { label: 'Cancelled', color: '#dc2626', bg: 'rgba(220,38,38,0.08)',  dot: '#f87171' },
+  const STATUS_META: Record<StatusKey, { label: string; color: string; bg: string; dot: string; icon: any; order: number }> = {
+    draft:     { label: 'Draft',     color: '#64748b', bg: 'rgba(100,116,139,0.1)', dot: '#94a3b8', icon: FileEdit, order: 2 },
+    scheduled: { label: 'Scheduled', color: '#2563eb', bg: 'rgba(37,99,235,0.08)',  dot: '#3b82f6', icon: CalendarClock, order: 1 },
+    active:    { label: 'Active',    color: '#16a34a', bg: 'rgba(22,163,74,0.08)',  dot: '#22c55e', icon: Zap, order: 0 },
+    completed: { label: 'Completed', color: '#7c3aed', bg: 'rgba(124,58,237,0.08)', dot: '#a78bfa', icon: CheckCircle, order: 3 },
+    cancelled: { label: 'Cancelled', color: '#dc2626', bg: 'rgba(220,38,38,0.08)',  dot: '#f87171', icon: XCircle, order: 4 },
   };
 
   function getMeta(status: string) {
@@ -50,13 +53,15 @@
     { key: 'cancelled', label: 'Cancelled', icon: XCircle,       count: () => cancelledCount },
   ];
 
-  // Sort: active first, then scheduled, draft, completed, cancelled
-  const ORDER: Record<string, number> = { active: 0, scheduled: 1, draft: 2, completed: 3, cancelled: 4 };
-
+  // Sort by status order
   const sortedExams = $derived(
     [...(exams ?? [])]
       .filter(e => activeFilter === 'all' || e.status === activeFilter)
-      .sort((a, b) => (ORDER[a.status] ?? 9) - (ORDER[b.status] ?? 9))
+      .sort((a, b) => {
+        const orderA = STATUS_META[a.status as StatusKey]?.order ?? 9;
+        const orderB = STATUS_META[b.status as StatusKey]?.order ?? 9;
+        return orderA - orderB;
+      })
   );
 
   // ── Helpers ───────────────────────────────────────────────────────────────
@@ -70,13 +75,81 @@
     return new Date(d).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
   }
 
-  // Helper to get status label for display
+  function formatDateTime(d: string | null | undefined) {
+    if (!d) return null;
+    return `${formatDate(d)} at ${formatTime(d)}`;
+  }
+
   function getStatusLabel(status: string) {
     return STATUS_META[status as StatusKey]?.label ?? status;
+  }
+
+  function getStatusIcon(status: string) {
+    return STATUS_META[status as StatusKey]?.icon ?? FileEdit;
+  }
+
+  // ── Check if exam has questions ──────────────────────────────────────────
+  function hasQuestions(exam: any) {
+    const s = (statsMap ?? {})[exam.id];
+    return s?.total_questions > 0 || exam._count?.questions > 0 || exam.questions?.length > 0;
+  }
+
+  function getQuestionCount(exam: any) {
+    const s = (statsMap ?? {})[exam.id];
+    if (s?.total_questions !== undefined) return s.total_questions;
+    return exam._count?.questions ?? exam.questions?.length ?? 0;
+  }
+
+  // ── Check if exam has results ────────────────────────────────────────────
+  function hasResults(exam: any) {
+    const s = (statsMap ?? {})[exam.id];
+    return s && s.submitted > 0;
+  }
+
+  // ── Copy link ─────────────────────────────────────────────────────────────
+  function copyExamLink(examId: string) {
+    const url = `${window.location.origin}/student/exam/${examId}`;
+    navigator.clipboard?.writeText(url).then(() => {
+      // Show toast or feedback
+      console.log('Link copied!');
+    }).catch(() => {
+      // Fallback
+      const input = document.createElement('input');
+      input.value = url;
+      document.body.appendChild(input);
+      input.select();
+      document.execCommand('copy');
+      document.body.removeChild(input);
+    });
+  }
+
+  // ── Toast system ──────────────────────────────────────────────────────────
+  type Toast = { id: number; message: string; type: 'info' | 'warn' | 'success' };
+  let toasts = $state<Toast[]>([]);
+  let toastId = 0;
+
+  function showToast(message: string, type: Toast['type'] = 'info', duration = 2600) {
+    const id = ++toastId;
+    toasts = [...toasts, { id, message, type }];
+    setTimeout(() => { toasts = toasts.filter(t => t.id !== id); }, duration);
   }
 </script>
 
 <svelte:head><title>Lecturer Dashboard — MOUAU eTest</title></svelte:head>
+
+<!-- ── Toast stack ─────────────────────────────────────────────────────────── -->
+<div class="toast-stack" aria-live="polite">
+  {#each toasts as t (t.id)}
+    <div class="toast toast-{t.type}"
+      in:fly={{ y: 10, duration: 200 }}
+      out:fly={{ y: -6, duration: 160 }}>
+      {#if t.type === 'warn'}<AlertCircle size={13} />
+      {:else if t.type === 'success'}<CheckCircle size={13} />
+      {:else}<Zap size={13} />{/if}
+      {t.message}
+    </div>
+  {/each}
+</div>
 
 <div class="page">
 
@@ -189,6 +262,12 @@
       {#each sortedExams as exam (exam.id)}
         {@const meta = getMeta(exam.status)}
         {@const s    = (statsMap ?? {})[exam.id]}
+        {@const hasQ = hasQuestions(exam)}
+        {@const qCount = getQuestionCount(exam)}
+        {@const hasR = hasResults(exam)}
+        {@const StatusIcon = getStatusIcon(exam.status)}
+        {@const marksPerQuestion = exam.totalMarks && exam.questionsToPresent ? (exam.totalMarks / exam.questionsToPresent) : 0}
+        
         <div class="exam-card" class:is-active={exam.status === 'active'}>
 
           {#if exam.status === 'active'}
@@ -200,28 +279,53 @@
             <span class="status-pill" style="background:{meta.bg}; color:{meta.color};">
               <span class="status-pip" style="background:{meta.dot};"></span>
               {meta.label}
+              <StatusIcon size={11} style="margin-left:2px;" />
             </span>
           </div>
 
           <h2 class="exam-title">{exam.title}</h2>
 
+          <!-- Exam Details Row -->
           <div class="exam-meta-row">
-            <span class="meta-chip"><Clock size={11} /> {exam.durationMinutes}min</span>
-            <span class="meta-chip"><Layers size={11} /> {exam.totalMarks} marks</span>
-            <span class="meta-chip"><CheckCircle size={11} /> Pass {exam.passMark}</span>
+            <span class="meta-chip"><Timer size={11} /> {exam.durationMinutes}min</span>
+            <span class="meta-chip"><Award size={11} /> {exam.totalMarks} marks</span>
+            <span class="meta-chip"><Scale size={11} /> Pass {exam.passMark}</span>
+            {#if exam.questionsToPresent}
+              <span class="meta-chip"><HelpCircle size={11} /> {exam.questionsToPresent} Qs</span>
+            {/if}
+            {#if marksPerQuestion > 0}
+              <span class="meta-chip"><TrendingUp size={11} /> {marksPerQuestion.toFixed(1)} ea</span>
+            {/if}
           </div>
 
+          <!-- Schedule -->
           {#if exam.scheduledStart}
             <div class="schedule-row">
               <span class="schedule-label">
                 {exam.status === 'active' ? 'Started' : 'Scheduled'}
               </span>
               <span class="schedule-val">
-                {formatDate(exam.scheduledStart)} · {formatTime(exam.scheduledStart)}
+                <Calendar size={11} style="display:inline;vertical-align:middle;margin-right:4px;" />
+                {formatDateTime(exam.scheduledStart)}
               </span>
             </div>
           {/if}
 
+          <!-- Question Status -->
+          <div class="question-status">
+            {#if hasQ}
+              <span class="status-badge ready">
+                <CheckCircle size={12} /> {qCount} question{qCount !== 1 ? 's' : ''} added
+              </span>
+            {:else}
+              <span class="status-badge missing">
+                <AlertCircle size={12} /> No questions added yet
+                <a href="/lecturer/exams/{exam.id}/questions" class="add-questions-link">Add Questions</a>
+              </span>
+            {/if}
+          </div>
+
+          <!-- Stats -->
           {#if s && s.total > 0}
             <div class="stats-row">
               <div class="stat-item">
@@ -247,21 +351,65 @@
             </div>
           {/if}
 
+          <!-- Actions -->
           <div class="card-actions">
             <a href="/lecturer/exams/{exam.id}/questions" class="action-btn">
-              <FileText size={13} /> Questions
+              <HelpCircle size={13} /> Questions
             </a>
-            <a href="/lecturer/results/{exam.id}" class="action-btn">
+            <a href="/lecturer/results/{exam.id}" class="action-btn" class:disabled={!hasR}>
               <BarChart2 size={13} /> Results
             </a>
             <a href="/lecturer/exams/{exam.id}" class="action-btn outline">
               Manage <ChevronRight size={12} />
             </a>
+            {#if exam.status === 'draft'}
+              <a href="/lecturer/exams/{exam.id}/edit" class="action-btn outline">
+                <Edit size={13} />
+              </a>
+            {/if}
+            <button 
+              class="action-btn outline" 
+              onclick={() => {
+                copyExamLink(exam.id);
+                showToast('Exam link copied to clipboard!', 'success');
+              }}
+              title="Copy student access link"
+            >
+              <Link2 size={13} />
+            </button>
+            {#if exam.status === 'active' && hasR}
+              <a href="/lecturer/exams/{exam.id}/monitor" class="action-btn outline">
+                <Activity size={13} />
+              </a>
+            {/if}
           </div>
         </div>
       {/each}
     </div>
   {/if}
+
+  <!-- ── Quick Actions ────────────────────────────────────────────────────── -->
+  <div class="quick-actions">
+    <h3>Quick Actions</h3>
+    <div class="quick-grid">
+      <a href="/lecturer/exams/create" class="quick-card">
+        <PlusCircle size={20} />
+        <span>New Exam</span>
+      </a>
+      <a href="/lecturer/results" class="quick-card">
+        <BarChart2 size={20} />
+        <span>All Results</span>
+      </a>
+      <a href="/lecturer/questions" class="quick-card">
+        <HelpCircle size={20} />
+        <span>Question Bank</span>
+      </a>
+      <a href="/lecturer/exams/drafts" class="quick-card">
+        <FileEdit size={20} />
+        <span>My Drafts</span>
+      </a>
+    </div>
+  </div>
 
 </div>
 
@@ -282,6 +430,23 @@
     gap: 1.5rem;
   }
   @media (min-width: 1024px) { .page { padding: 2rem 2.5rem; } }
+
+  /* ── Toast ───────────────────────────────────────────────────────────────── */
+  .toast-stack {
+    position: fixed; bottom: 1.5rem; right: 1.5rem;
+    z-index: 9999; display: flex; flex-direction: column; gap: .35rem;
+    pointer-events: none;
+  }
+  .toast {
+    display: inline-flex; align-items: center; gap: .45rem;
+    padding: .5rem .9rem; border-radius: .55rem;
+    font-size: .79rem; font-weight: 600; white-space: nowrap;
+    box-shadow: 0 4px 14px rgba(0,0,0,.1); max-width: 300px;
+    pointer-events: auto;
+  }
+  .toast-info { background: var(--color-surface); color: var(--color-text); border: 1px solid var(--color-border); }
+  .toast-warn { background: #fef3c7; color: #92400e; border: 1px solid #fde68a; }
+  .toast-success { background: #d1fae5; color: #065f46; border: 1px solid #a7f3d0; }
 
   /* ── Summary cards ────────────────────────────────────────────────────── */
   .summary-grid {
@@ -357,15 +522,11 @@
     white-space: nowrap;
   }
   .filter-tab:hover { background: var(--color-bg); color: var(--color-text); }
-
-  /* default active state — indigo */
   .filter-tab.active {
     background: var(--lc-soft);
     color: var(--lc-600);
     font-weight: 700;
   }
-
-  /* per-status colour when active */
   .filter-tab.active.tab-active    { background: rgba(22,163,74,0.1);  color: #16a34a; }
   .filter-tab.active.tab-scheduled { background: rgba(37,99,235,0.08); color: #2563eb; }
   .filter-tab.active.tab-draft     { background: rgba(100,116,139,0.1);color: #64748b; }
@@ -418,7 +579,7 @@
   /* ── Exam grid ────────────────────────────────────────────────────────── */
   .exam-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+    grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
     gap: 1rem;
   }
 
@@ -475,6 +636,30 @@
   }
   .schedule-label { font-size: 0.65rem; font-weight: 700; color: var(--color-muted); text-transform: uppercase; letter-spacing: 0.05em; }
   .schedule-val   { font-size: 0.75rem; font-weight: 600; color: var(--color-text); }
+
+  /* Question Status */
+  .question-status { margin-top: -0.25rem; }
+  .status-badge {
+    display: inline-flex; align-items: center; gap: 0.3rem;
+    font-size: 0.7rem; font-weight: 600; padding: 0.2rem 0.6rem;
+    border-radius: 999px;
+  }
+  .status-badge.ready {
+    background: rgba(22,163,74,0.08); color: #16a34a;
+  }
+  .status-badge.missing {
+    background: rgba(220,38,38,0.08); color: #dc2626;
+  }
+  .add-questions-link {
+    margin-left: 0.3rem;
+    color: var(--lc-600);
+    text-decoration: none;
+    font-weight: 700;
+  }
+  .add-questions-link:hover {
+    text-decoration: underline;
+  }
+
   .stats-row {
     display: flex; align-items: center;
     background: var(--color-bg); border: 1px solid var(--color-border); border-radius: 0.625rem; overflow: hidden;
@@ -501,12 +686,13 @@
     border: none; border-radius: 0.5rem;
     font-size: 0.75rem; font-weight: 700;
     text-decoration: none; cursor: pointer; font-family: inherit;
-    transition: background 0.15s; white-space: nowrap;
+    transition: background 0.15s, opacity 0.15s; white-space: nowrap;
   }
   .action-btn:hover { background: var(--lc-700); }
+  .action-btn.disabled { opacity: 0.5; pointer-events: none; cursor: not-allowed; }
   .action-btn.outline {
     background: transparent; border: 1px solid var(--color-border);
-    color: var(--color-text); margin-left: auto;
+    color: var(--color-text);
   }
   .action-btn.outline:hover { border-color: var(--lc-600); color: var(--lc-600); background: var(--lc-soft); }
 
@@ -525,4 +711,35 @@
   }
   .empty-title { font-size: 1rem; font-weight: 700; color: var(--color-text); margin: 0; }
   .empty-sub   { font-size: 0.82rem; color: var(--color-muted); margin: 0; }
+
+  /* ── Quick Actions ────────────────────────────────────────────────────── */
+  .quick-actions { margin-top: 0.5rem; }
+  .quick-actions h3 {
+    font-size: 0.8rem; font-weight: 700; color: var(--color-muted);
+    text-transform: uppercase; letter-spacing: 0.05em;
+    margin: 0 0 0.75rem;
+  }
+  .quick-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+    gap: 0.75rem;
+  }
+  .quick-card {
+    display: flex; align-items: center; gap: 0.75rem;
+    padding: 0.875rem 1rem;
+    background: var(--color-surface);
+    border: 1px solid var(--color-border);
+    border-radius: 0.75rem;
+    color: var(--color-text);
+    text-decoration: none;
+    font-weight: 600; font-size: 0.82rem;
+    transition: border-color 0.15s, box-shadow 0.15s, transform 0.15s;
+  }
+  .quick-card:hover {
+    border-color: var(--lc-600);
+    box-shadow: 0 2px 12px rgba(79,70,229,0.06);
+    transform: translateY(-1px);
+    color: var(--lc-600);
+  }
+  .quick-card svg { color: var(--lc-600); }
 </style>

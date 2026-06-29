@@ -514,6 +514,7 @@ model Exam {
   randomizeQuestions Boolean    @default(true) @map("randomize_questions")
   randomizeOptions   Boolean    @default(true) @map("randomize_options")
   questionsToPresent Int        @default(0) @map("questions_to_present") @db.SmallInt
+  marksPerQuestion  Float?   @db.Decimal(5,2) // Marks per question (70 ÷ questionsToPresent)
   showResultAfter    Boolean    @default(false) @map("show_result_after")
   maxViolations      Int        @default(5) @map("max_violations") @db.SmallInt
   session            String

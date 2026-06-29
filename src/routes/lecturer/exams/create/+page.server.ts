@@ -27,7 +27,6 @@ export const load: PageServerLoad = async (event) => {
       select:  { id: true, name: true, code: true },
     }),
 
-    // Fetch all semester rows — we deduplicate into unique session strings below.
     prisma.academicSemester.findMany({
       orderBy: { session: 'desc' },
       select:  { id: true, session: true, semester: true, isActive: true },
@@ -36,17 +35,12 @@ export const load: PageServerLoad = async (event) => {
     getActiveAcademicSemester(),
   ]);
 
-  // Derive the current session from the active semester, or fall back to
-  // the most recent session in the DB, or generate it from the current year.
   const currentYear  = new Date().getFullYear();
   const derivedSession =
     activeSemester?.session ??
     semesterRows[0]?.session ??
     `${currentYear}/${currentYear + 1}`;
 
-  // Deduplicate: the academic_semesters table has one row per (session, semester)
-  // pair, so "2025/2026" appears twice (once for each semester).
-  // The dropdown only needs unique session strings.
   const seenSessions = new Set<string>();
   const sessions: Array<{ id: string; session: string }> = [];
   for (const row of semesterRows) {
@@ -56,8 +50,6 @@ export const load: PageServerLoad = async (event) => {
     }
   }
 
-  // If no sessions exist in DB yet, seed the UI with the current and next
-  // academic year so the lecturer isn't blocked.
   if (sessions.length === 0) {
     sessions.push(
       { id: 'current', session: `${currentYear}/${currentYear + 1}` },
@@ -72,6 +64,9 @@ export const load: PageServerLoad = async (event) => {
     sessions,
     defaultSession:  activeSemester?.session  ?? derivedSession,
     defaultSemester: activeSemester?.semester ?? 1,
+    examTotal: 70,
+    caTotal: 30,
+    totalMarks: 100,
   };
 };
 
@@ -105,6 +100,7 @@ export const actions: Actions = {
       showResultAfter:    values.showResultAfter,
       maxViolations:      values.maxViolations,
       questionsToPresent: values.questionsToPresent,
+      marksPerQuestion:   values.marksPerQuestion,
       session:            values.session,
       semester:           values.semester,
       levels:             values.levels,

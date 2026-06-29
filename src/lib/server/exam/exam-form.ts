@@ -19,6 +19,12 @@ function dateOrNull(formData: FormData, key: string): Date | null {
   return Number.isNaN(d.getTime()) ? null : d;
 }
 
+// Calculate marks per question based on total exam marks (always 70)
+function calculateMarksPerQuestion(totalMarks: number, questionsToPresent: number): number {
+  if (questionsToPresent <= 0) return 0;
+  return totalMarks / questionsToPresent;
+}
+
 export function parseExamForm(formData: FormData): ExamFormResult {
   const errors: Record<string, string> = {};
 
@@ -26,8 +32,11 @@ export function parseExamForm(formData: FormData): ExamFormResult {
   const title             = str(formData, 'title');
   const instructions      = str(formData, 'instructions') || null;
   const durationMinutes   = num(formData, 'durationMinutes', 60);
-  const totalMarks        = num(formData, 'totalMarks', 70);
-  const passMark          = num(formData, 'passMark', 28);  // 40% of 70
+  
+  // FIXED: Exam is ALWAYS 70 marks at MOUAU
+  const totalMarks        = 70; // Hardcoded - not from form
+  const passMark          = num(formData, 'passMark', 28); // 40% of 70 = 28
+  
   const session           = str(formData, 'session');
   const semester          = num(formData, 'semester', 1);
   const scheduledStart    = dateOrNull(formData, 'scheduledStart');
@@ -37,10 +46,11 @@ export function parseExamForm(formData: FormData): ExamFormResult {
   const randomizeQuestions = formData.get('randomizeQuestions') === 'on';
   const randomizeOptions  = formData.get('randomizeOptions')  === 'on';
   const questionsToPresent = num(formData, 'questionsToPresent', 35);
-  // showResultAfter: checkbox sends "on" when checked, nothing when unchecked.
-  // formData.get returns null when unchecked — "on" check is correct.
   const showResultAfter   = formData.get('showResultAfter')   === 'on';
   const maxViolations     = num(formData, 'maxViolations', 5);
+
+  // Calculate marks per question (distribute 70 marks across all questions)
+  const marksPerQuestion = calculateMarksPerQuestion(totalMarks, questionsToPresent);
 
   const levels = formData
     .getAll('levels')
@@ -68,16 +78,8 @@ export function parseExamForm(formData: FormData): ExamFormResult {
     errors.durationMinutes = 'Duration must be greater than 0';
   }
 
-  // totalMarks = exam weight out of 100 final marks.
-  // Must be 1–99 so CA always contributes at least 1 mark.
-  if (totalMarks <= 0) {
-    errors.totalMarks = 'Exam weight must be greater than 0';
-  } else if (totalMarks >= 100) {
-    errors.totalMarks = 'Exam weight cannot be 100 — CA must contribute at least 1 mark';
-  }
-
   if (passMark < 0 || passMark > totalMarks) {
-    errors.passMark = 'Pass mark must be between 0 and the exam weight';
+    errors.passMark = `Pass mark must be between 0 and ${totalMarks}`;
   }
 
   if (scheduledStart && scheduledEnd && scheduledEnd <= scheduledStart) {
@@ -98,6 +100,7 @@ export function parseExamForm(formData: FormData): ExamFormResult {
       session, semester, scheduledStart, scheduledEnd, allowLateEntry,
       lateEntryMinutes, randomizeQuestions, randomizeOptions,
       questionsToPresent, showResultAfter, maxViolations, levels, department,
+      marksPerQuestion,
     },
     errors,
   };

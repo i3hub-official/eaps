@@ -129,6 +129,7 @@ export interface ExamFormValues {
   maxViolations: number;
   levels: number[];
   department: string | null;
+  marksPerQuestion: number;
 }
 
 export interface ExamFormResult {

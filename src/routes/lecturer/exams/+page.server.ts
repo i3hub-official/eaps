@@ -16,12 +16,13 @@ export const load: PageServerLoad = async ({ locals }) => {
   }
 
   // Quick stats per exam - including all statuses
-  const stats = await sql<{ exam_id: string; total: number; submitted: number; avg_pct: number }>(
+  const stats = await sql<{ exam_id: string; total: number; submitted: number; avg_pct: number; total_questions: number }>(
     `SELECT
        es.exam_id,
        COUNT(*)::int                                                   AS total,
        COUNT(*) FILTER (WHERE es.status IN ('submitted','force_submitted'))::int AS submitted,
-       COALESCE(ROUND(AVG(er.percentage)::numeric, 1), 0)             AS avg_pct
+       COALESCE(ROUND(AVG(er.percentage)::numeric, 1), 0)             AS avg_pct,
+       (SELECT COUNT(*)::int FROM questions WHERE exam_id = es.exam_id) AS total_questions
      FROM exam_sessions es
      LEFT JOIN exam_results er ON er.session_id = es.id
      WHERE es.exam_id = ANY($1::uuid[])
