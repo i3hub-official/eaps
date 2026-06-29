@@ -302,6 +302,8 @@ model User {
   lecturerCourses         LecturerCourse[] @relation("LecturerCourses")
   assignedLecturerCourses LecturerCourse[] @relation("LecturerCourseAssignedBy")
   studentUploads StudentUpload[]
+  questionImports QuestionImport[]
+   questionFavorites QuestionFavorite[]
 
   @@index([role])
   @@index([collegeId])
@@ -312,6 +314,22 @@ model User {
   @@index([isSuspended])
   @@index([levelId])
   @@map("users")
+}
+
+model QuestionFavorite {
+  id         String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId     String   @map("user_id") @db.Uuid
+  questionId String   @map("question_id") @db.Uuid
+  createdAt  DateTime @default(now()) @map("created_at") @db.Timestamptz()
+  updatedAt  DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz()
+
+  user     User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  question Question @relation(fields: [questionId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, questionId])
+  @@index([userId])
+  @@index([questionId])
+  @@map("question_favorites")
 }
 
 // ─── Secondary Role Assignments ───────────────────────────────────────────────
@@ -601,6 +619,7 @@ model Question {
   studentAnswers       StudentAnswer[]
   sessionQuestionOrder SessionQuestionOrder[]
   sessionOptionOrder   SessionOptionOrder[]
+  favorites            QuestionFavorite[]     
 
   @@index([examId])
   @@map("questions")
@@ -618,6 +637,23 @@ model QuestionOption {
   sessionOptionOrder SessionOptionOrder[]
 
   @@map("question_options")
+}
+
+model QuestionImport {
+  id           String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  fileName     String   @map("file_name")
+  fileType     String   @map("file_type")
+  rowCount     Int      @map("row_count")
+  successCount Int      @default(0) @map("success_count")
+  errorCount   Int      @default(0) @map("error_count")
+  importedById String   @map("imported_by") @db.Uuid
+  importedAt   DateTime @default(now()) @map("imported_at") @db.Timestamptz()
+
+  importedBy User @relation(fields: [importedById], references: [id], onDelete: Cascade)
+
+  @@index([importedById])
+  @@index([importedAt(sort: Desc)])
+  @@map("question_imports")
 }
 
 model FitbAnswer {

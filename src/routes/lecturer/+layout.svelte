@@ -160,8 +160,6 @@
       children: [
         { href: '/lecturer/profile',           label: 'My Profile',     icon: User,         sectionLabel: 'Personal' },
         { href: '/lecturer/profile/settings',  label: 'Settings',       icon: Settings,     sectionLabel: 'Preferences' },
-        { href: '/lecturer/profile/security',  label: 'Security',       icon: ShieldAlert   },
-        { href: '/lecturer/profile/notifications', label: 'Notification Preferences', icon: Bell },
       ],
     },
   ];
