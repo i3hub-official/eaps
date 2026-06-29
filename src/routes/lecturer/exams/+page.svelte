@@ -7,9 +7,9 @@
     AlertCircle, Layers, FileText, Activity, Zap,
     CalendarClock, FileEdit, XCircle, Eye, Edit, Trash2,
     Calendar, Award, HelpCircle, Copy, Link2, Settings,
-    ShieldCheck, Timer, TrendingUp, Scale
+    ShieldCheck, Timer, TrendingUp, Scale, Archive
   } from '@lucide/svelte';
-  import { fly, fade } from 'svelte/transition';
+  import { fly } from 'svelte/transition';
 
   let { data }: { data: PageData } = $props();
   const { exams, statsMap } = data;
@@ -46,7 +46,7 @@
 
   const FILTER_TABS: { key: FilterKey; label: string; icon: any; count: () => number; showAlways?: boolean }[] = [
     { key: 'all',       label: 'All Exams', icon: ClipboardList, count: () => totalExams, showAlways: true },
-    { key: 'active',    label: 'Active Now', icon: Zap,           count: () => activeCount },
+    { key: 'active',    label: 'Active', icon: Zap,           count: () => activeCount },
     { key: 'scheduled', label: 'Scheduled', icon: CalendarClock, count: () => scheduledCount },
     { key: 'draft',     label: 'Drafts',    icon: FileEdit,      count: () => draftCount },
     { key: 'completed', label: 'Completed', icon: CheckCircle,   count: () => completedCount },
@@ -110,16 +110,15 @@
   function copyExamLink(examId: string) {
     const url = `${window.location.origin}/student/exam/${examId}`;
     navigator.clipboard?.writeText(url).then(() => {
-      // Show toast or feedback
-      console.log('Link copied!');
+      showToast('Exam link copied to clipboard!', 'success');
     }).catch(() => {
-      // Fallback
       const input = document.createElement('input');
       input.value = url;
       document.body.appendChild(input);
       input.select();
       document.execCommand('copy');
       document.body.removeChild(input);
+      showToast('Exam link copied!', 'success');
     });
   }
 
@@ -135,7 +134,7 @@
   }
 </script>
 
-<svelte:head><title>Lecturer Dashboard — MOUAU eTest</title></svelte:head>
+<svelte:head><title>My Exams — MOUAU eTest</title></svelte:head>
 
 <!-- ── Toast stack ─────────────────────────────────────────────────────────── -->
 <div class="toast-stack" aria-live="polite">
@@ -161,7 +160,7 @@
       </div>
       <div class="summary-body">
         <span class="summary-num">{activeCount}</span>
-        <span class="summary-lbl">Active Exams</span>
+        <span class="summary-lbl">Active</span>
       </div>
       {#if activeCount > 0}
         <div class="summary-live-dot"></div>
@@ -170,7 +169,7 @@
 
     <div class="summary-card">
       <div class="summary-icon" style="background: rgba(37,99,235,0.08); color: #2563eb;">
-        <Clock size={18} />
+        <CalendarClock size={18} />
       </div>
       <div class="summary-body">
         <span class="summary-num">{scheduledCount}</span>
@@ -180,7 +179,7 @@
 
     <div class="summary-card">
       <div class="summary-icon" style="background: rgba(100,116,139,0.1); color: #64748b;">
-        <FileText size={18} />
+        <FileEdit size={18} />
       </div>
       <div class="summary-body">
         <span class="summary-num">{draftCount}</span>
@@ -194,7 +193,7 @@
       </div>
       <div class="summary-body">
         <span class="summary-num">{totalStudents}</span>
-        <span class="summary-lbl">Total Attempts</span>
+        <span class="summary-lbl">Students</span>
       </div>
     </div>
   </div>
@@ -206,9 +205,14 @@
       <h2>My Exams</h2>
       <span class="section-count">{sortedExams.length}</span>
     </div>
-    <a href="/lecturer/exams/create" class="btn-primary">
-      <PlusCircle size={13} /> Create Exam
-    </a>
+    <div class="header-actions">
+      <a href="/lecturer/exams/archived" class="btn-secondary">
+        <Archive size={13} /> Archived
+      </a>
+      <a href="/lecturer/exams/create" class="btn-primary">
+        <PlusCircle size={13} /> Create Exam
+      </a>
+    </div>
   </div>
 
   <!-- ── Filter tabs ─────────────────────────────────────────────────────── -->
@@ -268,7 +272,7 @@
         {@const StatusIcon = getStatusIcon(exam.status)}
         {@const marksPerQuestion = exam.totalMarks && exam.questionsToPresent ? (exam.totalMarks / exam.questionsToPresent) : 0}
         
-        <div class="exam-card" class:is-active={exam.status === 'active'}>
+        <div class="exam-card" class:is-active={exam.status === 'active'} class:is-cancelled={exam.status === 'cancelled'}>
 
           {#if exam.status === 'active'}
             <div class="card-accent"></div>
@@ -283,13 +287,13 @@
             </span>
           </div>
 
-          <h2 class="exam-title">{exam.title}</h2>
+          <h3 class="exam-title">{exam.title}</h3>
 
           <!-- Exam Details Row -->
           <div class="exam-meta-row">
-            <span class="meta-chip"><Timer size={11} /> {exam.durationMinutes}min</span>
+            <span class="meta-chip"><Timer size={11} /> {exam.durationMinutes}m</span>
             <span class="meta-chip"><Award size={11} /> {exam.totalMarks} marks</span>
-            <span class="meta-chip"><Scale size={11} /> Pass {exam.passMark}</span>
+            <span class="meta-chip"><Scale size={11} /> {exam.passMark} pass</span>
             {#if exam.questionsToPresent}
               <span class="meta-chip"><HelpCircle size={11} /> {exam.questionsToPresent} Qs</span>
             {/if}
@@ -315,12 +319,12 @@
           <div class="question-status">
             {#if hasQ}
               <span class="status-badge ready">
-                <CheckCircle size={12} /> {qCount} question{qCount !== 1 ? 's' : ''} added
+                <CheckCircle size={12} /> {qCount} question{qCount !== 1 ? 's' : ''}
               </span>
             {:else}
               <span class="status-badge missing">
-                <AlertCircle size={12} /> No questions added yet
-                <a href="/lecturer/exams/{exam.id}/questions" class="add-questions-link">Add Questions</a>
+                <AlertCircle size={12} /> No questions
+                <a href="/lecturer/exams/{exam.id}/questions" class="add-questions-link">Add</a>
               </span>
             {/if}
           </div>
@@ -347,7 +351,7 @@
             </div>
           {:else if s}
             <div class="no-attempts">
-              <AlertCircle size={12} /> No attempts yet
+              <AlertCircle size={12} /> No attempts
             </div>
           {/if}
 
@@ -369,10 +373,7 @@
             {/if}
             <button 
               class="action-btn outline" 
-              onclick={() => {
-                copyExamLink(exam.id);
-                showToast('Exam link copied to clipboard!', 'success');
-              }}
+              onclick={() => copyExamLink(exam.id)}
               title="Copy student access link"
             >
               <Link2 size={13} />
@@ -396,17 +397,17 @@
         <PlusCircle size={20} />
         <span>New Exam</span>
       </a>
-      <a href="/lecturer/results" class="quick-card">
-        <BarChart2 size={20} />
-        <span>All Results</span>
-      </a>
-      <a href="/lecturer/questions" class="quick-card">
-        <HelpCircle size={20} />
-        <span>Question Bank</span>
-      </a>
       <a href="/lecturer/exams/drafts" class="quick-card">
         <FileEdit size={20} />
         <span>My Drafts</span>
+      </a>
+      <a href="/lecturer/exams/archived" class="quick-card">
+        <Archive size={20} />
+        <span>Archived</span>
+      </a>
+      <a href="/lecturer/results" class="quick-card">
+        <BarChart2 size={20} />
+        <span>Results</span>
       </a>
     </div>
   </div>
@@ -423,7 +424,7 @@
 
   .page {
     padding: 2rem 1.5rem;
-    max-width: 1100px;
+    max-width: 1200px;
     margin: 0 auto;
     display: flex;
     flex-direction: column;
@@ -455,7 +456,7 @@
     gap: 0.875rem;
   }
   @media (max-width: 768px) { .summary-grid { grid-template-columns: repeat(2, 1fr); } }
-  @media (max-width: 420px) { .summary-grid { grid-template-columns: 1fr 1fr; } }
+  @media (max-width: 480px) { .summary-grid { grid-template-columns: 1fr 1fr; } }
 
   .summary-card {
     background: var(--color-surface);
@@ -491,6 +492,7 @@
   /* ── Section header ───────────────────────────────────────────────────── */
   .section-header {
     display: flex; align-items: center; justify-content: space-between; gap: 1rem;
+    flex-wrap: wrap;
   }
   .section-title {
     display: flex; align-items: center; gap: 0.5rem; color: var(--color-text);
@@ -501,6 +503,54 @@
     background: var(--color-bg); border: 1px solid var(--color-border);
     color: var(--color-muted); padding: 0.1rem 0.5rem; border-radius: 999px;
   }
+
+  .header-actions {
+    display: flex; gap: 0.5rem;
+    flex-wrap: wrap;
+  }
+
+  /* ── Buttons ────────────────────────────────────────────────────────────── */
+  .btn-primary {
+    display: inline-flex; align-items: center; gap: 0.4rem;
+    padding: 0.55rem 1.1rem;
+    background: var(--lc-600); color: white;
+    border: none; border-radius: 0.6rem;
+    font-size: 0.82rem; font-weight: 700;
+    text-decoration: none; cursor: pointer; font-family: inherit;
+    transition: background 0.15s, transform 0.15s, box-shadow 0.15s;
+    white-space: nowrap;
+  }
+  .btn-primary:hover {
+    background: var(--lc-700);
+    transform: translateY(-1px);
+    box-shadow: 0 4px 14px rgba(79,70,229,0.3);
+  }
+
+  .btn-secondary {
+    display: inline-flex; align-items: center; gap: 0.4rem;
+    padding: 0.55rem 1.1rem;
+    background: var(--color-bg); color: var(--color-text);
+    border: 1px solid var(--color-border);
+    border-radius: 0.6rem;
+    font-size: 0.82rem; font-weight: 700;
+    text-decoration: none; cursor: pointer; font-family: inherit;
+    transition: all 0.15s;
+    white-space: nowrap;
+  }
+  .btn-secondary:hover { border-color: var(--lc-600); color: var(--lc-600); background: var(--lc-soft); }
+
+  .btn-ghost {
+    display: inline-flex; align-items: center; gap: 0.4rem;
+    padding: 0.55rem 1.1rem;
+    background: var(--color-bg);
+    border: 1.5px solid var(--color-border);
+    border-radius: 0.6rem;
+    font-size: 0.82rem; font-weight: 700;
+    color: var(--color-text);
+    cursor: pointer; font-family: inherit;
+    transition: border-color 0.15s, color 0.15s;
+  }
+  .btn-ghost:hover { border-color: var(--lc-600); color: var(--lc-600); }
 
   /* ── Filter tabs ──────────────────────────────────────────────────────── */
   .filter-tabs {
@@ -546,36 +596,6 @@
     opacity: 0.9;
   }
 
-  /* ── Primary button ───────────────────────────────────────────────────── */
-  .btn-primary {
-    display: inline-flex; align-items: center; gap: 0.4rem;
-    padding: 0.55rem 1.1rem;
-    background: var(--lc-600); color: white;
-    border: none; border-radius: 0.6rem;
-    font-size: 0.82rem; font-weight: 700;
-    text-decoration: none; cursor: pointer; font-family: inherit;
-    transition: background 0.15s, transform 0.15s, box-shadow 0.15s;
-    white-space: nowrap;
-  }
-  .btn-primary:hover {
-    background: var(--lc-700);
-    transform: translateY(-1px);
-    box-shadow: 0 4px 14px rgba(79,70,229,0.3);
-  }
-
-  .btn-ghost {
-    display: inline-flex; align-items: center; gap: 0.4rem;
-    padding: 0.55rem 1.1rem;
-    background: var(--color-bg);
-    border: 1.5px solid var(--color-border);
-    border-radius: 0.6rem;
-    font-size: 0.82rem; font-weight: 700;
-    color: var(--color-text);
-    cursor: pointer; font-family: inherit;
-    transition: border-color 0.15s, color 0.15s;
-  }
-  .btn-ghost:hover { border-color: var(--lc-600); color: var(--lc-600); }
-
   /* ── Exam grid ────────────────────────────────────────────────────────── */
   .exam-grid {
     display: grid;
@@ -601,6 +621,9 @@
   .exam-card.is-active {
     border-color: rgba(79,70,229,0.35);
     box-shadow: 0 0 0 3px rgba(79,70,229,0.06);
+  }
+  .exam-card.is-cancelled {
+    border-left: 3px solid #dc2626;
   }
   .card-accent {
     position: absolute; top: 0; left: 0; right: 0; height: 2px;
@@ -742,4 +765,20 @@
     color: var(--lc-600);
   }
   .quick-card svg { color: var(--lc-600); }
+
+  /* ── Responsive ────────────────────────────────────────────────────────── */
+  @media (max-width: 768px) {
+    .page { padding: 1rem; }
+    .exam-grid { grid-template-columns: 1fr; }
+    .header-actions { width: 100%; }
+    .header-actions .btn-primary,
+    .header-actions .btn-secondary { flex: 1; justify-content: center; }
+    .section-header { flex-direction: column; align-items: stretch; }
+  }
+
+  @media (max-width: 480px) {
+    .filter-tabs { flex-direction: column; }
+    .filter-tab { justify-content: center; }
+    .quick-grid { grid-template-columns: 1fr 1fr; }
+  }
 </style>
