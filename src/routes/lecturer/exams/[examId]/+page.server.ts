@@ -1,133 +1,125 @@
 // src/routes/lecturer/exams/[examId]/+page.server.ts
-
-import { error, fail, redirect } from '@sveltejs/kit';
-import type { Actions, PageServerLoad } from './$types';
+import { error } from '@sveltejs/kit';
+import type { PageServerLoad } from './$types';
+import { requireLecturer } from '$lib/server/auth/guards.js';
 import { getPrismaClient } from '$lib/server/db/index.js';
-import {
-  getExamForLecturer, updateExam, setExamStatus, countEligibleStudents,
-  assignInvigilator, removeInvigilator,
-} from '$lib/server/db/exams.js';
-import { parseExamForm } from '$lib/server/exam/exam-form.js';
-import { UUID_RE } from '$lib/server/exam/session-engine.js';
+import { sql } from '$lib/server/db/index.js';
 
-type ActionEvent = {
-  locals: App.Locals;
-  params: { examId?: string };
-  request: Request;
-};
-
-async function loadOwnedExam(event: ActionEvent) {
-  const user = event.locals.user;
-  if (!user) throw redirect(303, '/login');
-  if (user.role !== 'lecturer') throw error(403, 'Lecturer access only');
-
-  const { examId } = event.params;
-  if (!examId || !UUID_RE.test(examId)) throw error(400, 'Invalid exam id');
-
-  const exam = await getExamForLecturer(examId, user.id);
-  if (!exam) throw error(404, 'Exam not found');
-
-  return { exam, user };
-}
-
-export const load: PageServerLoad = async (event) => {
-  const { exam } = await loadOwnedExam(event);
+export const load: PageServerLoad = async ({ params, locals }) => {
+  const user = requireLecturer(locals.user);
   const prisma = await getPrismaClient();
+  const { examId } = params;
 
-  const [levels, departments, invigilators, eligibleCount] = await Promise.all([
-    prisma.level.findMany({ orderBy: { order: 'asc' } }),
-    prisma.department.findMany({ orderBy: { name: 'asc' }, select: { id: true, name: true } }),
-    prisma.user.findMany({
-      where: { role: 'invigilator', isActive: true },
-      orderBy: { fullName: 'asc' },
-      select: { id: true, fullName: true, email: true, staffId: true },
-    }),
-    countEligibleStudents(exam),
-  ]);
+  // Check if this is a valid UUID - if not, redirect
+  const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+  if (!uuidRegex.test(examId)) {
+    throw error(404, 'Exam not found');
+  }
 
-  return { exam, levels, departments, invigilators, eligibleCount };
-};
-
-export const actions: Actions = {
-  update: async (event) => {
-    const { exam } = await loadOwnedExam(event);
-    if (exam.status === 'active' || exam.status === 'completed' || exam.status === 'cancelled') {
-      return fail(400, { message: `Cannot edit an exam that is ${exam.status}.` });
+  const exam = await prisma.exam.findUnique({
+    where: { id: examId },
+    include: {
+      course: true,
+      levels: true,
+      examDepartments: {
+        include: {
+          department: true
+        }
+      },
+      _count: {
+        select: {
+          questions: true,
+          examSessions: true
+        }
+      }
     }
+  });
 
-    const formData = await event.request.formData();
-    const { values, errors } = parseExamForm(formData);
-    if (Object.keys(errors).length > 0) return fail(400, { errors });
+  if (!exam) throw error(404, 'Exam not found');
+  if (exam.createdBy !== user.id) throw error(403, 'You do not own this exam');
 
-    await updateExam(exam.id, {
-      title: values.title,
-      instructions: values.instructions ?? undefined,
-      durationMinutes: values.durationMinutes,
-      totalMarks: values.totalMarks,
-      passMark: values.passMark,
-      scheduledStart: values.scheduledStart,
-      scheduledEnd: values.scheduledEnd,
-      allowLateEntry: values.allowLateEntry,
-      lateEntryMinutes: values.lateEntryMinutes,
-      randomizeQuestions: values.randomizeQuestions,
-      randomizeOptions: values.randomizeOptions,
-      showResultAfter: values.showResultAfter,
-      maxViolations: values.maxViolations,
-      questionsToPresent: values.questionsToPresent,
-      levels: values.levels,
-      department: values.department,
-    });
+  // Get session stats
+  const stats = await sql<{
+    total: number;
+    submitted: number;
+    in_progress: number;
+    not_started: number;
+    avg_score: number;
+    pass_count: number;
+    fail_count: number;
+  }>(
+    `SELECT
+       COUNT(*)::int AS total,
+       COUNT(*) FILTER (WHERE status IN ('submitted','force_submitted'))::int AS submitted,
+       COUNT(*) FILTER (WHERE status = 'in_progress')::int AS in_progress,
+       COUNT(*) FILTER (WHERE status = 'not_started')::int AS not_started,
+       COALESCE(ROUND(AVG(er.percentage)::numeric, 1), 0) AS avg_score,
+       COUNT(*) FILTER (WHERE er.percentage >= $2::int)::int AS pass_count,
+       COUNT(*) FILTER (WHERE er.percentage < $2::int AND er.percentage > 0)::int AS fail_count
+     FROM exam_sessions es
+     LEFT JOIN exam_results er ON er.session_id = es.id
+     WHERE es.exam_id = $1::uuid`,
+    [examId, exam.passMark]
+  );
 
-    return { success: true };
-  },
+  // Get recent submissions
+  const recentSubmissions = await sql<{
+    id: string;
+    studentName: string;
+    studentEmail: string;
+    submittedAt: Date;
+    score: number;
+    status: string;
+  }>(
+    `SELECT
+       es.id,
+       u.full_name AS "studentName",
+       u.email AS "studentEmail",
+       es.submitted_at AS "submittedAt",
+       er.percentage AS score,
+       es.status
+     FROM exam_sessions es
+     JOIN users u ON u.id = es.student_id
+     LEFT JOIN exam_results er ON er.session_id = es.id
+     WHERE es.exam_id = $1::uuid
+       AND es.status IN ('submitted', 'force_submitted')
+     ORDER BY es.submitted_at DESC
+     LIMIT 10`,
+    [examId]
+  );
 
-  publish: async (event) => {
-    const { exam } = await loadOwnedExam(event);
-    if (exam.status !== 'draft') return fail(400, { message: 'Only draft exams can be published.' });
-    if (!exam.scheduledStart || !exam.scheduledEnd) {
-      return fail(400, { message: 'Set a scheduled start and end time before publishing.' });
+  // Get violation stats
+  const violationStats = await sql<{
+    total_violations: number;
+    students_with_violations: number;
+  }>(
+    `SELECT
+       COUNT(*)::int AS total_violations,
+       COUNT(DISTINCT session_id)::int AS students_with_violations
+     FROM violations
+     WHERE session_id IN (
+       SELECT id FROM exam_sessions WHERE exam_id = $1::uuid
+     )`,
+    [examId]
+  );
+
+  // Get departments for this exam
+  const departments = await prisma.examDepartment.findMany({
+    where: { examId: exam.id },
+    include: {
+      department: true
     }
-    if (exam._count.questions === 0) {
-      return fail(400, { message: 'Add at least one question before publishing.' });
-    }
-    await setExamStatus(exam.id, 'scheduled');
-    return { success: true };
-  },
+  });
 
-  unpublish: async (event) => {
-    const { exam } = await loadOwnedExam(event);
-    if (exam.status !== 'scheduled') return fail(400, { message: 'Only scheduled exams can be unpublished.' });
-    if (exam.scheduledStart && exam.scheduledStart <= new Date()) {
-      return fail(400, { message: 'This exam has already started and cannot be unpublished.' });
-    }
-    await setExamStatus(exam.id, 'draft');
-    return { success: true };
-  },
-
-  cancel: async (event) => {
-    const { exam } = await loadOwnedExam(event);
-    if (exam.status === 'completed' || exam.status === 'cancelled') {
-      return fail(400, { message: `Exam is already ${exam.status}.` });
-    }
-    await setExamStatus(exam.id, 'cancelled');
-    return { success: true };
-  },
-
-  assign_invigilator: async (event) => {
-    const { exam } = await loadOwnedExam(event);
-    const formData = await event.request.formData();
-    const invigilatorId = (formData.get('invigilatorId') ?? '').toString();
-    if (!UUID_RE.test(invigilatorId)) return fail(400, { message: 'Select an invigilator.' });
-    await assignInvigilator(exam.id, invigilatorId);
-    return { success: true };
-  },
-
-  remove_invigilator: async (event) => {
-    const { exam } = await loadOwnedExam(event);
-    const formData = await event.request.formData();
-    const invigilatorId = (formData.get('invigilatorId') ?? '').toString();
-    if (!UUID_RE.test(invigilatorId)) return fail(400, { message: 'Invalid invigilator.' });
-    await removeInvigilator(exam.id, invigilatorId);
-    return { success: true };
-  },
+  return {
+    exam: {
+      ...exam,
+      departments: departments.map(ed => ed.department)
+    },
+    stats: stats[0] || { total: 0, submitted: 0, in_progress: 0, not_started: 0, avg_score: 0, pass_count: 0, fail_count: 0 },
+    recentSubmissions,
+    violationStats: violationStats[0] || { total_violations: 0, students_with_violations: 0 },
+    questionCount: exam._count.questions,
+    sessionCount: exam._count.examSessions,
+  };
 };

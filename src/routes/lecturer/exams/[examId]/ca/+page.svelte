@@ -1,447 +1,491 @@
 <!-- src/routes/lecturer/exams/[examId]/ca/+page.svelte -->
 <script lang="ts">
-  import type { PageData, ActionData } from './$types';
-  import { enhance } from '$app/forms';
-  import { onMount } from 'svelte';
+  import type { PageData } from './$types';
   import {
-    ArrowLeft, Upload, Trash2, CheckCircle2,
-    AlertCircle, Clock, BarChart2, Info,
-    Download, RefreshCw
+    ChevronLeft, Users, BarChart2, Download,
+    Edit, Search, X, AlertCircle, CheckCircle,
+    FileText, Award, TrendingUp, Scale
   } from '@lucide/svelte';
+  import { fly } from 'svelte/transition';
 
-  let { data, form }: { data: PageData; form: ActionData } = $props();
+  let { data }: { data: PageData } = $props();
+  const { exam, students, totalStudents } = data;
 
-  let mounted   = $state(false);
-  let loading   = $state(false);
-  let showHelp  = $state(false);
+  let searchQuery = $state('');
+  let selectedStudent = $state<string | null>(null);
+  let editingCA = $state<{ id: string; score: number } | null>(null);
 
-  // Local CA score inputs — keyed by studentId
-  let caInputs = $state<Record<string, string>>({});
-
-  onMount(() => {
-    requestAnimationFrame(() => { mounted = true; });
-    // Pre-fill existing CA scores
-    for (const row of data.roster ?? []) {
-      if (row.caScore != null) caInputs[row.studentId] = String(row.caScore);
-    }
-  });
-
-  // Stats
-  const pctUploaded = $derived(
-    data.totalStudents > 0
-      ? Math.round((data.caUploaded / data.totalStudents) * 100)
-      : 0
+  const filteredStudents = $derived(
+    students.filter(s =>
+      s.fullName.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      s.matricNumber?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      s.email.toLowerCase().includes(searchQuery.toLowerCase())
+    )
   );
 
-  function fmt(d: Date | string | null) {
-    if (!d) return '—';
-    return new Date(d).toLocaleDateString('en-NG', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+  const stats = $derived({
+    passed: students.filter(s => s.totalScore >= 40).length,
+    failed: students.filter(s => s.totalScore < 40 && s.totalScore > 0).length,
+    noShow: students.filter(s => s.status === 'not_started').length,
+    avgTotal: students.reduce((acc, s) => acc + s.totalScore, 0) / (students.length || 1),
+  });
+
+  function formatDate(d: string | null | undefined) {
+    if (!d) return null;
+    return new Date(d).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
   }
 
-  function gradeColor(grade: string | null) {
-    if (!grade) return 'var(--color-muted)';
-    return { A: '#16a34a', B: '#2563eb', C: '#7c3aed', D: '#d97706', E: '#ea580c', F: '#dc2626' }[grade] ?? 'var(--color-muted)';
+  function getGrade(score: number) {
+    if (score >= 70) return { label: 'A', color: '#16a34a' };
+    if (score >= 60) return { label: 'B', color: '#2563eb' };
+    if (score >= 50) return { label: 'C', color: '#d97706' };
+    if (score >= 45) return { label: 'D', color: '#ea580c' };
+    if (score >= 40) return { label: 'E', color: '#7c3aed' };
+    return { label: 'F', color: '#dc2626' };
   }
 
-  // CSV export of CA results
-  function exportCSV() {
-    const rows = data.roster.map(r => [
-      `"${r.fullName}"`,
-      r.matricNumber ?? '',
-      r.examScore.toFixed(1),
-      r.examPercentage.toFixed(1) + '%',
-      r.examGrade ?? '',
-      r.caScore ?? '',
-      r.caMaxScore ?? data.caWeight,
-      r.finalScore?.toFixed(1) ?? 'pending',
-      r.finalGrade ?? 'pending',
-      r.finalPassed == null ? 'pending' : r.finalPassed ? 'Pass' : 'Fail',
-    ].join(','));
-
-    const header = 'Name,Matric,Exam Score,Exam %,Exam Grade,CA Score,CA Max,Final Score,Final Grade,Result';
-    const csv    = [header, ...rows].join('\n');
-    const blob   = new Blob([csv], { type: 'text/csv' });
-    const url    = URL.createObjectURL(blob);
-    const a      = document.createElement('a');
-    a.href       = url;
-    a.download   = `${data.exam.course.code}-CA-results.csv`;
-    a.click();
-    URL.revokeObjectURL(url);
-  }
-
-  // Fill all empty inputs with 0
-  function fillZeros() {
-    for (const row of data.roster) {
-      if (!caInputs[row.studentId]) caInputs[row.studentId] = '0';
-    }
+  function saveCAScore(studentId: string, score: number) {
+    // This would call an API endpoint to save the CA score
+    console.log(`Saving CA score ${score} for student ${studentId}`);
+    editingCA = null;
   }
 </script>
 
-<div class="page" class:mounted>
+<svelte:head><title>CA Management — {exam.title}</title></svelte:head>
 
+<div class="page">
   <!-- Header -->
-  <div class="page-head">
-    <a href="/lecturer/exams/{data.exam.id}" class="back">
-      <ArrowLeft size={14} /> Back to Exam
+  <div class="page-header">
+    <a href={`/lecturer/exams/${exam.id}`} class="back-link">
+      <ChevronLeft size={14} /> Back to Exam
     </a>
-    <div class="title-row">
+    <div class="header-main">
       <div>
-        <h1>CA Upload — {data.exam.course.code}</h1>
-        <p>{data.exam.title} · {data.exam.session} · Semester {data.exam.semester}</p>
+        <h1>CA Management</h1>
+        <p class="subtitle">{exam.course?.code} — {exam.title}</p>
       </div>
-      <div class="head-actions">
-        <button class="btn ghost" onclick={exportCSV}><Download size={14} /> Export CSV</button>
-        <button class="btn ghost" onclick={() => showHelp = !showHelp}><Info size={14} /> Help</button>
+      <div class="header-actions">
+        <button class="btn-secondary">
+          <Download size={14} /> Export CA Scores
+        </button>
       </div>
     </div>
   </div>
 
-  <!-- Help panel -->
-  {#if showHelp}
-    <div class="help-panel">
-      <h3>How CA upload works</h3>
-      <p>
-        This exam is worth <strong>{data.examWeight} marks</strong> out of 100.
-        CA is worth the remaining <strong>{data.caWeight} marks</strong>.
-      </p>
-      <p>
-        Enter each student's raw CA score (0–{data.caWeight}).
-        The system will compute:
-      </p>
-      <ul>
-        <li>Exam contribution = (Exam % / 100) × {data.examWeight}</li>
-        <li>CA contribution = CA score (already in points out of {data.caWeight})</li>
-        <li>Final score = Exam contribution + CA contribution (out of 100)</li>
-      </ul>
-      <p>Leave a field blank to skip that student — their existing CA is preserved.</p>
-    </div>
-  {/if}
-
-  <!-- CA not applicable -->
-  {#if data.caNotApplicable}
-    <div class="warn-banner">
-      <AlertCircle size={16} />
-      <div>
-        <strong>CA not applicable.</strong>
-        This exam has <code>totalMarks = {data.exam.totalMarks}</code> which leaves
-        no room for CA (CA weight = 0). To enable CA, set <code>totalMarks</code>
-        to less than 100 when creating the exam.
+  <!-- Stats -->
+  <div class="stats-grid">
+    <div class="stat-card">
+      <div class="stat-icon" style="background: rgba(99,102,241,0.1); color: #4f46e5;">
+        <Users size={18} />
+      </div>
+      <div class="stat-content">
+        <span class="stat-value">{totalStudents}</span>
+        <span class="stat-label">Total Students</span>
       </div>
     </div>
-
-  {:else}
-    <!-- Progress strip -->
-    <div class="progress-strip">
-      <div class="prog-stat">
-        <span class="prog-n">{data.totalStudents}</span>
-        <span class="prog-l">Students</span>
+    <div class="stat-card">
+      <div class="stat-icon" style="background: rgba(22,163,74,0.1); color: #16a34a;">
+        <CheckCircle size={18} />
       </div>
-      <div class="prog-sep"></div>
-      <div class="prog-stat">
-        <span class="prog-n text-ok">{data.caUploaded}</span>
-        <span class="prog-l">CA uploaded</span>
-      </div>
-      <div class="prog-sep"></div>
-      <div class="prog-stat">
-        <span class="prog-n text-warn">{data.caPending}</span>
-        <span class="prog-l">CA pending</span>
-      </div>
-      <div class="prog-sep"></div>
-      <div class="prog-stat">
-        <span class="prog-n">{data.examWeight} / {data.caWeight}</span>
-        <span class="prog-l">Exam / CA weight</span>
-      </div>
-      <div class="prog-bar-wrap">
-        <div class="prog-bar">
-          <div class="prog-fill" style="width:{pctUploaded}%"></div>
-        </div>
-        <span class="prog-pct">{pctUploaded}% uploaded</span>
+      <div class="stat-content">
+        <span class="stat-value">{stats.passed}</span>
+        <span class="stat-label">Passed</span>
       </div>
     </div>
-
-    <!-- Feedback -->
-    {#if form?.success}
-      <div class="alert-ok">
-        <CheckCircle2 size={14} />
-        {form.applied} CA score{form.applied !== 1 ? 's' : ''} applied.
-        {#if form.skipped > 0}
-          {form.skipped} skipped.
-        {/if}
-        {#if form.errorCount > 0}
-          {form.errorCount} error{form.errorCount !== 1 ? 's' : ''} — check below.
-        {/if}
+    <div class="stat-card">
+      <div class="stat-icon" style="background: rgba(220,38,38,0.1); color: #dc2626;">
+        <X size={18} />
       </div>
-    {/if}
-    {#if form?.error}
-      <div class="alert-err"><AlertCircle size={14} />{form.error}</div>
-    {/if}
+      <div class="stat-content">
+        <span class="stat-value">{stats.failed}</span>
+        <span class="stat-label">Failed</span>
+      </div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-icon" style="background: rgba(245,158,11,0.1); color: #d97706;">
+        <TrendingUp size={18} />
+      </div>
+      <div class="stat-content">
+        <span class="stat-value">{stats.avgTotal.toFixed(1)}%</span>
+        <span class="stat-label">Average Total</span>
+      </div>
+    </div>
+  </div>
 
-    <!-- Upload form -->
-    <form
-      method="POST"
-      action="?/uploadCA"
-      use:enhance={() => {
-        loading = true;
-        return async ({ update }) => { loading = false; await update(); };
-      }}
-    >
-      <div class="table-card">
-        <div class="table-toolbar">
-          <span class="table-title">
-            <BarChart2 size={14} /> Result Roster
-          </span>
-          <div class="toolbar-actions">
-            <button type="button" class="btn ghost small" onclick={fillZeros}>Fill missing with 0</button>
-            <button
-              type="submit"
-              class="btn primary small"
-              disabled={loading}
-            >
-              {#if loading}<RefreshCw size={13} class="spin" />{:else}<Upload size={13} />{/if}
-              Save CA scores
-            </button>
-          </div>
-        </div>
+  <!-- CA Info -->
+  <div class="ca-info">
+    <div class="ca-info-item">
+      <span class="ca-label">Exam Weight</span>
+      <span class="ca-value">{exam.totalMarks}%</span>
+    </div>
+    <div class="ca-divider"></div>
+    <div class="ca-info-item">
+      <span class="ca-label">CA Weight</span>
+      <span class="ca-value">{100 - exam.totalMarks}%</span>
+    </div>
+    <div class="ca-divider"></div>
+    <div class="ca-info-item">
+      <span class="ca-label">Total</span>
+      <span class="ca-value">100%</span>
+    </div>
+  </div>
 
-        <div class="table-scroll">
-          <table class="data-table">
-            <thead>
-              <tr>
-                <th>#</th>
-                <th>Student</th>
-                <th>Matric</th>
-                <th>Exam ({data.examWeight})</th>
-                <th>Exam %</th>
-                <th>Exam Grade</th>
-                <th>CA Score (/{data.caWeight}) <span class="req">*</span></th>
-                <th>Final Score</th>
-                <th>Final Grade</th>
-                <th>Result</th>
-                <th></th>
-              </tr>
-            </thead>
-            <tbody>
-              {#each data.roster as row, i}
-                <tr class:ca-done={!row.caPending} class:ca-pending={row.caPending}>
-                  <td class="n-col">{i + 1}</td>
-                  <td class="name-col">
-                    <span class="fw">{row.fullName}</span>
-                    {#if row.caUploadedAt}
-                      <span class="uploaded-at">Updated {fmt(row.caUploadedAt)}</span>
-                    {/if}
-                  </td>
-                  <td>{row.matricNumber ?? '—'}</td>
-                  <td>{row.examScore.toFixed(1)}</td>
-                  <td>{row.examPercentage.toFixed(1)}%</td>
-                  <td>
-                    <span class="grade-chip" style="color:{gradeColor(row.examGrade)}">
-                      {row.examGrade ?? '—'}
-                    </span>
-                  </td>
+  <!-- Search -->
+  <div class="search-bar">
+    <div class="search-input-wrap">
+      <Search size={14} />
+      <input
+        type="text"
+        placeholder="Search students by name, matric number, or email..."
+        bind:value={searchQuery}
+      />
+      {#if searchQuery}
+        <button class="search-clear" onclick={() => searchQuery = ''}>
+          <X size={14} />
+        </button>
+      {/if}
+    </div>
+  </div>
 
-                  <!-- CA input -->
-                  <td class="ca-input-cell">
-                    <div class="ca-input-wrap">
-                      <input
-                        type="number"
-                        name="ca_{row.studentId}"
-                        min="0"
-                        max={data.caWeight}
-                        step="0.5"
-                        placeholder="0–{data.caWeight}"
-                        class="ca-input"
-                        bind:value={caInputs[row.studentId]}
-                      />
-                      <span class="ca-max">/{data.caWeight}</span>
-                    </div>
-                  </td>
-
-                  <!-- Final -->
-                  <td>
-                    {#if row.finalScore != null}
-                      <span class="final-score">{row.finalScore.toFixed(1)}</span>
-                    {:else}
-                      <span class="pending-badge"><Clock size={11} /> Pending</span>
-                    {/if}
-                  </td>
-                  <td>
-                    {#if row.finalGrade}
-                      <span class="grade-chip fw" style="color:{gradeColor(row.finalGrade)}">
-                        {row.finalGrade}
-                      </span>
-                    {:else}
-                      <span class="muted">—</span>
-                    {/if}
-                  </td>
-                  <td>
-                    {#if row.finalPassed != null}
-                      <span class="result-badge" class:pass={row.finalPassed} class:fail={!row.finalPassed}>
-                        {row.finalPassed ? 'Pass' : 'Fail'}
-                      </span>
-                    {:else}
-                      <span class="muted">—</span>
-                    {/if}
-                  </td>
-
-                  <!-- Remove CA -->
-                  <td>
-                    {#if !row.caPending}
-                      <form method="POST" action="?/removeCA" use:enhance>
-                        <input type="hidden" name="sessionId" value={row.sessionId} />
-                        <button type="submit" class="rm-btn" title="Remove CA">
-                          <Trash2 size={13} />
-                        </button>
-                      </form>
-                    {/if}
-                  </td>
-                </tr>
+  <!-- Student List -->
+  <div class="table-wrap">
+    <table class="student-table">
+      <thead>
+        <tr>
+          <th>#</th>
+          <th>Student</th>
+          <th>Matric Number</th>
+          <th>Exam Score</th>
+          <th>CA Score</th>
+          <th>Total</th>
+          <th>Grade</th>
+          <th>Status</th>
+          <th>Actions</th>
+        </tr>
+      </thead>
+      <tbody>
+        {#each filteredStudents as s, i (s.id)}
+          {@const grade = getGrade(s.totalScore)}
+          <tr>
+            <td>{i + 1}</td>
+            <td>
+              <div class="student-name">{s.fullName}</div>
+              <div class="student-email">{s.email}</div>
+            </td>
+            <td>{s.matricNumber || '—'}</td>
+            <td class="score-cell">{s.examScore.toFixed(1)}%</td>
+            <td class="score-cell">
+              {#if editingCA?.id === s.id}
+                <div class="ca-edit">
+                  <input
+                    type="number"
+                    min="0"
+                    max="100"
+                    bind:value={editingCA.score}
+                    class="ca-input"
+                    autofocus
+                    on:keydown={(e) => {
+                      if (e.key === 'Enter') saveCAScore(s.id, editingCA.score);
+                      if (e.key === 'Escape') editingCA = null;
+                    }}
+                  />
+                  <button class="ca-save" onclick={() => saveCAScore(s.id, editingCA.score)}>
+                    <CheckCircle size={14} />
+                  </button>
+                </div>
               {:else}
-                <tr><td colspan="11" class="empty-row">No submitted sessions found.</td></tr>
-              {/each}
-            </tbody>
-          </table>
-        </div>
-
-        <!-- Footer action -->
-        {#if data.roster.length > 0}
-          <div class="table-foot">
-            <button type="submit" class="btn primary" disabled={loading}>
-              {#if loading}<RefreshCw size={13} class="spin" />{:else}<Upload size={13} />{/if}
-              Save CA scores
-            </button>
-          </div>
-        {/if}
-      </div>
-    </form>
-
-    <!-- Upload errors detail -->
-    {#if form?.uploadErrors?.length > 0}
-      <div class="error-list">
-        <h4><AlertCircle size={13} /> Upload errors</h4>
-        {#each form.uploadErrors as e}
-          <div class="error-row">
-            <span class="err-id">{e.studentId}</span>
-            <span class="err-msg">{e.error}</span>
-          </div>
+                <span class="ca-value-display">{s.caScore.toFixed(1)}%</span>
+              {/if}
+            </td>
+            <td class="score-cell total-score">{s.totalScore.toFixed(1)}%</td>
+            <td>
+              <span class="grade-badge" style="background:{grade.color}20; color:{grade.color};">
+                {grade.label}
+              </span>
+            </td>
+            <td>
+              <span class="status-badge" class:status-pass={s.totalScore >= 40}>
+                {s.status === 'not_started' ? 'Not Started' : s.status === 'in_progress' ? 'In Progress' : 'Submitted'}
+              </span>
+            </td>
+            <td>
+              {#if s.status !== 'not_started'}
+                <button
+                  class="action-btn"
+                  onclick={() => editingCA = { id: s.id, score: s.caScore }}
+                  title="Edit CA Score"
+                >
+                  <Edit size={14} />
+                </button>
+              {/if}
+            </td>
+          </tr>
         {/each}
-      </div>
-    {/if}
-  {/if}
+        {#if filteredStudents.length === 0}
+          <tr>
+            <td colspan="9" class="empty-row">No students found matching your search.</td>
+          </tr>
+        {/if}
+      </tbody>
+    </table>
+  </div>
+
+  <div class="table-footer">
+    <span>Showing {filteredStudents.length} of {students.length} students</span>
+  </div>
 </div>
 
 <style>
-  .page { max-width: 1100px; display:flex; flex-direction:column; gap:1.25rem; opacity:0; transform:translateY(10px); transition:opacity .3s ease,transform .3s ease; }
-  .page.mounted { opacity:1; transform:none; }
-
-  /* Header */
-  .back { display:inline-flex; align-items:center; gap:.3rem; font-size:.78rem; color:var(--color-muted); text-decoration:none; margin-bottom:.4rem; }
-  .back:hover { color:var(--lc-600,#4f46e5); }
-  .title-row { display:flex; align-items:flex-start; justify-content:space-between; gap:1rem; flex-wrap:wrap; }
-  h1 { font-size:1.15rem; font-weight:800; color:var(--color-text); margin:0 0 .2rem; }
-  p  { font-size:.8rem; color:var(--color-muted); margin:0; }
-  .head-actions { display:flex; gap:.5rem; }
-
-  /* Help */
-  .help-panel { background:var(--color-surface); border:1px solid var(--color-border); border-radius:.875rem; padding:1.125rem 1.25rem; font-size:.82rem; color:var(--color-text); line-height:1.65; }
-  .help-panel h3 { font-size:.88rem; font-weight:700; margin:0 0 .75rem; }
-  .help-panel p  { margin:0 0 .5rem; }
-  .help-panel ul { margin:.25rem 0 .5rem 1rem; padding:0; }
-  .help-panel li { margin-bottom:.25rem; color:var(--color-muted); }
-  .help-panel strong { color:var(--lc-600,#4f46e5); }
-
-  /* Warn banner */
-  .warn-banner { display:flex; align-items:flex-start; gap:.75rem; padding:.875rem 1.1rem; background:rgba(245,158,11,.08); border:1px solid rgba(245,158,11,.3); border-radius:.75rem; font-size:.82rem; color:#92400e; line-height:1.5; }
-  .warn-banner code { background:rgba(245,158,11,.15); padding:.1rem .35rem; border-radius:.3rem; font-size:.78rem; }
-
-  /* Progress strip */
-  .progress-strip { display:flex; align-items:center; gap:0; background:var(--color-surface); border:1px solid var(--color-border); border-radius:.875rem; padding:0 .5rem; flex-wrap:wrap; }
-  .prog-stat { display:flex; flex-direction:column; align-items:center; padding:.875rem 1.25rem; min-width:80px; }
-  .prog-n { font-size:1.3rem; font-weight:800; letter-spacing:-.04em; color:var(--color-text); line-height:1; }
-  .prog-l { font-size:.62rem; font-weight:600; color:var(--color-muted); text-transform:uppercase; letter-spacing:.05em; margin-top:.2rem; }
-  .prog-sep { width:1px; height:28px; background:var(--color-border); flex-shrink:0; }
-  .text-ok   { color:#16a34a; }
-  .text-warn { color:#d97706; }
-  .prog-bar-wrap { display:flex; align-items:center; gap:.75rem; flex:1; padding:.875rem 1.25rem; min-width:200px; }
-  .prog-bar  { flex:1; height:6px; background:var(--color-border); border-radius:999px; overflow:hidden; }
-  .prog-fill { height:100%; background:linear-gradient(90deg,var(--lc-600,#4f46e5),#8b5cf6); border-radius:999px; transition:width .4s ease; }
-  .prog-pct  { font-size:.75rem; font-weight:700; color:var(--color-muted); white-space:nowrap; }
-
-  /* Alerts */
-  .alert-ok  { display:flex; align-items:center; gap:.5rem; padding:.7rem 1rem; background:rgba(22,163,74,.07); border:1px solid rgba(22,163,74,.22); border-radius:.625rem; font-size:.82rem; color:#16a34a; font-weight:600; }
-  .alert-err { display:flex; align-items:center; gap:.5rem; padding:.7rem 1rem; background:rgba(220,38,38,.07); border:1px solid rgba(220,38,38,.22); border-radius:.625rem; font-size:.82rem; color:#dc2626; }
-
-  /* Table card */
-  .table-card { background:var(--color-surface); border:1px solid var(--color-border); border-radius:.875rem; overflow:hidden; }
-  .table-toolbar { display:flex; align-items:center; justify-content:space-between; padding:.875rem 1.25rem; border-bottom:1px solid var(--color-border); background:var(--color-bg); flex-wrap:wrap; gap:.5rem; }
-  .table-title { display:flex; align-items:center; gap:.4rem; font-size:.84rem; font-weight:700; color:var(--color-text); }
-  .toolbar-actions { display:flex; gap:.5rem; }
-  .table-scroll { overflow-x:auto; }
-  .table-foot { display:flex; justify-content:flex-end; padding:.875rem 1.25rem; border-top:1px solid var(--color-border); background:var(--color-bg); }
-
-  /* Table */
-  .data-table { width:100%; border-collapse:collapse; font-size:.82rem; }
-  .data-table th { padding:.65rem .875rem; font-size:.68rem; font-weight:700; text-transform:uppercase; letter-spacing:.05em; color:var(--color-muted); text-align:left; border-bottom:1px solid var(--color-border); background:var(--color-bg); white-space:nowrap; }
-  .data-table td { padding:.65rem .875rem; border-bottom:1px solid var(--color-border); vertical-align:middle; color:var(--color-text); }
-  .data-table tr:last-child td { border-bottom:none; }
-  .data-table tr.ca-done  { background:rgba(22,163,74,.02); }
-  .data-table tr.ca-pending td:nth-child(8), .data-table tr.ca-pending td:nth-child(9), .data-table tr.ca-pending td:nth-child(10) { opacity:.4; }
-
-  .n-col    { color:var(--color-muted); font-size:.72rem; width:32px; }
-  .name-col { min-width:160px; }
-  .fw       { font-weight:600; }
-  .muted    { color:var(--color-muted); }
-  .uploaded-at { display:block; font-size:.68rem; color:var(--color-muted); margin-top:.1rem; }
-
-  .grade-chip { font-size:.8rem; font-weight:800; }
-  .final-score { font-weight:700; color:var(--color-text); }
-
-  .pending-badge { display:inline-flex; align-items:center; gap:.25rem; font-size:.68rem; font-weight:600; color:var(--color-muted); background:var(--color-bg); border:1px solid var(--color-border); padding:.15rem .5rem; border-radius:999px; }
-
-  .result-badge { font-size:.7rem; font-weight:700; padding:.2rem .55rem; border-radius:2rem; }
-  .result-badge.pass { background:rgba(22,163,74,.1); color:#16a34a; }
-  .result-badge.fail { background:rgba(220,38,38,.08); color:#dc2626; }
-
-  /* CA input */
-  .ca-input-cell { min-width:130px; }
-  .ca-input-wrap { display:flex; align-items:center; gap:.3rem; }
-  .ca-input {
-    width:80px; padding:.4rem .6rem;
-    border:1.5px solid var(--color-border); border-radius:.5rem;
-    background:var(--color-bg); color:var(--color-text);
-    font-size:.82rem; font-family:inherit; outline:none;
-    transition:border-color .15s,box-shadow .15s;
+  .page {
+    padding: 2rem;
+    max-width: 1200px;
+    margin: 0 auto;
+    display: flex;
+    flex-direction: column;
+    gap: 1.5rem;
   }
-  .ca-input:focus { border-color:var(--lc-600,#4f46e5); box-shadow:0 0 0 3px rgba(79,70,229,.1); }
-  .ca-max { font-size:.72rem; color:var(--color-muted); font-weight:600; }
 
-  .rm-btn { padding:.4rem; border:1px solid var(--color-border); border-radius:.4rem; background:none; color:var(--color-muted); cursor:pointer; transition:all .15s; display:flex; align-items:center; }
-  .rm-btn:hover { border-color:rgba(220,38,38,.4); color:#dc2626; background:rgba(220,38,38,.06); }
+  .back-link {
+    display: inline-flex; align-items: center; gap: 0.3rem;
+    font-size: 0.8rem; font-weight: 600; color: var(--color-muted);
+    text-decoration: none; transition: color 0.15s;
+  }
+  .back-link:hover { color: var(--color-text); }
 
-  .empty-row { text-align:center; color:var(--color-muted); padding:2.5rem !important; }
+  .page-header {
+    background: var(--color-surface);
+    border: 1px solid var(--color-border);
+    border-radius: 1rem;
+    padding: 1.5rem;
+  }
 
-  /* Buttons */
-  .btn { display:inline-flex; align-items:center; gap:.4rem; padding:.55rem 1rem; border-radius:.6rem; font-size:.8rem; font-weight:700; border:1.5px solid var(--color-border); background:var(--color-surface); color:var(--color-text); cursor:pointer; font-family:inherit; transition:all .15s; text-decoration:none; }
-  .btn.small { padding:.38rem .75rem; font-size:.76rem; }
-  .btn.primary { background:var(--lc-600,#4f46e5); border-color:var(--lc-600,#4f46e5); color:white; }
-  .btn.primary:hover:not(:disabled) { background:var(--lc-700,#4338ca); }
-  .btn.primary:disabled { opacity:.55; cursor:not-allowed; }
-  .btn.ghost { color:var(--color-muted); }
-  .btn.ghost:hover { border-color:var(--color-text); color:var(--color-text); }
-  .req { color:#dc2626; }
+  .header-main {
+    display: flex; justify-content: space-between; align-items: center;
+    margin-top: 0.75rem;
+  }
 
-  /* Error list */
-  .error-list { background:rgba(220,38,38,.05); border:1px solid rgba(220,38,38,.2); border-radius:.75rem; padding:1rem 1.25rem; }
-  .error-list h4 { display:flex; align-items:center; gap:.4rem; font-size:.82rem; font-weight:700; color:#dc2626; margin:0 0 .625rem; }
-  .error-row { display:flex; gap:.75rem; padding:.35rem 0; font-size:.78rem; border-bottom:1px solid rgba(220,38,38,.1); }
-  .error-row:last-child { border-bottom:none; }
-  .err-id  { font-family:monospace; font-size:.72rem; color:var(--color-muted); flex-shrink:0; }
-  .err-msg { color:#dc2626; }
+  .header-main h1 {
+    font-size: 1.5rem; font-weight: 800; color: var(--color-text);
+    margin: 0;
+  }
 
-  .spin { animation:spin .7s linear infinite; }
-  @keyframes spin { to { transform:rotate(360deg); } }
+  .subtitle {
+    font-size: 0.8rem; color: var(--color-muted); margin: 0.2rem 0 0;
+  }
 
-  @media(max-width:768px) {
-    .progress-strip { flex-direction:column; align-items:flex-start; }
-    .prog-sep { width:100%; height:1px; }
+  .header-actions {
+    display: flex; gap: 0.5rem;
+  }
+
+  .btn-secondary {
+    display: inline-flex; align-items: center; gap: 0.4rem;
+    padding: 0.55rem 1.1rem;
+    background: var(--color-bg); color: var(--color-text);
+    border: 1px solid var(--color-border); border-radius: 0.6rem;
+    font-size: 0.82rem; font-weight: 700;
+    text-decoration: none; cursor: pointer;
+    transition: all 0.15s;
+  }
+  .btn-secondary:hover { border-color: var(--lc-600); color: var(--lc-600); }
+
+  .stats-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 0.75rem;
+  }
+
+  .stat-card {
+    background: var(--color-surface);
+    border: 1px solid var(--color-border);
+    border-radius: 0.75rem;
+    padding: 1rem;
+    display: flex; align-items: center; gap: 0.75rem;
+  }
+
+  .stat-icon {
+    width: 36px; height: 36px; border-radius: 0.5rem;
+    display: flex; align-items: center; justify-content: center;
+    flex-shrink: 0;
+  }
+
+  .stat-content {
+    display: flex; flex-direction: column;
+  }
+
+  .stat-value {
+    font-size: 1.1rem; font-weight: 800; color: var(--color-text);
+    line-height: 1.2;
+  }
+
+  .stat-label {
+    font-size: 0.6rem; font-weight: 600; color: var(--color-muted);
+    text-transform: uppercase; letter-spacing: 0.04em;
+  }
+
+  .ca-info {
+    display: flex; align-items: center; justify-content: center;
+    gap: 1.5rem;
+    padding: 1rem;
+    background: var(--color-surface);
+    border: 1px solid var(--color-border);
+    border-radius: 0.75rem;
+  }
+
+  .ca-info-item {
+    display: flex; flex-direction: column; align-items: center;
+  }
+
+  .ca-label {
+    font-size: 0.65rem; font-weight: 600; color: var(--color-muted);
+    text-transform: uppercase; letter-spacing: 0.04em;
+  }
+
+  .ca-value {
+    font-size: 1.1rem; font-weight: 800; color: var(--color-text);
+  }
+
+  .ca-divider {
+    width: 1px; height: 2rem; background: var(--color-border);
+  }
+
+  .search-bar {
+    background: var(--color-surface);
+    border: 1px solid var(--color-border);
+    border-radius: 0.75rem;
+    padding: 0.75rem 1rem;
+  }
+
+  .search-input-wrap {
+    display: flex; align-items: center; gap: 0.5rem;
+    color: var(--color-muted);
+  }
+
+  .search-input-wrap input {
+    flex: 1; background: none; border: none; outline: none;
+    font-size: 0.85rem; color: var(--color-text); font-family: inherit;
+  }
+
+  .search-clear {
+    background: none; border: none; cursor: pointer;
+    color: var(--color-muted); padding: 0.2rem;
+  }
+  .search-clear:hover { color: var(--color-text); }
+
+  .table-wrap {
+    background: var(--color-surface);
+    border: 1px solid var(--color-border);
+    border-radius: 0.75rem;
+    overflow: auto;
+  }
+
+  .student-table {
+    width: 100%; border-collapse: collapse;
+    font-size: 0.8rem;
+  }
+
+  .student-table thead {
+    background: var(--color-bg);
+  }
+
+  .student-table th {
+    padding: 0.75rem 1rem; text-align: left;
+    font-size: 0.65rem; font-weight: 700; text-transform: uppercase;
+    letter-spacing: 0.04em; color: var(--color-muted);
+    border-bottom: 1px solid var(--color-border);
+    white-space: nowrap;
+  }
+
+  .student-table td {
+    padding: 0.75rem 1rem;
+    border-bottom: 1px solid var(--color-border);
+    vertical-align: middle;
+  }
+
+  .student-table tr:hover td { background: var(--color-bg); }
+
+  .student-name {
+    font-weight: 600; color: var(--color-text);
+  }
+
+  .student-email {
+    font-size: 0.7rem; color: var(--color-muted);
+  }
+
+  .score-cell {
+    font-weight: 600; text-align: center;
+  }
+
+  .total-score {
+    font-weight: 800; color: var(--color-text);
+  }
+
+  .grade-badge {
+    font-size: 0.7rem; font-weight: 800; padding: 0.15rem 0.5rem;
+    border-radius: 999px;
+  }
+
+  .status-badge {
+    font-size: 0.65rem; font-weight: 600; padding: 0.15rem 0.5rem;
+    border-radius: 999px;
+    background: rgba(100,116,139,0.1); color: #64748b;
+  }
+  .status-badge.status-pass {
+    background: rgba(22,163,74,0.1); color: #16a34a;
+  }
+
+  .action-btn {
+    padding: 0.25rem 0.5rem;
+    border: 1px solid var(--color-border);
+    border-radius: 0.3rem;
+    background: var(--color-bg);
+    color: var(--color-muted);
+    cursor: pointer;
+    transition: all 0.15s;
+  }
+  .action-btn:hover { border-color: var(--lc-600); color: var(--lc-600); }
+
+  .ca-edit {
+    display: flex; align-items: center; gap: 0.3rem;
+    justify-content: center;
+  }
+
+  .ca-input {
+    width: 60px; padding: 0.2rem 0.4rem;
+    border: 1px solid var(--lc-600);
+    border-radius: 0.3rem;
+    background: var(--color-bg);
+    font-size: 0.8rem; font-weight: 600;
+    text-align: center;
+    outline: none;
+  }
+
+  .ca-save {
+    padding: 0.2rem;
+    border: none; background: none;
+    color: #16a34a; cursor: pointer;
+  }
+
+  .ca-value-display {
+    font-weight: 600; color: var(--color-text);
+  }
+
+  .empty-row {
+    text-align: center; padding: 2rem;
+    color: var(--color-muted);
+  }
+
+  .table-footer {
+    padding: 0.5rem 0;
+    font-size: 0.75rem; color: var(--color-muted);
+    text-align: right;
+  }
+
+  @media (max-width: 768px) {
+    .stats-grid { grid-template-columns: 1fr 1fr; }
+    .header-main { flex-direction: column; align-items: stretch; gap: 0.75rem; }
+    .ca-info { flex-wrap: wrap; gap: 0.5rem; }
+    .ca-divider { display: none; }
+    .student-table { font-size: 0.7rem; }
+    .student-table th, .student-table td { padding: 0.5rem; }
   }
 </style>

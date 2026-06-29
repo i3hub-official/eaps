@@ -12,6 +12,7 @@ import { requireApiKey } from './api-key-guard.js';
 type MaybeUser = {
   id: string;
   role: UserRole;
+  fullName: string;
   isActive: boolean;
   isSuspended: boolean;
   collegeId?: number | null;   // Int? in schema

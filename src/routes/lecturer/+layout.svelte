@@ -12,9 +12,11 @@
     Sun, Moon, LogOut, ChevronRight, LoaderCircle,
     PlusCircle, BarChart2, ChevronDown, Bell, CheckCheck,
     FileText, Clock, Menu, User, PanelLeftClose, PanelLeftOpen,
-    Zap, CalendarClock, FileEdit, Library, Download,
+    Zap, CalendarClock, FileEdit, CheckCircle, Download,
     GraduationCap, BookMarked, ShieldAlert, Flag,
-    TrendingUp, BookCheck
+    TrendingUp, BookCheck, Settings, HelpCircle, Award,
+    Upload, Tag, Star, Eye, Activity, Scale,
+    ListOrdered, GripVertical, Copy, Printer,Archive,
   } from '@lucide/svelte';
   import { setContext } from 'svelte';
   import { ROLE_CONTEXT_KEY } from '$lib/constants/context';
@@ -63,6 +65,7 @@
     if (currentPath.startsWith('/lecturer/exams'))    return 'Exams';
     if (currentPath.startsWith('/lecturer/results'))  return 'Results';
     if (currentPath.startsWith('/lecturer/students')) return 'Students';
+    if (currentPath.startsWith('/lecturer/questions')) return 'Question Bank';
     return null;
   });
 
@@ -73,7 +76,8 @@
     href: string;
     label: string;
     icon: any;
-    sectionLabel?: string; // renders a divider above this item
+    sectionLabel?: string;
+    badge?: () => number | null;
   };
   type NavItem = {
     href: string;
@@ -94,6 +98,15 @@
       label: 'Exams',
       icon:  ClipboardList,
       badge: () => activeExams || null,
+      children: [
+        { href: '/lecturer/exams',                  label: 'All Exams',           icon: ListOrdered,  sectionLabel: 'Overview' },
+        { href: '/lecturer/exams/create',           label: 'Create Exam',          icon: PlusCircle,   sectionLabel: 'Actions' },
+        { href: '/lecturer/exams/drafts',           label: 'My Drafts',            icon: FileEdit      },
+        { href: '/lecturer/exams/archived',         label: 'Archived',             icon: Archive       },
+        { href: '/lecturer/exams/scheduled',        label: 'Scheduled',            icon: CalendarClock, sectionLabel: 'Filter' },
+        { href: '/lecturer/exams/active',           label: 'Active Now',           icon: Zap           },
+        { href: '/lecturer/exams/completed',        label: 'Completed',            icon: CheckCircle   },
+      ],
     },
     {
       href:  '/lecturer/results',
@@ -106,6 +119,7 @@
         { href: '/lecturer/results/by-exam',       label: 'By Exam',       icon: BookCheck    },
         { href: '/lecturer/results/grade-reports', label: 'Grade Reports', icon: TrendingUp,  sectionLabel: 'Reports'  },
         { href: '/lecturer/results/export',        label: 'Export',        icon: Download     },
+        { href: '/lecturer/results/print',         label: 'Print Results', icon: Printer,     sectionLabel: 'Actions'  },
       ],
     },
     {
@@ -113,22 +127,49 @@
       label: 'Students',
       icon:  GraduationCap,
       children: [
-        { href: '/lecturer/students',             label: 'Overview',       icon: User,       sectionLabel: 'Students'   },
-        { href: '/lecturer/students/by-course',   label: 'By Course',      icon: BookMarked  },
-        { href: '/lecturer/students/eligibility', label: 'Eligibility',    icon: BookCheck,  sectionLabel: 'Monitoring' },
-        { href: '/lecturer/students/violations',  label: 'Violations',     icon: ShieldAlert },
-        { href: '/lecturer/students/report',      label: 'Report Student', icon: Flag,       sectionLabel: 'Actions'    },
+        { href: '/lecturer/students',             label: 'Overview',          icon: User,         sectionLabel: 'Students'   },
+        { href: '/lecturer/students/by-course',   label: 'By Course',         icon: BookMarked    },
+        { href: '/lecturer/students/eligibility', label: 'Eligibility',       icon: BookCheck,    sectionLabel: 'Monitoring' },
+        { href: '/lecturer/students/violations',  label: 'Violations',        icon: ShieldAlert   },
+        { href: '/lecturer/students/performance', label: 'Performance',       icon: TrendingUp    },
+        { href: '/lecturer/students/report',      label: 'Report Student',    icon: Flag,         sectionLabel: 'Actions'    },
+        { href: '/lecturer/students/upload',      label: 'Upload Students',   icon: Upload        },
       ],
     },
-    { href: '/lecturer/notifications', label: 'Notifications', icon: Bell },
-    { href: '/lecturer/profile',       label: 'Profile',       icon: User },
+    {
+      href:  '/lecturer/questions',
+      label: 'Question Bank',
+      icon:  HelpCircle,
+      children: [
+        { href: '/lecturer/questions',          label: 'All Questions',   icon: ListOrdered,  sectionLabel: 'Overview' },
+        { href: '/lecturer/questions/create',   label: 'Create Question', icon: PlusCircle,   sectionLabel: 'Actions' },
+        { href: '/lecturer/questions/import',   label: 'Import',          icon: Download      },
+        { href: '/lecturer/questions/tags',     label: 'Tags',            icon: Tag,          sectionLabel: 'Organize' },
+        { href: '/lecturer/questions/favorites', label: 'Favorites',      icon: Star          },
+      ],
+    },
+    {
+      href:  '/lecturer/notifications',
+      label: 'Notifications',
+      icon:  Bell,
+    },
+    {
+      href:  '/lecturer/profile',
+      label: 'Profile',
+      icon:  User,
+      children: [
+        { href: '/lecturer/profile',           label: 'My Profile',     icon: User,         sectionLabel: 'Personal' },
+        { href: '/lecturer/profile/settings',  label: 'Settings',       icon: Settings,     sectionLabel: 'Preferences' },
+        { href: '/lecturer/profile/security',  label: 'Security',       icon: ShieldAlert   },
+        { href: '/lecturer/profile/notifications', label: 'Notification Preferences', icon: Bell },
+      ],
+    },
   ];
 
   // ── Active Helpers ────────────────────────────────────────────────────────
   function isActive(href: string) {
     const [path] = href.split('?');
     if (path === '/lecturer') return currentPath === '/lecturer';
-    // exact match only — don't mark parent active when child is active
     return currentPath === path;
   }
 
@@ -215,17 +256,19 @@
       students: 'Students', 'by-course': 'By Course', 'by-exam': 'By Exam',
       'grade-reports': 'Grade Reports', export: 'Export', eligibility: 'Eligibility',
       violations: 'Violations', report: 'Report Student', 'question-bank': 'Question Bank',
+      drafts: 'Drafts', archived: 'Archived', scheduled: 'Scheduled',
+      active: 'Active Now', completed: 'Completed', settings: 'Settings',
+      security: 'Security', 'notification-preferences': 'Notification Preferences',
+      print: 'Print Results', 'upload-students': 'Upload Students',
+      performance: 'Performance', tags: 'Tags', favorites: 'Favorites',
+      import: 'Import', ca: 'CA Management', 'question-builder': 'Question Builder'
     };
     const crumbs = [{ label: 'Home', href: '/lecturer' }];
     let built = '/lecturer';
     for (const p of parts) {
       built += '/' + p;
-      crumbs.push({
-        label: /^[0-9a-f-]{36}$/i.test(p)
-          ? 'Exam'
-          : (map[p] ?? p[0].toUpperCase() + p.slice(1)),
-        href: built,
-      });
+      const label = /^[0-9a-f-]{36}$/i.test(p) ? 'Exam' : (map[p] ?? p[0].toUpperCase() + p.slice(1).replace(/-/g, ' '));
+      crumbs.push({ label, href: built });
     }
     return crumbs;
   })());
@@ -443,6 +486,9 @@
                     </span>
                     <span class="child-label">{child.label}</span>
                     {#if cactive}<span class="child-pip"></span>{/if}
+                    {#if child.badge?.()}
+                      <span class="child-badge">{child.badge()}</span>
+                    {/if}
                   </a>
                 {/each}
               </div>
@@ -680,7 +726,6 @@
   .nav::-webkit-scrollbar { width: 4px; }
   .nav::-webkit-scrollbar-thumb { background: var(--color-border); border-radius: 4px; }
 
-  /* shared base for flat links and group triggers */
   .nav-lnk {
     display: flex; align-items: center; gap: 0.55rem;
     padding: 0.55rem 0.6rem;
@@ -708,7 +753,6 @@
 
   .nav-label { flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
-  /* chevron */
   .chevron {
     flex-shrink: 0; color: var(--color-muted);
     display: flex; align-items: center;
@@ -716,7 +760,6 @@
   }
   .chevron.open { transform: rotate(180deg); }
 
-  /* badges */
   .badge-count {
     font-size: 0.6rem; font-weight: 800; padding: 0.1rem 0.4rem;
     border-radius: 999px; background: var(--lc-soft); color: var(--lc-600); flex-shrink: 0;
@@ -730,10 +773,8 @@
   }
   @keyframes pulse-dot { 0%, 100% { opacity: 1; } 50% { opacity: 0.4; } }
 
-  /* ── Groups ──────────────────────────────────────────────────────────────── */
   .nav-group { display: flex; flex-direction: column; }
 
-  /* ── Children ────────────────────────────────────────────────────────────── */
   .nav-children {
     display: flex; flex-direction: column; gap: 1px;
     margin: 2px 0 4px 14px;
@@ -741,14 +782,12 @@
     border-left: 1.5px solid var(--color-border);
   }
 
-  /* section divider label inside children */
   .nav-section-label {
     font-size: 0.58rem; font-weight: 800; text-transform: uppercase;
     letter-spacing: 0.09em; color: var(--color-muted);
     padding: 0.55rem 0.5rem 0.2rem;
     opacity: 0.55;
   }
-  /* first label in the list gets less top padding */
   .nav-children > .nav-section-label:first-child { padding-top: 0.25rem; }
 
   .nav-child {
@@ -781,8 +820,12 @@
     width: 5px; height: 5px; border-radius: 50%;
     background: var(--lc-600); flex-shrink: 0; margin-left: auto;
   }
+  .child-badge {
+    font-size: 0.55rem; font-weight: 700; padding: 0.05rem 0.35rem;
+    border-radius: 999px; background: var(--lc-soft); color: var(--lc-600);
+    flex-shrink: 0;
+  }
 
-  /* ── Spinners ────────────────────────────────────────────────────────────── */
   .spinner {
     width: 14px; height: 14px; border-radius: 50%;
     border: 2px solid var(--color-border); border-top-color: var(--lc-600);
@@ -791,7 +834,6 @@
   .spinner.sm { width: 11px; height: 11px; }
   @keyframes spin { to { transform: rotate(360deg); } }
 
-  /* ── Load bar ────────────────────────────────────────────────────────────── */
   .load-bar { position: absolute; bottom: 0; left: 0; right: 0; height: 2px; background: var(--color-border); overflow: hidden; }
   .load-progress { height: 100%; background: linear-gradient(90deg, var(--lc-600), var(--lc-400)); animation: loadbar 1.4s ease-in-out infinite; }
   @keyframes loadbar {
@@ -800,7 +842,6 @@
     100% { width: 0%; margin-left: 100%; }
   }
 
-  /* ── Footer ──────────────────────────────────────────────────────────────── */
   .sidebar-foot {
     padding: 0.5rem; border-top: 1px solid var(--color-border);
     display: flex; flex-direction: column; gap: 1px; flex-shrink: 0;
@@ -833,8 +874,9 @@
   .profile-copy { flex: 1; display: flex; flex-direction: column; min-width: 0; overflow: hidden; }
   .profile-name { font-size: 0.8rem; font-weight: 700; color: var(--color-text); white-space: nowrap; }
   .profile-sub  { font-size: 0.62rem; color: var(--color-muted); font-weight: 600; }
+  .profile-arr { color: var(--color-muted); flex-shrink: 0; transition: transform 0.15s ease; }
+  .profile-row:hover .profile-arr { transform: translateX(2px); color: var(--color-text); }
 
-  /* ── Mobile ──────────────────────────────────────────────────────────────── */
   .mob-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.45); z-index: 39; backdrop-filter: blur(3px); }
 
   @media (max-width: 768px) {
@@ -877,6 +919,7 @@
   .bc-lnk { font-size: 0.78rem; color: var(--color-muted); text-decoration: none; font-weight: 500; white-space: nowrap; transition: color 0.12s ease; }
   .bc-lnk:hover { color: var(--lc-600); }
   .bc-cur { font-size: 0.78rem; color: var(--color-text); font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .bc-sep { flex-shrink: 0; color: var(--color-muted); }
   .greet { font-size: 0.82rem; color: var(--color-muted); }
   .greet strong { color: var(--color-text); }
 

@@ -199,7 +199,7 @@
     <div class="right-col">
 
       <!-- Quick actions -->
-      <section class="card quick-card">
+      <!-- <section class="card quick-card">
         <div class="card-head">
           <div class="card-head-l">
             <Zap size={15} />
@@ -224,7 +224,7 @@
             <span>Reports</span>
           </a>
         </div>
-      </section>
+      </section> -->
 
       <!-- Upcoming exams -->
       <section class="card upcoming-card">
