@@ -183,8 +183,7 @@
                     max="100"
                     bind:value={editingCA.score}
                     class="ca-input"
-                    autofocus
-                    on:keydown={(e) => {
+                    onkeydown={(e) => {
                       if (e.key === 'Enter') saveCAScore(s.id, editingCA.score);
                       if (e.key === 'Escape') editingCA = null;
                     }}
