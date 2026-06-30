@@ -135,7 +135,7 @@
       .toUpperCase().slice(0, 2)
   );
 
-  const displayName = $derived(data.user?.fullName?.split(' ')[0] ?? 'Invigilator');
+  const displayName = $derived(data.user?.fullName ?? 'Invigilator');
 
   // Bio fields to display in profile modal
   const profileFields = $derived([

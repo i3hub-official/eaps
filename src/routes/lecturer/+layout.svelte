@@ -287,7 +287,8 @@
       .toUpperCase().slice(0, 2)
   );
 
-  const firstName = $derived(data.user?.fullName?.split(' ')[0] ?? 'Lecturer');
+  const fullname = $derived(data.user?.fullName ?? 'Lecturer'); 
+  // add the [0] index to the split result to get the first name, and provide a default value of 'Lecturer' if fullName is undefined or empty.
 
   // ── Keyboard Shortcuts ────────────────────────────────────────────────────
   function handleKeydown(e: KeyboardEvent) {
@@ -520,7 +521,7 @@
         <div class="avatar">{initials}</div>
         {#if !collapsed}
           <div class="profile-copy">
-            <span class="profile-name">{data.user?.title ? data.user.title + ' ' : ''}{firstName}</span>
+            <span class="profile-name">{fullname}</span>
             <span class="profile-sub">Lecturer</span>
           </div>
           <ChevronRight size={13} class="profile-arr" />
@@ -558,7 +559,7 @@
             {/each}
           </nav>
         {:else}
-          <span class="greet">Welcome back, <strong>{firstName}</strong></span>
+          <span class="greet">Welcome back, <strong>{fullname}</strong></span>
         {/if}
       </div>
 
@@ -905,14 +906,21 @@
   .topbar-l { display: flex; align-items: center; gap: 0.75rem; min-width: 0; }
   .topbar-r { display: flex; align-items: center; gap: 0.5rem; flex-shrink: 0; }
 
-  .mob-menu {
-    width: 32px; height: 32px; border-radius: 0.5rem;
-    border: 1px solid var(--color-border); background: var(--color-bg);
-    display: flex; align-items: center; justify-content: center;
-    color: var(--color-muted); cursor: pointer; transition: all 0.15s ease;
-  }
-  .mob-menu:hover { border-color: var(--lc-600); color: var(--color-text); }
+ .mob-menu {
+  width: 32px; height: 32px; border-radius: 0.5rem;
+  border: 1px solid var(--color-border); background: var(--color-bg);
+  display: none; /* ← HIDDEN ON DESKTOP */
+  align-items: center; justify-content: center;
+  color: var(--color-muted); cursor: pointer; transition: all 0.15s ease;
+}
+.mob-menu:hover { border-color: var(--lc-600); color: var(--color-text); }
 
+/* Show on mobile */
+@media (max-width: 768px) {
+  .mob-menu {
+    display: flex;
+  }
+}
   .bc { display: flex; align-items: center; gap: 0.3rem; min-width: 0; }
   .bc-lnk { font-size: 0.78rem; color: var(--color-muted); text-decoration: none; font-weight: 500; white-space: nowrap; transition: color 0.12s ease; }
   .bc-lnk:hover { color: var(--lc-600); }
