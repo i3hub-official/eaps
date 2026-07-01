@@ -13,8 +13,6 @@ datasource db {
   provider = "postgresql"
 }
 
-// ─── Enums ────────────────────────────────────────────────────────────────────
-
 enum UserRole {
   admin
   lecturer
@@ -23,11 +21,9 @@ enum UserRole {
   hod
   dean
   exam_officer
-  vc_dvc // covers both VC and DVC — same permission set
+  vc_dvc
 }
 
-// Secondary roles a user can hold in addition to their primary role.
-// Currently used for HOD who also lectures.
 enum SecondaryRole {
   lecturer
 }
@@ -122,7 +118,90 @@ enum Gender {
   required
 }
 
-// ─── Institutional hierarchy ──────────────────────────────────────────────────
+enum CourseOfferingStatus {
+  draft
+  open
+  closed
+  archived
+}
+
+enum CurriculumType {
+  core
+  gst
+  borrowed
+  elective
+}
+
+model Curriculum {
+  id           String         @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  departmentId String         @map("department_id") @db.Uuid
+  levelId      Int            @map("level_id")
+  semester     Int            @db.SmallInt
+  courseId     String         @map("course_id") @db.Uuid
+  type         CurriculumType @default(core)
+  isActive     Boolean        @default(true) @map("is_active")
+  createdAt    DateTime       @default(now()) @map("created_at") @db.Timestamptz()
+
+  department Department @relation(fields: [departmentId], references: [id], onDelete: Cascade)
+  level      Level      @relation(fields: [levelId], references: [id])
+  course     Course     @relation(fields: [courseId], references: [id], onDelete: Cascade)
+
+  @@unique([departmentId, levelId, semester, courseId])
+  @@index([departmentId, levelId, semester])
+  @@map("curricula")
+}
+
+model CourseOffering {
+  id                 String               @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  courseId           String               @map("course_id") @db.Uuid
+  academicSemesterId Int                  @map("academic_semester_id")
+  levelId            Int                  @map("level_id")
+  status             CourseOfferingStatus @default(draft)
+  capacity           Int?
+  createdAt          DateTime             @default(now()) @map("created_at") @db.Timestamptz()
+  updatedAt          DateTime             @default(now()) @updatedAt @map("updated_at") @db.Timestamptz()
+
+  course              Course                     @relation(fields: [courseId], references: [id])
+  academicSemester    AcademicSemester           @relation(fields: [academicSemesterId], references: [id])
+  level               Level                      @relation(fields: [levelId], references: [id])
+  departments         CourseOfferingDepartment[]
+  teachingAssignments TeachingAssignment[]
+  registrations       CourseRegistration[]
+  exams               Exam[]
+
+  @@unique([courseId, academicSemesterId, levelId])
+  @@index([academicSemesterId, levelId])
+  @@map("course_offerings")
+}
+
+model CourseOfferingDepartment {
+  offeringId   String  @map("offering_id") @db.Uuid
+  departmentId String  @map("department_id") @db.Uuid
+  isPrimary    Boolean @default(false) @map("is_primary")
+
+  offering   CourseOffering @relation(fields: [offeringId], references: [id], onDelete: Cascade)
+  department Department     @relation(fields: [departmentId], references: [id], onDelete: Cascade)
+
+  @@id([offeringId, departmentId])
+  @@map("course_offering_departments")
+}
+
+model TeachingAssignment {
+  id           String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  offeringId   String   @map("offering_id") @db.Uuid
+  lecturerId   String   @map("lecturer_id") @db.Uuid
+  isPrimary    Boolean  @default(true) @map("is_primary")
+  assignedAt   DateTime @default(now()) @map("assigned_at") @db.Timestamptz()
+  assignedById String?  @map("assigned_by_id") @db.Uuid
+
+  offering   CourseOffering @relation(fields: [offeringId], references: [id], onDelete: Cascade)
+  lecturer   User           @relation("TeachingAssignments", fields: [lecturerId], references: [id], onDelete: Cascade)
+  assignedBy User?          @relation("TeachingAssignmentAssignedBy", fields: [assignedById], references: [id])
+
+  @@unique([offeringId, lecturerId])
+  @@index([lecturerId])
+  @@map("teaching_assignments")
+}
 
 model College {
   id           Int     @id @default(autoincrement())
@@ -153,6 +232,9 @@ model Department {
   examDepartments ExamDepartment[]
   lecturerCourses LecturerCourse[]
 
+  curriculums     Curriculum[]
+  courseOfferings CourseOfferingDepartment[]
+
   @@unique([name, collegeId])
   @@index([collegeId])
   @@map("departments")
@@ -172,6 +254,9 @@ model Level {
   registrations   CourseRegistration[]
   examLevels      ExamLevel[]
   semesterConfigs LevelSemesterConfig[]
+
+  curriculums Curriculum[]
+  offerings   CourseOffering[]
 
   @@map("levels")
 }
@@ -207,32 +292,30 @@ model AcademicSemester {
 
   createdBy User? @relation("SemesterCreatedBy", fields: [createdById], references: [id])
 
+  offerings CourseOffering[]
+
   @@unique([session, semester])
   @@map("academic_semesters")
 }
-
-// ─── Users ────────────────────────────────────────────────────────────────────
 
 model User {
   id            String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   email         String   @unique
   fullName      String   @map("full_name")
   passwordHash  String   @map("password_hash")
-  role          UserRole // primary role — drives routing and base permissions
+  role          UserRole
   isActive      Boolean  @default(true) @map("is_active")
   createdAt     DateTime @default(now()) @map("created_at") @db.Timestamptz()
   updatedAt     DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz()
-  emailVerified Boolean  @default(false) @map("emailverified)")
+  emailVerified Boolean  @default(false) @map("email_verified")
 
-  // ── Contact ──────────────────────────────────────────────────────────────
   phone   String?
   title   String?
   address String?
 
   gender      Gender   @default(required) @map("gender")
-  dateOfBirth DateTime @default(now()) @map("dateofbirth") @db.Timestamptz()
+  dateOfBirth DateTime @default(now()) @map("date_of_birth") @db.Timestamptz()
 
-  // ── Academic identity ─────────────────────────────────────────────────────
   matricNumber String? @unique @map("matric_number")
   staffId      String? @unique @map("staff_id")
   jambRegNo    String? @unique @map("jamb_reg_no")
@@ -241,7 +324,6 @@ model User {
   level   Level?  @relation("UserLevel", fields: [levelId], references: [id])
   session String?
 
-  // ── Institution ───────────────────────────────────────────────────────────
   collegeId    Int?        @map("college_id")
   college      College?    @relation(fields: [collegeId], references: [id])
   departmentId String?     @map("department_id") @db.Uuid
@@ -249,36 +331,29 @@ model User {
   programmeId  String?     @db.Uuid
   programme    Programme?  @relation(fields: [programmeId], references: [id])
 
-  // ── Profile ───────────────────────────────────────────────────────────────
   photoUrl      String? @map("photo_url")
   twitter       String?
   linkedin      String?
   github        String?
   bio           String?
   nationality   String?
-  stateoforigin String?
+  stateoforigin String? @map("state_of_origin")
   lga           String?
 
-  // ── Receipt audit trail ───────────────────────────────────────────────────
   receiptNo     String? @map("receipt_no")
   receiptRef    String? @map("receipt_ref")
   receiptSource String? @map("receipt_source")
 
-  // ── Suspension audit ──────────────────────────────────────────────────────
   isSuspended   Boolean   @default(false) @map("is_suspended")
   suspendedAt   DateTime? @map("suspended_at") @db.Timestamptz()
   suspendedById String?   @map("suspended_by_id")
 
-  // ── Face enrollment ───────────────────────────────────────────────────────
   faceDescriptor FaceDescriptor?
 
-  // ── Secondary roles (e.g. HOD who also lectures) ──────────────────────────
   secondaryRoles UserRoleAssignment[] @relation("UserSecondaryRoles")
 
-  // created-by audit on role assignments
   roleAssignmentsCreated UserRoleAssignment[] @relation("RoleAssignedBy")
 
-  // ── Relations ─────────────────────────────────────────────────────────────
   authSessions        AuthSession[]
   courseRegistrations CourseRegistration[]
   createdExams        Exam[]               @relation("LecturerExams")
@@ -299,11 +374,14 @@ model User {
   passwordResets    PasswordReset[]
   caUploads         ExamResult[]          @relation("CaUploadedBy")
 
-  lecturerCourses         LecturerCourse[] @relation("LecturerCourses")
-  assignedLecturerCourses LecturerCourse[] @relation("LecturerCourseAssignedBy")
-  studentUploads StudentUpload[]
-  questionImports QuestionImport[]
-   questionFavorites QuestionFavorite[]
+  lecturerCourses         LecturerCourse[]   @relation("LecturerCourses")
+  assignedLecturerCourses LecturerCourse[]   @relation("LecturerCourseAssignedBy")
+  studentUploads          StudentUpload[]
+  questionImports         QuestionImport[]
+  questionFavorites       QuestionFavorite[]
+
+  teachingAssignments         TeachingAssignment[] @relation("TeachingAssignments")
+  teachingAssignmentsAssigned TeachingAssignment[] @relation("TeachingAssignmentAssignedBy")
 
   @@index([role])
   @@index([collegeId])
@@ -331,12 +409,6 @@ model QuestionFavorite {
   @@index([questionId])
   @@map("question_favorites")
 }
-
-// ─── Secondary Role Assignments ───────────────────────────────────────────────
-//
-// Tracks additional roles a user holds beyond their primary role.
-// Example: an HOD (primary) who also lectures (secondary).
-// Kept as a junction table so it's queryable, auditable, and extensible.
 
 model UserRoleAssignment {
   id           String        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
@@ -439,14 +511,17 @@ model AuthSession {
 }
 
 model Course {
-  id           String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  departmentId String   @map("department_id") @db.Uuid
-  code         String   @unique
-  title        String
-  creditUnits  Int      @default(2) @map("credit_units") @db.SmallInt
-  level        Int?     @db.SmallInt
-  semester     Int?     @db.SmallInt
-  createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz()
+  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  departmentId   String   @map("department_id") @db.Uuid
+  code           String   @unique
+  title          String
+  creditUnits    Int      @default(2) @map("credit_units") @db.SmallInt
+  level          Int?     @db.SmallInt
+  isGeneral      Boolean  @default(false) @map("is_general")
+  isDiscontinued Boolean  @default(false) @map("is_discontinued")
+  isActive       Boolean  @default(true) @map("is_active")
+  semester       Int?     @db.SmallInt
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz()
 
   department          Department           @relation(fields: [departmentId], references: [id])
   registrations       CourseRegistration[]
@@ -455,6 +530,9 @@ model Course {
   exams       Exam[]
   programme   Programme? @relation(fields: [programmeId], references: [id])
   programmeId String?    @db.Uuid
+
+  curriculums Curriculum[]
+  offerings   CourseOffering[]
 
   @@map("courses")
 }
@@ -470,9 +548,11 @@ model CourseRegistration {
   status           RegistrationStatus @default(pending) @map("status")
   createdAt        DateTime           @default(now()) @map("created_at") @db.Timestamptz()
 
-  student User   @relation(fields: [studentId], references: [id], onDelete: Cascade)
-  course  Course @relation(fields: [courseId], references: [id], onDelete: Cascade)
-  level   Level? @relation(fields: [levelId], references: [id])
+  student    User            @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  course     Course          @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  level      Level?          @relation(fields: [levelId], references: [id])
+  offeringId String?         @map("offering_id") @db.Uuid
+  offering   CourseOffering? @relation(fields: [offeringId], references: [id])
 
   @@unique([studentId, courseId, session, semester])
   @@map("course_registrations")
@@ -499,7 +579,7 @@ model StudentUpload {
 model Programme {
   id            String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   departmentId  String   @map("department_id") @db.Uuid
-  name          String  @default("Full Time Regular")
+  name          String   @default("Full Time Regular")
   code          String?  @unique
   durationYears Int      @default(4) @map("duration_years") @db.SmallInt
   createdAt     DateTime @default(now()) @map("created_at") @db.Timestamptz()
@@ -551,17 +631,16 @@ model Exam {
   randomizeQuestions Boolean    @default(true) @map("randomize_questions")
   randomizeOptions   Boolean    @default(true) @map("randomize_options")
   questionsToPresent Int        @default(0) @map("questions_to_present") @db.SmallInt
-  
-  // FIX: Use Decimal type instead of Float
-  marksPerQuestion   Decimal?   @db.Decimal(5,2) // Marks per question (70 ÷ questionsToPresent)
-  
-  showResultAfter    Boolean    @default(false) @map("show_result_after")
-  maxViolations      Int        @default(5) @map("max_violations") @db.SmallInt
-  session            String
-  department         String?
-  semester           Int        @db.SmallInt
-  createdAt          DateTime   @default(now()) @map("created_at") @db.Timestamptz()
-  updatedAt          DateTime   @default(now()) @updatedAt @map("updated_at") @db.Timestamptz()
+
+  marksPerQuestion Decimal? @db.Decimal(5, 2)
+
+  showResultAfter Boolean  @default(false) @map("show_result_after")
+  maxViolations   Int      @default(5) @map("max_violations") @db.SmallInt
+  session         String
+  department      String?
+  semester        Int      @db.SmallInt
+  createdAt       DateTime @default(now()) @map("created_at") @db.Timestamptz()
+  updatedAt       DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz()
 
   course               Course                @relation(fields: [courseId], references: [id])
   lecturer             User                  @relation("LecturerExams", fields: [createdBy], references: [id])
@@ -574,6 +653,8 @@ model Exam {
   faceSimilarities     FaceSimilarity[]
   faceVerificationLogs FaceVerificationLog[]
   examDepartments      ExamDepartment[]
+  offeringId           String?               @map("offering_id") @db.Uuid
+  offering             CourseOffering?       @relation(fields: [offeringId], references: [id])
 
   @@index([courseId])
   @@index([status])
@@ -619,7 +700,7 @@ model Question {
   studentAnswers       StudentAnswer[]
   sessionQuestionOrder SessionQuestionOrder[]
   sessionOptionOrder   SessionOptionOrder[]
-  favorites            QuestionFavorite[]     
+  favorites            QuestionFavorite[]
 
   @@index([examId])
   @@map("questions")

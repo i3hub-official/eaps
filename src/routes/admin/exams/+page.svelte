@@ -76,14 +76,7 @@
         <p class="subtitle">{data.total ?? 0} exam{data.total !== 1 ? 's' : ''} total</p>
       </div>
     </div>
-    <button class="btn-primary" onclick={() => handleNav('/admin/exams/create')}>
-      {#if navLoading === '/admin/exams/create'}
-        <Loader2 size={15} class="spin" />
-      {:else}
-        <Plus size={15} />
-      {/if}
-      New Exam
-    </button>
+
   </div>
 
   <!-- Status summary -->
@@ -134,11 +127,6 @@
             ? 'Try adjusting your search or filters.'
             : 'Get started by creating your first exam.'}
         </p>
-        {#if !search && status === 'all'}
-          <button class="btn-primary btn-sm" onclick={() => handleNav('/admin/exams/create')}>
-            <Plus size={14} /> Create Exam
-          </button>
-        {/if}
       </div>
     {:else}
       <div class="table-wrap">

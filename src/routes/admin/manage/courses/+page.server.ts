@@ -7,8 +7,7 @@ import { fail } from '@sveltejs/kit';
 export const load: PageServerLoad = async ({ locals }) => {
   requireAdmin(locals.user);
 
-          const prisma = await getPrismaClient();
-
+  const prisma = await getPrismaClient();
 
   const [courses, departments, levels] = await Promise.all([
     prisma.course.findMany({
@@ -24,7 +23,6 @@ export const load: PageServerLoad = async ({ locals }) => {
     prisma.level.findMany({ 
       orderBy: { level: 'asc' }
     }),
-
   ]);
 
   return { courses, departments, levels };
@@ -33,7 +31,7 @@ export const load: PageServerLoad = async ({ locals }) => {
 export const actions: Actions = {
   create: async ({ request, locals }) => {
     requireAdmin(locals.user);
-            const prisma = await getPrismaClient();
+    const prisma = await getPrismaClient();
 
     const data = await request.formData();
     const departmentId = data.get('departmentId') as string;
@@ -41,6 +39,10 @@ export const actions: Actions = {
     const title = (data.get('title') as string)?.trim();
     const creditUnits = parseInt(data.get('creditUnits') as string);
     const level = data.get('level') ? parseInt(data.get('level') as string) : null;
+    const semester = data.get('semester') ? parseInt(data.get('semester') as string) : null;
+    const isGeneral = data.get('isGeneral') === 'true';
+    const isActive = data.get('isActive') === 'true';
+    const isDiscontinued = data.get('isDiscontinued') === 'true';
 
     if (!departmentId) return fail(400, { error: 'Department selection is required' });
     if (!code) return fail(400, { error: 'Course code is required' });
@@ -55,10 +57,15 @@ export const actions: Actions = {
           code,
           title,
           creditUnits,
-          level
+          level,
+          semester,
+          isGeneral,
+          isActive,
+          isDiscontinued
         }
       });
     } catch (err) {
+      console.error('Create course error:', err);
       if ((err as any).code === 'P2002') {
         return fail(400, { error: 'Course with this code already exists' });
       }
@@ -69,7 +76,7 @@ export const actions: Actions = {
 
   edit: async ({ request, locals }) => {
     requireAdmin(locals.user);
-            const prisma = await getPrismaClient();
+    const prisma = await getPrismaClient();
 
     const data = await request.formData();
     const id = data.get('id') as string;
@@ -78,6 +85,10 @@ export const actions: Actions = {
     const title = (data.get('title') as string)?.trim();
     const creditUnits = parseInt(data.get('creditUnits') as string);
     const level = data.get('level') ? parseInt(data.get('level') as string) : null;
+    const semester = data.get('semester') ? parseInt(data.get('semester') as string) : null;
+    const isGeneral = data.get('isGeneral') === 'true';
+    const isActive = data.get('isActive') === 'true';
+    const isDiscontinued = data.get('isDiscontinued') === 'true';
 
     if (!departmentId) return fail(400, { error: 'Department selection is required' });
     if (!code) return fail(400, { error: 'Course code is required' });
@@ -87,9 +98,20 @@ export const actions: Actions = {
     try {
       await prisma.course.update({
         where: { id },
-        data: { departmentId, code, title, creditUnits, level }
+        data: { 
+          departmentId, 
+          code, 
+          title, 
+          creditUnits, 
+          level,
+          semester,
+          isGeneral,
+          isActive,
+          isDiscontinued
+        }
       });
     } catch (err) {
+      console.error('Edit course error:', err);
       if ((err as any).code === 'P2002') {
         return fail(400, { error: 'Course with this code already exists' });
       }
@@ -100,14 +122,15 @@ export const actions: Actions = {
 
   delete: async ({ request, locals }) => {
     requireAdmin(locals.user);
-            const prisma = await getPrismaClient();
+    const prisma = await getPrismaClient();
 
     const data = await request.formData();
     const id = data.get('id') as string;
 
     try {
       await prisma.course.delete({ where: { id } });
-    } catch {
+    } catch (err) {
+      console.error('Delete course error:', err);
       return fail(500, { error: 'Failed to delete course. It may have associated exams or registrations.' });
     }
     return { success: true, message: 'Course deleted successfully' };

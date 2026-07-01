@@ -25,7 +25,7 @@
 		"db:setup": "prisma db push && pnpm initSchema && pnpm db:seed",
 		"copy:models": "node scripts/copy-human-models.js",
 		"download:models": "node scripts/download-models.js",
-		"postinstall": "prisma generate && pnpm run copy:models"
+		"postinstall": "pnpm prisma generate && pnpm run copy:models"
 	},
 	"devDependencies": {
 		"@eslint/compat": "^2.0.4",

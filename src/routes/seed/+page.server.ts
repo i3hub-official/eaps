@@ -949,7 +949,7 @@ export const actions: Actions = {
       const lecturerData = [
         // COLPAS Departments
         { email: 'dr.okafor.csc@mouau.edu.ng', fullName: 'Dr. Emeka Okafor', staffId: 'LCT001', deptCode: 'CSC' },
-        { email: 'prof.nwosu.csc@mouau.edu.ng', fullName: 'Prof. Adaeze Nwosu', staffId: 'LCT002', deptCode: 'CSC' },
+        { email: '', fullName: 'Prof. Adaeze Nwosu', staffId: 'LCT002', deptCode: 'CSC' },
         { email: 'dr.maths1@mouau.edu.ng', fullName: 'Dr. Chidi Okafor', staffId: 'LCT003', deptCode: 'MTH' },
         { email: 'prof.maths2@mouau.edu.ng', fullName: 'Prof. Ngozi Eze', staffId: 'LCT004', deptCode: 'MTH' },
         { email: 'dr.uche.phy@mouau.edu.ng', fullName: 'Dr. Uche Anyanwu', staffId: 'LCT005', deptCode: 'PHY' },

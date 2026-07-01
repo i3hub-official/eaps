@@ -2,7 +2,11 @@
 <script lang="ts">
   import type { PageData } from './$types';
   import { enhance } from '$app/forms';
-  import { BookMarked, Plus, Pencil, Trash2, X, Check, AlertCircle, Search, Loader2 } from '@lucide/svelte';
+  import { 
+    BookMarked, Plus, Pencil, Trash2, X, Check, AlertCircle, 
+    Search, Loader2, GraduationCap, BookOpen, Clock, 
+    Calendar, CheckCircle, XCircle, Circle
+  } from '@lucide/svelte';
 
   let { data, form }: { data: PageData; form: any } = $props();
 
@@ -13,7 +17,35 @@
   let searchQuery = $state('');
   let loadingAction = $state<string | null>(null);
 
-  const courses = $derived(
+  // ── College/Department filtering ──
+  let selectedCollegeId = $state<string>('');
+  let editSelectedCollegeId = $state<string>('');
+
+  // ── Toggle states ──
+  let createIsGeneral = $state(false);
+  let createIsActive = $state(true);
+  let createIsDiscontinued = $state(false);
+  
+  let editIsGeneral = $state(false);
+  let editIsActive = $state(true);
+  let editIsDiscontinued = $state(false);
+
+  // ── Derived: Filtered departments for create ──
+  let filteredDepartments = $derived(
+    selectedCollegeId
+      ? data.departments.filter(d => d.collegeId === selectedCollegeId)
+      : data.departments
+  );
+
+  // ── Derived: Filtered departments for edit ──
+  let editFilteredDepartments = $derived(
+    editSelectedCollegeId
+      ? data.departments.filter(d => d.collegeId === editSelectedCollegeId)
+      : data.departments
+  );
+
+  // ── Derived: Courses filter ──
+  let courses = $derived(
     data.courses?.filter((c: any) =>
       c.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
       c.code.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -21,8 +53,43 @@
     ) ?? []
   );
 
+  // ── Derived: Levels from DB ──
+  let levels = $derived(data.levels ?? []);
+
+  // ── Derived: Unique colleges ──
+  let uniqueColleges = $derived(() => {
+    const colleges: { id: string; name: string }[] = [];
+    const seen = new Set();
+    for (const d of data.departments) {
+      if (d.collegeId && !seen.has(d.collegeId)) {
+        seen.add(d.collegeId);
+        colleges.push({ id: d.collegeId, name: d.college?.name || 'Unknown' });
+      }
+    }
+    return colleges;
+  });
+
+  // ── Semester options ──
+  const semesterOptions = [
+    { value: 1, label: 'First Semester' },
+    { value: 2, label: 'Second Semester' }
+  ];
+
+  function openCreateModal() {
+    selectedCollegeId = '';
+    createIsGeneral = false;
+    createIsActive = true;
+    createIsDiscontinued = false;
+    showCreateModal = true;
+  }
+
   function openEdit(course: any) {
     selectedCourse = course;
+    const dept = data.departments.find(d => d.id === course.departmentId);
+    editSelectedCollegeId = dept?.collegeId || '';
+    editIsGeneral = course.isGeneral || false;
+    editIsActive = course.isActive !== undefined ? course.isActive : true;
+    editIsDiscontinued = course.isDiscontinued || false;
     showEditModal = true;
   }
 
@@ -37,6 +104,14 @@
     showDeleteModal = false;
     selectedCourse = null;
     loadingAction = null;
+    selectedCollegeId = '';
+    editSelectedCollegeId = '';
+    createIsGeneral = false;
+    createIsActive = true;
+    createIsDiscontinued = false;
+    editIsGeneral = false;
+    editIsActive = true;
+    editIsDiscontinued = false;
   }
 
   function handleEnhance(action: string) {
@@ -50,10 +125,30 @@
     };
   }
 
-   // ── Levels (DB-aware, lecturer-assigned) ──────────────────────────────────
-  const LEVELS = $derived(
-    (data.levels ?? []).map(l => l.value).sort((a, b) => a - b)
-  );
+  // ── Toggle handlers ──
+  function toggleCreateGeneral() {
+    createIsGeneral = !createIsGeneral;
+  }
+
+  function toggleEditGeneral() {
+    editIsGeneral = !editIsGeneral;
+  }
+
+  function toggleCreateActive() {
+    createIsActive = !createIsActive;
+  }
+
+  function toggleEditActive() {
+    editIsActive = !editIsActive;
+  }
+
+  function toggleCreateDiscontinued() {
+    createIsDiscontinued = !createIsDiscontinued;
+  }
+
+  function toggleEditDiscontinued() {
+    editIsDiscontinued = !editIsDiscontinued;
+  }
 </script>
 
 <svelte:head><title>Manage Courses — MOUAU eTest Admin</title></svelte:head>
@@ -67,7 +162,7 @@
         <p class="subtitle">{courses.length} course{courses.length !== 1 ? 's' : ''} across all departments</p>
       </div>
     </div>
-    <button class="btn-primary" onclick={() => showCreateModal = true}>
+    <button class="btn-primary" onclick={openCreateModal}>
       <Plus size={16} />
       Add Course
     </button>
@@ -108,7 +203,9 @@
             <th>Department</th>
             <th>College</th>
             <th class="numeric">Level</th>
+            <th class="numeric">Semester</th>
             <th class="numeric">Credits</th>
+            <th class="numeric">Status</th>
             <th>Created</th>
             <th class="actions">Actions</th>
           </tr>
@@ -116,13 +213,13 @@
         <tbody>
           {#if courses.length === 0}
             <tr>
-              <td colspan="8" class="empty">
+              <td colspan="10" class="empty">
                 <div class="empty-state">
                   <BookMarked size={40} class="empty-icon" />
                   <p class="empty-title">No courses found</p>
                   <p class="empty-desc">{searchQuery ? 'Try adjusting your search terms.' : 'Get started by adding your first course.'}</p>
                   {#if !searchQuery}
-                    <button class="btn-primary btn-sm" onclick={() => showCreateModal = true}>
+                    <button class="btn-primary btn-sm" onclick={openCreateModal}>
                       <Plus size={14} /> Add Course
                     </button>
                   {/if}
@@ -136,8 +233,43 @@
                 <td class="name-cell">{course.title}</td>
                 <td><span class="dept-badge">{course.department?.name || '—'}</span></td>
                 <td><span class="college-badge">{course.department?.college?.name || '—'}</span></td>
-                <td class="numeric"><span class="level-badge">{course.level || '—'}</span></td>
+                <td class="numeric">
+                  <span class="level-badge">
+                    {#if course.level !== null && course.level !== undefined}
+                      {course.level} Level
+                    {:else}
+                      —
+                    {/if}
+                  </span>
+                </td>
+                <td class="numeric">
+                  <span class="semester-badge">
+                    {#if course.semester === 1}
+                      First
+                    {:else if course.semester === 2}
+                      Second
+                    {:else}
+                      —
+                    {/if}
+                  </span>
+                </td>
                 <td class="numeric"><span class="count-badge">{course.creditUnits}</span></td>
+                <td class="numeric">
+                  <div class="status-group">
+                    {#if course.isGeneral}
+                      <span class="status-badge general" title="General Course">G</span>
+                    {/if}
+                    {#if course.isActive}
+                      <span class="status-badge active" title="Active">✓</span>
+                    {/if}
+                    {#if course.isDiscontinued}
+                      <span class="status-badge discontinued" title="Discontinued">✕</span>
+                    {/if}
+                    {#if !course.isActive && !course.isDiscontinued}
+                      <span class="status-badge inactive" title="Inactive">○</span>
+                    {/if}
+                  </div>
+                </td>
                 <td class="date-cell">{new Date(course.createdAt).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' })}</td>
                 <td class="actions">
                   <div class="action-group">
@@ -157,7 +289,7 @@
     </div>
   </div>
 
-  <!-- Create Modal -->
+  <!-- ─── CREATE MODAL ─── -->
   {#if showCreateModal}
     <div class="modal-overlay" onclick={closeModals} role="dialog" aria-modal="true" aria-labelledby="create-title">
       <div class="modal" onclick={(e) => e.stopPropagation()}>
@@ -170,15 +302,35 @@
         </div>
         <form method="POST" action="?/create" use:enhance={handleEnhance('create')}>
           <div class="form-body">
+            <!-- College -->
+            <div class="form-group">
+              <label for="create-college">College <span class="req">*</span></label>
+              <select 
+                id="create-college" 
+                bind:value={selectedCollegeId}
+                required
+              >
+                <option value="">Select a college...</option>
+                {#each uniqueColleges() as college}
+                  <option value={college.id}>{college.name}</option>
+                {/each}
+              </select>
+            </div>
+
+            <!-- Department -->
             <div class="form-group">
               <label for="create-dept">Department <span class="req">*</span></label>
               <select id="create-dept" name="departmentId" required>
                 <option value="">Select a department...</option>
-                {#each data.departments as dept}
-                  <option value={dept.id}>{dept.code} — {dept.name} ({dept.college?.name})</option>
+                {#each filteredDepartments as dept}
+                  <option value={dept.id}>{dept.code} — {dept.name}</option>
                 {/each}
               </select>
+              {#if selectedCollegeId && filteredDepartments.length === 0}
+                <span class="field-hint">No departments found in this college</span>
+              {/if}
             </div>
+
             <div class="form-row">
               <div class="form-group">
                 <label for="create-code">Code <span class="req">*</span></label>
@@ -189,18 +341,91 @@
                 <input id="create-credits" type="number" name="creditUnits" value="2" min="1" max="6" required />
               </div>
             </div>
+
             <div class="form-group">
               <label for="create-title-input">Title <span class="req">*</span></label>
               <input id="create-title-input" type="text" name="title" placeholder="e.g., Introduction to Computer Science" required />
             </div>
+
+            <div class="form-row">
+              <div class="form-group">
+                <label for="create-level">Level</label>
+                <select id="create-level" name="level">
+                  <option value="">Select level...</option>
+                  {#each levels as level}
+                    <option value={level.level}>{level.level} Level</option>
+                  {/each}
+                </select>
+              </div>
+              <div class="form-group">
+                <label for="create-semester">Semester</label>
+                <select id="create-semester" name="semester">
+                  <option value="">Select semester...</option>
+                  {#each semesterOptions as option}
+                    <option value={option.value}>{option.label}</option>
+                  {/each}
+                </select>
+              </div>
+            </div>
+
+            <!-- Status Toggles -->
             <div class="form-group">
-              <label for="create-level">Level</label>
-              <select id="create-level" name="level">
-                <option value="">Select level...</option>
-                {#each LEVELS as level}
-                  <option value={level}>{level} Level</option>
-                {/each}
-              </select>
+              <label>Course Status</label>
+              <div class="toggle-grid">
+                <div class="toggle-wrap">
+                  <div 
+                    class="toggle-track" 
+                    class:on={createIsGeneral}
+                    onclick={toggleCreateGeneral}
+                  >
+                    <input 
+                      type="checkbox" 
+                      name="isGeneral" 
+                      checked={createIsGeneral}
+                      value="true"
+                      onchange={toggleCreateGeneral}
+                    />
+                    <span class="toggle-knob"></span>
+                  </div>
+                  <span class="toggle-label-text">General Course</span>
+                </div>
+
+                <div class="toggle-wrap">
+                  <div 
+                    class="toggle-track" 
+                    class:on={createIsActive}
+                    onclick={toggleCreateActive}
+                  >
+                    <input 
+                      type="checkbox" 
+                      name="isActive" 
+                      checked={createIsActive}
+                      value="true"
+                      onchange={toggleCreateActive}
+                    />
+                    <span class="toggle-knob"></span>
+                  </div>
+                  <span class="toggle-label-text">Active</span>
+                </div>
+
+                <div class="toggle-wrap">
+                  <div 
+                    class="toggle-track" 
+                    class:on={createIsDiscontinued}
+                    onclick={toggleCreateDiscontinued}
+                  >
+                    <input 
+                      type="checkbox" 
+                      name="isDiscontinued" 
+                      checked={createIsDiscontinued}
+                      value="true"
+                      onchange={toggleCreateDiscontinued}
+                    />
+                    <span class="toggle-knob"></span>
+                  </div>
+                  <span class="toggle-label-text">Discontinued</span>
+                </div>
+              </div>
             </div>
           </div>
           <div class="modal-footer">
@@ -218,7 +443,7 @@
     </div>
   {/if}
 
-  <!-- Edit Modal -->
+  <!-- ─── EDIT MODAL ─── -->
   {#if showEditModal && selectedCourse}
     <div class="modal-overlay" onclick={closeModals} role="dialog" aria-modal="true" aria-labelledby="edit-title">
       <div class="modal" onclick={(e) => e.stopPropagation()}>
@@ -232,17 +457,37 @@
         <form method="POST" action="?/edit" use:enhance={handleEnhance('edit')}>
           <input type="hidden" name="id" value={selectedCourse.id} />
           <div class="form-body">
+            <!-- College -->
+            <div class="form-group">
+              <label for="edit-college">College <span class="req">*</span></label>
+              <select 
+                id="edit-college" 
+                bind:value={editSelectedCollegeId}
+                required
+              >
+                <option value="">Select a college...</option>
+                {#each uniqueColleges() as college}
+                  <option value={college.id}>{college.name}</option>
+                {/each}
+              </select>
+            </div>
+
+            <!-- Department -->
             <div class="form-group">
               <label for="edit-dept">Department <span class="req">*</span></label>
               <select id="edit-dept" name="departmentId" required>
                 <option value="">Select a department...</option>
-                {#each data.departments as dept}
-                  <option value={dept.id} selected={selectedCourse.departmentId === dept.id}>
+                {#each editFilteredDepartments as dept}
+                  <option 
+                    value={dept.id} 
+                    selected={selectedCourse.departmentId === dept.id}
+                  >
                     {dept.code} — {dept.name}
                   </option>
                 {/each}
               </select>
             </div>
+
             <div class="form-row">
               <div class="form-group">
                 <label for="edit-code">Code <span class="req">*</span></label>
@@ -253,18 +498,101 @@
                 <input id="edit-credits" type="number" name="creditUnits" value={selectedCourse.creditUnits} min="1" max="6" required />
               </div>
             </div>
+
             <div class="form-group">
               <label for="edit-title-input">Title <span class="req">*</span></label>
               <input id="edit-title-input" type="text" name="title" value={selectedCourse.title} required />
             </div>
+
+            <div class="form-row">
+              <div class="form-group">
+                <label for="edit-level">Level</label>
+                <select id="edit-level" name="level">
+                  <option value="">Select level...</option>
+                  {#each levels as level}
+                    <option 
+                      value={level.level} 
+                      selected={selectedCourse.level === level.level}
+                    >
+                      {level.level} Level
+                    </option>
+                  {/each}
+                </select>
+              </div>
+              <div class="form-group">
+                <label for="edit-semester">Semester</label>
+                <select id="edit-semester" name="semester">
+                  <option value="">Select semester...</option>
+                  {#each semesterOptions as option}
+                    <option 
+                      value={option.value} 
+                      selected={selectedCourse.semester === option.value}
+                    >
+                      {option.label}
+                    </option>
+                  {/each}
+                </select>
+              </div>
+            </div>
+
+            <!-- Status Toggles -->
             <div class="form-group">
-              <label for="edit-level">Level</label>
-              <select id="edit-level" name="level">
-                <option value="">Select level...</option>
-                {#each LEVELS as level}
-                  <option value={level} selected={selectedCourse.level === level}>{level} Level</option>
-                {/each}
-              </select>
+              <label>Course Status</label>
+              <div class="toggle-grid">
+                <div class="toggle-wrap">
+                  <div 
+                    class="toggle-track" 
+                    class:on={editIsGeneral}
+                    onclick={toggleEditGeneral}
+                  >
+                    <input 
+                      type="checkbox" 
+                      name="isGeneral" 
+                      checked={editIsGeneral}
+                      value="true"
+                      onchange={toggleEditGeneral}
+                    />
+                    <span class="toggle-knob"></span>
+                  </div>
+                  <span class="toggle-label-text">General Course</span>
+                </div>
+
+                <div class="toggle-wrap">
+                  <div 
+                    class="toggle-track" 
+                    class:on={editIsActive}
+                    onclick={toggleEditActive}
+                  >
+                    <input 
+                      type="checkbox" 
+                      name="isActive" 
+                      checked={editIsActive}
+                      value="true"
+                      onchange={toggleEditActive}
+                    />
+                    <span class="toggle-knob"></span>
+                  </div>
+                  <span class="toggle-label-text">Active</span>
+                </div>
+
+                <div class="toggle-wrap">
+                  <div 
+                    class="toggle-track" 
+                    class:on={editIsDiscontinued}
+                    onclick={toggleEditDiscontinued}
+                  >
+                    <input 
+                      type="checkbox" 
+                      name="isDiscontinued" 
+                      checked={editIsDiscontinued}
+                      value="true"
+                      onchange={toggleEditDiscontinued}
+                    />
+                    <span class="toggle-knob"></span>
+                  </div>
+                  <span class="toggle-label-text">Discontinued</span>
+                </div>
+              </div>
             </div>
           </div>
           <div class="modal-footer">
@@ -282,7 +610,7 @@
     </div>
   {/if}
 
-  <!-- Delete Modal -->
+  <!-- ─── DELETE MODAL ─── -->
   {#if showDeleteModal && selectedCourse}
     <div class="modal-overlay" onclick={closeModals} role="dialog" aria-modal="true" aria-labelledby="delete-title">
       <div class="modal delete-modal" onclick={(e) => e.stopPropagation()}>
@@ -481,6 +809,15 @@
     font-size: 0.75rem;
     font-weight: 600;
   }
+  .semester-badge {
+    display: inline-flex; align-items: center;
+    padding: 0.25rem 0.625rem;
+    background: rgba(59,130,246,0.08);
+    color: #3b82f6;
+    border-radius: 0.375rem;
+    font-size: 0.75rem;
+    font-weight: 600;
+  }
   .count-badge {
     display: inline-flex; align-items: center; justify-content: center;
     min-width: 28px;
@@ -491,6 +828,38 @@
     font-size: 0.75rem;
     font-weight: 600;
     color: var(--color-muted);
+  }
+
+  /* Status Badges */
+  .status-group {
+    display: flex; align-items: center; justify-content: center; gap: 0.25rem;
+  }
+  .status-badge {
+    display: inline-flex; align-items: center; justify-content: center;
+    width: 20px; height: 20px;
+    border-radius: 50%;
+    font-size: 0.6rem;
+    font-weight: 700;
+  }
+  .status-badge.general {
+    background: rgba(139,92,246,0.15);
+    color: #7c3aed;
+    border: 1px solid rgba(139,92,246,0.2);
+  }
+  .status-badge.active {
+    background: rgba(34,197,94,0.15);
+    color: #16a34a;
+    border: 1px solid rgba(34,197,94,0.2);
+  }
+  .status-badge.discontinued {
+    background: rgba(239,68,68,0.15);
+    color: #dc2626;
+    border: 1px solid rgba(239,68,68,0.2);
+  }
+  .status-badge.inactive {
+    background: rgba(107,114,128,0.15);
+    color: #6b7280;
+    border: 1px solid rgba(107,114,128,0.2);
   }
 
   .actions { text-align: center; width: 100px; white-space: nowrap; }
@@ -538,7 +907,7 @@
     background: var(--color-surface);
     border: 1px solid var(--color-border);
     border-radius: 0.875rem;
-    width: 100%; max-width: 520px;
+    width: 100%; max-width: 560px;
     max-height: 90vh;
     overflow: hidden;
     display: flex; flex-direction: column;
@@ -581,6 +950,8 @@
   .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; }
   label { font-size: 0.72rem; font-weight: 700; color: var(--color-muted); text-transform: uppercase; letter-spacing: 0.06em; }
   .req { color: #dc2626; }
+  .field-hint { font-size: 0.7rem; color: var(--color-muted); margin-top: -0.2rem; }
+  
   input, select {
     padding: 0.65rem 0.875rem;
     border: 1px solid var(--color-border);
@@ -593,6 +964,39 @@
   }
   input:focus, select:focus { outline: none; border-color: #3b82f6; box-shadow: 0 0 0 3px rgba(59,130,246,0.1); }
   input::placeholder { color: var(--color-muted); opacity: 0.6; }
+
+  /* ── Toggle Grid ────────────────────────────────────────────── */
+  .toggle-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 0.5rem;
+    padding-top: 0.25rem;
+  }
+
+  .toggle-wrap {
+    display: flex; align-items: center; gap: 0.75rem;
+    padding: 0.4rem 0;
+  }
+  .toggle-track {
+    position: relative; width: 40px; height: 22px; flex-shrink: 0;
+    cursor: pointer;
+  }
+  .toggle-track input {
+    position: absolute; opacity: 0; width: 0; height: 0;
+    pointer-events: none;
+  }
+  .toggle-knob {
+    position: absolute; inset: 0; background: var(--color-border);
+    border-radius: 999px; transition: background 0.2s;
+  }
+  .toggle-knob::after {
+    content: ''; position: absolute; width: 16px; height: 16px;
+    top: 3px; left: 3px; background: white; border-radius: 50%;
+    transition: transform 0.2s; box-shadow: 0 1px 3px rgba(0,0,0,0.2);
+  }
+  .toggle-track.on .toggle-knob { background: #3b82f6; }
+  .toggle-track.on .toggle-knob::after { transform: translateX(18px); }
+  .toggle-label-text { font-size: 0.8rem; color: var(--color-muted); font-weight: 400; text-transform: none; }
 
   .modal-footer {
     display: flex; justify-content: flex-end; gap: 0.75rem;
@@ -637,6 +1041,7 @@
     .page-toolbar { flex-direction: column; }
     .search-box { max-width: none; width: 100%; }
     .form-row { grid-template-columns: 1fr; }
+    .toggle-grid { grid-template-columns: 1fr; }
     .data-table th, .data-table td { padding: 0.75rem 0.75rem; }
     .actions { width: 80px; }
     .modal-footer { flex-direction: column-reverse; }

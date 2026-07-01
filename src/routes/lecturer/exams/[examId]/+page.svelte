@@ -1,17 +1,32 @@
 <!-- src/routes/lecturer/exams/[examId]/+page.svelte -->
 <script lang="ts">
-  import type { PageData } from './$types';
+  import type { PageData, ActionData } from './$types';
   import {
     ChevronLeft, FileText, Users, Clock, BarChart2,
     Edit, Trash2, Copy, Link2, Eye, Settings,
     AlertCircle, CheckCircle, XCircle, Activity,
     Calendar, Award, HelpCircle, TrendingUp,
-    PlusCircle, Download, Printer, Send, ShieldCheck
+    PlusCircle, Download, Printer, Send, ShieldCheck, Zap, Loader2
   } from '@lucide/svelte';
   import { fly } from 'svelte/transition';
+  import { enhance } from '$app/forms';
 
-  let { data }: { data: PageData } = $props();
-  const { exam, stats, recentSubmissions, violationStats, questionCount, sessionCount } = data;
+  let { data, form }: { data: PageData; form: ActionData } = $props();
+
+  // Local, client-controlled mirror of exam status so the UI updates
+  // the instant an action succeeds — no waiting on a full page reload.
+  let exam = $state(data.exam);
+  let stats = $derived(data.stats);
+  let recentSubmissions = $derived(data.recentSubmissions);
+  let violationStats = $derived(data.violationStats);
+  let questionCount = $derived(data.questionCount);
+  let sessionCount = $derived(data.sessionCount);
+
+  // Keep the local exam mirror in sync whenever fresh server data arrives
+  // (e.g. on navigation back to this page).
+  $effect(() => {
+    exam = data.exam;
+  });
 
   function formatDate(d: string | null | undefined) {
     if (!d) return null;
@@ -45,6 +60,10 @@
   };
 
   // ── Toast system ──────────────────────────────────────────────────────────
+  // Toasts are only ever pushed explicitly from action callbacks below —
+  // never from a reactive $effect watching `form` — so a single submit
+  // can never produce more than one toast no matter how many times
+  // surrounding state re-renders.
   type Toast = { id: number; message: string; type: 'info' | 'warn' | 'success' };
   let toasts = $state<Toast[]>([]);
   let toastId = 0;
@@ -69,6 +88,99 @@
       showToast('Exam link copied!', 'success');
     });
   }
+
+  // ── Action state ──────────────────────────────────────────────────────────
+  let publishing = $state(false);
+  let activating = $state(false);
+  let completing = $state(false);
+  let cancelling = $state(false);
+
+  const canPublish  = $derived(exam.status === 'draft');
+  const canActivate = $derived(exam.status === 'scheduled');
+  const canComplete = $derived(exam.status === 'active');
+  const canCancel   = $derived(exam.status === 'draft' || exam.status === 'scheduled');
+
+  // ── Confirm dialogs ───────────────────────────────────────────────────────
+  function confirmPublish() {
+    return confirm(
+      `Publish "${exam.title}"?\n\nThis moves the exam from Draft to Scheduled and locks in the question count (${questionCount} question${questionCount === 1 ? '' : 's'}). Students will be able to see it is scheduled.`
+    );
+  }
+
+  function confirmActivate() {
+    return confirm(
+      `Activate "${exam.title}" now?\n\nStudents who are eligible will be able to start the exam immediately. This cannot be undone.`
+    );
+  }
+
+  function confirmComplete() {
+    return confirm(
+      `End "${exam.title}" now?\n\nThis will close the exam to new entries and force-submit any sessions still in progress. This cannot be undone.`
+    );
+  }
+
+  function confirmCancel() {
+    return confirm(
+      `Cancel "${exam.title}"?\n\nThis exam will be marked as cancelled and removed from student dashboards. This cannot be undone.`
+    );
+  }
+
+  // ── Generic submit handler factory ───────────────────────────────────────
+  // Each action: confirms → sets its own loading flag → submits →
+  // on success updates the local `exam.status` optimistically (instant UI)
+  // and shows exactly one toast → on failure shows exactly one error toast.
+  function makeHandler(opts: {
+    confirmFn: () => boolean;
+    setLoading: (v: boolean) => void;
+    nextStatus?: typeof exam.status;
+    successMessage: string;
+  }) {
+    return () => {
+      if (!opts.confirmFn()) {
+        return ({ cancel }: { cancel: () => void }) => cancel();
+      }
+      opts.setLoading(true);
+      return async ({ result }: { result: { type: string; data?: any } }) => {
+        opts.setLoading(false);
+        if (result.type === 'success') {
+          if (opts.nextStatus) exam = { ...exam, status: opts.nextStatus };
+          showToast(result.data?.message ?? opts.successMessage, 'success');
+        } else if (result.type === 'failure') {
+          showToast(result.data?.error ?? 'Action failed.', 'warn', 4000);
+        } else if (result.type === 'error') {
+          showToast('Something went wrong. Please try again.', 'warn', 4000);
+        }
+      };
+    };
+  }
+
+  const handlePublish = makeHandler({
+    confirmFn: confirmPublish,
+    setLoading: (v) => (publishing = v),
+    nextStatus: 'scheduled',
+    successMessage: 'Exam published successfully!',
+  });
+
+  const handleActivate = makeHandler({
+    confirmFn: confirmActivate,
+    setLoading: (v) => (activating = v),
+    nextStatus: 'active',
+    successMessage: 'Exam activated successfully!',
+  });
+
+  const handleComplete = makeHandler({
+    confirmFn: confirmComplete,
+    setLoading: (v) => (completing = v),
+    nextStatus: 'completed',
+    successMessage: 'Exam completed successfully!',
+  });
+
+  const handleCancel = makeHandler({
+    confirmFn: confirmCancel,
+    setLoading: (v) => (cancelling = v),
+    nextStatus: 'cancelled',
+    successMessage: 'Exam cancelled successfully!',
+  });
 </script>
 
 <svelte:head><title>{exam.title} — MOUAU eTest</title></svelte:head>
@@ -101,10 +213,55 @@
         <a href={`/lecturer/exams/${exam.id}/edit`} class="btn-secondary">
           <Edit size={14} /> Edit
         </a>
-        {#if exam.status === 'draft'}
-          <button class="btn-danger">
-            <Trash2 size={14} /> Delete
-          </button>
+
+        {#if canPublish}
+          <form method="POST" action="?/publish" use:enhance={handlePublish}>
+            <button class="btn-publish" disabled={publishing || questionCount === 0}
+              title={questionCount === 0 ? 'Add at least one question before publishing' : 'Publish this exam'}>
+              {#if publishing}
+                <Loader2 size={14} class="spin" /> Publishing…
+              {:else}
+                <Send size={14} /> Publish Exam
+              {/if}
+            </button>
+          </form>
+        {/if}
+
+        {#if canActivate}
+          <form method="POST" action="?/activate" use:enhance={handleActivate}>
+            <button class="btn-activate" disabled={activating}>
+              {#if activating}
+                <Loader2 size={14} class="spin" /> Activating…
+              {:else}
+                <Activity size={14} /> Activate Now
+              {/if}
+            </button>
+          </form>
+        {/if}
+
+        {#if canComplete}
+          <form method="POST" action="?/complete" use:enhance={handleComplete}>
+            <button class="btn-complete" disabled={completing}>
+              {#if completing}
+                <Loader2 size={14} class="spin" /> Completing…
+              {:else}
+                <CheckCircle size={14} /> End Exam
+              {/if}
+            </button>
+          </form>
+        {/if}
+
+        {#if canCancel}
+          <form method="POST" action="?/cancel" use:enhance={handleCancel}>
+            <button class="btn-danger" disabled={cancelling}>
+              {#if cancelling}
+                <Loader2 size={14} class="spin" />
+              {:else}
+                <Trash2 size={14} />
+              {/if}
+              Cancel
+            </button>
+          </form>
         {/if}
       </div>
     </div>
@@ -137,6 +294,13 @@
         </div>
       </div>
     </div>
+
+    {#if canPublish && questionCount === 0}
+      <div class="publish-warning" transition:fly={{ y: -6, duration: 180 }}>
+        <AlertCircle size={14} />
+        This exam is still a draft and has no questions. Add questions before publishing.
+      </div>
+    {/if}
   </div>
 
   <!-- Quick Stats Grid -->
@@ -204,7 +368,6 @@
 
   <!-- Details Grid -->
   <div class="details-grid">
-    <!-- Exam Details -->
     <div class="details-card">
       <h3>Exam Details</h3>
       <div class="details-list">
@@ -243,7 +406,6 @@
       </div>
     </div>
 
-    <!-- Schedule -->
     <div class="details-card">
       <h3>Schedule</h3>
       {#if exam.scheduledStart}
@@ -292,7 +454,6 @@
       </div>
     </div>
 
-    <!-- Quick Actions -->
     <div class="details-card actions-card">
       <h3>Quick Actions</h3>
       <div class="action-grid">
@@ -325,7 +486,6 @@
       </div>
     </div>
 
-    <!-- Recent Submissions -->
     {#if recentSubmissions.length > 0}
       <div class="details-card submissions-card">
         <h3>Recent Submissions</h3>
@@ -356,6 +516,9 @@
 </div>
 
 <style>
+  @keyframes spin { to { transform: rotate(360deg); } }
+  :global(.spin) { animation: spin 1s linear infinite; }
+
   .toast-stack {
     position: fixed; bottom: 1.5rem; right: 1.5rem;
     z-index: 9999; display: flex; flex-direction: column; gap: .35rem;
@@ -398,11 +561,16 @@
   .header-top {
     display: flex; justify-content: space-between; align-items: center;
     margin-bottom: 1rem;
+    flex-wrap: wrap;
+    gap: 0.75rem;
   }
 
   .header-actions {
     display: flex; gap: 0.5rem;
+    flex-wrap: wrap;
   }
+
+  .header-actions form { display: inline-flex; margin: 0; }
 
   .btn-ghost {
     display: inline-flex; align-items: center; gap: 0.4rem;
@@ -424,6 +592,39 @@
   }
   .btn-secondary:hover { background: var(--lc-600); color: white; }
 
+  .btn-publish {
+    display: inline-flex; align-items: center; gap: 0.4rem;
+    padding: 0.4rem 0.9rem;
+    background: #4f46e5; border: 1px solid #4f46e5;
+    border-radius: 0.5rem; font-size: 0.75rem; font-weight: 700;
+    color: white; cursor: pointer;
+    transition: all 0.15s;
+  }
+  .btn-publish:hover:not(:disabled) { background: #4338ca; border-color: #4338ca; }
+  .btn-publish:disabled { opacity: 0.55; cursor: not-allowed; }
+
+  .btn-activate {
+    display: inline-flex; align-items: center; gap: 0.4rem;
+    padding: 0.4rem 0.9rem;
+    background: #16a34a; border: 1px solid #16a34a;
+    border-radius: 0.5rem; font-size: 0.75rem; font-weight: 700;
+    color: white; cursor: pointer;
+    transition: all 0.15s;
+  }
+  .btn-activate:hover:not(:disabled) { background: #15803d; border-color: #15803d; }
+  .btn-activate:disabled { opacity: 0.55; cursor: not-allowed; }
+
+  .btn-complete {
+    display: inline-flex; align-items: center; gap: 0.4rem;
+    padding: 0.4rem 0.9rem;
+    background: #7c3aed; border: 1px solid #7c3aed;
+    border-radius: 0.5rem; font-size: 0.75rem; font-weight: 700;
+    color: white; cursor: pointer;
+    transition: all 0.15s;
+  }
+  .btn-complete:hover:not(:disabled) { background: #6d28d9; border-color: #6d28d9; }
+  .btn-complete:disabled { opacity: 0.55; cursor: not-allowed; }
+
   .btn-danger {
     display: inline-flex; align-items: center; gap: 0.4rem;
     padding: 0.4rem 0.8rem;
@@ -432,7 +633,20 @@
     color: #dc2626; cursor: pointer;
     transition: all 0.15s;
   }
-  .btn-danger:hover { background: #dc2626; color: white; }
+  .btn-danger:hover:not(:disabled) { background: #dc2626; color: white; }
+  .btn-danger:disabled { opacity: 0.55; cursor: not-allowed; }
+
+  .publish-warning {
+    display: flex; align-items: center; gap: 0.5rem;
+    margin-top: 1rem;
+    padding: 0.625rem 0.875rem;
+    background: rgba(245,158,11,0.1);
+    border: 1px solid rgba(245,158,11,0.3);
+    border-radius: 0.6rem;
+    font-size: 0.78rem;
+    font-weight: 600;
+    color: #92400e;
+  }
 
   .header-main {
     display: flex; justify-content: space-between; align-items: flex-start;

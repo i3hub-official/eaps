@@ -3,6 +3,7 @@ import type { PageServerLoad } from '../$types';
 import { requireLecturer } from '$lib/server/auth/guards.js';
 import { listExamsByLecturer } from '$lib/server/db/exams.js';
 import { sql } from '$lib/server/db/index.js';
+import { serializePrismaData } from '$lib/utils/serialize';
 
 export const load: PageServerLoad = async ({ locals }) => {
   const user = requireLecturer(locals.user);
@@ -32,5 +33,15 @@ export const load: PageServerLoad = async ({ locals }) => {
 
   const statsMap = Object.fromEntries(stats.map(s => [s.exam_id, s]));
 
-  return { user, exams, statsMap };
+  // Serialize exams to handle Decimal/BigInt values
+  const serializedExams = serializePrismaData(exams);
+
+  // Serialize statsMap as well
+  const serializedStatsMap = serializePrismaData(statsMap);
+
+  return { 
+    user, 
+    exams: serializedExams, 
+    statsMap: serializedStatsMap 
+  };
 };

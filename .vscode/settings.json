@@ -12,5 +12,19 @@
 			"database": "test",
 			"user": "postgres"
 		}
+	],
+	"sqltools.connections": [
+		{
+			"ssh": "Disabled",
+			"previewLimit": 50,
+			"server": "localhost",
+			"port": 55432,
+			"askForPassword": true,
+			"driver": "PostgreSQL",
+			"name": "MOUAU eTest",
+			"group": "Development",
+			"database": "test",
+			"username": "postgres"
+		}
 	]
 }

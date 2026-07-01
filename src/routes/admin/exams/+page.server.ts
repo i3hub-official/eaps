@@ -6,8 +6,7 @@ import { getPrismaClient } from '$lib/server/db/index.js';
 export const load: PageServerLoad = async ({ locals, url }) => {
   await requireAdmin(locals.user);
 
-      const prisma = await getPrismaClient();
-
+  const prisma = await getPrismaClient();
 
   const status = url.searchParams.get('status') ?? undefined;
   const search = url.searchParams.get('q') ?? undefined;
@@ -42,8 +41,21 @@ export const load: PageServerLoad = async ({ locals, url }) => {
     `,
   ]);
 
+  // Serialize Decimal values from exams
+  const serializedExams = exams.map(exam => ({
+    ...exam,
+    marksPerQuestion: exam.marksPerQuestion ? Number(exam.marksPerQuestion) : null,
+    totalMarks: Number(exam.totalMarks),
+    passMark: Number(exam.passMark),
+    durationMinutes: Number(exam.durationMinutes),
+    lateEntryMinutes: Number(exam.lateEntryMinutes),
+    maxViolations: Number(exam.maxViolations),
+    questionsToPresent: Number(exam.questionsToPresent),
+    semester: Number(exam.semester),
+  }));
+
   return {
-    exams,
+    exams: serializedExams,
     total,
     page,
     limit,

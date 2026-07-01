@@ -185,7 +185,6 @@
         { href: '/admin/exams', label: 'All Exams', icon: ClipboardList },
         { href: '/admin/exams?status=active', label: 'Active', icon: PlayCircle },
         { href: '/admin/exams?status=scheduled', label: 'Scheduled', icon: Calendar },
-        { href: '/admin/exams/create', label: 'Create Exam', icon: Plus },
       ],
     },
 

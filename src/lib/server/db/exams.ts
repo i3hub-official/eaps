@@ -315,11 +315,6 @@ export async function setExamStatus(id: string, status: ExamStatus) {
   await prisma.exam.update({ where: { id }, data: { status } });
 }
 
-export async function deleteExam(id: string) {
-  const prisma = await getPrismaClient();
-  await prisma.exam.deleteMany({ where: { id, status: 'draft' } });
-}
-
 export async function assignInvigilator(examId: string, invigilatorId: string) {
   const prisma = await getPrismaClient();
   await prisma.examInvigilator.upsert({
@@ -458,4 +453,48 @@ export async function getQuestionsByExam(examId: string) {
     },
     orderBy: [{ orderIndex: 'asc' }, { createdAt: 'asc' }],
   });
+}
+
+// ─── Modification eligibility ──────────────────────────────────────────────
+
+/**
+ * An exam can be edited or deleted as long as no student has actually
+ * started it. Status alone isn't the right gate — a "scheduled" or even
+ * "active" exam with zero started sessions is still safe to edit/delete.
+ */
+export async function canModifyExam(examId: string): Promise<boolean> {
+  const prisma = await getPrismaClient();
+  const startedSession = await prisma.examSession.findFirst({
+    where: {
+      examId,
+      status: { not: 'not_started' }, // in_progress, submitted, force_submitted, etc.
+    },
+    select: { id: true },
+  });
+  return !startedSession;
+}
+
+export async function deleteExam(id: string, lecturerId: string) {
+  const prisma = await getPrismaClient();
+
+  const exam = await prisma.exam.findUnique({
+    where: { id },
+    select: { createdBy: true },
+  });
+
+  if (!exam) return { ok: false as const, reason: 'Exam not found.' };
+  if (exam.createdBy !== lecturerId) {
+    return { ok: false as const, reason: 'You do not own this exam.' };
+  }
+
+  const modifiable = await canModifyExam(id);
+  if (!modifiable) {
+    return {
+      ok: false as const,
+      reason: 'This exam already has student activity and cannot be deleted.',
+    };
+  }
+
+  await prisma.exam.delete({ where: { id } });
+  return { ok: true as const };
 }
