@@ -19,15 +19,24 @@ export const load: PageServerLoad = async ({ locals }) => {
   const prisma = await getPrismaClient();
   const userCount = await prisma.user.count();
   if (userCount > 0) requireAdmin(locals.user);
-  const [collegeCount, departmentCount, courseCount, examCount, levelCount] = await Promise.all([
+  const [collegeCount, departmentCount, courseCount, examCount, levelCount, offeringCount] = await Promise.all([
     prisma.college.count(),
     prisma.department.count(),
     prisma.course.count(),
     prisma.exam.count(),
     prisma.level.count(),
+    prisma.courseOffering.count(),
   ]);
   return {
-    counts: { users: userCount, colleges: collegeCount, departments: departmentCount, courses: courseCount, exams: examCount, levels: levelCount },
+    counts: {
+      users: userCount,
+      colleges: collegeCount,
+      departments: departmentCount,
+      courses: courseCount,
+      exams: examCount,
+      levels: levelCount,
+      offerings: offeringCount,
+    },
     isFirstRun: userCount === 0,
   };
 };
@@ -80,6 +89,12 @@ export const actions: Actions = {
         ],
         skipDuplicates: true,
       });
+      const semesters = await prisma.academicSemester.findMany();
+      const getSemester = (session: string, semester: number) => {
+        const s = semesters.find(x => x.session === session && x.semester === semester);
+        if (!s) throw new Error(`Semester not found: ${session} - ${semester}`);
+        return s;
+      };
       results.push('✓ 2 academic semesters');
       progressBroadcaster.broadcastProgress('semesters', 'Semesters created', '2025/2026', '📅✅');
 
@@ -232,35 +247,62 @@ export const actions: Actions = {
       progressBroadcaster.broadcastProgress('departments', 'Departments created', `${departments.length} depts`, '🏢✅');
 
       // ══════════════════════════════════════════════════════════════════════
+      // 5b. PROGRAMMES
+      // ══════════════════════════════════════════════════════════════════════
+      progressBroadcaster.broadcastProgress('programmes', 'Creating programmes...', 'All departments', '🎓');
+
+      const programmeData = departments.map(dept => ({
+        name: 'Full Time Regular',
+        code: `${dept.code}-FTR`,
+        departmentId: dept.id,
+        durationYears: 4,
+      }));
+
+      await prisma.programme.createMany({
+        data: programmeData,
+        skipDuplicates: true,
+      });
+
+      const programmes = await prisma.programme.findMany();
+      const getProgramme = (deptCode: string) => {
+        const p = programmes.find(x => x.code === `${deptCode}-FTR`);
+        if (!p) throw new Error(`Programme not found for dept: ${deptCode}`);
+        return p;
+      };
+      results.push(`✓ ${programmes.length} programmes`);
+      progressBroadcaster.broadcastProgress('programmes', 'Programmes created', `${programmes.length}`, '🎓✅');
+
+      // ══════════════════════════════════════════════════════════════════════
       // 6. COURSES — 100L + 200L only (5 per semester)
       // ══════════════════════════════════════════════════════════════════════
       progressBroadcaster.broadcastProgress('courses', 'Creating courses...', 'All departments', '📚');
 
       const allCourses: {
         code: string; title: string; departmentId: string;
-        creditUnits: number; level: number; semester: number;
+        creditUnits: number; level: number; semester: number; isGeneral?: boolean;
       }[] = [];
 
       function addC(
         deptCode: string,
         code: string, title: string,
-        level: number, semester: number, credits: number
+        level: number, semester: number, credits: number, isGeneral = false
       ) {
         allCourses.push({
           code, title,
           departmentId: getDept(deptCode).id,
           creditUnits: credits,
           level, semester,
+          isGeneral,
         });
       }
 
       // ─── SGS / GST Universal courses ──────────────────────────────────────
-      addC('ENG', 'GST111', 'Communication in English I', 100, 1, 2);
-      addC('HIS', 'GST112', 'Nigerian History and Culture', 100, 1, 2);
-      addC('ENG', 'GST121', 'Communication in English II', 100, 2, 2);
-      addC('PHL', 'GST211', 'Logic, Philosophy and Human Existence', 200, 1, 2);
-      addC('PCS', 'GST212', 'Peace Studies and Conflict Resolution', 200, 1, 2);
-      addC('ENG', 'GST221', 'Technical Report Writing', 200, 2, 2);
+      addC('ENG', 'GST111', 'Communication in English I', 100, 1, 2, true);
+      addC('HIS', 'GST112', 'Nigerian History and Culture', 100, 1, 2, true);
+      addC('ENG', 'GST121', 'Communication in English II', 100, 2, 2, true);
+      addC('PHL', 'GST211', 'Logic, Philosophy and Human Existence', 200, 1, 2, true);
+      addC('PCS', 'GST212', 'Peace Studies and Conflict Resolution', 200, 1, 2, true);
+      addC('ENG', 'GST221', 'Technical Report Writing', 200, 2, 2, true);
 
       // ─── COLPAS — Computer Science (CSC) ──────────────────────────────────
       addC('CSC', 'CSC111', 'Introduction to Computer Science', 100, 1, 3);
@@ -757,6 +799,78 @@ export const actions: Actions = {
       progressBroadcaster.broadcastProgress('courses', 'Courses created', `${courses.length} courses`, '📚✅');
 
       // ══════════════════════════════════════════════════════════════════════
+      // 6b. COURSE OFFERINGS — Create offerings for each course
+      // ══════════════════════════════════════════════════════════════════════
+      progressBroadcaster.broadcastProgress('offerings', 'Creating course offerings...', 'All courses', '📋');
+
+      let offeringCount = 0;
+      for (const course of courses) {
+        if (!course.level || !course.semester) continue;
+
+        const level = getLevel(course.level);
+        const sem = getSemester('2025/2026', course.semester);
+
+        // Create offering
+        const offering = await prisma.courseOffering.upsert({
+          where: {
+            courseId_academicSemesterId_levelId: {
+              courseId: course.id,
+              academicSemesterId: sem.id,
+              levelId: level.id,
+            }
+          },
+          create: {
+            courseId: course.id,
+            academicSemesterId: sem.id,
+            levelId: level.id,
+            status: 'open',
+            capacity: 100,
+          },
+          update: {},
+        });
+        offeringCount++;
+
+        // Link to department
+        await prisma.courseOfferingDepartment.upsert({
+          where: {
+            offeringId_departmentId: {
+              offeringId: offering.id,
+              departmentId: course.departmentId,
+            }
+          },
+          create: {
+            offeringId: offering.id,
+            departmentId: course.departmentId,
+            isPrimary: true,
+          },
+          update: {},
+        });
+
+        // Create curriculum
+        await prisma.curriculum.upsert({
+          where: {
+            departmentId_levelId_semester_courseId: {
+              departmentId: course.departmentId,
+              levelId: level.id,
+              semester: course.semester,
+              courseId: course.id,
+            }
+          },
+          create: {
+            departmentId: course.departmentId,
+            levelId: level.id,
+            semester: course.semester,
+            courseId: course.id,
+            type: course.isGeneral ? 'gst' : 'core',
+          },
+          update: {},
+        });
+      }
+
+      results.push(`✓ ${offeringCount} course offerings created`);
+      progressBroadcaster.broadcastProgress('offerings', 'Offerings created', `${offeringCount} offerings`, '📋✅');
+
+      // ══════════════════════════════════════════════════════════════════════
       // 7. PASSWORDS
       // ══════════════════════════════════════════════════════════════════════
       const [adminPass, lecturerPass, invigilatorPass, studentPass, hodPass, deanPass, examOfficerPass, vcDvcPass] = await Promise.all([
@@ -792,7 +906,7 @@ export const actions: Actions = {
         { email: 'hod.chm@mouau.edu.ng', fullName: 'Prof. Chinedu Okonkwo', staffId: 'HOD004', deptCode: 'CHM' },
         { email: 'hod.sta@mouau.edu.ng', fullName: 'Prof. Uche Okafor', staffId: 'HOD012', deptCode: 'STA' },
         { email: 'hod.glg@mouau.edu.ng', fullName: 'Prof. Kelechi Ogbonna', staffId: 'HOD013', deptCode: 'GLG' },
-        
+
         // CEET
         { email: 'hod.eee@mouau.edu.ng', fullName: 'Prof. Basil Ani', staffId: 'HOD005', deptCode: 'EEE' },
         { email: 'hod.cpe@mouau.edu.ng', fullName: 'Dr. Ikenna Ozoemena', staffId: 'HOD008', deptCode: 'CPE' },
@@ -800,7 +914,7 @@ export const actions: Actions = {
         { email: 'hod.abe@mouau.edu.ng', fullName: 'Dr. Chidi Nwachukwu', staffId: 'HOD014', deptCode: 'ABE' },
         { email: 'hod.che@mouau.edu.ng', fullName: 'Dr. Adaobi Eze', staffId: 'HOD015', deptCode: 'CHE' },
         { email: 'hod.mce@mouau.edu.ng', fullName: 'Prof. Okechukwu Eze', staffId: 'HOD016', deptCode: 'MCE' },
-        
+
         // COLMAS
         { email: 'hod.acc@mouau.edu.ng', fullName: 'Dr. Adaeze Okon', staffId: 'HOD006', deptCode: 'ACC' },
         { email: 'hod.bus@mouau.edu.ng', fullName: 'Dr. Amaka Okonkwo', staffId: 'HOD010', deptCode: 'BUS' },
@@ -810,39 +924,39 @@ export const actions: Actions = {
         { email: 'hod.ecn@mouau.edu.ng', fullName: 'Dr. Chidi Agu', staffId: 'HOD018', deptCode: 'ECN' },
         { email: 'hod.ent@mouau.edu.ng', fullName: 'Dr. Nnamdi Obi', staffId: 'HOD019', deptCode: 'ENT' },
         { email: 'hod.irp@mouau.edu.ng', fullName: 'Dr. Ebere Nwosu', staffId: 'HOD020', deptCode: 'IRP' },
-        
+
         // COLNAS
         { email: 'hod.bch@mouau.edu.ng', fullName: 'Dr. Chidi Agu', staffId: 'HOD021', deptCode: 'BCH' },
         { email: 'hod.mcb@mouau.edu.ng', fullName: 'Dr. Ogechukwu Eze', staffId: 'HOD022', deptCode: 'MCB' },
         { email: 'hod.psb@mouau.edu.ng', fullName: 'Dr. Chiamaka Nwosu', staffId: 'HOD023', deptCode: 'PSB' },
         { email: 'hod.zeb@mouau.edu.ng', fullName: 'Dr. Adaeze Obi', staffId: 'HOD024', deptCode: 'ZEB' },
-        
+
         // CAERSE
         { email: 'hod.abm@mouau.edu.ng', fullName: 'Dr. Peter Ugwu', staffId: 'HOD025', deptCode: 'ABM' },
         { email: 'hod.aec@mouau.edu.ng', fullName: 'Dr. Chuka Nwankwo', staffId: 'HOD026', deptCode: 'AEC' },
         { email: 'hod.aers@mouau.edu.ng', fullName: 'Dr. Ngozi Eze', staffId: 'HOD027', deptCode: 'AERS' },
-        
+
         // CASAP
         { email: 'hod.apl@mouau.edu.ng', fullName: 'Dr. Emeka Okafor', staffId: 'HOD028', deptCode: 'APL' },
         { email: 'hod.abp@mouau.edu.ng', fullName: 'Dr. Ada Eze', staffId: 'HOD029', deptCode: 'ABP' },
         { email: 'hod.anf@mouau.edu.ng', fullName: 'Dr. Chidi Okonkwo', staffId: 'HOD030', deptCode: 'ANF' },
-        
+
         // CAFST
         { email: 'hod.fst@mouau.edu.ng', fullName: 'Dr. Chidinma Amadi', staffId: 'HOD031', deptCode: 'FST' },
         { email: 'hod.hnd@mouau.edu.ng', fullName: 'Dr. Ezinne Nwachukwu', staffId: 'HOD032', deptCode: 'HND' },
         { email: 'hod.hht@mouau.edu.ng', fullName: 'Dr. Tunde Bello', staffId: 'HOD033', deptCode: 'HHT' },
-        
+
         // CCSS
         { email: 'hod.agr@mouau.edu.ng', fullName: 'Dr. Ugwu Okafor', staffId: 'HOD034', deptCode: 'AGR' },
         { email: 'hod.phm@mouau.edu.ng', fullName: 'Dr. Chijioke Obi', staffId: 'HOD035', deptCode: 'PHM' },
         { email: 'hod.ssm@mouau.edu.ng', fullName: 'Dr. Funmilayo Adebayo', staffId: 'HOD036', deptCode: 'SSM' },
         { email: 'hod.wrm@mouau.edu.ng', fullName: 'Dr. Ken Okafor', staffId: 'HOD037', deptCode: 'WRM' },
-        
+
         // CNREM
         { email: 'hod.emt@mouau.edu.ng', fullName: 'Dr. Chinwe Okonkwo', staffId: 'HOD038', deptCode: 'EMT' },
         { email: 'hod.far@mouau.edu.ng', fullName: 'Dr. Olu Adeyemi', staffId: 'HOD039', deptCode: 'FAR' },
         { email: 'hod.fem@mouau.edu.ng', fullName: 'Dr. Nkechi Obi', staffId: 'HOD040', deptCode: 'FEM' },
-        
+
         // COED
         { email: 'hod.ace@mouau.edu.ng', fullName: 'Dr. Grace Nwosu', staffId: 'HOD041', deptCode: 'ACE' },
         { email: 'hod.ahe@mouau.edu.ng', fullName: 'Dr. Bisi Oladipo', staffId: 'HOD042', deptCode: 'AHE' },
@@ -853,7 +967,7 @@ export const actions: Actions = {
         { email: 'hod.lis@mouau.edu.ng', fullName: 'Dr. Joy Okafor', staffId: 'HOD047', deptCode: 'LIS' },
         { email: 'hod.gca@mouau.edu.ng', fullName: 'Dr. Patience Obi', staffId: 'HOD048', deptCode: 'GCA' },
         { email: 'hod.ise@mouau.edu.ng', fullName: 'Dr. Ken Eze', staffId: 'HOD049', deptCode: 'ISE' },
-        
+
         // CVM
         { email: 'hod.vet@mouau.edu.ng', fullName: 'Prof. Samuel Onyekachi', staffId: 'HOD050', deptCode: 'VET' },
         { email: 'hod.thr@mouau.edu.ng', fullName: 'Dr. Okechukwu Nwosu', staffId: 'HOD051', deptCode: 'THR' },
@@ -861,7 +975,7 @@ export const actions: Actions = {
         { email: 'hod.vmb@mouau.edu.ng', fullName: 'Dr. Ikenna Obi', staffId: 'HOD053', deptCode: 'VMB' },
         { email: 'hod.vph@mouau.edu.ng', fullName: 'Dr. Adaobi Okonkwo', staffId: 'HOD054', deptCode: 'VPH' },
         { email: 'hod.vsr@mouau.edu.ng', fullName: 'Dr. Emeka Eze', staffId: 'HOD055', deptCode: 'VSR' },
-        
+
         // SGS
         { email: 'hod.eng@mouau.edu.ng', fullName: 'Dr. Nnamdi Nzeka', staffId: 'HOD056', deptCode: 'ENG' },
         { email: 'hod.frn@mouau.edu.ng', fullName: 'Dr. Chidi French', staffId: 'HOD057', deptCode: 'FRN' },
@@ -871,22 +985,22 @@ export const actions: Actions = {
         { email: 'hod.phe@mouau.edu.ng', fullName: 'Dr. Kayode Ogun', staffId: 'HOD061', deptCode: 'PHE' },
         { email: 'hod.phl@mouau.edu.ng', fullName: 'Dr. Uchenna Philosophy', staffId: 'HOD062', deptCode: 'PHL' },
         { email: 'hod.pcs@mouau.edu.ng', fullName: 'Dr. Ijeoma Peace', staffId: 'HOD063', deptCode: 'PCS' },
-        
+
         // Additional HOD
         { email: 'hod_ogwo@mouau.edu.ng', fullName: 'Ogwo Godspower (HOD)', staffId: 'HOD310449', deptCode: 'CSC' },
       ];
 
       hodData.forEach(h => {
         const dept = getDept(h.deptCode);
-        allUsersToCreate.push({ 
-          email: h.email, 
-          fullName: h.fullName, 
-          passwordHash: hodPass, 
-          role: 'hod', 
-          staffId: h.staffId, 
-          collegeId: dept.collegeId, 
-          departmentId: dept.id, 
-          session: '2025/2026' 
+        allUsersToCreate.push({
+          email: h.email,
+          fullName: h.fullName,
+          passwordHash: hodPass,
+          role: 'hod',
+          staffId: h.staffId,
+          collegeId: dept.collegeId,
+          departmentId: dept.id,
+          session: '2025/2026'
         });
       });
 
@@ -906,14 +1020,14 @@ export const actions: Actions = {
         { email: 'dean.sgs@mouau.edu.ng', fullName: 'Prof. Nnamdi Nzeka (Dean SGS)', staffId: 'DEN012', collegeCode: 'SGS' },
         { email: 'dean_ogwo@mouau.edu.ng', fullName: 'Ogwo Godspower (Dean)', staffId: 'DEN310449', collegeCode: 'COLPAS' },
       ].forEach(d => {
-        allUsersToCreate.push({ 
-          email: d.email, 
-          fullName: d.fullName, 
-          passwordHash: deanPass, 
-          role: 'dean', 
-          staffId: d.staffId, 
-          collegeId: getCollege(d.collegeCode).id, 
-          session: '2025/2026' 
+        allUsersToCreate.push({
+          email: d.email,
+          fullName: d.fullName,
+          passwordHash: deanPass,
+          role: 'dean',
+          staffId: d.staffId,
+          collegeId: getCollege(d.collegeCode).id,
+          session: '2025/2026'
         });
       });
 
@@ -922,13 +1036,13 @@ export const actions: Actions = {
         { email: 'examofficer1@mouau.edu.ng', fullName: 'Mr. Chukwuemeka Obi', staffId: 'EXO001' },
         { email: 'examofficer2@mouau.edu.ng', fullName: 'Mrs. Ngozi Eze', staffId: 'EXO002' },
         { email: 'examofficer_ogwo@mouau.edu.ng', fullName: 'Ogwo Godspower (EO)', staffId: 'EXO310449' },
-      ].forEach(e => allUsersToCreate.push({ 
-        email: e.email, 
-        fullName: e.fullName, 
-        passwordHash: examOfficerPass, 
-        role: 'exam_officer', 
-        staffId: e.staffId, 
-        session: '2025/2026' 
+      ].forEach(e => allUsersToCreate.push({
+        email: e.email,
+        fullName: e.fullName,
+        passwordHash: examOfficerPass,
+        role: 'exam_officer',
+        staffId: e.staffId,
+        session: '2025/2026'
       }));
 
       // ── VC/DVC ────────────────────────────────────────────────────────────
@@ -936,21 +1050,20 @@ export const actions: Actions = {
         { email: 'vc@mouau.edu.ng', fullName: 'Prof. Ikechukwu Nwachukwu (VC)', staffId: 'VC001' },
         { email: 'dvc@mouau.edu.ng', fullName: 'Prof. Ada Obi (DVC)', staffId: 'DVC001' },
         { email: 'vcdvc_ogwo@mouau.edu.ng', fullName: 'Ogwo Godspower (VC)', staffId: 'VC310449' },
-      ].forEach(v => allUsersToCreate.push({ 
-        email: v.email, 
-        fullName: v.fullName, 
-        passwordHash: vcDvcPass, 
-        role: 'vc_dvc', 
-        staffId: v.staffId, 
-        session: '2025/2026' 
+      ].forEach(v => allUsersToCreate.push({
+        email: v.email,
+        fullName: v.fullName,
+        passwordHash: vcDvcPass,
+        role: 'vc_dvc',
+        staffId: v.staffId,
+        session: '2025/2026'
       }));
 
       // ── Lecturers (2 per department/course) ─────────────────────────────────────────
       const lecturerData = [
         // COLPAS Departments
         { email: 'dr.okafor.csc@mouau.edu.ng', fullName: 'Dr. Emeka Okafor', staffId: 'LCT001', deptCode: 'CSC' },
-        { email: '', fullName: 'Prof. Adaeze Nwosu', staffId: 'LCT002', deptCode: 'CSC' },
-        { email: 'dr.maths1@mouau.edu.ng', fullName: 'Dr. Chidi Okafor', staffId: 'LCT003', deptCode: 'MTH' },
+        { email: 'prof.adaeze.csc@mouau.edu.ng', fullName: 'Prof. Adaeze Nwosu', staffId: 'LCT002', deptCode: 'CSC' }, { email: 'dr.maths1@mouau.edu.ng', fullName: 'Dr. Chidi Okafor', staffId: 'LCT003', deptCode: 'MTH' },
         { email: 'prof.maths2@mouau.edu.ng', fullName: 'Prof. Ngozi Eze', staffId: 'LCT004', deptCode: 'MTH' },
         { email: 'dr.uche.phy@mouau.edu.ng', fullName: 'Dr. Uche Anyanwu', staffId: 'LCT005', deptCode: 'PHY' },
         { email: 'prof.obiora.phy@mouau.edu.ng', fullName: 'Prof. Obiora Kalu', staffId: 'LCT006', deptCode: 'PHY' },
@@ -960,7 +1073,7 @@ export const actions: Actions = {
         { email: 'dr.stats2@mouau.edu.ng', fullName: 'Dr. Joy Okafor', staffId: 'LCT010', deptCode: 'STA' },
         { email: 'dr.geology1@mouau.edu.ng', fullName: 'Dr. Godwin Okonkwo', staffId: 'LCT011', deptCode: 'GLG' },
         { email: 'dr.geology2@mouau.edu.ng', fullName: 'Dr. Mercy Eze', staffId: 'LCT012', deptCode: 'GLG' },
-        
+
         // CEET
         { email: 'dr.adekunle.eee@mouau.edu.ng', fullName: 'Dr. Adekunle Williams', staffId: 'LCT013', deptCode: 'EEE' },
         { email: 'prof.eee2@mouau.edu.ng', fullName: 'Prof. Kingsley Okafor', staffId: 'LCT014', deptCode: 'EEE' },
@@ -974,7 +1087,7 @@ export const actions: Actions = {
         { email: 'dr.che2@mouau.edu.ng', fullName: 'Dr. Adaobi Nwosu', staffId: 'LCT022', deptCode: 'CHE' },
         { email: 'dr.mce1@mouau.edu.ng', fullName: 'Dr. Okechukwu Obi', staffId: 'LCT023', deptCode: 'MCE' },
         { email: 'dr.mce2@mouau.edu.ng', fullName: 'Dr. Chinwe Eze', staffId: 'LCT024', deptCode: 'MCE' },
-        
+
         // COLMAS
         { email: 'dr.onyekachi.acc@mouau.edu.ng', fullName: 'Dr. Onyekachi Mbah', staffId: 'LCT025', deptCode: 'ACC' },
         { email: 'prof.acc2@mouau.edu.ng', fullName: 'Prof. Amara Nwosu', staffId: 'LCT026', deptCode: 'ACC' },
@@ -992,7 +1105,7 @@ export const actions: Actions = {
         { email: 'dr.ent2@mouau.edu.ng', fullName: 'Dr. Funmi Adebayo', staffId: 'LCT038', deptCode: 'ENT' },
         { email: 'dr.irp1@mouau.edu.ng', fullName: 'Dr. James Okafor', staffId: 'LCT039', deptCode: 'IRP' },
         { email: 'dr.irp2@mouau.edu.ng', fullName: 'Dr. Mary Eze', staffId: 'LCT040', deptCode: 'IRP' },
-        
+
         // COLNAS
         { email: 'dr.ibrahim.bch@mouau.edu.ng', fullName: 'Dr. Musa Ibrahim', staffId: 'LCT041', deptCode: 'BCH' },
         { email: 'dr.bch2@mouau.edu.ng', fullName: 'Dr. Ngozi Obi', staffId: 'LCT042', deptCode: 'BCH' },
@@ -1002,7 +1115,7 @@ export const actions: Actions = {
         { email: 'dr.psb2@mouau.edu.ng', fullName: 'Dr. Adaeze Obi', staffId: 'LCT046', deptCode: 'PSB' },
         { email: 'dr.zeb1@mouau.edu.ng', fullName: 'Dr. Chinedu Okafor', staffId: 'LCT047', deptCode: 'ZEB' },
         { email: 'dr.zeb2@mouau.edu.ng', fullName: 'Dr. Ngozi Nwachukwu', staffId: 'LCT048', deptCode: 'ZEB' },
-        
+
         // CAERSE
         { email: 'dr.abm1@mouau.edu.ng', fullName: 'Dr. Peter Ugwu', staffId: 'LCT049', deptCode: 'ABM' },
         { email: 'dr.abm2@mouau.edu.ng', fullName: 'Dr. Chuka Nwankwo', staffId: 'LCT050', deptCode: 'ABM' },
@@ -1010,7 +1123,7 @@ export const actions: Actions = {
         { email: 'dr.aec2@mouau.edu.ng', fullName: 'Dr. Emeka Okafor', staffId: 'LCT052', deptCode: 'AEC' },
         { email: 'dr.aers1@mouau.edu.ng', fullName: 'Dr. Ada Eze', staffId: 'LCT053', deptCode: 'AERS' },
         { email: 'dr.aers2@mouau.edu.ng', fullName: 'Dr. Chidi Okonkwo', staffId: 'LCT054', deptCode: 'AERS' },
-        
+
         // CASAP
         { email: 'dr.apl1@mouau.edu.ng', fullName: 'Dr. Emeka Okafor', staffId: 'LCT055', deptCode: 'APL' },
         { email: 'dr.apl2@mouau.edu.ng', fullName: 'Dr. Ada Eze', staffId: 'LCT056', deptCode: 'APL' },
@@ -1018,7 +1131,7 @@ export const actions: Actions = {
         { email: 'dr.abp2@mouau.edu.ng', fullName: 'Dr. Ngozi Obi', staffId: 'LCT058', deptCode: 'ABP' },
         { email: 'dr.anf1@mouau.edu.ng', fullName: 'Dr. Uche Nwachukwu', staffId: 'LCT059', deptCode: 'ANF' },
         { email: 'dr.anf2@mouau.edu.ng', fullName: 'Dr. Chiamaka Eze', staffId: 'LCT060', deptCode: 'ANF' },
-        
+
         // CAFST
         { email: 'dr.amadi.fst@mouau.edu.ng', fullName: 'Dr. Chidinma Amadi', staffId: 'LCT061', deptCode: 'FST' },
         { email: 'dr.fst2@mouau.edu.ng', fullName: 'Dr. Ezinne Nwachukwu', staffId: 'LCT062', deptCode: 'FST' },
@@ -1026,7 +1139,7 @@ export const actions: Actions = {
         { email: 'dr.hnd2@mouau.edu.ng', fullName: 'Dr. Funmi Adebayo', staffId: 'LCT064', deptCode: 'HND' },
         { email: 'dr.hht1@mouau.edu.ng', fullName: 'Dr. Bisi Oladipo', staffId: 'LCT065', deptCode: 'HHT' },
         { email: 'dr.hht2@mouau.edu.ng', fullName: 'Dr. Kemi Ogunleye', staffId: 'LCT066', deptCode: 'HHT' },
-        
+
         // CCSS
         { email: 'dr.agr1@mouau.edu.ng', fullName: 'Dr. Ugwu Okafor', staffId: 'LCT067', deptCode: 'AGR' },
         { email: 'dr.agr2@mouau.edu.ng', fullName: 'Dr. Chijioke Obi', staffId: 'LCT068', deptCode: 'AGR' },
@@ -1036,7 +1149,7 @@ export const actions: Actions = {
         { email: 'dr.ssm2@mouau.edu.ng', fullName: 'Dr. Ngozi Obi', staffId: 'LCT072', deptCode: 'SSM' },
         { email: 'dr.wrm1@mouau.edu.ng', fullName: 'Dr. Olu Adeyemi', staffId: 'LCT073', deptCode: 'WRM' },
         { email: 'dr.wrm2@mouau.edu.ng', fullName: 'Dr. Nkechi Okonkwo', staffId: 'LCT074', deptCode: 'WRM' },
-        
+
         // CNREM
         { email: 'dr.emt1@mouau.edu.ng', fullName: 'Dr. Chinwe Okonkwo', staffId: 'LCT075', deptCode: 'EMT' },
         { email: 'dr.emt2@mouau.edu.ng', fullName: 'Dr. Olu Adeyemi', staffId: 'LCT076', deptCode: 'EMT' },
@@ -1044,7 +1157,7 @@ export const actions: Actions = {
         { email: 'dr.far2@mouau.edu.ng', fullName: 'Dr. Chidi Eze', staffId: 'LCT078', deptCode: 'FAR' },
         { email: 'dr.fem1@mouau.edu.ng', fullName: 'Dr. Grace Nwosu', staffId: 'LCT079', deptCode: 'FEM' },
         { email: 'dr.fem2@mouau.edu.ng', fullName: 'Dr. Bisi Oladipo', staffId: 'LCT080', deptCode: 'FEM' },
-        
+
         // COED
         { email: 'dr.ace1@mouau.edu.ng', fullName: 'Dr. Grace Nwosu', staffId: 'LCT081', deptCode: 'ACE' },
         { email: 'dr.ace2@mouau.edu.ng', fullName: 'Dr. Bisi Oladipo', staffId: 'LCT082', deptCode: 'ACE' },
@@ -1064,7 +1177,7 @@ export const actions: Actions = {
         { email: 'dr.gca2@mouau.edu.ng', fullName: 'Dr. Emeka Okafor', staffId: 'LCT096', deptCode: 'GCA' },
         { email: 'dr.ise1@mouau.edu.ng', fullName: 'Dr. Ada Eze', staffId: 'LCT097', deptCode: 'ISE' },
         { email: 'dr.ise2@mouau.edu.ng', fullName: 'Dr. Chidi Okonkwo', staffId: 'LCT098', deptCode: 'ISE' },
-        
+
         // CVM
         { email: 'prof.vet1@mouau.edu.ng', fullName: 'Prof. Samuel Onyekachi', staffId: 'LCT099', deptCode: 'VET' },
         { email: 'dr.vet2@mouau.edu.ng', fullName: 'Dr. Chidi Nwosu', staffId: 'LCT100', deptCode: 'VET' },
@@ -1078,7 +1191,7 @@ export const actions: Actions = {
         { email: 'dr.vph2@mouau.edu.ng', fullName: 'Dr. Ngozi Nwachukwu', staffId: 'LCT108', deptCode: 'VPH' },
         { email: 'dr.vsr1@mouau.edu.ng', fullName: 'Dr. Emeka Okafor', staffId: 'LCT109', deptCode: 'VSR' },
         { email: 'dr.vsr2@mouau.edu.ng', fullName: 'Dr. Ada Eze', staffId: 'LCT110', deptCode: 'VSR' },
-        
+
         // SGS
         { email: 'dr.nzeka.eng@mouau.edu.ng', fullName: 'Dr. Nnamdi Nzeka', staffId: 'LCT111', deptCode: 'ENG' },
         { email: 'dr.eng2@mouau.edu.ng', fullName: 'Dr. Chidi English', staffId: 'LCT112', deptCode: 'ENG' },
@@ -1096,22 +1209,22 @@ export const actions: Actions = {
         { email: 'dr.phl2@mouau.edu.ng', fullName: 'Dr. Ijeoma Philosophy', staffId: 'LCT124', deptCode: 'PHL' },
         { email: 'dr.pcs1@mouau.edu.ng', fullName: 'Dr. Ijeoma Peace', staffId: 'LCT125', deptCode: 'PCS' },
         { email: 'dr.pcs2@mouau.edu.ng', fullName: 'Dr. Chidi Peace', staffId: 'LCT126', deptCode: 'PCS' },
-        
+
         { email: 'lec_ogwo@mouau.edu.ng', fullName: 'Ogwo Godspower', staffId: 'PHY310449', deptCode: 'PHY' },
         { email: 'lec_ogwo_csc@mouau.edu.ng', fullName: 'Ogwo Godspower (CSC)', staffId: 'CSC310449', deptCode: 'CSC' },
       ];
 
       lecturerData.forEach(l => {
         const dept = getDept(l.deptCode);
-        allUsersToCreate.push({ 
-          email: l.email, 
-          fullName: l.fullName, 
-          passwordHash: lecturerPass, 
-          role: 'lecturer', 
-          staffId: l.staffId, 
-          collegeId: dept.collegeId, 
-          departmentId: dept.id, 
-          session: '2025/2026' 
+        allUsersToCreate.push({
+          email: l.email,
+          fullName: l.fullName,
+          passwordHash: lecturerPass,
+          role: 'lecturer',
+          staffId: l.staffId,
+          collegeId: dept.collegeId,
+          departmentId: dept.id,
+          session: '2025/2026'
         });
       });
 
@@ -1130,15 +1243,15 @@ export const actions: Actions = {
         { email: 'invig_ogwo@mouau.edu.ng', fullName: 'Ogwo Godspower', staffId: 'INV310449', deptCode: 'PHY' },
       ].forEach(i => {
         const dept = getDept(i.deptCode);
-        allUsersToCreate.push({ 
-          email: i.email, 
-          fullName: i.fullName, 
-          passwordHash: invigilatorPass, 
-          role: 'invigilator', 
-          staffId: i.staffId, 
-          collegeId: dept.collegeId, 
-          departmentId: dept.id, 
-          session: '2025/2026' 
+        allUsersToCreate.push({
+          email: i.email,
+          fullName: i.fullName,
+          passwordHash: invigilatorPass,
+          role: 'invigilator',
+          staffId: i.staffId,
+          collegeId: dept.collegeId,
+          departmentId: dept.id,
+          session: '2025/2026'
         });
       });
 
@@ -1147,226 +1260,233 @@ export const actions: Actions = {
         email: string; fullName: string; deptCode: string;
         matric: string; levelNum: number; session: string;
       }> = [
-        // CSC — 100L (5 students)
-        { email: 'adebayo.adekunle@student.mouau.edu.ng', fullName: 'Adebayo Adekunle', deptCode: 'CSC', matric: 'MOUAU/CSC/25/111213', levelNum: 100, session: '2025/2026' },
-        { email: 'chioma.eke@student.mouau.edu.ng', fullName: 'Chioma Eke', deptCode: 'CSC', matric: 'MOUAU/CSC/25/334455', levelNum: 100, session: '2025/2026' },
-        { email: 'damilola.adebayo@student.mouau.edu.ng', fullName: 'Damilola Adebayo', deptCode: 'CSC', matric: 'MOUAU/CSC/25/445566', levelNum: 100, session: '2025/2026' },
-        { email: 'emeka.ogu@student.mouau.edu.ng', fullName: 'Emeka Ogu', deptCode: 'CSC', matric: 'MOUAU/CSC/25/556677', levelNum: 100, session: '2025/2026' },
-        { email: 'gloria.umoh@student.mouau.edu.ng', fullName: 'Gloria Umoh', deptCode: 'CSC', matric: 'MOUAU/CSC/25/778899', levelNum: 100, session: '2025/2026' },
-        // CSC — 200L (3 students)
-        { email: 'alice.obi@student.mouau.edu.ng', fullName: 'Alice Obi', deptCode: 'CSC', matric: 'MOUAU/CSC/24/001', levelNum: 200, session: '2025/2026' },
-        { email: 'bob.nwachukwu@student.mouau.edu.ng', fullName: 'Bob Nwachukwu', deptCode: 'CSC', matric: 'MOUAU/CSC/24/002', levelNum: 200, session: '2025/2026' },
-        { email: 'emeka.agu@student.mouau.edu.ng', fullName: 'Emeka Agu', deptCode: 'CSC', matric: 'MOUAU/CSC/24/003', levelNum: 200, session: '2025/2026' },
+          // CSC — 100L (5 students)
+          { email: 'adebayo.adekunle@student.mouau.edu.ng', fullName: 'Adebayo Adekunle', deptCode: 'CSC', matric: 'MOUAU/CSC/25/111213', levelNum: 100, session: '2025/2026' },
+          { email: 'chioma.eke@student.mouau.edu.ng', fullName: 'Chioma Eke', deptCode: 'CSC', matric: 'MOUAU/CSC/25/334455', levelNum: 100, session: '2025/2026' },
+          { email: 'damilola.adebayo@student.mouau.edu.ng', fullName: 'Damilola Adebayo', deptCode: 'CSC', matric: 'MOUAU/CSC/25/445566', levelNum: 100, session: '2025/2026' },
+          { email: 'emeka.ogu@student.mouau.edu.ng', fullName: 'Emeka Ogu', deptCode: 'CSC', matric: 'MOUAU/CSC/25/556677', levelNum: 100, session: '2025/2026' },
+          { email: 'gloria.umoh@student.mouau.edu.ng', fullName: 'Gloria Umoh', deptCode: 'CSC', matric: 'MOUAU/CSC/25/778899', levelNum: 100, session: '2025/2026' },
+          // CSC — 200L (3 students)
+          { email: 'alice.obi@student.mouau.edu.ng', fullName: 'Alice Obi', deptCode: 'CSC', matric: 'MOUAU/CSC/24/001', levelNum: 200, session: '2025/2026' },
+          { email: 'bob.nwachukwu@student.mouau.edu.ng', fullName: 'Bob Nwachukwu', deptCode: 'CSC', matric: 'MOUAU/CSC/24/002', levelNum: 200, session: '2025/2026' },
+          { email: 'emeka.agu@student.mouau.edu.ng', fullName: 'Emeka Agu', deptCode: 'CSC', matric: 'MOUAU/CSC/24/003', levelNum: 200, session: '2025/2026' },
 
-        // PHY — 100L (4 students)
-        { email: 'ogwo.godspower@student.mouau.edu.ng', fullName: 'Ogwo Godspower', deptCode: 'PHY', matric: 'MOUAU/PHY/25/128468', levelNum: 100, session: '2025/2026' },
-        { email: 'ade.adeleke@student.mouau.edu.ng', fullName: 'Ade Adeleke', deptCode: 'PHY', matric: 'MOUAU/PHY/25/123456', levelNum: 100, session: '2025/2026' },
-        { email: 'bimbo.oshodi@student.mouau.edu.ng', fullName: 'Bimbo Oshodi', deptCode: 'PHY', matric: 'MOUAU/PHY/25/234567', levelNum: 100, session: '2025/2026' },
-        { email: 'chuka.obi@student.mouau.edu.ng', fullName: 'Chuka Obi', deptCode: 'PHY', matric: 'MOUAU/PHY/25/345678', levelNum: 100, session: '2025/2026' },
-        // PHY — 200L (2 students)
-        { email: 'isaac.udoh@student.mouau.edu.ng', fullName: 'Isaac Udoh', deptCode: 'PHY', matric: 'MOUAU/PHY/24/007', levelNum: 200, session: '2025/2026' },
-        { email: 'joy.akan@student.mouau.edu.ng', fullName: 'Joy Akan', deptCode: 'PHY', matric: 'MOUAU/PHY/24/008', levelNum: 200, session: '2025/2026' },
+          // PHY — 100L (4 students)
+          { email: 'ogwo.godspower@student.mouau.edu.ng', fullName: 'Ogwo Godspower', deptCode: 'PHY', matric: 'MOUAU/PHY/25/128468', levelNum: 100, session: '2025/2026' },
+          { email: 'ade.adeleke@student.mouau.edu.ng', fullName: 'Ade Adeleke', deptCode: 'PHY', matric: 'MOUAU/PHY/25/123456', levelNum: 100, session: '2025/2026' },
+          { email: 'bimbo.oshodi@student.mouau.edu.ng', fullName: 'Bimbo Oshodi', deptCode: 'PHY', matric: 'MOUAU/PHY/25/234567', levelNum: 100, session: '2025/2026' },
+          { email: 'chuka.obi@student.mouau.edu.ng', fullName: 'Chuka Obi', deptCode: 'PHY', matric: 'MOUAU/PHY/25/345678', levelNum: 100, session: '2025/2026' },
+          // PHY — 200L (2 students)
+          { email: 'isaac.udoh@student.mouau.edu.ng', fullName: 'Isaac Udoh', deptCode: 'PHY', matric: 'MOUAU/PHY/24/007', levelNum: 200, session: '2025/2026' },
+          { email: 'joy.akan@student.mouau.edu.ng', fullName: 'Joy Akan', deptCode: 'PHY', matric: 'MOUAU/PHY/24/008', levelNum: 200, session: '2025/2026' },
 
-        // CHM — 100L (4 students)
-        { email: 'nnamdi.agu@student.mouau.edu.ng', fullName: 'Nnamdi Agu', deptCode: 'CHM', matric: 'MOUAU/CHM/25/141516', levelNum: 100, session: '2025/2026' },
-        { email: 'chioma.ike@student.mouau.edu.ng', fullName: 'Chioma Ike', deptCode: 'CHM', matric: 'MOUAU/CHM/25/141517', levelNum: 100, session: '2025/2026' },
-        { email: 'david.okonkwo@student.mouau.edu.ng', fullName: 'David Okonkwo', deptCode: 'CHM', matric: 'MOUAU/CHM/25/141518', levelNum: 100, session: '2025/2026' },
-        { email: 'esther.udoh@student.mouau.edu.ng', fullName: 'Esther Udoh', deptCode: 'CHM', matric: 'MOUAU/CHM/25/141519', levelNum: 100, session: '2025/2026' },
-        // CHM — 200L (2 students)
-        { email: 'kelechi.ofor@student.mouau.edu.ng', fullName: 'Kelechi Ofor', deptCode: 'CHM', matric: 'MOUAU/CHM/24/001', levelNum: 200, session: '2025/2026' },
-        { email: 'amaka.nwosu@student.mouau.edu.ng', fullName: 'Amaka Nwosu', deptCode: 'CHM', matric: 'MOUAU/CHM/24/002', levelNum: 200, session: '2025/2026' },
+          // CHM — 100L (4 students)
+          { email: 'nnamdi.agu@student.mouau.edu.ng', fullName: 'Nnamdi Agu', deptCode: 'CHM', matric: 'MOUAU/CHM/25/141516', levelNum: 100, session: '2025/2026' },
+          { email: 'chioma.ike@student.mouau.edu.ng', fullName: 'Chioma Ike', deptCode: 'CHM', matric: 'MOUAU/CHM/25/141517', levelNum: 100, session: '2025/2026' },
+          { email: 'david.okonkwo@student.mouau.edu.ng', fullName: 'David Okonkwo', deptCode: 'CHM', matric: 'MOUAU/CHM/25/141518', levelNum: 100, session: '2025/2026' },
+          { email: 'esther.udoh@student.mouau.edu.ng', fullName: 'Esther Udoh', deptCode: 'CHM', matric: 'MOUAU/CHM/25/141519', levelNum: 100, session: '2025/2026' },
+          // CHM — 200L (2 students)
+          { email: 'kelechi.ofor@student.mouau.edu.ng', fullName: 'Kelechi Ofor', deptCode: 'CHM', matric: 'MOUAU/CHM/24/001', levelNum: 200, session: '2025/2026' },
+          { email: 'amaka.nwosu@student.mouau.edu.ng', fullName: 'Amaka Nwosu', deptCode: 'CHM', matric: 'MOUAU/CHM/24/002', levelNum: 200, session: '2025/2026' },
 
-        // MTH — 100L (4 students)
-        { email: 'obinna.obi@student.mouau.edu.ng', fullName: 'Obinna Obi', deptCode: 'MTH', matric: 'MOUAU/MTH/25/151617', levelNum: 100, session: '2025/2026' },
-        { email: 'ada.mba@student.mouau.edu.ng', fullName: 'Ada Mba', deptCode: 'MTH', matric: 'MOUAU/MTH/25/151618', levelNum: 100, session: '2025/2026' },
-        { email: 'chinua.achebe@student.mouau.edu.ng', fullName: 'Chinua Achebe', deptCode: 'MTH', matric: 'MOUAU/MTH/25/151619', levelNum: 100, session: '2025/2026' },
-        { email: 'bisi.oladipo@student.mouau.edu.ng', fullName: 'Bisi Oladipo', deptCode: 'MTH', matric: 'MOUAU/MTH/25/151620', levelNum: 100, session: '2025/2026' },
-        // MTH — 200L (2 students)
-        { email: 'chidi.okafor@student.mouau.edu.ng', fullName: 'Chidi Okafor', deptCode: 'MTH', matric: 'MOUAU/MTH/24/001', levelNum: 200, session: '2025/2026' },
-        { email: 'emeka.nwachukwu@student.mouau.edu.ng', fullName: 'Emeka Nwachukwu', deptCode: 'MTH', matric: 'MOUAU/MTH/24/002', levelNum: 200, session: '2025/2026' },
+          // MTH — 100L (4 students)
+          { email: 'obinna.obi@student.mouau.edu.ng', fullName: 'Obinna Obi', deptCode: 'MTH', matric: 'MOUAU/MTH/25/151617', levelNum: 100, session: '2025/2026' },
+          { email: 'ada.mba@student.mouau.edu.ng', fullName: 'Ada Mba', deptCode: 'MTH', matric: 'MOUAU/MTH/25/151618', levelNum: 100, session: '2025/2026' },
+          { email: 'chinua.achebe@student.mouau.edu.ng', fullName: 'Chinua Achebe', deptCode: 'MTH', matric: 'MOUAU/MTH/25/151619', levelNum: 100, session: '2025/2026' },
+          { email: 'bisi.oladipo@student.mouau.edu.ng', fullName: 'Bisi Oladipo', deptCode: 'MTH', matric: 'MOUAU/MTH/25/151620', levelNum: 100, session: '2025/2026' },
+          // MTH — 200L (2 students)
+          { email: 'chidi.okafor@student.mouau.edu.ng', fullName: 'Chidi Okafor', deptCode: 'MTH', matric: 'MOUAU/MTH/24/001', levelNum: 200, session: '2025/2026' },
+          { email: 'emeka.nwachukwu@student.mouau.edu.ng', fullName: 'Emeka Nwachukwu', deptCode: 'MTH', matric: 'MOUAU/MTH/24/002', levelNum: 200, session: '2025/2026' },
 
-        // STA — 100L (4 students)
-        { email: 'patience.aka@student.mouau.edu.ng', fullName: 'Patience Aka', deptCode: 'STA', matric: 'MOUAU/STA/25/161718', levelNum: 100, session: '2025/2026' },
-        { email: 'tolu.adebayo@student.mouau.edu.ng', fullName: 'Tolu Adebayo', deptCode: 'STA', matric: 'MOUAU/STA/25/161719', levelNum: 100, session: '2025/2026' },
-        { email: 'samuel.ogbe@student.mouau.edu.ng', fullName: 'Samuel Ogbe', deptCode: 'STA', matric: 'MOUAU/STA/25/161720', levelNum: 100, session: '2025/2026' },
-        { email: 'victoria.edeh@student.mouau.edu.ng', fullName: 'Victoria Edeh', deptCode: 'STA', matric: 'MOUAU/STA/25/161721', levelNum: 100, session: '2025/2026' },
-        // STA — 200L (2 students)
-        { email: 'faith.obasi@student.mouau.edu.ng', fullName: 'Faith Obasi', deptCode: 'STA', matric: 'MOUAU/STA/24/001', levelNum: 200, session: '2025/2026' },
-        { email: 'gabriel.udo@student.mouau.edu.ng', fullName: 'Gabriel Udo', deptCode: 'STA', matric: 'MOUAU/STA/24/002', levelNum: 200, session: '2025/2026' },
+          // STA — 100L (4 students)
+          { email: 'patience.aka@student.mouau.edu.ng', fullName: 'Patience Aka', deptCode: 'STA', matric: 'MOUAU/STA/25/161718', levelNum: 100, session: '2025/2026' },
+          { email: 'tolu.adebayo@student.mouau.edu.ng', fullName: 'Tolu Adebayo', deptCode: 'STA', matric: 'MOUAU/STA/25/161719', levelNum: 100, session: '2025/2026' },
+          { email: 'samuel.ogbe@student.mouau.edu.ng', fullName: 'Samuel Ogbe', deptCode: 'STA', matric: 'MOUAU/STA/25/161720', levelNum: 100, session: '2025/2026' },
+          { email: 'victoria.edeh@student.mouau.edu.ng', fullName: 'Victoria Edeh', deptCode: 'STA', matric: 'MOUAU/STA/25/161721', levelNum: 100, session: '2025/2026' },
+          // STA — 200L (2 students)
+          { email: 'faith.obasi@student.mouau.edu.ng', fullName: 'Faith Obasi', deptCode: 'STA', matric: 'MOUAU/STA/24/001', levelNum: 200, session: '2025/2026' },
+          { email: 'gabriel.udo@student.mouau.edu.ng', fullName: 'Gabriel Udo', deptCode: 'STA', matric: 'MOUAU/STA/24/002', levelNum: 200, session: '2025/2026' },
 
-        // GLG — 100L (4 students)
-        { email: 'queen.etuk@student.mouau.edu.ng', fullName: 'Queen Etuk', deptCode: 'GLG', matric: 'MOUAU/GLG/25/171819', levelNum: 100, session: '2025/2026' },
-        { email: 'ndidi.efiong@student.mouau.edu.ng', fullName: 'Ndidi Efiong', deptCode: 'GLG', matric: 'MOUAU/GLG/25/171820', levelNum: 100, session: '2025/2026' },
-        { email: 'kenneth.obiora@student.mouau.edu.ng', fullName: 'Kenneth Obiora', deptCode: 'GLG', matric: 'MOUAU/GLG/25/171821', levelNum: 100, session: '2025/2026' },
-        { email: 'mercy.ekpo@student.mouau.edu.ng', fullName: 'Mercy Ekpo', deptCode: 'GLG', matric: 'MOUAU/GLG/25/171822', levelNum: 100, session: '2025/2026' },
-        // GLG — 200L (2 students)
-        { email: 'juliet.akan@student.mouau.edu.ng', fullName: 'Juliet Akan', deptCode: 'GLG', matric: 'MOUAU/GLG/24/001', levelNum: 200, session: '2025/2026' },
-        { email: 'solomon.isaac@student.mouau.edu.ng', fullName: 'Solomon Isaac', deptCode: 'GLG', matric: 'MOUAU/GLG/24/002', levelNum: 200, session: '2025/2026' },
+          // GLG — 100L (4 students)
+          { email: 'queen.etuk@student.mouau.edu.ng', fullName: 'Queen Etuk', deptCode: 'GLG', matric: 'MOUAU/GLG/25/171819', levelNum: 100, session: '2025/2026' },
+          { email: 'ndidi.efiong@student.mouau.edu.ng', fullName: 'Ndidi Efiong', deptCode: 'GLG', matric: 'MOUAU/GLG/25/171820', levelNum: 100, session: '2025/2026' },
+          { email: 'kenneth.obiora@student.mouau.edu.ng', fullName: 'Kenneth Obiora', deptCode: 'GLG', matric: 'MOUAU/GLG/25/171821', levelNum: 100, session: '2025/2026' },
+          { email: 'mercy.ekpo@student.mouau.edu.ng', fullName: 'Mercy Ekpo', deptCode: 'GLG', matric: 'MOUAU/GLG/25/171822', levelNum: 100, session: '2025/2026' },
+          // GLG — 200L (2 students)
+          { email: 'juliet.akan@student.mouau.edu.ng', fullName: 'Juliet Akan', deptCode: 'GLG', matric: 'MOUAU/GLG/24/001', levelNum: 200, session: '2025/2026' },
+          { email: 'solomon.isaac@student.mouau.edu.ng', fullName: 'Solomon Isaac', deptCode: 'GLG', matric: 'MOUAU/GLG/24/002', levelNum: 200, session: '2025/2026' },
 
-        // EEE — 100L (4 students)
-        { email: 'tunde.adeyemi@student.mouau.edu.ng', fullName: 'Tunde Adeyemi', deptCode: 'EEE', matric: 'MOUAU/EEE/25/111001', levelNum: 100, session: '2025/2026' },
-        { email: 'ngozi.eze@student.mouau.edu.ng', fullName: 'Ngozi Eze', deptCode: 'EEE', matric: 'MOUAU/EEE/25/111002', levelNum: 100, session: '2025/2026' },
-        { email: 'ike.obi@student.mouau.edu.ng', fullName: 'Ike Obi', deptCode: 'EEE', matric: 'MOUAU/EEE/25/111003', levelNum: 100, session: '2025/2026' },
-        { email: 'uche.okonkwo@student.mouau.edu.ng', fullName: 'Uche Okonkwo', deptCode: 'EEE', matric: 'MOUAU/EEE/25/111004', levelNum: 100, session: '2025/2026' },
-        // EEE — 200L (2 students)
-        { email: 'peter.okpara@student.mouau.edu.ng', fullName: 'Peter Okpara', deptCode: 'EEE', matric: 'MOUAU/EEE/24/009', levelNum: 200, session: '2025/2026' },
-        { email: 'david.otu@student.mouau.edu.ng', fullName: 'David Otu', deptCode: 'EEE', matric: 'MOUAU/EEE/24/010', levelNum: 200, session: '2025/2026' },
+          // EEE — 100L (4 students)
+          { email: 'tunde.adeyemi@student.mouau.edu.ng', fullName: 'Tunde Adeyemi', deptCode: 'EEE', matric: 'MOUAU/EEE/25/111001', levelNum: 100, session: '2025/2026' },
+          { email: 'ngozi.eze@student.mouau.edu.ng', fullName: 'Ngozi Eze', deptCode: 'EEE', matric: 'MOUAU/EEE/25/111002', levelNum: 100, session: '2025/2026' },
+          { email: 'ike.obi@student.mouau.edu.ng', fullName: 'Ike Obi', deptCode: 'EEE', matric: 'MOUAU/EEE/25/111003', levelNum: 100, session: '2025/2026' },
+          { email: 'uche.okonkwo@student.mouau.edu.ng', fullName: 'Uche Okonkwo', deptCode: 'EEE', matric: 'MOUAU/EEE/25/111004', levelNum: 100, session: '2025/2026' },
+          // EEE — 200L (2 students)
+          { email: 'peter.okpara@student.mouau.edu.ng', fullName: 'Peter Okpara', deptCode: 'EEE', matric: 'MOUAU/EEE/24/009', levelNum: 200, session: '2025/2026' },
+          { email: 'david.otu@student.mouau.edu.ng', fullName: 'David Otu', deptCode: 'EEE', matric: 'MOUAU/EEE/24/010', levelNum: 200, session: '2025/2026' },
 
-        // CPE — 100L (4 students)
-        { email: 'adaora.chukwu@student.mouau.edu.ng', fullName: 'Adaora Chukwu', deptCode: 'CPE', matric: 'MOUAU/CPE/25/111001', levelNum: 100, session: '2025/2026' },
-        { email: 'chukwuma.eze@student.mouau.edu.ng', fullName: 'Chukwuma Eze', deptCode: 'CPE', matric: 'MOUAU/CPE/25/111002', levelNum: 100, session: '2025/2026' },
-        { email: 'nnamdi.okonkwo@student.mouau.edu.ng', fullName: 'Nnamdi Okonkwo', deptCode: 'CPE', matric: 'MOUAU/CPE/25/111003', levelNum: 100, session: '2025/2026' },
-        { email: 'chinwe.eze@student.mouau.edu.ng', fullName: 'Chinwe Eze', deptCode: 'CPE', matric: 'MOUAU/CPE/25/111004', levelNum: 100, session: '2025/2026' },
-        // CPE — 200L (2 students)
-        { email: 'nnamdi.obi@student.mouau.edu.ng', fullName: 'Nnamdi Obi', deptCode: 'CPE', matric: 'MOUAU/CPE/24/001', levelNum: 200, session: '2025/2026' },
-        { email: 'ifeanyi.okafor@student.mouau.edu.ng', fullName: 'Ifeanyi Okafor', deptCode: 'CPE', matric: 'MOUAU/CPE/24/002', levelNum: 200, session: '2025/2026' },
+          // CPE — 100L (4 students)
+          { email: 'adaora.chukwu@student.mouau.edu.ng', fullName: 'Adaora Chukwu', deptCode: 'CPE', matric: 'MOUAU/CPE/25/111001', levelNum: 100, session: '2025/2026' },
+          { email: 'chukwuma.eze@student.mouau.edu.ng', fullName: 'Chukwuma Eze', deptCode: 'CPE', matric: 'MOUAU/CPE/25/111002', levelNum: 100, session: '2025/2026' },
+          { email: 'nnamdi.okonkwo@student.mouau.edu.ng', fullName: 'Nnamdi Okonkwo', deptCode: 'CPE', matric: 'MOUAU/CPE/25/111003', levelNum: 100, session: '2025/2026' },
+          { email: 'chinwe.eze@student.mouau.edu.ng', fullName: 'Chinwe Eze', deptCode: 'CPE', matric: 'MOUAU/CPE/25/111004', levelNum: 100, session: '2025/2026' },
+          // CPE — 200L (2 students)
+          { email: 'nnamdi.obi@student.mouau.edu.ng', fullName: 'Nnamdi Obi', deptCode: 'CPE', matric: 'MOUAU/CPE/24/001', levelNum: 200, session: '2025/2026' },
+          { email: 'ifeanyi.okafor@student.mouau.edu.ng', fullName: 'Ifeanyi Okafor', deptCode: 'CPE', matric: 'MOUAU/CPE/24/002', levelNum: 200, session: '2025/2026' },
 
-        // CVE — 100L (4 students)
-        { email: 'emeka.onyekwelu@student.mouau.edu.ng', fullName: 'Emeka Onyekwelu', deptCode: 'CVE', matric: 'MOUAU/CVE/25/111001', levelNum: 100, session: '2025/2026' },
-        { email: 'obinna.okafor@student.mouau.edu.ng', fullName: 'Obinna Okafor', deptCode: 'CVE', matric: 'MOUAU/CVE/25/111002', levelNum: 100, session: '2025/2026' },
-        { email: 'michael.nwankwo@student.mouau.edu.ng', fullName: 'Michael Nwankwo', deptCode: 'CVE', matric: 'MOUAU/CVE/25/111003', levelNum: 100, session: '2025/2026' },
-        { email: 'chidi.okeke@student.mouau.edu.ng', fullName: 'Chidi Okeke', deptCode: 'CVE', matric: 'MOUAU/CVE/25/111004', levelNum: 100, session: '2025/2026' },
-        // CVE — 200L (2 students)
-        { email: 'obiageli.ezea@student.mouau.edu.ng', fullName: 'Obiageli Ezea', deptCode: 'CVE', matric: 'MOUAU/CVE/24/001', levelNum: 200, session: '2025/2026' },
-        { email: 'chinedu.nweke@student.mouau.edu.ng', fullName: 'Chinedu Nweke', deptCode: 'CVE', matric: 'MOUAU/CVE/24/002', levelNum: 200, session: '2025/2026' },
+          // CVE — 100L (4 students)
+          { email: 'emeka.onyekwelu@student.mouau.edu.ng', fullName: 'Emeka Onyekwelu', deptCode: 'CVE', matric: 'MOUAU/CVE/25/111001', levelNum: 100, session: '2025/2026' },
+          { email: 'obinna.okafor@student.mouau.edu.ng', fullName: 'Obinna Okafor', deptCode: 'CVE', matric: 'MOUAU/CVE/25/111002', levelNum: 100, session: '2025/2026' },
+          { email: 'michael.nwankwo@student.mouau.edu.ng', fullName: 'Michael Nwankwo', deptCode: 'CVE', matric: 'MOUAU/CVE/25/111003', levelNum: 100, session: '2025/2026' },
+          { email: 'chidi.okeke@student.mouau.edu.ng', fullName: 'Chidi Okeke', deptCode: 'CVE', matric: 'MOUAU/CVE/25/111004', levelNum: 100, session: '2025/2026' },
+          // CVE — 200L (2 students)
+          { email: 'obiageli.ezea@student.mouau.edu.ng', fullName: 'Obiageli Ezea', deptCode: 'CVE', matric: 'MOUAU/CVE/24/001', levelNum: 200, session: '2025/2026' },
+          { email: 'chinedu.nweke@student.mouau.edu.ng', fullName: 'Chinedu Nweke', deptCode: 'CVE', matric: 'MOUAU/CVE/24/002', levelNum: 200, session: '2025/2026' },
 
-        // ACC — 100L (4 students)
-        { email: 'chisom.okafor@student.mouau.edu.ng', fullName: 'Chisom Okafor', deptCode: 'ACC', matric: 'MOUAU/ACC/25/111001', levelNum: 100, session: '2025/2026' },
-        { email: 'dike.nwosu@student.mouau.edu.ng', fullName: 'Dike Nwosu', deptCode: 'ACC', matric: 'MOUAU/ACC/25/111002', levelNum: 100, session: '2025/2026' },
-        { email: 'chinwe.obi@student.mouau.edu.ng', fullName: 'Chinwe Obi', deptCode: 'ACC', matric: 'MOUAU/ACC/25/111003', levelNum: 100, session: '2025/2026' },
-        { email: 'ifeanyi.eze@student.mouau.edu.ng', fullName: 'Ifeanyi Eze', deptCode: 'ACC', matric: 'MOUAU/ACC/25/111004', levelNum: 100, session: '2025/2026' },
-        // ACC — 200L (2 students)
-        { email: 'amara.nwosu@student.mouau.edu.ng', fullName: 'Amara Nwosu', deptCode: 'ACC', matric: 'MOUAU/ACC/24/001', levelNum: 200, session: '2025/2026' },
-        { email: 'nkechi.obi@student.mouau.edu.ng', fullName: 'Nkechi Obi', deptCode: 'ACC', matric: 'MOUAU/ACC/24/002', levelNum: 200, session: '2025/2026' },
+          // ACC — 100L (4 students)
+          { email: 'chisom.okafor@student.mouau.edu.ng', fullName: 'Chisom Okafor', deptCode: 'ACC', matric: 'MOUAU/ACC/25/111001', levelNum: 100, session: '2025/2026' },
+          { email: 'dike.nwosu@student.mouau.edu.ng', fullName: 'Dike Nwosu', deptCode: 'ACC', matric: 'MOUAU/ACC/25/111002', levelNum: 100, session: '2025/2026' },
+          { email: 'chinwe.obi@student.mouau.edu.ng', fullName: 'Chinwe Obi', deptCode: 'ACC', matric: 'MOUAU/ACC/25/111003', levelNum: 100, session: '2025/2026' },
+          { email: 'ifeanyi.eze@student.mouau.edu.ng', fullName: 'Ifeanyi Eze', deptCode: 'ACC', matric: 'MOUAU/ACC/25/111004', levelNum: 100, session: '2025/2026' },
+          // ACC — 200L (2 students)
+          { email: 'amara.nwosu@student.mouau.edu.ng', fullName: 'Amara Nwosu', deptCode: 'ACC', matric: 'MOUAU/ACC/24/001', levelNum: 200, session: '2025/2026' },
+          { email: 'nkechi.obi@student.mouau.edu.ng', fullName: 'Nkechi Obi', deptCode: 'ACC', matric: 'MOUAU/ACC/24/002', levelNum: 200, session: '2025/2026' },
 
-        // BUS — 100L (4 students)
-        { email: 'eze.okonkwo@student.mouau.edu.ng', fullName: 'Eze Okonkwo', deptCode: 'BUS', matric: 'MOUAU/BUS/25/111001', levelNum: 100, session: '2025/2026' },
-        { email: 'adaobi.nweke@student.mouau.edu.ng', fullName: 'Adaobi Nweke', deptCode: 'BUS', matric: 'MOUAU/BUS/25/111002', levelNum: 100, session: '2025/2026' },
-        { email: 'chukwudi.okeke@student.mouau.edu.ng', fullName: 'Chukwudi Okeke', deptCode: 'BUS', matric: 'MOUAU/BUS/25/111003', levelNum: 100, session: '2025/2026' },
-        { email: 'uchenna.eze@student.mouau.edu.ng', fullName: 'Uchenna Eze', deptCode: 'BUS', matric: 'MOUAU/BUS/25/111004', levelNum: 100, session: '2025/2026' },
-        // BUS — 200L (2 students)
-        { email: 'chidera.nweke@student.mouau.edu.ng', fullName: 'Chidera Nweke', deptCode: 'BUS', matric: 'MOUAU/BUS/24/001', levelNum: 200, session: '2025/2026' },
-        { email: 'dibia.ugwu@student.mouau.edu.ng', fullName: 'Dibia Ugwu', deptCode: 'BUS', matric: 'MOUAU/BUS/24/002', levelNum: 200, session: '2025/2026' },
+          // BUS — 100L (4 students)
+          { email: 'eze.okonkwo@student.mouau.edu.ng', fullName: 'Eze Okonkwo', deptCode: 'BUS', matric: 'MOUAU/BUS/25/111001', levelNum: 100, session: '2025/2026' },
+          { email: 'adaobi.nweke@student.mouau.edu.ng', fullName: 'Adaobi Nweke', deptCode: 'BUS', matric: 'MOUAU/BUS/25/111002', levelNum: 100, session: '2025/2026' },
+          { email: 'chukwudi.okeke@student.mouau.edu.ng', fullName: 'Chukwudi Okeke', deptCode: 'BUS', matric: 'MOUAU/BUS/25/111003', levelNum: 100, session: '2025/2026' },
+          { email: 'uchenna.eze@student.mouau.edu.ng', fullName: 'Uchenna Eze', deptCode: 'BUS', matric: 'MOUAU/BUS/25/111004', levelNum: 100, session: '2025/2026' },
+          // BUS — 200L (2 students)
+          { email: 'chidera.nweke@student.mouau.edu.ng', fullName: 'Chidera Nweke', deptCode: 'BUS', matric: 'MOUAU/BUS/24/001', levelNum: 200, session: '2025/2026' },
+          { email: 'dibia.ugwu@student.mouau.edu.ng', fullName: 'Dibia Ugwu', deptCode: 'BUS', matric: 'MOUAU/BUS/24/002', levelNum: 200, session: '2025/2026' },
 
-        // HRM — 100L (4 students)
-        { email: 'fatima.bello@student.mouau.edu.ng', fullName: 'Fatima Bello', deptCode: 'HRM', matric: 'MOUAU/HRM/25/111001', levelNum: 100, session: '2025/2026' },
-        { email: 'amina.ahmed@student.mouau.edu.ng', fullName: 'Amina Ahmed', deptCode: 'HRM', matric: 'MOUAU/HRM/25/111002', levelNum: 100, session: '2025/2026' },
-        { email: 'zainab.lawal@student.mouau.edu.ng', fullName: 'Zainab Lawal', deptCode: 'HRM', matric: 'MOUAU/HRM/25/111003', levelNum: 100, session: '2025/2026' },
-        { email: 'hassan.ali@student.mouau.edu.ng', fullName: 'Hassan Ali', deptCode: 'HRM', matric: 'MOUAU/HRM/25/111004', levelNum: 100, session: '2025/2026' },
-        // HRM — 200L (2 students)
-        { email: 'xavier.otu@student.mouau.edu.ng', fullName: 'Xavier Otu', deptCode: 'HRM', matric: 'MOUAU/HRM/24/011', levelNum: 200, session: '2025/2026' },
-        { email: 'faith.isaac@student.mouau.edu.ng', fullName: 'Faith Isaac', deptCode: 'HRM', matric: 'MOUAU/HRM/24/012', levelNum: 200, session: '2025/2026' },
+          // HRM — 100L (4 students)
+          { email: 'fatima.bello@student.mouau.edu.ng', fullName: 'Fatima Bello', deptCode: 'HRM', matric: 'MOUAU/HRM/25/111001', levelNum: 100, session: '2025/2026' },
+          { email: 'amina.ahmed@student.mouau.edu.ng', fullName: 'Amina Ahmed', deptCode: 'HRM', matric: 'MOUAU/HRM/25/111002', levelNum: 100, session: '2025/2026' },
+          { email: 'zainab.lawal@student.mouau.edu.ng', fullName: 'Zainab Lawal', deptCode: 'HRM', matric: 'MOUAU/HRM/25/111003', levelNum: 100, session: '2025/2026' },
+          { email: 'hassan.ali@student.mouau.edu.ng', fullName: 'Hassan Ali', deptCode: 'HRM', matric: 'MOUAU/HRM/25/111004', levelNum: 100, session: '2025/2026' },
+          // HRM — 200L (2 students)
+          { email: 'xavier.otu@student.mouau.edu.ng', fullName: 'Xavier Otu', deptCode: 'HRM', matric: 'MOUAU/HRM/24/011', levelNum: 200, session: '2025/2026' },
+          { email: 'faith.isaac@student.mouau.edu.ng', fullName: 'Faith Isaac', deptCode: 'HRM', matric: 'MOUAU/HRM/24/012', levelNum: 200, session: '2025/2026' },
 
-        // MKT — 100L (4 students)
-        { email: 'adaeze.okafor@student.mouau.edu.ng', fullName: 'Adaeze Okafor', deptCode: 'MKT', matric: 'MOUAU/MKT/25/111001', levelNum: 100, session: '2025/2026' },
-        { email: 'chukwuma.eze@student.mouau.edu.ng', fullName: 'Chukwuma Eze', deptCode: 'MKT', matric: 'MOUAU/MKT/25/111002', levelNum: 100, session: '2025/2026' },
-        { email: 'onyinyechi.okonkwo@student.mouau.edu.ng', fullName: 'Onyinyechi Okonkwo', deptCode: 'MKT', matric: 'MOUAU/MKT/25/111003', levelNum: 100, session: '2025/2026' },
-        { email: 'chidiebere.nwachukwu@student.mouau.edu.ng', fullName: 'Chidiebere Nwachukwu', deptCode: 'MKT', matric: 'MOUAU/MKT/25/111004', levelNum: 100, session: '2025/2026' },
-        // MKT — 200L (2 students)
-        { email: 'ngozi.marketing@student.mouau.edu.ng', fullName: 'Ngozi Obi', deptCode: 'MKT', matric: 'MOUAU/MKT/24/001', levelNum: 200, session: '2025/2026' },
-        { email: 'chidi.marketing@student.mouau.edu.ng', fullName: 'Chidi Okafor', deptCode: 'MKT', matric: 'MOUAU/MKT/24/002', levelNum: 200, session: '2025/2026' },
+          // MKT — 100L (4 students)
+          { email: 'adaeze.okafor@student.mouau.edu.ng', fullName: 'Adaeze Okafor', deptCode: 'MKT', matric: 'MOUAU/MKT/25/111001', levelNum: 100, session: '2025/2026' },
+          { email: 'chukwuma.eze@student.mouau.edu.ng', fullName: 'Chukwuma Eze', deptCode: 'MKT', matric: 'MOUAU/MKT/25/111002', levelNum: 100, session: '2025/2026' },
+          { email: 'onyinyechi.okonkwo@student.mouau.edu.ng', fullName: 'Onyinyechi Okonkwo', deptCode: 'MKT', matric: 'MOUAU/MKT/25/111003', levelNum: 100, session: '2025/2026' },
+          { email: 'chidiebere.nwachukwu@student.mouau.edu.ng', fullName: 'Chidiebere Nwachukwu', deptCode: 'MKT', matric: 'MOUAU/MKT/25/111004', levelNum: 100, session: '2025/2026' },
+          // MKT — 200L (2 students)
+          { email: 'ngozi.marketing@student.mouau.edu.ng', fullName: 'Ngozi Obi', deptCode: 'MKT', matric: 'MOUAU/MKT/24/001', levelNum: 200, session: '2025/2026' },
+          { email: 'chidi.marketing@student.mouau.edu.ng', fullName: 'Chidi Okafor', deptCode: 'MKT', matric: 'MOUAU/MKT/24/002', levelNum: 200, session: '2025/2026' },
 
-        // EMT — 100L (4 students)
-        { email: 'kachi.udoka@student.mouau.edu.ng', fullName: 'Kachi Udoka', deptCode: 'EMT', matric: 'MOUAU/EMT/25/111001', levelNum: 100, session: '2025/2026' },
-        { email: 'lola.ajayi@student.mouau.edu.ng', fullName: 'Lola Ajayi', deptCode: 'EMT', matric: 'MOUAU/EMT/25/111002', levelNum: 100, session: '2025/2026' },
-        { email: 'chidi.ekwueme@student.mouau.edu.ng', fullName: 'Chidi Ekuweme', deptCode: 'EMT', matric: 'MOUAU/EMT/25/111003', levelNum: 100, session: '2025/2026' },
-        { email: 'obiageli.okanwa@student.mouau.edu.ng', fullName: 'Obiageli Okanwa', deptCode: 'EMT', matric: 'MOUAU/EMT/25/111004', levelNum: 100, session: '2025/2026' },
-        // EMT — 200L (2 students)
-        { email: 'musa.env@student.mouau.edu.ng', fullName: 'Musa Abdullahi', deptCode: 'EMT', matric: 'MOUAU/EMT/24/001', levelNum: 200, session: '2025/2026' },
-        { email: 'sarah.env@student.mouau.edu.ng', fullName: 'Sarah Okafor', deptCode: 'EMT', matric: 'MOUAU/EMT/24/002', levelNum: 200, session: '2025/2026' },
+          // EMT — 100L (4 students)
+          { email: 'kachi.udoka@student.mouau.edu.ng', fullName: 'Kachi Udoka', deptCode: 'EMT', matric: 'MOUAU/EMT/25/111001', levelNum: 100, session: '2025/2026' },
+          { email: 'lola.ajayi@student.mouau.edu.ng', fullName: 'Lola Ajayi', deptCode: 'EMT', matric: 'MOUAU/EMT/25/111002', levelNum: 100, session: '2025/2026' },
+          { email: 'chidi.ekwueme@student.mouau.edu.ng', fullName: 'Chidi Ekuweme', deptCode: 'EMT', matric: 'MOUAU/EMT/25/111003', levelNum: 100, session: '2025/2026' },
+          { email: 'obiageli.okanwa@student.mouau.edu.ng', fullName: 'Obiageli Okanwa', deptCode: 'EMT', matric: 'MOUAU/EMT/25/111004', levelNum: 100, session: '2025/2026' },
+          // EMT — 200L (2 students)
+          { email: 'musa.env@student.mouau.edu.ng', fullName: 'Musa Abdullahi', deptCode: 'EMT', matric: 'MOUAU/EMT/24/001', levelNum: 200, session: '2025/2026' },
+          { email: 'sarah.env@student.mouau.edu.ng', fullName: 'Sarah Okafor', deptCode: 'EMT', matric: 'MOUAU/EMT/24/002', levelNum: 200, session: '2025/2026' },
 
-        // BCH — 100L (4 students)
-        { email: 'uche.nwosu@student.mouau.edu.ng', fullName: 'Uche Nwosu', deptCode: 'BCH', matric: 'MOUAU/BCH/25/111001', levelNum: 100, session: '2025/2026' },
-        { email: 'gift.obi@student.mouau.edu.ng', fullName: 'Gift Obi', deptCode: 'BCH', matric: 'MOUAU/BCH/25/111002', levelNum: 100, session: '2025/2026' },
-        { email: 'chidiebere.ike@student.mouau.edu.ng', fullName: 'Chidiebere Ike', deptCode: 'BCH', matric: 'MOUAU/BCH/25/111003', levelNum: 100, session: '2025/2026' },
-        { email: 'simon.akan@student.mouau.edu.ng', fullName: 'Simon Akan', deptCode: 'BCH', matric: 'MOUAU/BCH/25/111004', levelNum: 100, session: '2025/2026' },
-        // BCH — 200L (2 students)
-        { email: 'blessing.okon@student.mouau.edu.ng', fullName: 'Blessing Okon', deptCode: 'BCH', matric: 'MOUAU/BCH/24/010', levelNum: 200, session: '2025/2026' },
-        { email: 'victor.udofia@student.mouau.edu.ng', fullName: 'Victor Udofia', deptCode: 'BCH', matric: 'MOUAU/BCH/24/011', levelNum: 200, session: '2025/2026' },
+          // BCH — 100L (4 students)
+          { email: 'uche.nwosu@student.mouau.edu.ng', fullName: 'Uche Nwosu', deptCode: 'BCH', matric: 'MOUAU/BCH/25/111001', levelNum: 100, session: '2025/2026' },
+          { email: 'gift.obi@student.mouau.edu.ng', fullName: 'Gift Obi', deptCode: 'BCH', matric: 'MOUAU/BCH/25/111002', levelNum: 100, session: '2025/2026' },
+          { email: 'chidiebere.ike@student.mouau.edu.ng', fullName: 'Chidiebere Ike', deptCode: 'BCH', matric: 'MOUAU/BCH/25/111003', levelNum: 100, session: '2025/2026' },
+          { email: 'simon.akan@student.mouau.edu.ng', fullName: 'Simon Akan', deptCode: 'BCH', matric: 'MOUAU/BCH/25/111004', levelNum: 100, session: '2025/2026' },
+          // BCH — 200L (2 students)
+          { email: 'blessing.okon@student.mouau.edu.ng', fullName: 'Blessing Okon', deptCode: 'BCH', matric: 'MOUAU/BCH/24/010', levelNum: 200, session: '2025/2026' },
+          { email: 'victor.udofia@student.mouau.edu.ng', fullName: 'Victor Udofia', deptCode: 'BCH', matric: 'MOUAU/BCH/24/011', levelNum: 200, session: '2025/2026' },
 
-        // MCB — 100L (4 students)
-        { email: 'ikenna.micro@student.mouau.edu.ng', fullName: 'Ikenna Okonkwo', deptCode: 'MCB', matric: 'MOUAU/MCB/25/111001', levelNum: 100, session: '2025/2026' },
-        { email: 'adaobi.micro@student.mouau.edu.ng', fullName: 'Adaobi Eze', deptCode: 'MCB', matric: 'MOUAU/MCB/25/111002', levelNum: 100, session: '2025/2026' },
-        { email: 'chukwudi.micro@student.mouau.edu.ng', fullName: 'Chukwudi Nwachukwu', deptCode: 'MCB', matric: 'MOUAU/MCB/25/111003', levelNum: 100, session: '2025/2026' },
-        { email: 'nkechi.micro@student.mouau.edu.ng', fullName: 'Nkechi Obiora', deptCode: 'MCB', matric: 'MOUAU/MCB/25/111004', levelNum: 100, session: '2025/2026' },
-        // MCB — 200L (2 students)
-        { email: 'doris.onyia@student.mouau.edu.ng', fullName: 'Doris Onyia', deptCode: 'MCB', matric: 'MOUAU/MCB/24/001', levelNum: 200, session: '2025/2026' },
-        { email: 'emmanuel.madu@student.mouau.edu.ng', fullName: 'Emmanuel Madu', deptCode: 'MCB', matric: 'MOUAU/MCB/24/002', levelNum: 200, session: '2025/2026' },
+          // MCB — 100L (4 students)
+          { email: 'ikenna.micro@student.mouau.edu.ng', fullName: 'Ikenna Okonkwo', deptCode: 'MCB', matric: 'MOUAU/MCB/25/111001', levelNum: 100, session: '2025/2026' },
+          { email: 'adaobi.micro@student.mouau.edu.ng', fullName: 'Adaobi Eze', deptCode: 'MCB', matric: 'MOUAU/MCB/25/111002', levelNum: 100, session: '2025/2026' },
+          { email: 'chukwudi.micro@student.mouau.edu.ng', fullName: 'Chukwudi Nwachukwu', deptCode: 'MCB', matric: 'MOUAU/MCB/25/111003', levelNum: 100, session: '2025/2026' },
+          { email: 'nkechi.micro@student.mouau.edu.ng', fullName: 'Nkechi Obiora', deptCode: 'MCB', matric: 'MOUAU/MCB/25/111004', levelNum: 100, session: '2025/2026' },
+          // MCB — 200L (2 students)
+          { email: 'doris.onyia@student.mouau.edu.ng', fullName: 'Doris Onyia', deptCode: 'MCB', matric: 'MOUAU/MCB/24/001', levelNum: 200, session: '2025/2026' },
+          { email: 'emmanuel.madu@student.mouau.edu.ng', fullName: 'Emmanuel Madu', deptCode: 'MCB', matric: 'MOUAU/MCB/24/002', levelNum: 200, session: '2025/2026' },
 
-        // FST — 100L (4 students)
-        { email: 'adanna.food@student.mouau.edu.ng', fullName: 'Adanna Okonkwo', deptCode: 'FST', matric: 'MOUAU/FST/25/111001', levelNum: 100, session: '2025/2026' },
-        { email: 'bolu.food@student.mouau.edu.ng', fullName: 'Bolu Adebayo', deptCode: 'FST', matric: 'MOUAU/FST/25/111002', levelNum: 100, session: '2025/2026' },
-        { email: 'chiamaka.food@student.mouau.edu.ng', fullName: 'Chiamaka Eze', deptCode: 'FST', matric: 'MOUAU/FST/25/111003', levelNum: 100, session: '2025/2026' },
-        { email: 'david.food@student.mouau.edu.ng', fullName: 'David Okafor', deptCode: 'FST', matric: 'MOUAU/FST/25/111004', levelNum: 100, session: '2025/2026' },
-        // FST — 200L (2 students)
-        { email: 'edwin.chukwu@student.mouau.edu.ng', fullName: 'Edwin Chukwu', deptCode: 'FST', matric: 'MOUAU/FST/24/011', levelNum: 200, session: '2025/2026' },
-        { email: 'faith.obi@student.mouau.edu.ng', fullName: 'Faith Obi', deptCode: 'FST', matric: 'MOUAU/FST/24/012', levelNum: 200, session: '2025/2026' },
+          // FST — 100L (4 students)
+          { email: 'adanna.food@student.mouau.edu.ng', fullName: 'Adanna Okonkwo', deptCode: 'FST', matric: 'MOUAU/FST/25/111001', levelNum: 100, session: '2025/2026' },
+          { email: 'bolu.food@student.mouau.edu.ng', fullName: 'Bolu Adebayo', deptCode: 'FST', matric: 'MOUAU/FST/25/111002', levelNum: 100, session: '2025/2026' },
+          { email: 'chiamaka.food@student.mouau.edu.ng', fullName: 'Chiamaka Eze', deptCode: 'FST', matric: 'MOUAU/FST/25/111003', levelNum: 100, session: '2025/2026' },
+          { email: 'david.food@student.mouau.edu.ng', fullName: 'David Okafor', deptCode: 'FST', matric: 'MOUAU/FST/25/111004', levelNum: 100, session: '2025/2026' },
+          // FST — 200L (2 students)
+          { email: 'edwin.chukwu@student.mouau.edu.ng', fullName: 'Edwin Chukwu', deptCode: 'FST', matric: 'MOUAU/FST/24/011', levelNum: 200, session: '2025/2026' },
+          { email: 'faith.obi@student.mouau.edu.ng', fullName: 'Faith Obi', deptCode: 'FST', matric: 'MOUAU/FST/24/012', levelNum: 200, session: '2025/2026' },
 
-        // AGR — 100L (4 students)
-        { email: 'chibuzo.agronomy@student.mouau.edu.ng', fullName: 'Chibuzo Okonkwo', deptCode: 'AGR', matric: 'MOUAU/AGR/25/111001', levelNum: 100, session: '2025/2026' },
-        { email: 'dami.agronomy@student.mouau.edu.ng', fullName: 'Dami Adebayo', deptCode: 'AGR', matric: 'MOUAU/AGR/25/111002', levelNum: 100, session: '2025/2026' },
-        { email: 'obinna.agronomy@student.mouau.edu.ng', fullName: 'Obinna Eze', deptCode: 'AGR', matric: 'MOUAU/AGR/25/111003', levelNum: 100, session: '2025/2026' },
-        { email: 'chioma.agronomy@student.mouau.edu.ng', fullName: 'Chioma Okafor', deptCode: 'AGR', matric: 'MOUAU/AGR/25/111004', levelNum: 100, session: '2025/2026' },
-        // AGR — 200L (2 students)
-        { email: 'eze.agronomy@student.mouau.edu.ng', fullName: 'Eze Okonkwo', deptCode: 'AGR', matric: 'MOUAU/AGR/24/001', levelNum: 200, session: '2025/2026' },
-        { email: 'nnenna.agronomy@student.mouau.edu.ng', fullName: 'Nnenna Ugwu', deptCode: 'AGR', matric: 'MOUAU/AGR/24/002', levelNum: 200, session: '2025/2026' },
+          // AGR — 100L (4 students)
+          { email: 'chibuzo.agronomy@student.mouau.edu.ng', fullName: 'Chibuzo Okonkwo', deptCode: 'AGR', matric: 'MOUAU/AGR/25/111001', levelNum: 100, session: '2025/2026' },
+          { email: 'dami.agronomy@student.mouau.edu.ng', fullName: 'Dami Adebayo', deptCode: 'AGR', matric: 'MOUAU/AGR/25/111002', levelNum: 100, session: '2025/2026' },
+          { email: 'obinna.agronomy@student.mouau.edu.ng', fullName: 'Obinna Eze', deptCode: 'AGR', matric: 'MOUAU/AGR/25/111003', levelNum: 100, session: '2025/2026' },
+          { email: 'chioma.agronomy@student.mouau.edu.ng', fullName: 'Chioma Okafor', deptCode: 'AGR', matric: 'MOUAU/AGR/25/111004', levelNum: 100, session: '2025/2026' },
+          // AGR — 200L (2 students)
+          { email: 'eze.agronomy@student.mouau.edu.ng', fullName: 'Eze Okonkwo', deptCode: 'AGR', matric: 'MOUAU/AGR/24/001', levelNum: 200, session: '2025/2026' },
+          { email: 'nnenna.agronomy@student.mouau.edu.ng', fullName: 'Nnenna Ugwu', deptCode: 'AGR', matric: 'MOUAU/AGR/24/002', levelNum: 200, session: '2025/2026' },
 
-        // ABM — 100L (4 students)
-        { email: 'favour.agribusiness@student.mouau.edu.ng', fullName: 'Favour Okonkwo', deptCode: 'ABM', matric: 'MOUAU/ABM/25/111001', levelNum: 100, session: '2025/2026' },
-        { email: 'gift.agribusiness@student.mouau.edu.ng', fullName: 'Gift Eze', deptCode: 'ABM', matric: 'MOUAU/ABM/25/111002', levelNum: 100, session: '2025/2026' },
-        { email: 'chidimma.agribusiness@student.mouau.edu.ng', fullName: 'Chidimma Okafor', deptCode: 'ABM', matric: 'MOUAU/ABM/25/111003', levelNum: 100, session: '2025/2026' },
-        { email: 'emmanuel.agribusiness@student.mouau.edu.ng', fullName: 'Emmanuel Obi', deptCode: 'ABM', matric: 'MOUAU/ABM/25/111004', levelNum: 100, session: '2025/2026' },
-        // ABM — 200L (2 students)
-        { email: 'habib.agribusiness@student.mouau.edu.ng', fullName: 'Habib Abdullahi', deptCode: 'ABM', matric: 'MOUAU/ABM/24/001', levelNum: 200, session: '2025/2026' },
-        { email: 'nkechi.agribusiness@student.mouau.edu.ng', fullName: 'Nkechi Nwosu', deptCode: 'ABM', matric: 'MOUAU/ABM/24/002', levelNum: 200, session: '2025/2026' },
+          // ABM — 100L (4 students)
+          { email: 'favour.agribusiness@student.mouau.edu.ng', fullName: 'Favour Okonkwo', deptCode: 'ABM', matric: 'MOUAU/ABM/25/111001', levelNum: 100, session: '2025/2026' },
+          { email: 'gift.agribusiness@student.mouau.edu.ng', fullName: 'Gift Eze', deptCode: 'ABM', matric: 'MOUAU/ABM/25/111002', levelNum: 100, session: '2025/2026' },
+          { email: 'chidimma.agribusiness@student.mouau.edu.ng', fullName: 'Chidimma Okafor', deptCode: 'ABM', matric: 'MOUAU/ABM/25/111003', levelNum: 100, session: '2025/2026' },
+          { email: 'emmanuel.agribusiness@student.mouau.edu.ng', fullName: 'Emmanuel Obi', deptCode: 'ABM', matric: 'MOUAU/ABM/25/111004', levelNum: 100, session: '2025/2026' },
+          // ABM — 200L (2 students)
+          { email: 'habib.agribusiness@student.mouau.edu.ng', fullName: 'Habib Abdullahi', deptCode: 'ABM', matric: 'MOUAU/ABM/24/001', levelNum: 200, session: '2025/2026' },
+          { email: 'nkechi.agribusiness@student.mouau.edu.ng', fullName: 'Nkechi Nwosu', deptCode: 'ABM', matric: 'MOUAU/ABM/24/002', levelNum: 200, session: '2025/2026' },
 
-        // APL — 100L (4 students)
-        { email: 'ifechi.animal@student.mouau.edu.ng', fullName: 'Ifechi Okonkwo', deptCode: 'APL', matric: 'MOUAU/APL/25/111001', levelNum: 100, session: '2025/2026' },
-        { email: 'john.animal@student.mouau.edu.ng', fullName: 'John Eze', deptCode: 'APL', matric: 'MOUAU/APL/25/111002', levelNum: 100, session: '2025/2026' },
-        { email: 'chiamaka.animal@student.mouau.edu.ng', fullName: 'Chiamaka Okafor', deptCode: 'APL', matric: 'MOUAU/APL/25/111003', levelNum: 100, session: '2025/2026' },
-        { email: 'paul.animal@student.mouau.edu.ng', fullName: 'Paul Obi', deptCode: 'APL', matric: 'MOUAU/APL/25/111004', levelNum: 100, session: '2025/2026' },
-        // APL — 200L (2 students)
-        { email: 'uche.animal@student.mouau.edu.ng', fullName: 'Uche Nwachukwu', deptCode: 'APL', matric: 'MOUAU/APL/24/001', levelNum: 200, session: '2025/2026' },
-        { email: 'amara.animal@student.mouau.edu.ng', fullName: 'Amara Ugwu', deptCode: 'APL', matric: 'MOUAU/APL/24/002', levelNum: 200, session: '2025/2026' },
+          // APL — 100L (4 students)
+          { email: 'ifechi.animal@student.mouau.edu.ng', fullName: 'Ifechi Okonkwo', deptCode: 'APL', matric: 'MOUAU/APL/25/111001', levelNum: 100, session: '2025/2026' },
+          { email: 'john.animal@student.mouau.edu.ng', fullName: 'John Eze', deptCode: 'APL', matric: 'MOUAU/APL/25/111002', levelNum: 100, session: '2025/2026' },
+          { email: 'chiamaka.animal@student.mouau.edu.ng', fullName: 'Chiamaka Okafor', deptCode: 'APL', matric: 'MOUAU/APL/25/111003', levelNum: 100, session: '2025/2026' },
+          { email: 'paul.animal@student.mouau.edu.ng', fullName: 'Paul Obi', deptCode: 'APL', matric: 'MOUAU/APL/25/111004', levelNum: 100, session: '2025/2026' },
+          // APL — 200L (2 students)
+          { email: 'uche.animal@student.mouau.edu.ng', fullName: 'Uche Nwachukwu', deptCode: 'APL', matric: 'MOUAU/APL/24/001', levelNum: 200, session: '2025/2026' },
+          { email: 'amara.animal@student.mouau.edu.ng', fullName: 'Amara Ugwu', deptCode: 'APL', matric: 'MOUAU/APL/24/002', levelNum: 200, session: '2025/2026' },
 
-        // VET — 100L (4 students)
-        { email: 'pat.veterinary@student.mouau.edu.ng', fullName: 'Patience Okonkwo', deptCode: 'VET', matric: 'MOUAU/VET/25/111001', levelNum: 100, session: '2025/2026' },
-        { email: 'queen.veterinary@student.mouau.edu.ng', fullName: 'Queen Eze', deptCode: 'VET', matric: 'MOUAU/VET/25/111002', levelNum: 100, session: '2025/2026' },
-        { email: 'chukwudi.veterinary@student.mouau.edu.ng', fullName: 'Chukwudi Okafor', deptCode: 'VET', matric: 'MOUAU/VET/25/111003', levelNum: 100, session: '2025/2026' },
-        { email: 'chioma.veterinary@student.mouau.edu.ng', fullName: 'Chioma Obi', deptCode: 'VET', matric: 'MOUAU/VET/25/111004', levelNum: 100, session: '2025/2026' },
-        // VET — 200L (2 students)
-        { email: 'david.veterinary@student.mouau.edu.ng', fullName: 'David Nwosu', deptCode: 'VET', matric: 'MOUAU/VET/24/001', levelNum: 200, session: '2025/2026' },
-        { email: 'mercy.veterinary@student.mouau.edu.ng', fullName: 'Mercy Nwachukwu', deptCode: 'VET', matric: 'MOUAU/VET/24/002', levelNum: 200, session: '2025/2026' },
+          // VET — 100L (4 students)
+          { email: 'pat.veterinary@student.mouau.edu.ng', fullName: 'Patience Okonkwo', deptCode: 'VET', matric: 'MOUAU/VET/25/111001', levelNum: 100, session: '2025/2026' },
+          { email: 'queen.veterinary@student.mouau.edu.ng', fullName: 'Queen Eze', deptCode: 'VET', matric: 'MOUAU/VET/25/111002', levelNum: 100, session: '2025/2026' },
+          { email: 'chukwudi.veterinary@student.mouau.edu.ng', fullName: 'Chukwudi Okafor', deptCode: 'VET', matric: 'MOUAU/VET/25/111003', levelNum: 100, session: '2025/2026' },
+          { email: 'chioma.veterinary@student.mouau.edu.ng', fullName: 'Chioma Obi', deptCode: 'VET', matric: 'MOUAU/VET/25/111004', levelNum: 100, session: '2025/2026' },
+          // VET — 200L (2 students)
+          { email: 'david.veterinary@student.mouau.edu.ng', fullName: 'David Nwosu', deptCode: 'VET', matric: 'MOUAU/VET/24/001', levelNum: 200, session: '2025/2026' },
+          { email: 'mercy.veterinary@student.mouau.edu.ng', fullName: 'Mercy Nwachukwu', deptCode: 'VET', matric: 'MOUAU/VET/24/002', levelNum: 200, session: '2025/2026' },
 
-        // ACE — 100L (4 students)
-        { email: 'nkechi.education@student.mouau.edu.ng', fullName: 'Nkechi Okafor', deptCode: 'ACE', matric: 'MOUAU/ACE/25/111001', levelNum: 100, session: '2025/2026' },
-        { email: 'ola.education@student.mouau.edu.ng', fullName: 'Ola Adeyemi', deptCode: 'ACE', matric: 'MOUAU/ACE/25/111002', levelNum: 100, session: '2025/2026' },
-        { email: 'chidi.education@student.mouau.edu.ng', fullName: 'Chidi Okonkwo', deptCode: 'ACE', matric: 'MOUAU/ACE/25/111003', levelNum: 100, session: '2025/2026' },
-        { email: 'bisi.education@student.mouau.edu.ng', fullName: 'Bisi Oladipo', deptCode: 'ACE', matric: 'MOUAU/ACE/25/111004', levelNum: 100, session: '2025/2026' },
-        // ACE — 200L (2 students)
-        { email: 'tunde.education@student.mouau.edu.ng', fullName: 'Tunde Ogun', deptCode: 'ACE', matric: 'MOUAU/ACE/24/001', levelNum: 200, session: '2025/2026' },
-        { email: 'funke.education@student.mouau.edu.ng', fullName: 'Funke Adebayo', deptCode: 'ACE', matric: 'MOUAU/ACE/24/002', levelNum: 200, session: '2025/2026' },
+          // ACE — 100L (4 students)
+          { email: 'nkechi.education@student.mouau.edu.ng', fullName: 'Nkechi Okafor', deptCode: 'ACE', matric: 'MOUAU/ACE/25/111001', levelNum: 100, session: '2025/2026' },
+          { email: 'ola.education@student.mouau.edu.ng', fullName: 'Ola Adeyemi', deptCode: 'ACE', matric: 'MOUAU/ACE/25/111002', levelNum: 100, session: '2025/2026' },
+          { email: 'chidi.education@student.mouau.edu.ng', fullName: 'Chidi Okonkwo', deptCode: 'ACE', matric: 'MOUAU/ACE/25/111003', levelNum: 100, session: '2025/2026' },
+          { email: 'bisi.education@student.mouau.edu.ng', fullName: 'Bisi Oladipo', deptCode: 'ACE', matric: 'MOUAU/ACE/25/111004', levelNum: 100, session: '2025/2026' },
+          // ACE — 200L (2 students)
+          { email: 'tunde.education@student.mouau.edu.ng', fullName: 'Tunde Ogun', deptCode: 'ACE', matric: 'MOUAU/ACE/24/001', levelNum: 200, session: '2025/2026' },
+          { email: 'funke.education@student.mouau.edu.ng', fullName: 'Funke Adebayo', deptCode: 'ACE', matric: 'MOUAU/ACE/24/002', levelNum: 200, session: '2025/2026' },
 
-        // ENG — 100L (4 students)
-        { email: 'chidi.english@student.mouau.edu.ng', fullName: 'Chidi Okafor', deptCode: 'ENG', matric: 'MOUAU/ENG/25/111001', levelNum: 100, session: '2025/2026' },
-        { email: 'ada.english@student.mouau.edu.ng', fullName: 'Ada Eze', deptCode: 'ENG', matric: 'MOUAU/ENG/25/111002', levelNum: 100, session: '2025/2026' },
-        { email: 'emeka.english@student.mouau.edu.ng', fullName: 'Emeka Obi', deptCode: 'ENG', matric: 'MOUAU/ENG/25/111003', levelNum: 100, session: '2025/2026' },
-        { email: 'nkechi.english@student.mouau.edu.ng', fullName: 'Nkechi Okonkwo', deptCode: 'ENG', matric: 'MOUAU/ENG/25/111004', levelNum: 100, session: '2025/2026' },
-        // ENG — 200L (2 students)
-        { email: 'uche.english@student.mouau.edu.ng', fullName: 'Uche Nwosu', deptCode: 'ENG', matric: 'MOUAU/ENG/24/001', levelNum: 200, session: '2025/2026' },
-        { email: 'amara.english@student.mouau.edu.ng', fullName: 'Amara Nwachukwu', deptCode: 'ENG', matric: 'MOUAU/ENG/24/002', levelNum: 200, session: '2025/2026' },
-      ];
+          // ENG — 100L (4 students)
+          { email: 'chidi.english@student.mouau.edu.ng', fullName: 'Chidi Okafor', deptCode: 'ENG', matric: 'MOUAU/ENG/25/111001', levelNum: 100, session: '2025/2026' },
+          { email: 'ada.english@student.mouau.edu.ng', fullName: 'Ada Eze', deptCode: 'ENG', matric: 'MOUAU/ENG/25/111002', levelNum: 100, session: '2025/2026' },
+          { email: 'emeka.english@student.mouau.edu.ng', fullName: 'Emeka Obi', deptCode: 'ENG', matric: 'MOUAU/ENG/25/111003', levelNum: 100, session: '2025/2026' },
+          { email: 'nkechi.english@student.mouau.edu.ng', fullName: 'Nkechi Okonkwo', deptCode: 'ENG', matric: 'MOUAU/ENG/25/111004', levelNum: 100, session: '2025/2026' },
+          // ENG — 200L (2 students)
+          { email: 'uche.english@student.mouau.edu.ng', fullName: 'Uche Nwosu', deptCode: 'ENG', matric: 'MOUAU/ENG/24/001', levelNum: 200, session: '2025/2026' },
+          { email: 'amara.english@student.mouau.edu.ng', fullName: 'Amara Nwachukwu', deptCode: 'ENG', matric: 'MOUAU/ENG/24/002', levelNum: 200, session: '2025/2026' },
+        ];
 
-      studentData.forEach(s => {
-        const dept = getDept(s.deptCode);
-        const level = getLevel(s.levelNum);
-        allUsersToCreate.push({
-          email: s.email, fullName: s.fullName, passwordHash: studentPass,
-          role: 'student', matricNumber: s.matric,
-          collegeId: dept.collegeId, departmentId: dept.id,
-          levelId: level.id, session: s.session,
-        });
-      });
+     studentData.forEach(s => {
+  const dept = getDept(s.deptCode);
+  const level = getLevel(s.levelNum);
+  const prog = getProgramme(s.deptCode); 
+  allUsersToCreate.push({
+    email: s.email,
+    fullName: s.fullName,
+    passwordHash: studentPass,
+    role: 'student',
+    matricNumber: s.matric,
+    collegeId: dept.collegeId,
+    departmentId: dept.id,
+    levelId: level.id,
+    programmeId: prog.id, 
+    session: s.session,
+  });
+});
 
       await prisma.user.createMany({ data: allUsersToCreate, skipDuplicates: true });
       const allUsers = await prisma.user.findMany();
@@ -1374,380 +1494,71 @@ export const actions: Actions = {
       results.push(`✓ ${allUsers.length} users (${students.length} students)`);
       progressBroadcaster.broadcastProgress('users', 'Users created', `${allUsers.length} total`, '👥✅');
 
-      // ══════════════════════════════════════════════════════════════════════
-      // 9. EXAMINATIONS - Created June 26, 2025, expires Dec 31, 2026
-      // ══════════════════════════════════════════════════════════════════════
-      progressBroadcaster.broadcastProgress('exam', 'Creating exams...', '6 exams', '📝');
-
-      function D(day: number, mo: number, yr: number, hr: number, mn: number) {
-        return new Date(yr, mo - 1, day, hr, mn);
+      // ── Secondary Role Assignments (HODs who also lecture) ──────────────
+const hodsWhoLecture = allUsers.filter(u => u.role === 'hod' && u.departmentId);
+for (const hod of hodsWhoLecture) {
+  await prisma.userRoleAssignment.upsert({
+    where: {
+      userId_role: {
+        userId: hod.id,
+        role: 'lecturer',
       }
+    },
+    create: {
+      userId: hod.id,
+      role: 'lecturer',
+      assignedById: allUsers.find(u => u.role === 'admin')?.id,
+    },
+    update: {},
+  });
+}
+results.push(`✓ ${hodsWhoLecture.length} HODs assigned secondary lecturer role`);
 
-      // June 26, 2025 to Dec 31, 2026
-      const s1 = D(26, 6, 2025, 23, 0);
-      const e1 = D(31, 12, 2026, 23, 59);
+      // ──────────────────────────────────────────────────────────────────────
+      // After creating all users, create TeachingAssignments
+      // ──────────────────────────────────────────────────────────────────────
+      progressBroadcaster.broadcastProgress('assignments', 'Creating teaching assignments...', 'Lecturers to offerings', '👨‍🏫');
 
-      const cscLec = allUsers.find(l => l.role === 'lecturer' && l.departmentId === getDept('CSC').id) ?? allUsers.find(l => l.role === 'lecturer');
-      const phyLec = allUsers.find(l => l.role === 'lecturer' && l.departmentId === getDept('PHY').id) ?? allUsers.find(l => l.role === 'lecturer');
-      const mthLec = allUsers.find(l => l.role === 'lecturer' && l.departmentId === getDept('MTH').id) ?? allUsers.find(l => l.role === 'lecturer');
-      const engLec = allUsers.find(l => l.role === 'lecturer' && l.departmentId === getDept('ENG').id) ?? allUsers.find(l => l.role === 'lecturer');
+      // Get all lecturers
+      const assignmentUsers = await prisma.user.findMany();
+      const lecturers = assignmentUsers.filter(u => u.role === 'lecturer');
+      let assignmentCount = 0;
 
-      // Exam 1: CSC211 — 200L course (MCQ)
-      const exam1 = await prisma.exam.create({
-        data: {
-          courseId: getCourse('CSC211').id,
-          createdBy: cscLec?.id || allUsers[0].id,
-          title: 'CSC211 — Object-Oriented Programming I Exam',
-          instructions: 'Answer all questions. No external resources.',
-          durationMinutes: 120,
-          totalMarks: 100,
-          passMark: 40,
-          status: 'scheduled',
-          scheduledStart: s1,
-          scheduledEnd: e1,
-          randomizeQuestions: true,
-          randomizeOptions: true,
-          questionsToPresent: 20,
-          showResultAfter: true,
-          maxViolations: 5,
-          session: '2025/2026',
-          semester: 2,
-          levels: { connect: [100, 200].map(n => ({ id: getLevel(n).id })) },
-        },
-      });
+      // For each lecturer, assign them to offerings in their department
+      for (const lecturer of lecturers) {
+        if (!lecturer.departmentId) continue;
 
-      // Exam 2: PHY111 — 100L course (MCQ)
-      const exam2 = await prisma.exam.create({
-        data: {
-          courseId: getCourse('PHY111').id,
-          createdBy: phyLec?.id || allUsers[0].id,
-          title: 'PHY111 — General Physics I Examination',
-          instructions: 'Answer all questions.',
-          durationMinutes: 90,
-          totalMarks: 60,
-          passMark: 24,
-          status: 'scheduled',
-          scheduledStart: s1,
-          scheduledEnd: e1,
-          randomizeQuestions: true,
-          randomizeOptions: true,
-          questionsToPresent: 15,
-          showResultAfter: true,
-          maxViolations: 3,
-          session: '2025/2026',
-          semester: 2,
-          levels: { connect: [100, 200].map(n => ({ id: getLevel(n).id })) },
-        },
-      });
-
-      // Exam 3: MTH111 — 100L course (MCQ)
-      const exam3 = await prisma.exam.create({
-        data: {
-          courseId: getCourse('MTH111').id,
-          createdBy: mthLec?.id || allUsers[0].id,
-          title: 'MTH111 — Calculus I Examination',
-          instructions: 'No calculators permitted.',
-          durationMinutes: 90,
-          totalMarks: 70,
-          passMark: 28,
-          status: 'scheduled',
-          scheduledStart: s1,
-          scheduledEnd: e1,
-          randomizeQuestions: true,
-          randomizeOptions: false,
-          questionsToPresent: 10,
-          showResultAfter: true,
-          maxViolations: 3,
-          session: '2025/2026',
-          semester: 2,
-          levels: { connect: [100, 200].map(n => ({ id: getLevel(n).id })) },
-        },
-      });
-
-      // Exam 4: GST111 — 100L course (MCQ)
-      const exam4 = await prisma.exam.create({
-        data: {
-          courseId: getCourse('GST111').id,
-          createdBy: engLec?.id || allUsers[0].id,
-          title: 'GST111 — Communication in English I Examination',
-          instructions: 'Answer all questions carefully.',
-          durationMinutes: 60,
-          totalMarks: 40,
-          passMark: 16,
-          status: 'scheduled',
-          scheduledStart: s1,
-          scheduledEnd: e1,
-          randomizeQuestions: true,
-          randomizeOptions: true,
-          questionsToPresent: 12,
-          showResultAfter: true,
-          maxViolations: 5,
-          session: '2025/2026',
-          semester: 2,
-          levels: { connect: [100, 200].map(n => ({ id: getLevel(n).id })) },
-        },
-      });
-
-      // Exam 5: PHY111 True/False
-      const exam5 = await prisma.exam.create({
-        data: {
-          courseId: getCourse('PHY111').id,
-          createdBy: phyLec?.id || allUsers[0].id,
-          title: 'PHY111 — True/False Physics Quiz',
-          instructions: 'Select True or False for each statement.',
-          durationMinutes: 30,
-          totalMarks: 20,
-          passMark: 10,
-          status: 'scheduled',
-          scheduledStart: s1,
-          scheduledEnd: e1,
-          randomizeQuestions: true,
-          randomizeOptions: false,
-          questionsToPresent: 10,
-          showResultAfter: true,
-          maxViolations: 3,
-          session: '2025/2026',
-          semester: 2,
-          levels: { connect: [100, 200].map(n => ({ id: getLevel(n).id })) },
-        },
-      });
-
-      // Exam 6: CSC211 True/False
-      const exam6 = await prisma.exam.create({
-        data: {
-          courseId: getCourse('CSC211').id,
-          createdBy: cscLec?.id || allUsers[0].id,
-          title: 'CSC211 — True/False OOP Quiz',
-          instructions: 'Read carefully before answering.',
-          durationMinutes: 25,
-          totalMarks: 15,
-          passMark: 8,
-          status: 'scheduled',
-          scheduledStart: s1,
-          scheduledEnd: e1,
-          randomizeQuestions: true,
-          randomizeOptions: false,
-          questionsToPresent: 15,
-          showResultAfter: true,
-          maxViolations: 3,
-          session: '2025/2026',
-          semester: 2,
-          levels: { connect: [100, 200].map(n => ({ id: getLevel(n).id })) },
-        },
-      });
-
-      // Assign invigilators
-      const invigilators = allUsers.filter(u => u.role === 'invigilator');
-      if (invigilators.length > 0) {
-        await prisma.examInvigilator.createMany({
-          data: [
-            { examId: exam1.id, invigilatorId: invigilators[0]?.id || allUsers[0].id },
-            { examId: exam2.id, invigilatorId: invigilators[1]?.id || invigilators[0]?.id || allUsers[0].id },
-            { examId: exam3.id, invigilatorId: invigilators[0]?.id || allUsers[0].id },
-            { examId: exam4.id, invigilatorId: invigilators[1]?.id || invigilators[0]?.id || allUsers[0].id },
-            { examId: exam5.id, invigilatorId: invigilators[2]?.id || invigilators[0]?.id || allUsers[0].id },
-            { examId: exam6.id, invigilatorId: invigilators[3]?.id || invigilators[0]?.id || allUsers[0].id },
-          ],
-          skipDuplicates: true,
+        // Get offerings for this department
+        const deptOfferings = await prisma.courseOffering.findMany({
+          where: {
+            course: {
+              departmentId: lecturer.departmentId,
+            },
+          },
+          take: 5, // Assign each lecturer to up to 5 offerings
         });
-      }
-      results.push('✓ 6 exams created (4 MCQ, 2 True/False)');
-      progressBroadcaster.broadcastProgress('exam', 'Exams created', '6 exams', '📝✅');
 
-      // ══════════════════════════════════════════════════════════════════════
-      // 10. QUESTIONS - MCQ and True/False
-      // ══════════════════════════════════════════════════════════════════════
-      progressBroadcaster.broadcastProgress('questions', 'Creating questions...', 'MCQ + T/F', '❓');
-
-      // Helper to create MCQ questions
-      async function createMcqQuestions(examId: string, questions: Array<{
-        body: string;
-        topic: string;
-        options: string[];
-        correctIndex: number;
-        marks: number;
-      }>) {
-        let count = 0;
-        for (let i = 0; i < questions.length; i++) {
-          const q = questions[i];
-          const exists = await prisma.question.findFirst({
-            where: { examId, body: q.body }
+        for (const offering of deptOfferings) {
+          await prisma.teachingAssignment.upsert({
+            where: {
+              offeringId_lecturerId: {
+                offeringId: offering.id,
+                lecturerId: lecturer.id,
+              }
+            },
+            create: {
+              offeringId: offering.id,
+              lecturerId: lecturer.id,
+              assignedById: allUsers.find(u => u.role === 'admin')?.id,
+            },
+            update: {},
           });
-          if (!exists) {
-            await prisma.question.create({
-              data: {
-                examId,
-                type: 'mcq',
-                body: q.body,
-                marks: q.marks,
-                topic: q.topic,
-                orderIndex: i,
-                options: {
-                  create: q.options.map((text, idx) => ({
-                    optionText: text,
-                    isCorrect: idx === q.correctIndex,
-                    orderIndex: idx,
-                  })),
-                },
-              },
-            });
-            count++;
-          }
+          assignmentCount++;
         }
-        return count;
       }
 
-      // Helper to create True/False questions
-      async function createTrueFalseQuestions(examId: string, questions: Array<{
-        body: string;
-        topic: string;
-        isTrue: boolean;
-        marks: number;
-      }>) {
-        let count = 0;
-        for (let i = 0; i < questions.length; i++) {
-          const q = questions[i];
-          const exists = await prisma.question.findFirst({
-            where: { examId, body: q.body }
-          });
-          if (!exists) {
-            await prisma.question.create({
-              data: {
-                examId,
-                type: 'mcq',
-                body: q.body,
-                marks: q.marks,
-                topic: q.topic,
-                orderIndex: i,
-                options: {
-                  create: [
-                    { optionText: 'True', isCorrect: q.isTrue === true, orderIndex: 0 },
-                    { optionText: 'False', isCorrect: q.isTrue === false, orderIndex: 1 },
-                  ],
-                },
-              },
-            });
-            count++;
-          }
-        }
-        return count;
-      }
-
-      // Exam 1: OOP MCQ Questions
-      const q1 = await createMcqQuestions(exam1.id, [
-        { body: 'What is the main principle of encapsulation in OOP?', topic: 'OOP', options: ['Hiding data and exposing behaviour via methods', 'Inheriting from parent classes', 'Writing reusable functions', 'Compiling code faster'], correctIndex: 0, marks: 5 },
-        { body: 'Which keyword is used to inherit a class in Java?', topic: 'OOP', options: ['implements', 'extends', 'inherits', 'super'], correctIndex: 1, marks: 5 },
-        { body: 'What does polymorphism allow in OOP?', topic: 'OOP', options: ['Multiple inheritance only', 'One interface with many implementations', 'Hiding class fields', 'Faster execution'], correctIndex: 1, marks: 5 },
-        { body: 'Which of these is an example of runtime polymorphism?', topic: 'OOP', options: ['Method overloading', 'Method overriding', 'Constructor chaining', 'Static methods'], correctIndex: 1, marks: 5 },
-        { body: 'A class that cannot be instantiated is called a(n):', topic: 'OOP', options: ['Final class', 'Abstract class', 'Static class', 'Interface'], correctIndex: 1, marks: 5 },
-        { body: 'Which access modifier makes a member visible only within its class?', topic: 'OOP', options: ['public', 'protected', 'private', 'default'], correctIndex: 2, marks: 5 },
-        { body: 'What is a constructor?', topic: 'OOP', options: ['A method that returns an object', 'A special method called when an object is created', 'A static block', 'An interface method'], correctIndex: 1, marks: 5 },
-        { body: 'Which OOP concept allows a class to have multiple methods with the same name but different parameters?', topic: 'OOP', options: ['Overriding', 'Abstraction', 'Overloading', 'Encapsulation'], correctIndex: 2, marks: 5 },
-        { body: 'In Java, all classes implicitly inherit from:', topic: 'OOP', options: ['Object', 'Base', 'Root', 'Super'], correctIndex: 0, marks: 5 },
-        { body: 'Which of these best describes an interface in OOP?', topic: 'OOP', options: ['A class with constructor', 'A blueprint defining method signatures without implementation', 'A static utility class', 'An abstract data type'], correctIndex: 1, marks: 5 },
-      ]);
-
-      // Exam 2: Physics MCQ Questions
-      const q2 = await createMcqQuestions(exam2.id, [
-        { body: 'SI unit of force?', topic: 'Mechanics', options: ['Newton', 'Joule', 'Watt', 'Pascal'], correctIndex: 0, marks: 4 },
-        { body: 'Which is a scalar quantity?', topic: 'Mechanics', options: ['Velocity', 'Force', 'Speed', 'Acceleration'], correctIndex: 2, marks: 4 },
-        { body: 'Acceleration due to gravity on Earth?', topic: 'Mechanics', options: ['8.9 m/s²', '9.8 m/s²', '10.8 m/s²', '7.8 m/s²'], correctIndex: 1, marks: 4 },
-        { body: 'First law of thermodynamics is a statement of:', topic: 'Thermodynamics', options: ['Energy conservation', 'Entropy', 'Heat transfer', 'Work'], correctIndex: 0, marks: 4 },
-        { body: 'Which wave requires a medium to travel?', topic: 'Waves', options: ['Light wave', 'Sound wave', 'Radio wave', 'X-ray'], correctIndex: 1, marks: 4 },
-        { body: 'Wavelength with frequency 50 Hz and speed 340 m/s?', topic: 'Waves', options: ['6.8 m', '7.8 m', '8.8 m', '5.8 m'], correctIndex: 0, marks: 4 },
-        { body: "Object at rest stays at rest — this is Newton's:", topic: 'Mechanics', options: ['First Law', 'Second Law', 'Third Law', 'Law of Gravitation'], correctIndex: 0, marks: 4 },
-        { body: 'Power of a device using 100 J in 5 seconds?', topic: 'Mechanics', options: ['5 W', '20 W', '50 W', '100 W'], correctIndex: 1, marks: 4 },
-      ]);
-
-      // Exam 3: Calculus MCQ Questions
-      const q3 = await createMcqQuestions(exam3.id, [
-        { body: 'Derivative of x²?', topic: 'Calculus', options: ['2x', 'x', '2x²', 'x²/2'], correctIndex: 0, marks: 5 },
-        { body: 'Integral of 1/x?', topic: 'Calculus', options: ['ln x', 'e^x', 'x', '1/x²'], correctIndex: 0, marks: 5 },
-        { body: 'Slope of y = 3x + 2?', topic: 'Algebra', options: ['2', '3', '5', '1'], correctIndex: 1, marks: 5 },
-        { body: 'Solve: 2x + 5 = 13', topic: 'Algebra', options: ['2', '3', '4', '5'], correctIndex: 2, marks: 5 },
-        { body: 'Value of sin(90°)?', topic: 'Trigonometry', options: ['0', '0.5', '1', 'Undefined'], correctIndex: 2, marks: 5 },
-        { body: 'Area of a circle with radius r?', topic: 'Geometry', options: ['πr', '2πr', 'πr²', '2πr²'], correctIndex: 2, marks: 5 },
-        { body: 'Logarithm of 100 to base 10?', topic: 'Algebra', options: ['1', '2', '10', '100'], correctIndex: 1, marks: 5 },
-        { body: 'Derivative of e^x?', topic: 'Calculus', options: ['e^x', 'x e^x', 'e^{x-1}', 'ln x'], correctIndex: 0, marks: 5 },
-        { body: 'Sum of angles in a triangle?', topic: 'Geometry', options: ['90°', '180°', '270°', '360°'], correctIndex: 1, marks: 5 },
-        { body: 'Factorial of 5?', topic: 'Algebra', options: ['60', '100', '120', '24'], correctIndex: 2, marks: 5 },
-      ]);
-
-      // Exam 4: English MCQ Questions
-      const q4 = await createMcqQuestions(exam4.id, [
-        { body: 'Which is a complete sentence?', topic: 'Grammar', options: ['Running fast.', 'She runs fast.', 'Fast running.', 'Run fast.'], correctIndex: 1, marks: 4 },
-        { body: 'Plural of "child"?', topic: 'Grammar', options: ['Childs', 'Children', 'Childrens', 'Child'], correctIndex: 1, marks: 4 },
-        { body: 'Synonym for "happy"?', topic: 'Vocabulary', options: ['Sad', 'Angry', 'Joyful', 'Tired'], correctIndex: 2, marks: 4 },
-        { body: 'Correct spelling:', topic: 'Spelling', options: ['Accomodate', 'Acommodate', 'Accommodate', 'Acomodate'], correctIndex: 2, marks: 4 },
-        { body: 'Punctuation mark showing possession?', topic: 'Punctuation', options: ['Comma', 'Apostrophe', 'Period', 'Question mark'], correctIndex: 1, marks: 4 },
-        { body: 'Adverb in: "She sings beautifully."', topic: 'Grammar', options: ['She', 'Sings', 'Beautifully', 'The'], correctIndex: 2, marks: 4 },
-        { body: 'Which is a conjunction?', topic: 'Grammar', options: ['And', 'Run', 'Beautiful', 'Quickly'], correctIndex: 0, marks: 4 },
-        { body: 'Correct article before "hour":', topic: 'Grammar', options: ['a', 'an', 'the', 'none'], correctIndex: 1, marks: 4 },
-        { body: 'Past tense of "go"?', topic: 'Grammar', options: ['Goed', 'Gone', 'Went', 'Going'], correctIndex: 2, marks: 4 },
-        { body: 'Antonym of "difficult"?', topic: 'Vocabulary', options: ['Hard', 'Easy', 'Tough', 'Complex'], correctIndex: 1, marks: 4 },
-      ]);
-
-      // Exam 5: Physics True/False
-      const q5 = await createTrueFalseQuestions(exam5.id, [
-        { body: 'The SI unit of force is the Newton.', topic: 'Mechanics', isTrue: true, marks: 2 },
-        { body: 'Sound waves can travel through a vacuum.', topic: 'Waves', isTrue: false, marks: 2 },
-        { body: 'Acceleration due to gravity on Earth is approximately 9.8 m/s².', topic: 'Mechanics', isTrue: true, marks: 2 },
-        { body: 'Energy can be created and destroyed (first law of thermodynamics).', topic: 'Thermodynamics', isTrue: false, marks: 2 },
-        { body: 'Electrons carry a positive charge.', topic: 'Electricity', isTrue: false, marks: 2 },
-        { body: 'The process of a solid converting directly to gas is sublimation.', topic: 'Thermodynamics', isTrue: true, marks: 2 },
-        { body: 'Velocity is a scalar quantity.', topic: 'Mechanics', isTrue: false, marks: 2 },
-        { body: 'Light is an example of a transverse wave.', topic: 'Waves', isTrue: true, marks: 2 },
-        { body: "Newton's Second Law states that F = ma.", topic: 'Mechanics', isTrue: true, marks: 2 },
-        { body: 'Wavelength increases as frequency increases.', topic: 'Waves', isTrue: false, marks: 2 },
-      ]);
-
-      // Exam 6: OOP True/False
-      const q6 = await createTrueFalseQuestions(exam6.id, [
-        { body: 'Encapsulation hides internal data and exposes behaviour via methods.', topic: 'OOP', isTrue: true, marks: 1 },
-        { body: 'In Java, a class extends another class using the "implements" keyword.', topic: 'OOP', isTrue: false, marks: 1 },
-        { body: 'Method overriding is an example of compile-time polymorphism.', topic: 'OOP', isTrue: false, marks: 1 },
-        { body: 'An abstract class can be instantiated directly.', topic: 'OOP', isTrue: false, marks: 1 },
-        { body: 'The "private" access modifier restricts access to within the same class.', topic: 'OOP', isTrue: true, marks: 1 },
-        { body: 'A constructor is called automatically when an object is created.', topic: 'OOP', isTrue: true, marks: 1 },
-        { body: 'Method overloading means the same method name with different parameters.', topic: 'OOP', isTrue: true, marks: 1 },
-        { body: 'All Java classes implicitly inherit from the Object class.', topic: 'OOP', isTrue: true, marks: 1 },
-        { body: 'An interface can have instance variables with initial values.', topic: 'OOP', isTrue: false, marks: 1 },
-        { body: 'The Single Responsibility Principle states a class should have only one reason to change.', topic: 'OOP', isTrue: true, marks: 1 },
-        { body: 'Composition represents a "has-a" relationship between objects.', topic: 'OOP', isTrue: true, marks: 1 },
-        { body: 'Polymorphism only applies to method overriding, not overloading.', topic: 'OOP', isTrue: false, marks: 1 },
-        { body: 'The "super" keyword is used to reference the parent class.', topic: 'OOP', isTrue: true, marks: 1 },
-        { body: 'A "has-a" relationship in OOP is an example of inheritance.', topic: 'OOP', isTrue: false, marks: 1 },
-        { body: 'Abstraction is one of the four pillars of OOP.', topic: 'OOP', isTrue: true, marks: 1 },
-      ]);
-
-      const totalQuestions = q1 + q2 + q3 + q4 + q5 + q6;
-      results.push(`✓ ${totalQuestions} questions created (${q1+q2+q3+q4} MCQ, ${q5+q6} True/False)`);
-      progressBroadcaster.broadcastProgress('questions', 'Questions created', `${totalQuestions} questions`, '❓✅');
-
-      // ══════════════════════════════════════════════════════════════════════
-      // 11. NOTIFICATIONS
-      // ══════════════════════════════════════════════════════════════════════
-      progressBroadcaster.broadcastProgress('notifications', 'Creating notifications...', 'For students', '🔔');
-      const notifs: any[] = [];
-      for (const s of students) {
-        notifs.push({ userId: s.id, title: '📝 Exam Scheduled', message: `You have upcoming CBT exams starting June 26, 2025. Check your dashboard for details.`, isRead: false });
-        notifs.push({ userId: s.id, title: '📢 Registration Open', message: 'Course registration for 2025/2026 session is now open. Please register your courses.', isRead: false });
-      }
-      await prisma.notification.createMany({ data: notifs, skipDuplicates: true });
-      results.push(`✓ ${notifs.length} notifications`);
-      progressBroadcaster.broadcastProgress('notifications', 'Notifications created', `${notifs.length}`, '🔔✅');
-
-      // ══════════════════════════════════════════════════════════════════════
-      // 12. USER PREFERENCES
-      // ══════════════════════════════════════════════════════════════════════
-      await prisma.userPreference.createMany({
-        data: allUsers.map(u => ({
-          userId: u.id,
-          prefs: { theme: 'system', language: 'en', emailNotifications: true, fontSize: 'medium' },
-        })),
-        skipDuplicates: true,
-      });
-      results.push(`✓ ${allUsers.length} user preferences`);
+      results.push(`✓ ${assignmentCount} teaching assignments created`);
+      progressBroadcaster.broadcastProgress('assignments', 'Assignments created', `${assignmentCount}`, '👨‍🏫✅');
 
       results.push('✓ Seed complete');
       progressBroadcaster.broadcastComplete('Database seeding completed successfully!');
@@ -1781,6 +1592,10 @@ export const actions: Actions = {
         prisma.exam.deleteMany(),
         prisma.courseRegistration.deleteMany(),
         prisma.lecturerCourse.deleteMany(),
+        prisma.teachingAssignment.deleteMany(),
+        prisma.curriculum.deleteMany(),
+        prisma.courseOfferingDepartment.deleteMany(),
+        prisma.courseOffering.deleteMany(),
         prisma.course.deleteMany(),
         prisma.faceDescriptor.deleteMany(),
         prisma.passwordReset.deleteMany(),
