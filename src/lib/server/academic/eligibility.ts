@@ -138,7 +138,7 @@ export async function resolveEligibleOfferings(
 	if (curriculumEntries.length === 0) return [];
 
 	const courseIds = curriculumEntries.map((c) => c.courseId);
-	const typeByCourse = new Map<string, CurriculumType>(curriculumEntries.map((c) => [c.courseId, c.type]));
+	const typeByCourse = new Map(curriculumEntries.map((c) => [c.courseId, c.type]));
 
 	const offerings = await prisma.courseOffering.findMany({
 		where: {

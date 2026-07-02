@@ -652,7 +652,7 @@
 							}}
 						>
 							{#each pendingCourses as { course, type } (course.id)}
-								<input type="hidden" name="courseId" value={course.id} />
+								<input type="hidden" name="offeringId" value={course.id} />
 								<input type="hidden" name="type" value={type} />
 							{/each}
 							<button
@@ -900,7 +900,7 @@
 					<input type="hidden" name="dropId" value={r.id} />
 				{/each}
 				{#each updateAddCourses as c}
-					<input type="hidden" name="addCourseId" value={c.id} />
+					<input type="hidden" name="addOfferingId" value={c.id} />
 					<input type="hidden" name="addType" value={updateAddIds.get(c.id)} />
 				{/each}
 

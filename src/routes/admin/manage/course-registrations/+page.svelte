@@ -3,12 +3,11 @@
   import type { PageData, ActionData } from './$types';
   import { enhance } from '$app/forms';
   import { goto } from '$app/navigation';
-  import { page } from '$app/stores';
   import {
     BookOpen, Plus, Trash2, Pencil, X, ChevronRight,
-    GraduationCap, Building2, Hash, Users, Search,
+    GraduationCap, Building2, Hash, Search,
     RefreshCw, ArrowRightLeft, CheckCircle2, AlertCircle,
-    LoaderCircle, Filter, Eye, LayersIcon, Layers,
+    LoaderCircle, Filter, Lock, Unlock,
   } from '@lucide/svelte';
   import { fly, slide, fade } from 'svelte/transition';
 
@@ -19,6 +18,9 @@
   let editingReg = $state<(typeof data.registrations)[0] | null>(null);
   let deletingId = $state<string | null>(null);
   let submitting = $state(false);
+  let unlocking = $state(false);
+  let unlockReason = $state('');
+  let showUnlockConfirm = $state(false);
   let searchQuery = $state('');
   let regTypeFilter = $state('');
 
@@ -57,18 +59,21 @@
   });
 
   // ── Helpers ───────────────────────────────────────────────────────────────
-  const currentSession = '2024/2025';
+  const currentSession = data.activeSemester.session;
+  const currentSemester = data.activeSemester.semester;
 
   function openDrawer(studentId: string) {
     drawerStudentId = studentId;
     drawerOpen = true;
     drawerTab = 'registered';
+    showUnlockConfirm = false;
     goto(`?studentId=${studentId}`, { replaceState: true, noScroll: true });
   }
 
   function closeDrawer() {
     drawerOpen = false;
     drawerStudentId = null;
+    showUnlockConfirm = false;
     goto('?', { replaceState: true, noScroll: true });
   }
 
@@ -84,8 +89,16 @@
     return 'Normal';
   }
 
-  function getSemesterLabel(studentLevel: number) {
-    return studentLevel % 2 === 0 ? 2 : 1;
+  function phaseColor(phase: string | null) {
+    if (phase === 'locked') return '#ef4444';
+    if (phase === 'submitted') return '#f59e0b';
+    return '#16a34a';
+  }
+
+  function phaseLabel(phase: string | null) {
+    if (phase === 'locked') return 'Locked';
+    if (phase === 'submitted') return 'Submitted · 1 update left';
+    return 'Draft';
   }
 </script>
 
@@ -111,7 +124,10 @@
       <BookOpen size={22} class="head-icon" />
       <div>
         <h1>Course Registrations</h1>
-        <p class="sub">{data.registrations.length} registrations · {data.students.length} students</p>
+        <p class="sub">
+          {data.registrations.length} registrations · {data.students.length} students ·
+          Active: {currentSession} Sem {currentSemester}
+        </p>
       </div>
     </div>
     <button class="btn-primary" onclick={() => (showCreateModal = true)}>
@@ -246,10 +262,62 @@
           {#if drawerStudent.level}
             <span class="dbadge lvl"><GraduationCap size={11} /> {drawerStudent.level.name ?? drawerStudent.level.level + ' Level'}</span>
           {/if}
+          <span class="dbadge phase" style="background:{phaseColor(data.studentRegPhase)}18;color:{phaseColor(data.studentRegPhase)}">
+            {#if data.studentRegPhase === 'locked'}<Lock size={11} />{:else}<Unlock size={11} />{/if}
+            {phaseLabel(data.studentRegPhase)}
+          </span>
         </div>
       </div>
       <button class="close-drawer" onclick={closeDrawer}><X size={18} /></button>
     </div>
+
+    <!-- Unlock panel — only shown when this student is actually locked -->
+    {#if data.studentRegPhase === 'locked'}
+      <div class="unlock-panel">
+        {#if !showUnlockConfirm}
+          <button class="unlock-btn" onclick={() => (showUnlockConfirm = true)}>
+            <Unlock size={13} /> Unlock registration for {currentSession} Sem {currentSemester}
+          </button>
+        {:else}
+          <div class="unlock-confirm" transition:slide={{ duration: 180 }}>
+            <p class="unlock-warn">
+              <AlertCircle size={13} />
+              This reopens the student's registration to <strong>draft</strong>, letting them add/drop
+              courses again through the normal flow. Logged to the audit trail.
+            </p>
+            <form
+              method="POST"
+              action="?/unlock"
+              use:enhance={() => {
+                unlocking = true;
+                return async ({ update }) => {
+                  unlocking = false;
+                  showUnlockConfirm = false;
+                  unlockReason = '';
+                  await update({ invalidateAll: true });
+                };
+              }}
+            >
+              <input type="hidden" name="studentId" value={drawerStudentId} />
+              <input
+                class="unlock-reason-input"
+                type="text"
+                name="reason"
+                placeholder="Reason (optional, e.g. 'exam day registration request')"
+                bind:value={unlockReason}
+              />
+              <div class="unlock-actions">
+                <button type="button" class="btn-ghost sm" onclick={() => (showUnlockConfirm = false)}>Cancel</button>
+                <button type="submit" class="unlock-confirm-btn" disabled={unlocking}>
+                  {#if unlocking}<LoaderCircle size={13} class="spin" />{:else}<Unlock size={13} />{/if}
+                  Confirm Unlock
+                </button>
+              </div>
+            </form>
+          </div>
+        {/if}
+      </div>
+    {/if}
 
     <!-- Drawer tabs -->
     <div class="drawer-tabs">
@@ -389,33 +457,22 @@
                   </div>
                   <form
                     method="POST"
-                    action="?/create"
+                    action="?/createFromOffering"
                     use:enhance={() => {
                       registeringCourseId = course.id;
                       return async ({ update }) => {
                         registeringCourseId = null;
-                        update();
-                        // reload data after register
-                        await goto(`?studentId=${drawerStudentId}`, { replaceState: true, noScroll: true, invalidateAll: true });
+                        await update({ invalidateAll: true });
                       };
                     }}
                   >
                     <input type="hidden" name="studentId" value={drawerStudentId} />
-                    <input type="hidden" name="courseId" value={course.id} />
-                    <input type="hidden" name="session" value={drawerStudent.session ?? currentSession} />
-                    <input
-                      type="hidden"
-                      name="semester"
-                      value={drawerStudent.level ? getSemesterLabel(drawerStudent.level.level) : 1}
-                    />
+                    <input type="hidden" name="offeringId" value={course.id} />
                     <input
                       type="hidden"
                       name="registrationType"
                       value={availableTab === 'carryOver' ? 'carry_over' : availableTab === 'borrowed' ? 'borrowed' : 'normal'}
                     />
-                    {#if drawerStudent.level}
-                      <input type="hidden" name="levelId" value={drawerStudent.level.id} />
-                    {/if}
                     <button
                       type="submit"
                       class="add-course-btn"
@@ -478,13 +535,13 @@
         <div class="field-row">
           <div class="field">
             <label>Session</label>
-            <input type="text" name="session" placeholder="2024/2025" value={currentSession} required />
+            <input type="text" name="session" placeholder={currentSession} value={currentSession} required />
           </div>
           <div class="field">
             <label>Semester</label>
             <select name="semester" required>
-              <option value="1">1st Semester</option>
-              <option value="2">2nd Semester</option>
+              <option value="1" selected={currentSemester === 1}>1st Semester</option>
+              <option value="2" selected={currentSemester === 2}>2nd Semester</option>
             </select>
           </div>
         </div>
@@ -883,6 +940,7 @@
   }
   .dbadge.dept { background: rgba(59,130,246,0.1); color: #3b82f6; }
   .dbadge.lvl { background: rgba(34,197,94,0.1); color: #3b82f6; }
+  .dbadge.phase { font-weight: 700; }
 
   .close-drawer {
     background: none;
@@ -897,6 +955,74 @@
     flex-shrink: 0;
   }
   .close-drawer:hover { color: var(--color-text); background: var(--color-border); }
+
+  /* ── Unlock panel ─────────────────────────────────────────────────────── */
+  .unlock-panel {
+    padding: 0.75rem 1.25rem;
+    border-bottom: 1px solid var(--color-border);
+    background: rgba(239, 68, 68, 0.04);
+  }
+  .unlock-btn {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    width: 100%;
+    justify-content: center;
+    padding: 0.55rem 0.75rem;
+    background: none;
+    border: 1.5px dashed #ef4444;
+    color: #ef4444;
+    border-radius: 0.5rem;
+    font-size: 0.8rem;
+    font-weight: 700;
+    cursor: pointer;
+    transition: background 0.15s;
+  }
+  .unlock-btn:hover { background: rgba(239, 68, 68, 0.08); }
+  .unlock-confirm {
+    display: flex;
+    flex-direction: column;
+    gap: 0.6rem;
+  }
+  .unlock-warn {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.4rem;
+    font-size: 0.72rem;
+    color: #991b1b;
+    margin: 0;
+    line-height: 1.5;
+  }
+  .unlock-reason-input {
+    width: 100%;
+    padding: 0.5rem 0.7rem;
+    background: var(--color-surface);
+    border: 1px solid var(--color-border);
+    border-radius: 0.4rem;
+    font-size: 0.8rem;
+    color: var(--color-text);
+  }
+  .unlock-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 0.5rem;
+  }
+  .unlock-confirm-btn {
+    display: flex;
+    align-items: center;
+    gap: 0.35rem;
+    padding: 0.5rem 0.9rem;
+    background: #ef4444;
+    color: white;
+    border: none;
+    border-radius: 0.4rem;
+    font-size: 0.78rem;
+    font-weight: 700;
+    cursor: pointer;
+  }
+  .unlock-confirm-btn:hover:not(:disabled) { background: #dc2626; }
+  .unlock-confirm-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+  .btn-ghost.sm { padding: 0.5rem 0.75rem; font-size: 0.78rem; }
 
   .drawer-tabs {
     display: flex;
