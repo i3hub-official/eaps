@@ -9,6 +9,9 @@
     ChevronRight, RotateCcw, ShieldCheck, Bell, Settings2, CalendarDays,
     FlaskConical, BookMarked, Library, Layers, CreditCard, Terminal, Activity,
     ArrowRight, Sparkles, ShieldAlert, Info, UserX, BookX,
+    Landmark, School, Briefcase, UserCog, BookMarked as BookIcon,
+    GraduationCap as CapIcon, Server, HardDrive, Cloud, 
+    Lock, Mail, Phone, MapPin, Globe, Award, Star,
   } from '@lucide/svelte';
 
   let { data }: { data: PageData } = $props();
@@ -16,7 +19,7 @@
   let seeding = $state(false);
   let resetting = $state(false);
 
-  let progress = $state({ current: 0, total: 13, step: '', detail: '' });
+  let progress = $state({ current: 0, total: 11, step: '', detail: '' });
   let logs = $state<string[]>([]);
   let showLogs = $state(false);
 
@@ -24,18 +27,18 @@
   let seedResults = $state<string[]>([]);
 
   const seedSteps = [
-  { key: 'levels',        label: 'Levels',          icon: GraduationCap, total: 2,     emoji: '📊', color: '#8b5cf6' },
-  { key: 'semesters',     label: 'Semesters',       icon: CalendarDays,  total: 2,     emoji: '📅', color: '#06b6d4' },
-  { key: 'colleges',      label: 'Colleges',        icon: Building2,     total: 12,    emoji: '🏛️', color: '#f59e0b' },
-  { key: 'departments',   label: 'Departments',     icon: Building2,     total: 63,    emoji: '🏢', color: '#f97316' },
-  { key: 'programmes',    label: 'Programmes',      icon: GraduationCap, total: 63,    emoji: '🎓', color: '#8b5cf6' },
-  { key: 'courses',       label: 'Courses',         icon: BookOpen,      total: 446,   emoji: '📚', color: '#10b981' },
-  { key: 'offerings',     label: 'Offerings',       icon: Layers,        total: 446,   emoji: '📋', color: '#06b6d4' },
-  { key: 'users',         label: 'Users',           icon: Users,         total: null,  emoji: '👥', color: '#6366f1' },
-  { key: 'assignments',   label: 'Teaching Assignments', icon: Users,    total: null,  emoji: '👨‍🏫', color: '#8b5cf6' },
-  { key: 'notifications', label: 'Notifications',   icon: Bell,          total: null,  emoji: '🔔', color: '#eab308' },
-  { key: 'preferences',   label: 'Preferences',     icon: Settings2,     total: null,  emoji: '⚙️', color: '#64748b' },
-];
+    { key: 'levels',        label: 'Levels',          icon: GraduationCap, total: 2,     emoji: '📊', color: '#8b5cf6' },
+    { key: 'semesters',     label: 'Semesters',       icon: CalendarDays,  total: 2,     emoji: '📅', color: '#06b6d4' },
+    { key: 'colleges',      label: 'Colleges',        icon: Landmark,      total: 12,    emoji: '🏛️', color: '#f59e0b' },
+    { key: 'departments',   label: 'Departments',     icon: Building2,     total: 63,    emoji: '🏢', color: '#f97316' },
+    { key: 'programmes',    label: 'Programmes',      icon: CapIcon,       total: 63,    emoji: '🎓', color: '#8b5cf6' },
+    { key: 'courses',       label: 'Courses',         icon: BookOpen,      total: 446,   emoji: '📚', color: '#10b981' },
+    { key: 'offerings',     label: 'Offerings',       icon: Layers,        total: 446,   emoji: '📋', color: '#06b6d4' },
+    { key: 'users',         label: 'Users',           icon: Users,         total: null,  emoji: '👥', color: '#6366f1' },
+    { key: 'assignments',   label: 'Teaching Assignments', icon: UserCog,  total: null,  emoji: '👨‍🏫', color: '#8b5cf6' },
+    { key: 'notifications', label: 'Notifications',   icon: Bell,          total: null,  emoji: '🔔', color: '#eab308' },
+    { key: 'preferences',   label: 'Preferences',     icon: Settings2,     total: null,  emoji: '⚙️', color: '#64748b' },
+  ];
 
   const semesterDefs = [
     { name: 'First Semester',  months: 'September – January', icon: BookMarked, color: '#3b82f6', short: 'Sem 1' },
@@ -54,7 +57,8 @@
   }
 
   function resetProgress() {
-progress = { current: 0, total: seedSteps.length, step: '', detail: '' };    logs = [];
+    progress = { current: 0, total: seedSteps.length, step: '', detail: '' };
+    logs = [];
     seedResults = [];
     showLogs = true;
     form = null;
@@ -112,25 +116,9 @@ progress = { current: 0, total: seedSteps.length, step: '', detail: '' };    log
     return 'pending';
   }
 
- function getTotalRecords() {
-  // Calculate based on your actual seed data
-  const totals = {
-    levels: 2,
-    semesters: 2,
-    colleges: 12,
-    departments: 63,
-    programmes: 63,
-    courses: 446,
-    offerings: 446,
-    users: 'auto',
-    assignments: 'auto',
-    notifications: 'auto',
-    preferences: 'auto',
-  };
-  return Object.values(totals)
-    .filter(v => typeof v === 'number')
-    .reduce((acc, v) => acc + v, 0);
-}
+  function getTotalRecords() {
+    return seedSteps.reduce((acc, step) => acc + (step.total || 0), 0);
+  }
 </script>
 
 <svelte:head>
@@ -269,7 +257,7 @@ progress = { current: 0, total: seedSteps.length, step: '', detail: '' };    log
             <Terminal size={14}/>
             <span>Live Terminal</span>
             <span class="logs-badge">{logs.length}</span>
-<ChevronRight size={14} class={`logs-chevron ${showLogs ? 'rotated' : ''}`}/>
+            <ChevronRight size={14} class={`logs-chevron ${showLogs ? 'rotated' : ''}`}/>
           </button>
           
           {#if showLogs}
@@ -462,115 +450,96 @@ progress = { current: 0, total: seedSteps.length, step: '', detail: '' };    log
       </div>
     {/if}
 
-    <!-- Test Scenarios Panel -->
+    <!-- Credentials Panel -->
+    <section class="info-card wide credential-block">
+      <div class="info-header">
+        <ShieldCheck size={16} />
+        <h3>Default Login Credentials</h3>
+        <span class="seed-total">For Testing</span>
+      </div>
+
+      <div class="cred-grid">
+        {#each [
+          { role: 'Admin',        email: 'admin@mouau.edu.ng',        pass: 'admin123',       color: '#6366f1' },
+          { role: 'HOD',          email: 'hod.csc@mouau.edu.ng',      pass: 'hod123',         color: '#7c3aed' },
+          { role: 'Dean',         email: 'dean.colpas@mouau.edu.ng',  pass: 'dean123',        color: '#0ea5e9' },
+          { role: 'Exam Officer', email: 'examofficer1@mouau.edu.ng', pass: 'examofficer123', color: '#f97316' },
+          { role: 'VC/DVC',       email: 'vc@mouau.edu.ng',           pass: 'vcdvc123',       color: '#e11d48' },
+          { role: 'Lecturer',     email: 'dr.okafor.csc@mouau.edu.ng', pass: 'lecturer123',   color: '#8b5cf6' },
+          { role: 'Invigilator',  email: 'invig1@mouau.edu.ng',       pass: 'invigilator123', color: '#f59e0b' },
+          { role: 'Student (CSC)',email: 'adebayo.adekunle@student.mouau.edu.ng', pass: 'student123', color: '#10b981' },
+          { role: 'Student (GAP)',email: 'ade.adeleke@student.mouau.edu.ng', pass: 'student123', color: '#ef4444' },
+        ] as cred}
+          <div class="cred-row">
+            <span class="cred-role" style="color:{cred.color}">{cred.role}</span>
+            <code class="cred-email">{cred.email}</code>
+            <code class="cred-pass">{cred.pass}</code>
+          </div>
+        {/each}
+      </div>
+      <p class="cred-note">
+        <Info size={12} />
+        "Student (GAP)" = <code>ade.adeleke@student.mouau.edu.ng</code> has intentional course gaps — use to test ineligibility.
+        "Ogwo" accounts exist for every role for easy testing across all portals.
+      </p>
+    </section>
+
+    <!-- What This Seed Includes -->
     {#if !seeding && !form}
-      <section class="info-card wide test-scenarios">
+      <section class="info-card wide">
         <div class="info-header">
-          <FlaskConical size={16} />
-          <h3>What This Seed Sets Up for Testing</h3>
-          <span class="seed-total">Read before testing</span>
+          <Database size={16}/>
+          <h3>What This Seed Includes</h3>
         </div>
-
-        <div class="scenario-grid">
-          <div class="scenario-card">
-            <div class="scenario-icon" style="background: rgba(239,68,68,0.1); color:#ef4444;">
-              <UserX size={18} />
-            </div>
-            <div class="scenario-body">
-              <h4>🧪 Eligibility Testing — Unregistered Students</h4>
-              <p>
-                ~30% of students have <strong>3–5 courses intentionally skipped</strong> during registration.
-                100-level students only have gaps in <strong>Semester 2</strong>.
-              </p>
-              <div class="scenario-tip">
-                <span class="tip-label">Test:</span>
-                Set an exam on a skipped course — those students should be <strong>ineligible</strong>.
-              </div>
+        <div class="stats-grid">
+          <div class="stat-block">
+            <Landmark size={20} color="#f59e0b"/>
+            <div>
+              <strong>12</strong> Colleges
             </div>
           </div>
-
-          <div class="scenario-card">
-            <div class="scenario-icon" style="background: rgba(245,158,11,0.1); color:#d97706;">
-              <BookX size={18} />
-            </div>
-            <div class="scenario-body">
-              <h4>📚 Carry-Over Students — 200L</h4>
-              <p>
-                Every 200L student has <strong>2 carry-over registrations</strong> from 100L
-                with <code>status: pending</code> and <code>registrationType: carry_over</code>.
-              </p>
-              <div class="scenario-tip">
-                <span class="tip-label">Test:</span>
-                Set an exam on a carry-over course — student should appear eligible with carry-over status.
-              </div>
+          <div class="stat-block">
+            <Building2 size={20} color="#f97316"/>
+            <div>
+              <strong>63</strong> Departments
             </div>
           </div>
-
-          <div class="scenario-card">
-            <div class="scenario-icon" style="background: rgba(16,185,129,0.1); color:#10b981;">
-              <GraduationCap size={18} />
-            </div>
-            <div class="scenario-body">
-              <h4>📖 Universal GST Courses — All 100L Students</h4>
-              <p>
-                All 100-level students across every college are registered for:
-              </p>
-              <ul class="scenario-list">
-                <li><code>GST111</code> — Communication in English I <span class="sem-tag">Sem 1</span></li>
-                <li><code>GST112</code> — Nigerian History and Culture <span class="sem-tag">Sem 1</span></li>
-                <li><code>GST121</code> — Communication in English II <span class="sem-tag">Sem 2</span></li>
-              </ul>
-              <div class="scenario-tip">
-                <span class="tip-label">Test:</span>
-                Set a GST111 exam — students from ALL colleges should be eligible.
-              </div>
+          <div class="stat-block">
+            <UserCog size={20} color="#8b5cf6"/>
+            <div>
+              <strong>92</strong> HODs
             </div>
           </div>
-
-          <div class="scenario-card">
-            <div class="scenario-icon" style="background: rgba(99,102,241,0.1); color:#6366f1;">
-              <Users size={18} />
-            </div>
-            <div class="scenario-body">
-              <h4>🏛️ Multi-College Student Coverage</h4>
-              <p>
-                Students spread across <strong>12 colleges and 60+ departments</strong> including:
-                COLPAS, CEET, COLMAS, COLNAS, CAFST, CCSS, CAERSE, CASAP, CNREM, COED, CVM, SGS.
-              </p>
-              <div class="scenario-tip">
-                <span class="tip-label">Test:</span>
-                Set department-specific exam — only students from that department should be eligible.
-              </div>
+          <div class="stat-block">
+            <Users size={20} color="#6366f1"/>
+            <div>
+              <strong>300+</strong> Students
             </div>
           </div>
-        </div>
-
-        <div class="credential-block">
-          <h4>🔑 Default Login Credentials</h4>
-          <div class="cred-grid">
-            {#each [
-              { role: 'Admin',        email: 'admin@mouau.edu.ng',        pass: 'admin123',       color: '#6366f1' },
-              { role: 'HOD',          email: 'hod.csc@mouau.edu.ng',      pass: 'hod123',         color: '#7c3aed' },
-              { role: 'Dean',         email: 'dean.colpas@mouau.edu.ng',  pass: 'dean123',        color: '#0ea5e9' },
-              { role: 'Exam Officer', email: 'examofficer1@mouau.edu.ng', pass: 'examofficer123', color: '#f97316' },
-              { role: 'VC/DVC',       email: 'vc@mouau.edu.ng',           pass: 'vcdvc123',       color: '#e11d48' },
-              { role: 'Lecturer',     email: 'dr.okafor.csc@mouau.edu.ng', pass: 'lecturer123',   color: '#8b5cf6' },
-              { role: 'Invigilator',  email: 'invig1@mouau.edu.ng',       pass: 'invigilator123', color: '#f59e0b' },
-              { role: 'Student (CSC)',email: 'adebayo.adekunle@student.mouau.edu.ng', pass: 'student123', color: '#10b981' },
-              { role: 'Student (GAP)',email: 'ade.adeleke@student.mouau.edu.ng', pass: 'student123', color: '#ef4444' },
-            ] as cred}
-              <div class="cred-row">
-                <span class="cred-role" style="color:{cred.color}">{cred.role}</span>
-                <code class="cred-email">{cred.email}</code>
-                <code class="cred-pass">{cred.pass}</code>
-              </div>
-            {/each}
+          <div class="stat-block">
+            <BookOpen size={20} color="#10b981"/>
+            <div>
+              <strong>446</strong> Courses
+            </div>
           </div>
-          <p class="cred-note">
-            <Info size={12} />
-            "Student (GAP)" = <code>ade.adeleke@student.mouau.edu.ng</code> has intentional course gaps — use to test ineligibility.
-            "Ogwo" accounts exist for every role for easy testing across all portals.
-          </p>
+          <div class="stat-block">
+            <Layers size={20} color="#06b6d4"/>
+            <div>
+              <strong>446</strong> Offerings
+            </div>
+          </div>
+          <div class="stat-block">
+            <Bell size={20} color="#eab308"/>
+            <div>
+              <strong>Auto</strong> Notifications
+            </div>
+          </div>
+          <div class="stat-block">
+            <Settings2 size={20} color="#64748b"/>
+            <div>
+              <strong>Auto</strong> Preferences
+            </div>
+          </div>
         </div>
       </section>
     {/if}
@@ -1481,134 +1450,15 @@ progress = { current: 0, total: seedSteps.length, step: '', detail: '' };    log
     background: var(--color-bg);
   }
 
-  /* ── Test Scenarios ───────────────────────────────────────────────────── */
-  .test-scenarios {
-    background: linear-gradient(135deg, var(--color-surface) 0%, rgba(99,102,241,0.02) 100%);
-  }
-
-  .scenario-grid {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 1rem;
-  }
-
-  .scenario-card {
-    display: flex;
-    gap: 0.875rem;
-    padding: 1rem;
-    background: var(--color-bg);
-    border: 1px solid var(--color-border);
-    border-radius: 0.875rem;
-    transition: border-color 0.15s;
-  }
-
-  .scenario-card:hover {
-    border-color: rgba(99,102,241,0.3);
-  }
-
-  .scenario-icon {
-    width: 40px;
-    height: 40px;
-    border-radius: 0.75rem;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    flex-shrink: 0;
-  }
-
-  .scenario-body {
-    display: flex;
-    flex-direction: column;
-    gap: 0.5rem;
-    flex: 1;
-    min-width: 0;
-  }
-
-  .scenario-body h4 {
-    margin: 0;
-    font-size: 0.82rem;
-    font-weight: 800;
-    color: var(--color-text);
-    line-height: 1.3;
-  }
-
-  .scenario-body p {
-    margin: 0;
-    font-size: 0.78rem;
-    color: var(--color-muted);
-    line-height: 1.6;
-  }
-
-  .scenario-body strong { color: var(--color-text); }
-
-  .scenario-body code {
-    font-family: monospace;
-    font-size: 0.75rem;
-    background: var(--color-surface);
-    border: 1px solid var(--color-border);
-    padding: 0.1rem 0.35rem;
-    border-radius: 0.25rem;
-    color: var(--color-text);
-  }
-
-  .scenario-list {
-    margin: 0.25rem 0 0;
-    padding-left: 1rem;
-    display: flex;
-    flex-direction: column;
-    gap: 0.25rem;
-    font-size: 0.78rem;
-    color: var(--color-muted);
-    list-style: none;
-    padding: 0;
-  }
-
-  .scenario-list li {
-    display: flex;
-    align-items: center;
-    gap: 0.4rem;
-    flex-wrap: wrap;
-  }
-
-  .sem-tag {
-    font-size: 0.65rem;
-    font-weight: 700;
-    padding: 0.1rem 0.4rem;
-    background: rgba(99,102,241,0.1);
-    color: #6366f1;
-    border-radius: 0.25rem;
-  }
-
-  .scenario-tip {
-    display: flex;
-    gap: 0.4rem;
-    padding: 0.5rem 0.75rem;
-    background: color-mix(in srgb, #6366f1 6%, var(--color-surface));
-    border: 1px solid color-mix(in srgb, #6366f1 20%, transparent);
-    border-radius: 0.5rem;
-    font-size: 0.75rem;
-    color: var(--color-text);
-    line-height: 1.5;
-    flex-wrap: wrap;
-  }
-
-  .tip-label {
-    font-weight: 800;
-    color: #6366f1;
-    flex-shrink: 0;
-  }
-
-  @media (max-width: 640px) {
-    .scenario-grid { grid-template-columns: 1fr; }
-  }
-
   /* ── Credentials ──────────────────────────────────────────────────────── */
   .credential-block {
-    border-top: 1px solid var(--color-border);
-    padding-top: 1rem;
+    border: 1px solid var(--color-border);
+    border-radius: 1.25rem;
+    padding: 1.25rem;
+    background: var(--color-surface);
     display: flex;
     flex-direction: column;
-    gap: 0.75rem;
+    gap: 1rem;
   }
 
   .credential-block h4 {
@@ -1674,6 +1524,30 @@ progress = { current: 0, total: seedSteps.length, step: '', detail: '' };    log
 
   @media (max-width: 640px) {
     .cred-row { grid-template-columns: 1fr; gap: 0.25rem; }
+  }
+
+  /* ── Stats Grid ──────────────────────────────────────────────────────── */
+  .stats-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+    gap: 0.75rem;
+  }
+
+  .stat-block {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    padding: 0.75rem;
+    background: var(--color-bg);
+    border: 1px solid var(--color-border);
+    border-radius: 0.75rem;
+    font-size: 0.85rem;
+    color: var(--color-text);
+  }
+
+  .stat-block strong {
+    font-weight: 700;
+    color: var(--color-text);
   }
 
   /* ── Warning ─────────────────────────────────────────────────────────── */

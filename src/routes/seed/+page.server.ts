@@ -19,11 +19,10 @@ export const load: PageServerLoad = async ({ locals }) => {
   const prisma = await getPrismaClient();
   const userCount = await prisma.user.count();
   if (userCount > 0) requireAdmin(locals.user);
-  const [collegeCount, departmentCount, courseCount, examCount, levelCount, offeringCount] = await Promise.all([
+  const [collegeCount, departmentCount, courseCount, levelCount, offeringCount] = await Promise.all([
     prisma.college.count(),
     prisma.department.count(),
     prisma.course.count(),
-    prisma.exam.count(),
     prisma.level.count(),
     prisma.courseOffering.count(),
   ]);
@@ -33,7 +32,6 @@ export const load: PageServerLoad = async ({ locals }) => {
       colleges: collegeCount,
       departments: departmentCount,
       courses: courseCount,
-      exams: examCount,
       levels: levelCount,
       offerings: offeringCount,
     },
@@ -790,11 +788,6 @@ export const actions: Actions = {
 
       await prisma.course.createMany({ data: allCourses, skipDuplicates: true });
       const courses = await prisma.course.findMany();
-      const getCourse = (code: string) => {
-        const c = courses.find(x => x.code === code);
-        if (!c) throw new Error(`Course not found: ${code}`);
-        return c;
-      };
       results.push(`✓ ${courses.length} courses created`);
       progressBroadcaster.broadcastProgress('courses', 'Courses created', `${courses.length} courses`, '📚✅');
 
@@ -1517,108 +1510,108 @@ export const actions: Actions = {
           // ENG — 200L (2 students)
           { email: 'uche.english@student.mouau.edu.ng', fullName: 'Uche Nwosu', deptCode: 'ENG', matric: 'MOUAU/ENG/24/001', levelNum: 200, session: '2025/2026' },
           { email: 'amara.english@student.mouau.edu.ng', fullName: 'Amara Nwachukwu', deptCode: 'ENG', matric: 'MOUAU/ENG/24/002', levelNum: 200, session: '2025/2026' },
-// ─── CAERSE ──────────────────────────────────────────────────────────────
-{ email: 'uche.agric@student.mouau.edu.ng', fullName: 'Uche Okonkwo', deptCode: 'AEC', matric: 'MOUAU/AEC/25/111001', levelNum: 100, session: '2025/2026' },
-{ email: 'amara.agric@student.mouau.edu.ng', fullName: 'Amara Nwosu', deptCode: 'AEC', matric: 'MOUAU/AEC/24/001', levelNum: 200, session: '2025/2026' },
-{ email: 'emeka.ext@student.mouau.edu.ng', fullName: 'Emeka Obi', deptCode: 'AERS', matric: 'MOUAU/AERS/25/111001', levelNum: 100, session: '2025/2026' },
-{ email: 'ngozi.ext@student.mouau.edu.ng', fullName: 'Ngozi Eze', deptCode: 'AERS', matric: 'MOUAU/AERS/24/001', levelNum: 200, session: '2025/2026' },
+          // ─── CAERSE ──────────────────────────────────────────────────────────────
+          { email: 'uche.agric@student.mouau.edu.ng', fullName: 'Uche Okonkwo', deptCode: 'AEC', matric: 'MOUAU/AEC/25/111001', levelNum: 100, session: '2025/2026' },
+          { email: 'amara.agric@student.mouau.edu.ng', fullName: 'Amara Nwosu', deptCode: 'AEC', matric: 'MOUAU/AEC/24/001', levelNum: 200, session: '2025/2026' },
+          { email: 'emeka.ext@student.mouau.edu.ng', fullName: 'Emeka Obi', deptCode: 'AERS', matric: 'MOUAU/AERS/25/111001', levelNum: 100, session: '2025/2026' },
+          { email: 'ngozi.ext@student.mouau.edu.ng', fullName: 'Ngozi Eze', deptCode: 'AERS', matric: 'MOUAU/AERS/24/001', levelNum: 200, session: '2025/2026' },
 
-// ─── CASAP ──────────────────────────────────────────────────────────────
-{ email: 'chidi.breeding@student.mouau.edu.ng', fullName: 'Chidi Okafor', deptCode: 'ABP', matric: 'MOUAU/ABP/25/111001', levelNum: 100, session: '2025/2026' },
-{ email: 'ada.breeding@student.mouau.edu.ng', fullName: 'Ada Eze', deptCode: 'ABP', matric: 'MOUAU/ABP/24/001', levelNum: 200, session: '2025/2026' },
-{ email: 'ifeanyi.nutrition@student.mouau.edu.ng', fullName: 'Ifeanyi Nwachukwu', deptCode: 'ANF', matric: 'MOUAU/ANF/25/111001', levelNum: 100, session: '2025/2026' },
-{ email: 'chioma.nutrition@student.mouau.edu.ng', fullName: 'Chioma Okonkwo', deptCode: 'ANF', matric: 'MOUAU/ANF/24/001', levelNum: 200, session: '2025/2026' },
+          // ─── CASAP ──────────────────────────────────────────────────────────────
+          { email: 'chidi.breeding@student.mouau.edu.ng', fullName: 'Chidi Okafor', deptCode: 'ABP', matric: 'MOUAU/ABP/25/111001', levelNum: 100, session: '2025/2026' },
+          { email: 'ada.breeding@student.mouau.edu.ng', fullName: 'Ada Eze', deptCode: 'ABP', matric: 'MOUAU/ABP/24/001', levelNum: 200, session: '2025/2026' },
+          { email: 'ifeanyi.nutrition@student.mouau.edu.ng', fullName: 'Ifeanyi Nwachukwu', deptCode: 'ANF', matric: 'MOUAU/ANF/25/111001', levelNum: 100, session: '2025/2026' },
+          { email: 'chioma.nutrition@student.mouau.edu.ng', fullName: 'Chioma Okonkwo', deptCode: 'ANF', matric: 'MOUAU/ANF/24/001', levelNum: 200, session: '2025/2026' },
 
-// ─── CAFST ──────────────────────────────────────────────────────────────
-{ email: 'david.dietetics@student.mouau.edu.ng', fullName: 'David Nwosu', deptCode: 'HND', matric: 'MOUAU/HND/25/111001', levelNum: 100, session: '2025/2026' },
-{ email: 'grace.dietetics@student.mouau.edu.ng', fullName: 'Grace Obi', deptCode: 'HND', matric: 'MOUAU/HND/24/001', levelNum: 200, session: '2025/2026' },
-{ email: 'tunde.hospitality@student.mouau.edu.ng', fullName: 'Tunde Bello', deptCode: 'HHT', matric: 'MOUAU/HHT/25/111001', levelNum: 100, session: '2025/2026' },
-{ email: 'funke.hospitality@student.mouau.edu.ng', fullName: 'Funke Adebayo', deptCode: 'HHT', matric: 'MOUAU/HHT/24/001', levelNum: 200, session: '2025/2026' },
+          // ─── CAFST ──────────────────────────────────────────────────────────────
+          { email: 'david.dietetics@student.mouau.edu.ng', fullName: 'David Nwosu', deptCode: 'HND', matric: 'MOUAU/HND/25/111001', levelNum: 100, session: '2025/2026' },
+          { email: 'grace.dietetics@student.mouau.edu.ng', fullName: 'Grace Obi', deptCode: 'HND', matric: 'MOUAU/HND/24/001', levelNum: 200, session: '2025/2026' },
+          { email: 'tunde.hospitality@student.mouau.edu.ng', fullName: 'Tunde Bello', deptCode: 'HHT', matric: 'MOUAU/HHT/25/111001', levelNum: 100, session: '2025/2026' },
+          { email: 'funke.hospitality@student.mouau.edu.ng', fullName: 'Funke Adebayo', deptCode: 'HHT', matric: 'MOUAU/HHT/24/001', levelNum: 200, session: '2025/2026' },
 
-// ─── CCSS ──────────────────────────────────────────────────────────────
-{ email: 'kenneth.plant@student.mouau.edu.ng', fullName: 'Kenneth Okafor', deptCode: 'PHM', matric: 'MOUAU/PHM/25/111001', levelNum: 100, session: '2025/2026' },
-{ email: 'mercy.plant@student.mouau.edu.ng', fullName: 'Mercy Eze', deptCode: 'PHM', matric: 'MOUAU/PHM/24/001', levelNum: 200, session: '2025/2026' },
-{ email: 'chidi.soil@student.mouau.edu.ng', fullName: 'Chidi Nwachukwu', deptCode: 'SSM', matric: 'MOUAU/SSM/25/111001', levelNum: 100, session: '2025/2026' },
-{ email: 'nkechi.soil@student.mouau.edu.ng', fullName: 'Nkechi Obi', deptCode: 'SSM', matric: 'MOUAU/SSM/24/001', levelNum: 200, session: '2025/2026' },
-{ email: 'emeka.water@student.mouau.edu.ng', fullName: 'Emeka Okonkwo', deptCode: 'WRM', matric: 'MOUAU/WRM/25/111001', levelNum: 100, session: '2025/2026' },
-{ email: 'ada.water@student.mouau.edu.ng', fullName: 'Ada Eze', deptCode: 'WRM', matric: 'MOUAU/WRM/24/001', levelNum: 200, session: '2025/2026' },
+          // ─── CCSS ──────────────────────────────────────────────────────────────
+          { email: 'kenneth.plant@student.mouau.edu.ng', fullName: 'Kenneth Okafor', deptCode: 'PHM', matric: 'MOUAU/PHM/25/111001', levelNum: 100, session: '2025/2026' },
+          { email: 'mercy.plant@student.mouau.edu.ng', fullName: 'Mercy Eze', deptCode: 'PHM', matric: 'MOUAU/PHM/24/001', levelNum: 200, session: '2025/2026' },
+          { email: 'chidi.soil@student.mouau.edu.ng', fullName: 'Chidi Nwachukwu', deptCode: 'SSM', matric: 'MOUAU/SSM/25/111001', levelNum: 100, session: '2025/2026' },
+          { email: 'nkechi.soil@student.mouau.edu.ng', fullName: 'Nkechi Obi', deptCode: 'SSM', matric: 'MOUAU/SSM/24/001', levelNum: 200, session: '2025/2026' },
+          { email: 'emeka.water@student.mouau.edu.ng', fullName: 'Emeka Okonkwo', deptCode: 'WRM', matric: 'MOUAU/WRM/25/111001', levelNum: 100, session: '2025/2026' },
+          { email: 'ada.water@student.mouau.edu.ng', fullName: 'Ada Eze', deptCode: 'WRM', matric: 'MOUAU/WRM/24/001', levelNum: 200, session: '2025/2026' },
 
-// ─── CNREM ──────────────────────────────────────────────────────────────
-{ email: 'james.fisheries@student.mouau.edu.ng', fullName: 'James Okafor', deptCode: 'FAR', matric: 'MOUAU/FAR/25/111001', levelNum: 100, session: '2025/2026' },
-{ email: 'joy.fisheries@student.mouau.edu.ng', fullName: 'Joy Nwachukwu', deptCode: 'FAR', matric: 'MOUAU/FAR/24/001', levelNum: 200, session: '2025/2026' },
-{ email: 'chuka.forestry@student.mouau.edu.ng', fullName: 'Chuka Obi', deptCode: 'FEM', matric: 'MOUAU/FEM/25/111001', levelNum: 100, session: '2025/2026' },
-{ email: 'amaka.forestry@student.mouau.edu.ng', fullName: 'Amaka Eze', deptCode: 'FEM', matric: 'MOUAU/FEM/24/001', levelNum: 200, session: '2025/2026' },
+          // ─── CNREM ──────────────────────────────────────────────────────────────
+          { email: 'james.fisheries@student.mouau.edu.ng', fullName: 'James Okafor', deptCode: 'FAR', matric: 'MOUAU/FAR/25/111001', levelNum: 100, session: '2025/2026' },
+          { email: 'joy.fisheries@student.mouau.edu.ng', fullName: 'Joy Nwachukwu', deptCode: 'FAR', matric: 'MOUAU/FAR/24/001', levelNum: 200, session: '2025/2026' },
+          { email: 'chuka.forestry@student.mouau.edu.ng', fullName: 'Chuka Obi', deptCode: 'FEM', matric: 'MOUAU/FEM/25/111001', levelNum: 100, session: '2025/2026' },
+          { email: 'amaka.forestry@student.mouau.edu.ng', fullName: 'Amaka Eze', deptCode: 'FEM', matric: 'MOUAU/FEM/24/001', levelNum: 200, session: '2025/2026' },
 
-// ─── COLNAS ──────────────────────────────────────────────────────────────
-{ email: 'uche.plantbiotech@student.mouau.edu.ng', fullName: 'Uche Okonkwo', deptCode: 'PSB', matric: 'MOUAU/PSB/25/111001', levelNum: 100, session: '2025/2026' },
-{ email: 'chioma.plantbiotech@student.mouau.edu.ng', fullName: 'Chioma Nwosu', deptCode: 'PSB', matric: 'MOUAU/PSB/24/001', levelNum: 200, session: '2025/2026' },
-{ email: 'emeka.zoology@student.mouau.edu.ng', fullName: 'Emeka Okafor', deptCode: 'ZEB', matric: 'MOUAU/ZEB/25/111001', levelNum: 100, session: '2025/2026' },
-{ email: 'ngozi.zoology@student.mouau.edu.ng', fullName: 'Ngozi Eze', deptCode: 'ZEB', matric: 'MOUAU/ZEB/24/001', levelNum: 200, session: '2025/2026' },
+          // ─── COLNAS ──────────────────────────────────────────────────────────────
+          { email: 'uche.plantbiotech@student.mouau.edu.ng', fullName: 'Uche Okonkwo', deptCode: 'PSB', matric: 'MOUAU/PSB/25/111001', levelNum: 100, session: '2025/2026' },
+          { email: 'chioma.plantbiotech@student.mouau.edu.ng', fullName: 'Chioma Nwosu', deptCode: 'PSB', matric: 'MOUAU/PSB/24/001', levelNum: 200, session: '2025/2026' },
+          { email: 'emeka.zoology@student.mouau.edu.ng', fullName: 'Emeka Okafor', deptCode: 'ZEB', matric: 'MOUAU/ZEB/25/111001', levelNum: 100, session: '2025/2026' },
+          { email: 'ngozi.zoology@student.mouau.edu.ng', fullName: 'Ngozi Eze', deptCode: 'ZEB', matric: 'MOUAU/ZEB/24/001', levelNum: 200, session: '2025/2026' },
 
-// ─── CEET ──────────────────────────────────────────────────────────────
-{ email: 'chidi.agroeng@student.mouau.edu.ng', fullName: 'Chidi Nwachukwu', deptCode: 'ABE', matric: 'MOUAU/ABE/25/111001', levelNum: 100, session: '2025/2026' },
-{ email: 'ada.agroeng@student.mouau.edu.ng', fullName: 'Ada Obi', deptCode: 'ABE', matric: 'MOUAU/ABE/24/001', levelNum: 200, session: '2025/2026' },
-{ email: 'ifeanyi.chemeng@student.mouau.edu.ng', fullName: 'Ifeanyi Okonkwo', deptCode: 'CHE', matric: 'MOUAU/CHE/25/111001', levelNum: 100, session: '2025/2026' },
-{ email: 'grace.chemeng@student.mouau.edu.ng', fullName: 'Grace Eze', deptCode: 'CHE', matric: 'MOUAU/CHE/24/001', levelNum: 200, session: '2025/2026' },
-{ email: 'david.mech@student.mouau.edu.ng', fullName: 'David Okafor', deptCode: 'MCE', matric: 'MOUAU/MCE/25/111001', levelNum: 100, session: '2025/2026' },
-{ email: 'faith.mech@student.mouau.edu.ng', fullName: 'Faith Nwachukwu', deptCode: 'MCE', matric: 'MOUAU/MCE/24/001', levelNum: 200, session: '2025/2026' },
+          // ─── CEET ──────────────────────────────────────────────────────────────
+          { email: 'chidi.agroeng@student.mouau.edu.ng', fullName: 'Chidi Nwachukwu', deptCode: 'ABE', matric: 'MOUAU/ABE/25/111001', levelNum: 100, session: '2025/2026' },
+          { email: 'ada.agroeng@student.mouau.edu.ng', fullName: 'Ada Obi', deptCode: 'ABE', matric: 'MOUAU/ABE/24/001', levelNum: 200, session: '2025/2026' },
+          { email: 'ifeanyi.chemeng@student.mouau.edu.ng', fullName: 'Ifeanyi Okonkwo', deptCode: 'CHE', matric: 'MOUAU/CHE/25/111001', levelNum: 100, session: '2025/2026' },
+          { email: 'grace.chemeng@student.mouau.edu.ng', fullName: 'Grace Eze', deptCode: 'CHE', matric: 'MOUAU/CHE/24/001', levelNum: 200, session: '2025/2026' },
+          { email: 'david.mech@student.mouau.edu.ng', fullName: 'David Okafor', deptCode: 'MCE', matric: 'MOUAU/MCE/25/111001', levelNum: 100, session: '2025/2026' },
+          { email: 'faith.mech@student.mouau.edu.ng', fullName: 'Faith Nwachukwu', deptCode: 'MCE', matric: 'MOUAU/MCE/24/001', levelNum: 200, session: '2025/2026' },
 
-// ─── COLMAS ──────────────────────────────────────────────────────────────
-{ email: 'ken.banking@student.mouau.edu.ng', fullName: 'Ken Okafor', deptCode: 'BNF', matric: 'MOUAU/BNF/25/111001', levelNum: 100, session: '2025/2026' },
-{ email: 'mercy.banking@student.mouau.edu.ng', fullName: 'Mercy Eze', deptCode: 'BNF', matric: 'MOUAU/BNF/24/001', levelNum: 200, session: '2025/2026' },
-{ email: 'chuka.economics@student.mouau.edu.ng', fullName: 'Chuka Obi', deptCode: 'ECN', matric: 'MOUAU/ECN/25/111001', levelNum: 100, session: '2025/2026' },
-{ email: 'amaka.economics@student.mouau.edu.ng', fullName: 'Amaka Nwosu', deptCode: 'ECN', matric: 'MOUAU/ECN/24/001', levelNum: 200, session: '2025/2026' },
-{ email: 'uche.entrepreneur@student.mouau.edu.ng', fullName: 'Uche Okonkwo', deptCode: 'ENT', matric: 'MOUAU/ENT/25/111001', levelNum: 100, session: '2025/2026' },
-{ email: 'chioma.entrepreneur@student.mouau.edu.ng', fullName: 'Chioma Eze', deptCode: 'ENT', matric: 'MOUAU/ENT/24/001', levelNum: 200, session: '2025/2026' },
-{ email: 'emeka.industrial@student.mouau.edu.ng', fullName: 'Emeka Nwachukwu', deptCode: 'IRP', matric: 'MOUAU/IRP/25/111001', levelNum: 100, session: '2025/2026' },
-{ email: 'ngozi.industrial@student.mouau.edu.ng', fullName: 'Ngozi Obi', deptCode: 'IRP', matric: 'MOUAU/IRP/24/001', levelNum: 200, session: '2025/2026' },
+          // ─── COLMAS ──────────────────────────────────────────────────────────────
+          { email: 'ken.banking@student.mouau.edu.ng', fullName: 'Ken Okafor', deptCode: 'BNF', matric: 'MOUAU/BNF/25/111001', levelNum: 100, session: '2025/2026' },
+          { email: 'mercy.banking@student.mouau.edu.ng', fullName: 'Mercy Eze', deptCode: 'BNF', matric: 'MOUAU/BNF/24/001', levelNum: 200, session: '2025/2026' },
+          { email: 'chuka.economics@student.mouau.edu.ng', fullName: 'Chuka Obi', deptCode: 'ECN', matric: 'MOUAU/ECN/25/111001', levelNum: 100, session: '2025/2026' },
+          { email: 'amaka.economics@student.mouau.edu.ng', fullName: 'Amaka Nwosu', deptCode: 'ECN', matric: 'MOUAU/ECN/24/001', levelNum: 200, session: '2025/2026' },
+          { email: 'uche.entrepreneur@student.mouau.edu.ng', fullName: 'Uche Okonkwo', deptCode: 'ENT', matric: 'MOUAU/ENT/25/111001', levelNum: 100, session: '2025/2026' },
+          { email: 'chioma.entrepreneur@student.mouau.edu.ng', fullName: 'Chioma Eze', deptCode: 'ENT', matric: 'MOUAU/ENT/24/001', levelNum: 200, session: '2025/2026' },
+          { email: 'emeka.industrial@student.mouau.edu.ng', fullName: 'Emeka Nwachukwu', deptCode: 'IRP', matric: 'MOUAU/IRP/25/111001', levelNum: 100, session: '2025/2026' },
+          { email: 'ngozi.industrial@student.mouau.edu.ng', fullName: 'Ngozi Obi', deptCode: 'IRP', matric: 'MOUAU/IRP/24/001', levelNum: 200, session: '2025/2026' },
 
-// ─── CVM ──────────────────────────────────────────────────────────────
-{ email: 'samuel.therio@student.mouau.edu.ng', fullName: 'Samuel Okafor', deptCode: 'THR', matric: 'MOUAU/THR/25/111001', levelNum: 100, session: '2025/2026' },
-{ email: 'joy.therio@student.mouau.edu.ng', fullName: 'Joy Eze', deptCode: 'THR', matric: 'MOUAU/THR/24/001', levelNum: 200, session: '2025/2026' },
-{ email: 'chidi.anatomy@student.mouau.edu.ng', fullName: 'Chidi Nwachukwu', deptCode: 'VAM', matric: 'MOUAU/VAM/25/111001', levelNum: 100, session: '2025/2026' },
-{ email: 'ada.anatomy@student.mouau.edu.ng', fullName: 'Ada Obi', deptCode: 'VAM', matric: 'MOUAU/VAM/24/001', levelNum: 200, session: '2025/2026' },
-{ email: 'ifeanyi.microbio@student.mouau.edu.ng', fullName: 'Ifeanyi Okonkwo', deptCode: 'VMB', matric: 'MOUAU/VMB/25/111001', levelNum: 100, session: '2025/2026' },
-{ email: 'grace.microbio@student.mouau.edu.ng', fullName: 'Grace Eze', deptCode: 'VMB', matric: 'MOUAU/VMB/24/001', levelNum: 200, session: '2025/2026' },
-{ email: 'david.publichealth@student.mouau.edu.ng', fullName: 'David Okafor', deptCode: 'VPH', matric: 'MOUAU/VPH/25/111001', levelNum: 100, session: '2025/2026' },
-{ email: 'faith.publichealth@student.mouau.edu.ng', fullName: 'Faith Nwachukwu', deptCode: 'VPH', matric: 'MOUAU/VPH/24/001', levelNum: 200, session: '2025/2026' },
-{ email: 'ken.surgery@student.mouau.edu.ng', fullName: 'Ken Obi', deptCode: 'VSR', matric: 'MOUAU/VSR/25/111001', levelNum: 100, session: '2025/2026' },
-{ email: 'mercy.surgery@student.mouau.edu.ng', fullName: 'Mercy Eze', deptCode: 'VSR', matric: 'MOUAU/VSR/24/001', levelNum: 200, session: '2025/2026' },
+          // ─── CVM ──────────────────────────────────────────────────────────────
+          { email: 'samuel.therio@student.mouau.edu.ng', fullName: 'Samuel Okafor', deptCode: 'THR', matric: 'MOUAU/THR/25/111001', levelNum: 100, session: '2025/2026' },
+          { email: 'joy.therio@student.mouau.edu.ng', fullName: 'Joy Eze', deptCode: 'THR', matric: 'MOUAU/THR/24/001', levelNum: 200, session: '2025/2026' },
+          { email: 'chidi.anatomy@student.mouau.edu.ng', fullName: 'Chidi Nwachukwu', deptCode: 'VAM', matric: 'MOUAU/VAM/25/111001', levelNum: 100, session: '2025/2026' },
+          { email: 'ada.anatomy@student.mouau.edu.ng', fullName: 'Ada Obi', deptCode: 'VAM', matric: 'MOUAU/VAM/24/001', levelNum: 200, session: '2025/2026' },
+          { email: 'ifeanyi.microbio@student.mouau.edu.ng', fullName: 'Ifeanyi Okonkwo', deptCode: 'VMB', matric: 'MOUAU/VMB/25/111001', levelNum: 100, session: '2025/2026' },
+          { email: 'grace.microbio@student.mouau.edu.ng', fullName: 'Grace Eze', deptCode: 'VMB', matric: 'MOUAU/VMB/24/001', levelNum: 200, session: '2025/2026' },
+          { email: 'david.publichealth@student.mouau.edu.ng', fullName: 'David Okafor', deptCode: 'VPH', matric: 'MOUAU/VPH/25/111001', levelNum: 100, session: '2025/2026' },
+          { email: 'faith.publichealth@student.mouau.edu.ng', fullName: 'Faith Nwachukwu', deptCode: 'VPH', matric: 'MOUAU/VPH/24/001', levelNum: 200, session: '2025/2026' },
+          { email: 'ken.surgery@student.mouau.edu.ng', fullName: 'Ken Obi', deptCode: 'VSR', matric: 'MOUAU/VSR/25/111001', levelNum: 100, session: '2025/2026' },
+          { email: 'mercy.surgery@student.mouau.edu.ng', fullName: 'Mercy Eze', deptCode: 'VSR', matric: 'MOUAU/VSR/24/001', levelNum: 200, session: '2025/2026' },
 
-// ─── SGS ──────────────────────────────────────────────────────────────
-{ email: 'chidi.french@student.mouau.edu.ng', fullName: 'Chidi Okafor', deptCode: 'FRN', matric: 'MOUAU/FRN/25/111001', levelNum: 100, session: '2025/2026' },
-{ email: 'ada.french@student.mouau.edu.ng', fullName: 'Ada Eze', deptCode: 'FRN', matric: 'MOUAU/FRN/24/001', levelNum: 200, session: '2025/2026' },
-{ email: 'emeka.german@student.mouau.edu.ng', fullName: 'Emeka Nwachukwu', deptCode: 'GER', matric: 'MOUAU/GER/25/111001', levelNum: 100, session: '2025/2026' },
-{ email: 'ngozi.german@student.mouau.edu.ng', fullName: 'Ngozi Obi', deptCode: 'GER', matric: 'MOUAU/GER/24/001', levelNum: 200, session: '2025/2026' },
-{ email: 'uche.history@student.mouau.edu.ng', fullName: 'Uche Okonkwo', deptCode: 'HIS', matric: 'MOUAU/HIS/25/111001', levelNum: 100, session: '2025/2026' },
-{ email: 'chioma.history@student.mouau.edu.ng', fullName: 'Chioma Eze', deptCode: 'HIS', matric: 'MOUAU/HIS/24/001', levelNum: 200, session: '2025/2026' },
-{ email: 'tunde.social@student.mouau.edu.ng', fullName: 'Tunde Bello', deptCode: 'SOC', matric: 'MOUAU/SOC/25/111001', levelNum: 100, session: '2025/2026' },
-{ email: 'funke.social@student.mouau.edu.ng', fullName: 'Funke Adebayo', deptCode: 'SOC', matric: 'MOUAU/SOC/24/001', levelNum: 200, session: '2025/2026' },
-{ email: 'kayode.phe@student.mouau.edu.ng', fullName: 'Kayode Ogun', deptCode: 'PHE', matric: 'MOUAU/PHE/25/111001', levelNum: 100, session: '2025/2026' },
-{ email: 'bisi.phe@student.mouau.edu.ng', fullName: 'Bisi Oladipo', deptCode: 'PHE', matric: 'MOUAU/PHE/24/001', levelNum: 200, session: '2025/2026' },
-{ email: 'uchenna.philosophy@student.mouau.edu.ng', fullName: 'Uchenna Obi', deptCode: 'PHL', matric: 'MOUAU/PHL/25/111001', levelNum: 100, session: '2025/2026' },
-{ email: 'ijeoma.philosophy@student.mouau.edu.ng', fullName: 'Ijeoma Eze', deptCode: 'PHL', matric: 'MOUAU/PHL/24/001', levelNum: 200, session: '2025/2026' },
-{ email: 'chidi.peace@student.mouau.edu.ng', fullName: 'Chidi Okonkwo', deptCode: 'PCS', matric: 'MOUAU/PCS/25/111001', levelNum: 100, session: '2025/2026' },
-{ email: 'ngozi.peace@student.mouau.edu.ng', fullName: 'Ngozi Nwachukwu', deptCode: 'PCS', matric: 'MOUAU/PCS/24/001', levelNum: 200, session: '2025/2026' },
+          // ─── SGS ──────────────────────────────────────────────────────────────
+          { email: 'chidi.french@student.mouau.edu.ng', fullName: 'Chidi Okafor', deptCode: 'FRN', matric: 'MOUAU/FRN/25/111001', levelNum: 100, session: '2025/2026' },
+          { email: 'ada.french@student.mouau.edu.ng', fullName: 'Ada Eze', deptCode: 'FRN', matric: 'MOUAU/FRN/24/001', levelNum: 200, session: '2025/2026' },
+          { email: 'emeka.german@student.mouau.edu.ng', fullName: 'Emeka Nwachukwu', deptCode: 'GER', matric: 'MOUAU/GER/25/111001', levelNum: 100, session: '2025/2026' },
+          { email: 'ngozi.german@student.mouau.edu.ng', fullName: 'Ngozi Obi', deptCode: 'GER', matric: 'MOUAU/GER/24/001', levelNum: 200, session: '2025/2026' },
+          { email: 'uche.history@student.mouau.edu.ng', fullName: 'Uche Okonkwo', deptCode: 'HIS', matric: 'MOUAU/HIS/25/111001', levelNum: 100, session: '2025/2026' },
+          { email: 'chioma.history@student.mouau.edu.ng', fullName: 'Chioma Eze', deptCode: 'HIS', matric: 'MOUAU/HIS/24/001', levelNum: 200, session: '2025/2026' },
+          { email: 'tunde.social@student.mouau.edu.ng', fullName: 'Tunde Bello', deptCode: 'SOC', matric: 'MOUAU/SOC/25/111001', levelNum: 100, session: '2025/2026' },
+          { email: 'funke.social@student.mouau.edu.ng', fullName: 'Funke Adebayo', deptCode: 'SOC', matric: 'MOUAU/SOC/24/001', levelNum: 200, session: '2025/2026' },
+          { email: 'kayode.phe@student.mouau.edu.ng', fullName: 'Kayode Ogun', deptCode: 'PHE', matric: 'MOUAU/PHE/25/111001', levelNum: 100, session: '2025/2026' },
+          { email: 'bisi.phe@student.mouau.edu.ng', fullName: 'Bisi Oladipo', deptCode: 'PHE', matric: 'MOUAU/PHE/24/001', levelNum: 200, session: '2025/2026' },
+          { email: 'uchenna.philosophy@student.mouau.edu.ng', fullName: 'Uchenna Obi', deptCode: 'PHL', matric: 'MOUAU/PHL/25/111001', levelNum: 100, session: '2025/2026' },
+          { email: 'ijeoma.philosophy@student.mouau.edu.ng', fullName: 'Ijeoma Eze', deptCode: 'PHL', matric: 'MOUAU/PHL/24/001', levelNum: 200, session: '2025/2026' },
+          { email: 'chidi.peace@student.mouau.edu.ng', fullName: 'Chidi Okonkwo', deptCode: 'PCS', matric: 'MOUAU/PCS/25/111001', levelNum: 100, session: '2025/2026' },
+          { email: 'ngozi.peace@student.mouau.edu.ng', fullName: 'Ngozi Nwachukwu', deptCode: 'PCS', matric: 'MOUAU/PCS/24/001', levelNum: 200, session: '2025/2026' },
 
-// ─── COED ──────────────────────────────────────────────────────────────
-{ email: 'chidi.aghome@student.mouau.edu.ng', fullName: 'Chidi Okafor', deptCode: 'AHE', matric: 'MOUAU/AHE/25/111001', levelNum: 100, session: '2025/2026' },
-{ email: 'ada.aghome@student.mouau.edu.ng', fullName: 'Ada Eze', deptCode: 'AHE', matric: 'MOUAU/AHE/24/001', levelNum: 200, session: '2025/2026' },
-{ email: 'emeka.bused@student.mouau.edu.ng', fullName: 'Emeka Nwachukwu', deptCode: 'BED', matric: 'MOUAU/BED/25/111001', levelNum: 100, session: '2025/2026' },
-{ email: 'ngozi.bused@student.mouau.edu.ng', fullName: 'Ngozi Obi', deptCode: 'BED', matric: 'MOUAU/BED/24/001', levelNum: 200, session: '2025/2026' },
-{ email: 'uche.econed@student.mouau.edu.ng', fullName: 'Uche Okonkwo', deptCode: 'ECE', matric: 'MOUAU/ECE/25/111001', levelNum: 100, session: '2025/2026' },
-{ email: 'chioma.econed@student.mouau.edu.ng', fullName: 'Chioma Eze', deptCode: 'ECE', matric: 'MOUAU/ECE/24/001', levelNum: 200, session: '2025/2026' },
-{ email: 'david.edmgmt@student.mouau.edu.ng', fullName: 'David Okafor', deptCode: 'EDM', matric: 'MOUAU/EDM/25/111001', levelNum: 100, session: '2025/2026' },
-{ email: 'faith.edmgmt@student.mouau.edu.ng', fullName: 'Faith Nwachukwu', deptCode: 'EDM', matric: 'MOUAU/EDM/24/001', levelNum: 200, session: '2025/2026' },
-{ email: 'ken.ite@student.mouau.edu.ng', fullName: 'Ken Obi', deptCode: 'ITE', matric: 'MOUAU/ITE/25/111001', levelNum: 100, session: '2025/2026' },
-{ email: 'mercy.ite@student.mouau.edu.ng', fullName: 'Mercy Eze', deptCode: 'ITE', matric: 'MOUAU/ITE/24/001', levelNum: 200, session: '2025/2026' },
-{ email: 'chuka.lis@student.mouau.edu.ng', fullName: 'Chuka Okafor', deptCode: 'LIS', matric: 'MOUAU/LIS/25/111001', levelNum: 100, session: '2025/2026' },
-{ email: 'amaka.lis@student.mouau.edu.ng', fullName: 'Amaka Nwosu', deptCode: 'LIS', matric: 'MOUAU/LIS/24/001', levelNum: 200, session: '2025/2026' },
-{ email: 'emeka.gca@student.mouau.edu.ng', fullName: 'Emeka Okonkwo', deptCode: 'GCA', matric: 'MOUAU/GCA/25/111001', levelNum: 100, session: '2025/2026' },
-{ email: 'ngozi.gca@student.mouau.edu.ng', fullName: 'Ngozi Eze', deptCode: 'GCA', matric: 'MOUAU/GCA/24/001', levelNum: 200, session: '2025/2026' },
-{ email: 'uche.ise@student.mouau.edu.ng', fullName: 'Uche Nwachukwu', deptCode: 'ISE', matric: 'MOUAU/ISE/25/111001', levelNum: 100, session: '2025/2026' },
-{ email: 'chioma.ise@student.mouau.edu.ng', fullName: 'Chioma Obi', deptCode: 'ISE', matric: 'MOUAU/ISE/24/001', levelNum: 200, session: '2025/2026' },
-        
+          // ─── COED ──────────────────────────────────────────────────────────────
+          { email: 'chidi.aghome@student.mouau.edu.ng', fullName: 'Chidi Okafor', deptCode: 'AHE', matric: 'MOUAU/AHE/25/111001', levelNum: 100, session: '2025/2026' },
+          { email: 'ada.aghome@student.mouau.edu.ng', fullName: 'Ada Eze', deptCode: 'AHE', matric: 'MOUAU/AHE/24/001', levelNum: 200, session: '2025/2026' },
+          { email: 'emeka.bused@student.mouau.edu.ng', fullName: 'Emeka Nwachukwu', deptCode: 'BED', matric: 'MOUAU/BED/25/111001', levelNum: 100, session: '2025/2026' },
+          { email: 'ngozi.bused@student.mouau.edu.ng', fullName: 'Ngozi Obi', deptCode: 'BED', matric: 'MOUAU/BED/24/001', levelNum: 200, session: '2025/2026' },
+          { email: 'uche.econed@student.mouau.edu.ng', fullName: 'Uche Okonkwo', deptCode: 'ECE', matric: 'MOUAU/ECE/25/111001', levelNum: 100, session: '2025/2026' },
+          { email: 'chioma.econed@student.mouau.edu.ng', fullName: 'Chioma Eze', deptCode: 'ECE', matric: 'MOUAU/ECE/24/001', levelNum: 200, session: '2025/2026' },
+          { email: 'david.edmgmt@student.mouau.edu.ng', fullName: 'David Okafor', deptCode: 'EDM', matric: 'MOUAU/EDM/25/111001', levelNum: 100, session: '2025/2026' },
+          { email: 'faith.edmgmt@student.mouau.edu.ng', fullName: 'Faith Nwachukwu', deptCode: 'EDM', matric: 'MOUAU/EDM/24/001', levelNum: 200, session: '2025/2026' },
+          { email: 'ken.ite@student.mouau.edu.ng', fullName: 'Ken Obi', deptCode: 'ITE', matric: 'MOUAU/ITE/25/111001', levelNum: 100, session: '2025/2026' },
+          { email: 'mercy.ite@student.mouau.edu.ng', fullName: 'Mercy Eze', deptCode: 'ITE', matric: 'MOUAU/ITE/24/001', levelNum: 200, session: '2025/2026' },
+          { email: 'chuka.lis@student.mouau.edu.ng', fullName: 'Chuka Okafor', deptCode: 'LIS', matric: 'MOUAU/LIS/25/111001', levelNum: 100, session: '2025/2026' },
+          { email: 'amaka.lis@student.mouau.edu.ng', fullName: 'Amaka Nwosu', deptCode: 'LIS', matric: 'MOUAU/LIS/24/001', levelNum: 200, session: '2025/2026' },
+          { email: 'emeka.gca@student.mouau.edu.ng', fullName: 'Emeka Okonkwo', deptCode: 'GCA', matric: 'MOUAU/GCA/25/111001', levelNum: 100, session: '2025/2026' },
+          { email: 'ngozi.gca@student.mouau.edu.ng', fullName: 'Ngozi Eze', deptCode: 'GCA', matric: 'MOUAU/GCA/24/001', levelNum: 200, session: '2025/2026' },
+          { email: 'uche.ise@student.mouau.edu.ng', fullName: 'Uche Nwachukwu', deptCode: 'ISE', matric: 'MOUAU/ISE/25/111001', levelNum: 100, session: '2025/2026' },
+          { email: 'chioma.ise@student.mouau.edu.ng', fullName: 'Chioma Obi', deptCode: 'ISE', matric: 'MOUAU/ISE/24/001', levelNum: 200, session: '2025/2026' },
+
         ];
 
       studentData.forEach(s => {
