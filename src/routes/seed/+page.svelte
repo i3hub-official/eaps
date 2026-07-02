@@ -24,18 +24,18 @@
   let seedResults = $state<string[]>([]);
 
   const seedSteps = [
-    { key: 'levels',        label: 'Levels',          icon: GraduationCap, total: 2,     emoji: '📊', color: '#8b5cf6' },
-    { key: 'semesters',     label: 'Semesters',       icon: CalendarDays,  total: 2,     emoji: '📅', color: '#06b6d4' },
-    { key: 'colleges',      label: 'Colleges',        icon: Building2,     total: 12,    emoji: '🏛️', color: '#f59e0b' },
-    { key: 'departments',   label: 'Departments',     icon: Building2,     total: 62,    emoji: '🏢', color: '#f97316' },
-    { key: 'Credit Unit',   label: 'Credit Caps',     icon: CreditCard,    total: 4,     emoji: '🎯', color: '#ec4899' },
-    { key: 'users',         label: 'Users',           icon: Users,         total: null,  emoji: '👥', color: '#6366f1' },
-    { key: 'courses',       label: 'Courses',         icon: BookOpen,      total: null,  emoji: '📚', color: '#10b981' },
-    { key: 'exam',          label: 'Exams',           icon: ShieldCheck,   total: 6,     emoji: '📝', color: '#ef4444' },
-    { key: 'questions',     label: 'Questions',       icon: HelpCircle,    total: 65,    emoji: '❓', color: '#a855f7' },
-    { key: 'notifications', label: 'Notifications',   icon: Bell,          total: null,  emoji: '🔔', color: '#eab308' },
-    { key: 'preferences',   label: 'Preferences',     icon: Settings2,     total: null,  emoji: '⚙️', color: '#64748b' },
-  ];
+  { key: 'levels',        label: 'Levels',          icon: GraduationCap, total: 2,     emoji: '📊', color: '#8b5cf6' },
+  { key: 'semesters',     label: 'Semesters',       icon: CalendarDays,  total: 2,     emoji: '📅', color: '#06b6d4' },
+  { key: 'colleges',      label: 'Colleges',        icon: Building2,     total: 12,    emoji: '🏛️', color: '#f59e0b' },
+  { key: 'departments',   label: 'Departments',     icon: Building2,     total: 63,    emoji: '🏢', color: '#f97316' },
+  { key: 'programmes',    label: 'Programmes',      icon: GraduationCap, total: 63,    emoji: '🎓', color: '#8b5cf6' },
+  { key: 'courses',       label: 'Courses',         icon: BookOpen,      total: 446,   emoji: '📚', color: '#10b981' },
+  { key: 'offerings',     label: 'Offerings',       icon: Layers,        total: 446,   emoji: '📋', color: '#06b6d4' },
+  { key: 'users',         label: 'Users',           icon: Users,         total: null,  emoji: '👥', color: '#6366f1' },
+  { key: 'assignments',   label: 'Teaching Assignments', icon: Users,    total: null,  emoji: '👨‍🏫', color: '#8b5cf6' },
+  { key: 'notifications', label: 'Notifications',   icon: Bell,          total: null,  emoji: '🔔', color: '#eab308' },
+  { key: 'preferences',   label: 'Preferences',     icon: Settings2,     total: null,  emoji: '⚙️', color: '#64748b' },
+];
 
   const semesterDefs = [
     { name: 'First Semester',  months: 'September – January', icon: BookMarked, color: '#3b82f6', short: 'Sem 1' },
@@ -54,8 +54,7 @@
   }
 
   function resetProgress() {
-    progress = { current: 0, total: seedSteps.length, step: '', detail: '' };
-    logs = [];
+progress = { current: 0, total: seedSteps.length, step: '', detail: '' };    logs = [];
     seedResults = [];
     showLogs = true;
     form = null;
@@ -113,9 +112,25 @@
     return 'pending';
   }
 
-  function getTotalRecords() {
-    return seedSteps.reduce((acc, step) => acc + (step.total || 0), 0);
-  }
+ function getTotalRecords() {
+  // Calculate based on your actual seed data
+  const totals = {
+    levels: 2,
+    semesters: 2,
+    colleges: 12,
+    departments: 63,
+    programmes: 63,
+    courses: 446,
+    offerings: 446,
+    users: 'auto',
+    assignments: 'auto',
+    notifications: 'auto',
+    preferences: 'auto',
+  };
+  return Object.values(totals)
+    .filter(v => typeof v === 'number')
+    .reduce((acc, v) => acc + v, 0);
+}
 </script>
 
 <svelte:head>

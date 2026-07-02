@@ -51,21 +51,39 @@ export async function findCurrentExamForStudent(student: {
   });
   if (!active) return null;
 
+  // Offering-aware first, legacy courseId fallback for exams created before
+  // the academic-offering layer existed (Exam.offeringId nullable during migration).
   const candidates = await prisma.exam.findMany({
     where: {
       status: 'active',
       session: active.session,
       semester: active.semester,
-      course: {
-        registrations: {
-          some: {
-            studentId: student.id,
-            session: active.session,
-            semester: active.semester,
-            status: { notIn: ['rejected', 'withdrawn'] },
+      OR: [
+        {
+          offeringId: { not: null },
+          offering: {
+            registrations: {
+              some: {
+                studentId: student.id,
+                status: { notIn: ['rejected', 'withdrawn'] },
+              },
+            },
           },
         },
-      },
+        {
+          offeringId: null,
+          course: {
+            registrations: {
+              some: {
+                studentId: student.id,
+                session: active.session,
+                semester: active.semester,
+                status: { notIn: ['rejected', 'withdrawn'] },
+              },
+            },
+          },
+        },
+      ],
     },
     include: {
       course: { include: { department: true } },
@@ -113,16 +131,32 @@ export async function listExamsForStudent(studentId: string) {
       status: { in: ['scheduled', 'active'] },
       session: active.session,
       semester: active.semester,
-      course: {
-        registrations: {
-          some: {
-            studentId,
-            session: active.session,
-            semester: active.semester,
-            status: { notIn: ['rejected', 'withdrawn'] },
+      OR: [
+        {
+          offeringId: { not: null },
+          offering: {
+            registrations: {
+              some: {
+                studentId,
+                status: { notIn: ['rejected', 'withdrawn'] },
+              },
+            },
           },
         },
-      },
+        {
+          offeringId: null,
+          course: {
+            registrations: {
+              some: {
+                studentId,
+                session: active.session,
+                semester: active.semester,
+                status: { notIn: ['rejected', 'withdrawn'] },
+              },
+            },
+          },
+        },
+      ],
     },
     include: withCourse,
     orderBy: { scheduledStart: 'asc' },
@@ -145,6 +179,7 @@ export async function listExamsForInvigilator(invigilatorId: string) {
 
 export async function countEligibleStudents(exam: {
   courseId: string;
+  offeringId?: string | null;
   session: string;
   semester: number;
   levels: { level: number }[];
@@ -152,25 +187,43 @@ export async function countEligibleStudents(exam: {
 }): Promise<number> {
   const prisma = await getPrismaClient();
 
-  const registrations = await prisma.courseRegistration.findMany({
-    where: {
-      courseId: exam.courseId,
-      session: exam.session,
-      semester: exam.semester,
-      status: { notIn: ['rejected', 'withdrawn'] },
-    },
-    select: {
-      status: true,
-      registrationType: true,
-      levelId: true,
-      student: {
-        select: {
-          level: { select: { level: true } },
-          department: { select: { name: true } },
+  const registrations = exam.offeringId
+    ? await prisma.courseRegistration.findMany({
+        where: {
+          offeringId: exam.offeringId,
+          status: { notIn: ['rejected', 'withdrawn'] },
         },
-      },
-    },
-  });
+        select: {
+          status: true,
+          registrationType: true,
+          levelId: true,
+          student: {
+            select: {
+              level: { select: { level: true } },
+              department: { select: { name: true } },
+            },
+          },
+        },
+      })
+    : await prisma.courseRegistration.findMany({
+        where: {
+          courseId: exam.courseId,
+          session: exam.session,
+          semester: exam.semester,
+          status: { notIn: ['rejected', 'withdrawn'] },
+        },
+        select: {
+          status: true,
+          registrationType: true,
+          levelId: true,
+          student: {
+            select: {
+              level: { select: { level: true } },
+              department: { select: { name: true } },
+            },
+          },
+        },
+      });
 
   let count = 0;
   for (const r of registrations) {
@@ -233,6 +286,7 @@ export async function getExamForLecturer(examId: string, lecturerId: string) {
 
 export async function createExam(input: {
   courseId: string;
+  offeringId?: string | null;
   createdBy: string;
   title: string;
   instructions?: string;
@@ -293,6 +347,7 @@ export async function updateExam(
     levels: number[];
     department: string | null;
     marksPerQuestion: number;
+    offeringId: string | null;
   }>,
 ) {
   const prisma = await getPrismaClient();
@@ -369,6 +424,12 @@ export type RegForEligibility = {
  * Department rules:
  *   exam.department is a comma-separated whitelist of dept names.
  *   Empty / null means no restriction.
+ *
+ * IMPORTANT: `reg` must be the caller's actual lookup result, not omitted.
+ * Previously some call sites invoked this with only (exam, student), which
+ * silently defaulted reg to null and made every call fail the very first
+ * check regardless of a separate registration lookup done upstream. Always
+ * pass the fetched registration explicitly.
  */
 export function isStudentEligible(
   exam: { levels: { level: number }[]; department: string | null },

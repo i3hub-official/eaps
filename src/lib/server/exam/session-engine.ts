@@ -115,16 +115,30 @@ export async function resolveExamSession(
   const exam = await getExamForSession(examId);
   if (!exam) return { ok: false, reason: 'not_found', message: 'Exam not found', status: 404 };
 
-const registered = await prisma.courseRegistration.findFirst({
-    where: {
-      studentId: user.id,
-      courseId: exam.courseId,
-      session: exam.session,
-      semester: exam.semester,
-      status: { notIn: ['rejected', 'withdrawn'] },
-    },
-    select: { id: true },
-  });
+  // Offering-aware first, legacy courseId fallback during the migration window
+  // (Exam.offeringId is nullable until Phase 3 cutover). Fetches full
+  // registration fields, not just { id: true } — isStudentEligible needs
+  // status/registrationType/levelId to do its own eligibility math below.
+  const registered = exam.offeringId
+    ? await prisma.courseRegistration.findFirst({
+        where: {
+          studentId: user.id,
+          offeringId: exam.offeringId,
+          status: { notIn: ['rejected', 'withdrawn'] },
+        },
+        select: { status: true, registrationType: true, levelId: true },
+      })
+    : await prisma.courseRegistration.findFirst({
+        where: {
+          studentId: user.id,
+          courseId: exam.courseId,
+          session: exam.session,
+          semester: exam.semester,
+          status: { notIn: ['rejected', 'withdrawn'] },
+        },
+        select: { status: true, registrationType: true, levelId: true },
+      });
+
   if (!registered) {
     return {
       ok: false,
@@ -134,7 +148,11 @@ const registered = await prisma.courseRegistration.findFirst({
     };
   }
 
-  const eligibility = isStudentEligible(exam, user);
+  // Previously called as isStudentEligible(exam, user) with no third argument —
+  // reg silently defaulted to null, which made isStudentEligible's own
+  // registration check fail unconditionally regardless of the lookup above.
+  // Passing `registered` here fixes that dead branch.
+  const eligibility = isStudentEligible(exam, user, registered);
   if (!eligibility.eligible) {
     return { ok: false, reason: 'not_eligible', message: eligibility.reason ?? 'Not eligible for this exam.', status: 403 };
   }

@@ -1,4 +1,4 @@
-<!-- src/routes/(student)/student/courses/register/+page.svelte -->
+<!-- src/routes/student/courses/register/+page.svelte -->
 <script lang="ts">
 	import {
 		BookOpen,

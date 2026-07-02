@@ -182,7 +182,8 @@ model CourseOfferingDepartment {
   offering   CourseOffering @relation(fields: [offeringId], references: [id], onDelete: Cascade)
   department Department     @relation(fields: [departmentId], references: [id], onDelete: Cascade)
 
-  @@id([offeringId, departmentId])
+   @@id([offeringId, departmentId])
+  @@index([departmentId])
   @@map("course_offering_departments")
 }
 
