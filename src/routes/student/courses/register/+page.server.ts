@@ -19,8 +19,7 @@ import { getRegPhase, setRegPhase } from '$lib/server/academic/reg-phase.js';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Shared helper: resolve the AcademicSemester row (with its numeric FK id)
-// backing whatever semester.ts currently considers "active". Offering-based
-// queries need the real id; session/semester strings alone aren't enough.
+// backing whatever semester.ts currently considers "active".
 // ─────────────────────────────────────────────────────────────────────────────
 async function resolveActiveSemesterRow() {
 	const prisma = await getPrismaClient();
@@ -32,7 +31,30 @@ async function resolveActiveSemesterRow() {
 	return { active, row };
 }
 
-function serializeOffering(o: EligibleOffering, preselectedCourseId: string | null) {
+// ─────────────────────────────────────────────────────────────────────────────
+// Type presentation: maps a Curriculum type (or the synthetic 'carry_over'
+// bucket) to what the registration action needs (regType) and what the badge
+// shows. The server decides this once, up front — no client-side branching.
+// ─────────────────────────────────────────────────────────────────────────────
+type RegType = 'normal' | 'carry_over' | 'borrowed';
+
+const TYPE_META: Record<
+	'core' | 'gst' | 'borrowed' | 'elective' | 'carry_over',
+	{ regType: RegType; label: string; color: string }
+> = {
+	core: { regType: 'normal', label: 'Normal', color: 'var(--green-600)' },
+	gst: { regType: 'normal', label: 'GST', color: '#0ea5e9' },
+	borrowed: { regType: 'borrowed', label: 'Borrowed', color: '#6366f1' },
+	elective: { regType: 'borrowed', label: 'Elective', color: '#a855f7' },
+	carry_over: { regType: 'carry_over', label: 'Carry-Over', color: '#f59e0b' }
+};
+
+function serializeOffering(
+	o: EligibleOffering,
+	kind: keyof typeof TYPE_META,
+	preselectedCourseId: string | null
+) {
+	const meta = TYPE_META[kind];
 	return {
 		id: o.offeringId,
 		code: o.courseCode,
@@ -45,7 +67,10 @@ function serializeOffering(o: EligibleOffering, preselectedCourseId: string | nu
 		college: o.collegeName ?? '—',
 		collegeAbbr: o.collegeAbbr ?? '—',
 		registrationCount: o.registrationCount,
-		preselected: o.courseId === preselectedCourseId
+		preselected: o.courseId === preselectedCourseId,
+		regType: meta.regType,
+		typeLabel: meta.label,
+		typeColor: meta.color
 	};
 }
 
@@ -99,10 +124,9 @@ export const load: PageServerLoad = async ({ locals, url }) => {
 
 	const currentCredits = existingRegs.reduce((s, r) => s + r.course.creditUnits, 0);
 
-	// Offering-driven course discovery. If the active semester has no
-	// AcademicSemester row yet (semester.ts on its date fallback, nobody has
-	// seeded one), degrade to empty lists rather than 500ing the whole page —
-	// the student sees "no courses available" instead of a crash.
+	// Offering-driven course discovery, scoped to the student's own level
+	// (core/gst/borrowed/elective) plus every level below theirs (carry-over).
+	// Degrades to empty on a missing AcademicSemester row rather than crashing.
 	const [eligible, lowerLevel] = semesterRow
 		? await Promise.all([
 				resolveEligibleOfferings(user.id, semesterRow.id),
@@ -114,20 +138,19 @@ export const load: PageServerLoad = async ({ locals, url }) => {
 
 	const preselected = url.searchParams.get('course') ?? null;
 
-	// "College" tab = the student's own department's core + gst curriculum.
-	// "Borrowed" tab = courses explicitly attached to their department as
-	// borrowed/elective via Curriculum. Both exclude courses already registered.
-	const collegeCourses = eligible
-		.filter((o) => !o.isRegistered && (o.type === 'core' || o.type === 'gst'))
-		.map((o) => serializeOffering(o, preselected));
-
-	const borrowedCourses = eligible
-		.filter((o) => !o.isRegistered && (o.type === 'borrowed' || o.type === 'elective'))
-		.map((o) => serializeOffering(o, preselected));
-
-	const carryOverCourses = lowerLevel
-		.filter((o) => !o.isRegistered)
-		.map((o) => serializeOffering(o, preselected));
+	// One flat list — each course already knows its own type from the
+	// Curriculum entry that produced it, so the student never has to
+	// classify anything. What the student registers here is exactly what
+	// makes them exam-eligible for that offering; there's no separate
+	// concept of "browsing" vs "registering" to reconcile.
+	const availableCourses = [
+		...eligible
+			.filter((o) => !o.isRegistered)
+			.map((o) => serializeOffering(o, o.type as 'core' | 'gst' | 'borrowed' | 'elective', preselected)),
+		...lowerLevel
+			.filter((o) => !o.isRegistered)
+			.map((o) => serializeOffering(o, 'carry_over', preselected))
+	].sort((a, b) => a.code.localeCompare(b.code));
 
 	return {
 		existingRegistrations: existingRegs.map((r) => ({
@@ -142,9 +165,7 @@ export const load: PageServerLoad = async ({ locals, url }) => {
 			status: r.status,
 			registeredAt: r.createdAt
 		})),
-		collegeCourses,
-		carryOverCourses,
-		borrowedCourses,
+		availableCourses,
 		meta: {
 			session: currentSession,
 			semester: currentSemester,
@@ -201,11 +222,11 @@ async function resolveStudentContext(user: Awaited<ReturnType<typeof requireStud
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Per-offering validation helper (replaces the old per-course version)
+// Per-offering validation helper
 // ─────────────────────────────────────────────────────────────────────────────
 async function validateOfferingForStudent(
 	offeringId: string,
-	type: 'normal' | 'carry_over' | 'borrowed',
+	type: RegType,
 	ctx: Awaited<ReturnType<typeof resolveStudentContext>>
 ) {
 	const prisma = await getPrismaClient();
@@ -245,11 +266,11 @@ async function validateOfferingForStudent(
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Actions
+// Actions — unchanged from the tabbed version. Type comes from a parallel
+// form field per item already, not from any tab context, so none of this
+// needed to change when the UI went flat.
 // ─────────────────────────────────────────────────────────────────────────────
 export const actions: Actions = {
-	// ── Batch add (draft phase) ───────────────────────────────────────────
-	// Receives repeated fields: offeringId[], type[]  (parallel arrays)
 	batchRegister: async ({ request, locals }) => {
 		const user = await requireStudent(locals.user);
 		const prisma = await getPrismaClient();
@@ -267,7 +288,7 @@ export const actions: Actions = {
 		}
 
 		const offeringIds = fd.getAll('offeringId').map((v) => v.toString());
-		const types = fd.getAll('type').map((v) => v.toString() as 'normal' | 'carry_over' | 'borrowed');
+		const types = fd.getAll('type').map((v) => v.toString() as RegType);
 
 		if (offeringIds.length === 0) return fail(400, { error: 'No courses selected.' });
 
@@ -278,12 +299,7 @@ export const actions: Actions = {
 		const registeredCourseIds = new Set(existingRegs.map((r) => r.courseId));
 		let usedCredits = existingRegs.reduce((s, r) => s + r.course.creditUnits, 0);
 
-		const toCreate: {
-			courseId: string;
-			offeringId: string;
-			type: 'normal' | 'carry_over' | 'borrowed';
-			status: string;
-		}[] = [];
+		const toCreate: { courseId: string; offeringId: string; type: RegType; status: string }[] = [];
 
 		for (let i = 0; i < offeringIds.length; i++) {
 			const offeringId = offeringIds[i];
@@ -293,7 +309,7 @@ export const actions: Actions = {
 			if (result.error) return fail(400, { error: result.error });
 
 			const offering = result.offering!;
-			if (registeredCourseIds.has(offering.course.id)) continue; // skip already-registered silently
+			if (registeredCourseIds.has(offering.course.id)) continue;
 
 			usedCredits += offering.course.creditUnits;
 			if (usedCredits > ctx.maxCredits) {
@@ -351,7 +367,6 @@ export const actions: Actions = {
 		return { success: true, added: toCreate.length };
 	},
 
-	// ── Drop one course (draft phase) ─────────────────────────────────────
 	drop: async ({ request, locals }) => {
 		const user = await requireStudent(locals.user);
 		const prisma = await getPrismaClient();
@@ -373,7 +388,6 @@ export const actions: Actions = {
 		return { success: true };
 	},
 
-	// ── Submit registration (draft → submitted) ───────────────────────────
 	submit: async ({ locals }) => {
 		const user = await requireStudent(locals.user);
 		const prisma = await getPrismaClient();
@@ -393,8 +407,6 @@ export const actions: Actions = {
 		return { success: true, phase: 'submitted' };
 	},
 
-	// ── One-time update (submitted → locked) ──────────────────────────────
-	// addOfferingId[] + addType[] (parallel) and dropId[] (registration IDs)
 	update: async ({ request, locals }) => {
 		const user = await requireStudent(locals.user);
 		const prisma = await getPrismaClient();
@@ -410,7 +422,7 @@ export const actions: Actions = {
 		}
 
 		const addOfferingIds = fd.getAll('addOfferingId').map((v) => v.toString());
-		const addTypes = fd.getAll('addType').map((v) => v.toString() as 'normal' | 'carry_over' | 'borrowed');
+		const addTypes = fd.getAll('addType').map((v) => v.toString() as RegType);
 		const dropIds = fd.getAll('dropId').map((v) => v.toString());
 
 		if (addOfferingIds.length === 0 && dropIds.length === 0) {
@@ -429,13 +441,7 @@ export const actions: Actions = {
 			credits -= reg.course.creditUnits;
 		}
 
-		const toAdd: {
-			courseId: string;
-			offeringId: string;
-			creditUnits: number;
-			type: 'normal' | 'carry_over' | 'borrowed';
-			status: string;
-		}[] = [];
+		const toAdd: { courseId: string; offeringId: string; creditUnits: number; type: RegType; status: string }[] = [];
 
 		for (let i = 0; i < addOfferingIds.length; i++) {
 			const offeringId = addOfferingIds[i];

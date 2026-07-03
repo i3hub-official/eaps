@@ -10,8 +10,6 @@
 		ArrowLeft,
 		X,
 		Building2,
-		RotateCcw,
-		Globe,
 		Lock,
 		Send,
 		RefreshCw,
@@ -25,23 +23,19 @@
 	let { data, form }: { data: PageData; form: ActionData } = $props();
 
 	type RegEntry = (typeof data.existingRegistrations)[number];
-	type CourseEntry = (typeof data.collegeCourses)[number];
+	type CourseEntry = (typeof data.availableCourses)[number];
 	type RegType = 'normal' | 'carry_over' | 'borrowed';
 	type Phase = 'draft' | 'submitted' | 'locked';
 
 	// ── Reactive state from server ────────────────────────────────────────
 	let regs = $state<RegEntry[]>(data.existingRegistrations);
-	let colCourses = $state<CourseEntry[]>(data.collegeCourses);
-	let coCourses = $state<CourseEntry[]>(data.carryOverCourses);
-	let borCourses = $state<CourseEntry[]>(data.borrowedCourses);
+	let courses = $state<CourseEntry[]>(data.availableCourses);
 	let phase = $state<Phase>(data.meta.phase as Phase);
 	let usedCredits = $state(data.meta.currentCredits);
 
 	$effect(() => {
 		regs = data.existingRegistrations;
-		colCourses = data.collegeCourses;
-		coCourses = data.carryOverCourses;
-		borCourses = data.borrowedCourses;
+		courses = data.availableCourses;
 		phase = data.meta.phase as Phase;
 		usedCredits = data.meta.currentCredits;
 		// Clear pending selections when server data changes
@@ -51,14 +45,14 @@
 	});
 
 	// ── UI state ──────────────────────────────────────────────────────────
-	let activeTab = $state<'college' | 'carryover' | 'borrowed'>('college');
 	let search = $state('');
+	let typeFilter = $state(''); // '' = all, else matches course.typeLabel
 	let dropping = $state<string | null>(null);
 	let submitting = $state(false);
 	let regsExpanded = $state(true);
 
-	// Draft: courseIds the student has tapped to queue for adding
-	let pendingAddIds = $state<Map<string, RegType>>(new Map()); // courseId → type
+	// Draft: offeringIds the student has tapped to queue for adding
+	let pendingAddIds = $state<Map<string, RegType>>(new Map()); // offeringId → type
 
 	// Submitted: separate add/drop sets for the one-time update
 	let updateAddIds = $state<Map<string, RegType>>(new Map());
@@ -67,19 +61,15 @@
 	// ── Helpers ───────────────────────────────────────────────────────────
 	const maxCredits = data.meta.maxCredits;
 
-	// REAL-TIME CREDIT CALCULATIONS
-	// Current registered credits
 	const currentCredits = $derived(usedCredits);
 
-	// Pending credits (draft: courses queued but not yet added)
 	const pendingCredits = $derived(
 		[...pendingAddIds.keys()].reduce((s, id) => {
-			const c = allAvailable.find((x) => x.id === id);
+			const c = courses.find((x) => x.id === id);
 			return s + (c?.creditUnits ?? 0);
 		}, 0)
 	);
 
-	// Credits to remove (submitted phase)
 	const creditsToRemove = $derived(
 		[...updateDropIds].reduce((s, regId) => {
 			const reg = regs.find((r) => r.id === regId);
@@ -87,94 +77,78 @@
 		}, 0)
 	);
 
-	// Credits to add (submitted phase)
 	const creditsToAdd = $derived(
 		[...updateAddIds.keys()].reduce((s, courseId) => {
-			const c = allAvailable.find((x) => x.id === courseId);
+			const c = courses.find((x) => x.id === courseId);
 			return s + (c?.creditUnits ?? 0);
 		}, 0)
 	);
 
-	// Projected credits after draft additions
 	const projectedAfterAdd = $derived(currentCredits + pendingCredits);
-
-	// Projected credits after submitted update
 	const projectedAfterUpdate = $derived(currentCredits - creditsToRemove + creditsToAdd);
 
-	// Credit percentage for ring
 	const creditPct = $derived(Math.min((currentCredits / maxCredits) * 100, 100));
 	const creditColor = $derived(
 		creditPct > 90 ? '#dc2626' : creditPct > 75 ? '#f59e0b' : 'var(--green-600)'
 	);
 
-	// Can add a specific course (draft phase)
 	function canAddCourse(creditUnits: number, courseId: string): boolean {
-		if (pendingAddIds.has(courseId)) return true; // Already selected
+		if (pendingAddIds.has(courseId)) return true;
 		return projectedAfterAdd + creditUnits <= maxCredits;
 	}
 
-	// Can add in submitted phase
 	function canAddInUpdate(creditUnits: number, courseId: string): boolean {
 		if (updateAddIds.has(courseId)) return true;
 		return projectedAfterUpdate + creditUnits <= maxCredits;
 	}
 
-	function typeFromTab(tab: typeof activeTab): RegType {
-		return tab === 'carryover' ? 'carry_over' : tab === 'borrowed' ? 'borrowed' : 'normal';
-	}
+	// Distinct type labels actually present, in a stable order — drives the
+	// filter chip row. A 100L student simply never sees a "Carry-Over" chip
+	// because resolveLowerLevelOfferings already returned nothing for them.
+	const TYPE_ORDER = ['Normal', 'GST', 'Borrowed', 'Elective', 'Carry-Over'];
+	const presentTypes = $derived(
+		TYPE_ORDER.filter((t) => courses.some((c) => c.typeLabel === t))
+	);
 
 	const q = $derived(search.trim().toLowerCase());
-	function filterList(list: CourseEntry[]) {
-		if (!q) return list;
-		return list.filter(
-			(c) =>
+	const visibleCourses = $derived(
+		courses.filter((c) => {
+			if (typeFilter && c.typeLabel !== typeFilter) return false;
+			if (!q) return true;
+			return (
 				c.code.toLowerCase().includes(q) ||
 				c.title.toLowerCase().includes(q) ||
 				c.department.toLowerCase().includes(q)
-		);
-	}
-	const visibleCourses = $derived(
-		activeTab === 'college'
-			? filterList(colCourses)
-			: activeTab === 'carryover'
-				? filterList(coCourses)
-				: filterList(borCourses)
+			);
+		})
 	);
 
-	const allAvailable = $derived([...colCourses, ...coCourses, ...borCourses]);
-
-	// Update panel derived data
-	const updateAddCourses = $derived(allAvailable.filter((c) => updateAddIds.has(c.id)));
+	const updateAddCourses = $derived(courses.filter((c) => updateAddIds.has(c.id)));
 	const updateDropRegs = $derived(regs.filter((r) => updateDropIds.has(r.id)));
 	const netCreditChange = $derived(creditsToAdd - creditsToRemove);
 
-	// Grouped regs
 	const normalRegs = $derived(regs.filter((r) => r.registrationType === 'normal'));
 	const carryOverRegs = $derived(regs.filter((r) => r.registrationType === 'carry_over'));
 	const borrowedRegs = $derived(regs.filter((r) => r.registrationType === 'borrowed'));
 
 	// ── Card tap handlers ─────────────────────────────────────────────────
 	function handleCardTap(course: CourseEntry) {
-		const type = typeFromTab(activeTab);
+		const type = course.regType as RegType;
 
 		if (phase === 'draft') {
-			// Toggle in pending queue with real-time credit check
 			const m = new Map(pendingAddIds);
 			if (m.has(course.id)) {
 				m.delete(course.id);
 			} else {
-				// Check credit limit before adding
 				if (!canAddCourse(course.creditUnits, course.id)) return;
 				m.set(course.id, type);
 			}
 			pendingAddIds = m;
 		} else if (phase === 'submitted') {
-			// Toggle in update-add queue with real-time credit check
 			const m = new Map(updateAddIds);
 			if (m.has(course.id)) {
 				m.delete(course.id);
 			} else {
-				// Check credit limit after all pending changes
 				if (!canAddInUpdate(course.creditUnits, course.id)) return;
 				m.set(course.id, type);
 			}
@@ -211,35 +185,23 @@
 			}
 		];
 		usedCredits += course.creditUnits;
-		if (type === 'normal') colCourses = colCourses.filter((c) => c.id !== course.id);
-		if (type === 'carry_over') coCourses = coCourses.filter((c) => c.id !== course.id);
-		if (type === 'borrowed') borCourses = borCourses.filter((c) => c.id !== course.id);
+		courses = courses.filter((c) => c.id !== course.id);
 	}
 
 	function revertAdd(course: CourseEntry, type: RegType) {
 		regs = regs.filter((r) => r.courseId !== course.id);
 		usedCredits -= course.creditUnits;
-		if (type === 'normal')
-			colCourses = [...colCourses, course].sort((a, b) => a.code.localeCompare(b.code));
-		if (type === 'carry_over')
-			coCourses = [...coCourses, course].sort((a, b) => a.code.localeCompare(b.code));
-		if (type === 'borrowed')
-			borCourses = [...borCourses, course].sort((a, b) => a.code.localeCompare(b.code));
+		courses = [...courses, course].sort((a, b) => a.code.localeCompare(b.code));
 	}
 
-	// ── Label / color helpers ─────────────────────────────────────────────
+	// ── Label / color helpers (for the registered-courses panel, which only
+	// has raw registrationType, not the server-computed typeLabel/typeColor
+	// available courses carry) ──────────────────────────────────────────────
 	function typeLabel(t: string) {
 		return t === 'carry_over' ? 'Carry-Over' : t === 'borrowed' ? 'Borrowed' : 'Normal';
 	}
 	function typeColor(t: string) {
 		return t === 'carry_over' ? '#f59e0b' : t === 'borrowed' ? '#6366f1' : 'var(--green-600)';
-	}
-	function typeBg(t: string) {
-		return t === 'carry_over'
-			? 'rgba(245,158,11,.12)'
-			: t === 'borrowed'
-				? 'rgba(99,102,241,.1)'
-				: 'var(--green-soft)';
 	}
 
 	function statusBadge(s: string) {
@@ -269,47 +231,20 @@
 		}
 	};
 
-	const tabs = $derived([
-		{
-			key: 'college' as const,
-			label: 'My College',
-			icon: Building2,
-			count: colCourses.length,
-			color: 'var(--green-600)'
-		},
-		{
-			key: 'carryover' as const,
-			label: 'Carry-Over',
-			icon: RotateCcw,
-			count: coCourses.length,
-			color: '#f59e0b',
-			hidden: data.meta.studentLevel <= 100
-		},
-		{
-			key: 'borrowed' as const,
-			label: 'Borrowed',
-			icon: Globe,
-			count: borCourses.length,
-			color: '#6366f1'
-		}
-	]);
-
 	// Pending courses objects (for batch submit)
 	const pendingCourses = $derived(
 		[...pendingAddIds.entries()]
 			.map(([id, type]) => ({
-				course: allAvailable.find((c) => c.id === id)!,
+				course: courses.find((c) => c.id === id)!,
 				type
 			}))
 			.filter((x) => x.course)
 	);
 
-	// Is the update panel visible?
 	const showUpdatePanel = $derived(
 		phase === 'submitted' && (updateAddIds.size > 0 || updateDropIds.size > 0)
 	);
 
-	// Warning messages for credit limits
 	const creditWarning = $derived(
 		phase === 'draft' && projectedAfterAdd > maxCredits
 			? `Would exceed ${maxCredits} CU limit by ${projectedAfterAdd - maxCredits} CU`
@@ -320,7 +255,7 @@
 </script>
 
 <div class="page">
-	<!-- ── Top bar (simplified, no sidebar) ────────────────────────────────── -->
+	<!-- ── Top bar ──────────────────────────────────────────────────────────── -->
 	<div class="topbar">
 		<a href="/student/courses" class="back-link">
 			<ArrowLeft size={13} /> Back to Courses
@@ -405,38 +340,11 @@
 		</div>
 	{/if}
 
-	<!-- ═══════════════════════════════════════════════════════════════════
-       FULL-WIDTH LAYOUT: Course Selection takes entire left side (full width)
-       Registered Courses becomes a sidebar on the right
-  ════════════════════════════════════════════════════════════════════════ -->
 	<div class="two-columns">
-		<!-- LEFT COLUMN: Course Discovery & Pending Tray (FILLS ENTIRE LEFT SIDE) -->
+		<!-- LEFT COLUMN: Flat course list & Pending Tray -->
 		<div class="col-left">
 			{#if phase !== 'locked'}
 				<section class="discover">
-					<!-- Tab bar with horizontal scroll support -->
-					<div class="tab-bar-wrapper">
-						<div class="tab-bar">
-							{#each tabs as tab}
-								{#if !tab.hidden}
-									<button
-										class="tab-btn"
-										class:active={activeTab === tab.key}
-										style="--tab-color:{tab.color}"
-										onclick={() => {
-											activeTab = tab.key;
-											search = '';
-										}}
-									>
-										<svelte:component this={tab.icon} size={12} />
-										{tab.label}
-										<span class="tab-pill">{tab.count}</span>
-									</button>
-								{/if}
-							{/each}
-						</div>
-					</div>
-
 					<!-- Search -->
 					<div class="search-wrap">
 						<BookOpen size={13} class="search-icon" />
@@ -453,16 +361,31 @@
 						{/if}
 					</div>
 
-					<!-- Tab hint with real-time credit info -->
+					<!-- Type filter chips — only shows categories the student actually has -->
+					{#if presentTypes.length > 1}
+						<div class="chip-row">
+							<button class="chip" class:active={typeFilter === ''} onclick={() => (typeFilter = '')}>
+								All <span class="chip-count">{courses.length}</span>
+							</button>
+							{#each presentTypes as t}
+								{@const cnt = courses.filter((c) => c.typeLabel === t).length}
+								{@const clr = courses.find((c) => c.typeLabel === t)?.typeColor ?? 'var(--green-600)'}
+								<button
+									class="chip"
+									class:active={typeFilter === t}
+									style="--chip-color:{clr}"
+									onclick={() => (typeFilter = typeFilter === t ? '' : t)}
+								>
+									{t} <span class="chip-count">{cnt}</span>
+								</button>
+							{/each}
+						</div>
+					{/if}
+
+					<!-- Hint line -->
 					<p class="tab-hint">
-						{#if activeTab === 'college'}
-							<Building2 size={11} />
-							{data.meta.studentCollege ?? 'Your college'} · {data.meta.studentLevel}L courses
-						{:else if activeTab === 'carryover'}
-							<RotateCcw size={11} /> Lower-level carry-overs · pending approval
-						{:else}
-							<Globe size={11} /> Other-college courses · auto-approved
-						{/if}
+						<Building2 size={11} />
+						{data.meta.studentCollege ?? 'Your college'} · {data.meta.studentLevel}L
 						{#if phase === 'draft' && pendingAddIds.size > 0}
 							<span class="hint-selected">
 								· {pendingAddIds.size} selected (+{pendingCredits} CU → {projectedAfterAdd}/{maxCredits}
@@ -482,23 +405,20 @@
 						{/if}
 					</p>
 
-					<!-- Course grid with horizontal scroll on small devices -->
+					<!-- Course grid -->
 					<div class="course-grid-wrapper">
 						{#if visibleCourses.length === 0}
 							<div class="empty-state">
 								<BookOpen size={28} strokeWidth={1.4} />
 								<p>
-									{search
-										? 'No courses match your search.'
-										: activeTab === 'carryover'
-											? 'No carry-over courses available.'
-											: 'All available courses already registered.'}
+									{search || typeFilter
+										? 'No courses match your search or filter.'
+										: 'All available courses already registered.'}
 								</p>
 							</div>
 						{:else}
 							<div class="course-grid">
 								{#each visibleCourses as course (course.id)}
-									{@const type = typeFromTab(activeTab)}
 									{@const over =
 										phase === 'draft'
 											? !canAddCourse(course.creditUnits, course.id) &&
@@ -508,17 +428,16 @@
 									{@const isDraftSelected = pendingAddIds.has(course.id)}
 									{@const isUpdateSelected = updateAddIds.has(course.id)}
 									{@const isSelected = phase === 'draft' ? isDraftSelected : isUpdateSelected}
-									{@const tColor = typeColor(type)}
-									{@const tBg = typeBg(type)}
+									{@const tColor = course.typeColor}
 
 									<button
 										class="course-card"
 										class:selected={isSelected}
 										class:over-limit={over && !isSelected}
-										data-regtype={type}
+										data-regtype={course.regType}
 										disabled={over && !isSelected}
 										onclick={() => handleCardTap(course)}
-										style="--card-accent:{tColor}; --card-bg:{tBg};"
+										style="--card-accent:{tColor};"
 									>
 										<div class="card-top">
 											<span class="card-code">{course.code}</span>
@@ -532,7 +451,7 @@
 										<div class="card-meta">
 											<span class="meta-chip"><GraduationCap size={9} /> {course.level}L</span>
 											<span class="meta-chip"><Building2 size={9} /> {course.departmentCode}</span>
-											{#if activeTab === 'borrowed'}
+											{#if course.regType === 'borrowed'}
 												<span class="meta-chip borrowed-chip">{course.collegeAbbr}</span>
 											{/if}
 										</div>
@@ -540,11 +459,11 @@
 										<div
 											class="card-footer"
 											class:footer-selected={isSelected}
-											style="--fc:{tColor}; --fb:{tBg}"
+											style="--fc:{tColor}"
 										>
 											<span class="footer-type">
 												<span class="type-dot" style="background:{tColor}"></span>
-												{typeLabel(type)}
+												{course.typeLabel}
 											</span>
 											{#if over}
 												<span class="footer-limit">Limit reached</span>
@@ -564,7 +483,7 @@
 				</section>
 			{/if}
 
-			<!-- PENDING ADD TRAY — draft phase, courses queued but not submitted -->
+			<!-- PENDING ADD TRAY -->
 			{#if phase === 'draft' && pendingCourses.length > 0}
 				<section class="pending-tray">
 					<div class="tray-head">
@@ -581,7 +500,7 @@
 					<div class="tray-list-wrapper">
 						<div class="tray-list">
 							{#each pendingCourses as { course, type }}
-								<div class="tray-row" style="border-left-color:{typeColor(type)}">
+								<div class="tray-row" style="border-left-color:{course.typeColor}">
 									<div class="tray-left">
 										<span class="tray-code">{course.code}</span>
 										<span class="tray-title">{course.title}</span>
@@ -590,8 +509,8 @@
 										<span class="tray-cu">{course.creditUnits} CU</span>
 										<span
 											class="tray-type"
-											style="color:{typeColor(type)}; background:{typeBg(type)}"
-											>{typeLabel(type)}</span
+											style="color:{course.typeColor}; background:{course.typeColor}1f"
+											>{course.typeLabel}</span
 										>
 										<button
 											class="tray-remove"
@@ -632,19 +551,15 @@
 							use:enhance={() => {
 								submitting = true;
 
-								// Snapshot the courses we're about to optimistically apply
-								const snapshot = [...pendingCourses]; // [{course, type}]
+								const snapshot = [...pendingCourses];
 								pendingAddIds = new Map();
 
-								// Optimistic: apply each course immediately
 								for (const { course, type } of snapshot) optimisticAdd(course, type);
 
 								return async ({ result, update }) => {
 									submitting = false;
 									if (result.type === 'failure') {
-										// Revert each optimistic add individually using the existing helper
 										for (const { course, type } of snapshot) revertAdd(course, type);
-										// Restore the pending queue so the user can try again
 										pendingAddIds = new Map(snapshot.map(({ course, type }) => [course.id, type]));
 									}
 									await update({ reset: false });
@@ -687,7 +602,6 @@
 				</button>
 
 				{#if regsExpanded}
-					<!-- Scrollable courses area -->
 					<div class="reg-courses-scroll">
 						{#if regs.length === 0}
 							<div class="reg-empty">
@@ -783,7 +697,6 @@
 						{/if}
 					</div>
 
-					<!-- Submit button - always visible at bottom -->
 					{#if phase === 'draft' && regs.length > 0}
 						<div class="submit-footer">
 							<form
@@ -814,7 +727,7 @@
 		</div>
 	</div>
 
-	<!-- UPDATE PANEL — submitted phase, sticky at bottom -->
+	<!-- UPDATE PANEL -->
 	{#if showUpdatePanel}
 		<div class="update-panel">
 			<div class="update-header">
@@ -867,11 +780,10 @@
 				<div class="update-group">
 					<span class="update-group-label add-label">Adding</span>
 					{#each updateAddCourses as c}
-						{@const type = updateAddIds.get(c.id)!}
 						<div class="update-row add-row">
 							<span
 								class="reg-code"
-								style="color:{typeColor(type)}; border-color:{typeColor(type)}40">{c.code}</span
+								style="color:{c.typeColor}; border-color:{c.typeColor}40">{c.code}</span
 							>
 							<span class="update-title">{c.title}</span>
 							<span class="reg-cu">{c.creditUnits} CU</span>
@@ -923,7 +835,6 @@
 </div>
 
 <style>
-	/* CSS Variables - ensure these are defined in global styles */
 	:global(:root) {
 		--green-600: #16a34a;
 		--green-700: #15803d;
@@ -937,7 +848,6 @@
 		--color-surface: #ffffff;
 	}
 
-	/* Page shell - full width, no sidebar */
 	.page {
 		display: flex;
 		flex-direction: column;
@@ -948,7 +858,6 @@
 		width: 100%;
 	}
 
-	/* Top bar */
 	.topbar {
 		display: flex;
 		align-items: flex-start;
@@ -997,7 +906,6 @@
 		flex-wrap: wrap;
 	}
 
-	/* Credit ring */
 	.credit-ring {
 		position: relative;
 		width: 44px;
@@ -1027,7 +935,6 @@
 		color: var(--color-muted);
 	}
 
-	/* Phase tag */
 	.phase-tag {
 		display: inline-flex;
 		align-items: center;
@@ -1041,7 +948,6 @@
 		border: 1px solid;
 	}
 
-	/* Alerts */
 	.alert {
 		display: flex;
 		align-items: flex-start;
@@ -1071,14 +977,12 @@
 		color: #991b1b;
 	}
 
-	/* TWO COLUMN LAYOUT */
 	.two-columns {
 		display: flex;
 		gap: 1.5rem;
 		align-items: flex-start;
 	}
 
-	/* LEFT COLUMN - Takes more space, fills entire left side */
 	.col-left {
 		flex: 3;
 		min-width: 0;
@@ -1088,7 +992,6 @@
 		align-self: flex-start;
 	}
 
-	/* RIGHT COLUMN - Sticky sidebar */
 	.col-right {
 		flex: 1.2;
 		min-width: 280px;
@@ -1097,7 +1000,6 @@
 		align-self: flex-start;
 	}
 
-	/* Responsive: stack on smaller screens */
 	@media (max-width: 860px) {
 		.two-columns {
 			flex-direction: column;
@@ -1111,7 +1013,6 @@
 		}
 	}
 
-	/* Discover section */
 	.discover {
 		background: var(--color-surface);
 		border: 1px solid var(--color-border);
@@ -1121,82 +1022,11 @@
 		flex-direction: column;
 	}
 
-	/* Tab bar wrapper with horizontal scroll support */
-	.tab-bar-wrapper {
-		overflow-x: auto;
-		overflow-y: hidden;
-		-webkit-overflow-scrolling: touch;
-		scrollbar-width: thin;
-	}
-	.tab-bar-wrapper::-webkit-scrollbar {
-		height: 3px;
-	}
-	.tab-bar-wrapper::-webkit-scrollbar-track {
-		background: var(--color-border);
-		border-radius: 3px;
-	}
-	.tab-bar-wrapper::-webkit-scrollbar-thumb {
-		background: var(--color-muted);
-		border-radius: 3px;
-	}
-
-	.tab-bar {
-		display: flex;
-		border-bottom: 1px solid var(--color-border);
-		background: var(--color-bg);
-		padding: 0 0.25rem;
-		min-width: min-content;
-	}
-	.tab-btn {
-		display: inline-flex;
-		align-items: center;
-		gap: 0.35rem;
-		padding: 0.7rem 1rem;
-		border: none;
-		border-bottom: 2px solid transparent;
-		background: none;
-		font-size: 0.8rem;
-		font-weight: 600;
-		color: var(--color-muted);
-		cursor: pointer;
-		font-family: inherit;
-		white-space: nowrap;
-		transition:
-			color 0.15s,
-			border-color 0.15s;
-		margin-bottom: -1px;
-	}
-	.tab-btn:hover {
-		color: var(--color-text);
-	}
-	.tab-btn.active {
-		color: var(--tab-color);
-		border-bottom-color: var(--tab-color);
-	}
-	.tab-pill {
-		min-width: 20px;
-		height: 20px;
-		border-radius: 999px;
-		background: var(--color-border);
-		color: var(--color-muted);
-		font-size: 0.6rem;
-		font-weight: 700;
-		display: inline-flex;
-		align-items: center;
-		justify-content: center;
-		padding: 0 4px;
-	}
-	.tab-btn.active .tab-pill {
-		background: color-mix(in srgb, var(--tab-color) 15%, transparent);
-		color: var(--tab-color);
-	}
-
-	/* Search */
 	.search-wrap {
 		display: flex;
 		align-items: center;
 		gap: 0.5rem;
-		margin: 0.75rem 0.875rem 0;
+		margin: 0.875rem 0.875rem 0;
 		padding: 0.45rem 0.7rem;
 		border-radius: 0.5rem;
 		background: var(--color-bg);
@@ -1232,14 +1062,51 @@
 		flex-shrink: 0;
 	}
 
-	/* Tab hint */
+	/* Type filter chips */
+	.chip-row {
+		display: flex;
+		gap: 0.4rem;
+		flex-wrap: wrap;
+		padding: 0.6rem 0.875rem 0;
+	}
+	.chip {
+		display: inline-flex;
+		align-items: center;
+		gap: 0.3rem;
+		padding: 0.3rem 0.65rem;
+		border-radius: 999px;
+		border: 1.5px solid var(--color-border);
+		background: var(--color-bg);
+		font-size: 0.72rem;
+		font-weight: 600;
+		color: var(--color-muted);
+		cursor: pointer;
+		font-family: inherit;
+		transition:
+			border-color 0.15s,
+			background 0.15s,
+			color 0.15s;
+	}
+	.chip:hover {
+		border-color: var(--chip-color, var(--green-600));
+	}
+	.chip.active {
+		border-color: var(--chip-color, var(--green-600));
+		background: color-mix(in srgb, var(--chip-color, var(--green-600)) 12%, var(--color-surface));
+		color: var(--chip-color, var(--green-600));
+	}
+	.chip-count {
+		font-size: 0.62rem;
+		opacity: 0.75;
+	}
+
 	.tab-hint {
 		display: flex;
 		align-items: center;
 		gap: 0.3rem;
 		font-size: 0.7rem;
 		color: var(--color-muted);
-		padding: 0.4rem 0.875rem 0;
+		padding: 0.5rem 0.875rem 0;
 		margin: 0;
 	}
 	.hint-selected {
@@ -1251,7 +1118,6 @@
 		font-weight: 600;
 	}
 
-	/* Empty state */
 	.empty-state {
 		display: flex;
 		flex-direction: column;
@@ -1266,7 +1132,6 @@
 		font-size: 0.8rem;
 	}
 
-	/* Course grid wrapper with horizontal scroll for small devices */
 	.course-grid-wrapper {
 		overflow-x: auto;
 		overflow-y: visible;
@@ -1293,7 +1158,6 @@
 		min-width: min-content;
 	}
 
-	/* Small device: horizontal scroll instead of squishing */
 	@media (max-width: 640px) {
 		.course-grid {
 			grid-template-columns: repeat(2, minmax(200px, 280px));
@@ -1304,7 +1168,6 @@
 		}
 	}
 
-	/* Course card */
 	.course-card {
 		background: var(--color-bg);
 		border: 1.5px solid var(--color-border);
@@ -1439,7 +1302,6 @@
 		flex-shrink: 0;
 	}
 
-	/* Pending tray */
 	.pending-tray {
 		background: var(--color-surface);
 		border: 1.5px solid var(--green-600);
@@ -1619,7 +1481,6 @@
 		cursor: not-allowed;
 	}
 
-	/* Registered section */
 	.reg-section {
 		background: var(--color-surface);
 		border: 1px solid var(--color-border);
@@ -1627,7 +1488,7 @@
 		overflow: hidden;
 		display: flex;
 		flex-direction: column;
-		max-height: calc(100vh - 200px); /* Adjust based on your top bar height */
+		max-height: calc(100vh - 200px);
 	}
 
 	.reg-section-head {
@@ -1642,7 +1503,7 @@
 		cursor: pointer;
 		font-family: inherit;
 		transition: background 0.12s;
-		flex-shrink: 0; /* Prevent header from shrinking */
+		flex-shrink: 0;
 	}
 
 	.reg-section-head:hover {
@@ -1675,40 +1536,24 @@
 		line-height: 0;
 	}
 
-	/* Scrollable area for courses only - no scrollbar visible */
 	.reg-courses-scroll {
 		flex: 1;
 		overflow-y: auto;
-		scrollbar-width: none; /* Firefox - hides scrollbar */
-		-ms-overflow-style: none; /* IE/Edge - hides scrollbar */
+		scrollbar-width: none;
+		-ms-overflow-style: none;
 	}
-
-	/* Chrome/Safari/Opera - hides scrollbar */
 	.reg-courses-scroll::-webkit-scrollbar {
 		display: none;
 	}
 
-	/* Submit footer - always visible at bottom */
 	.submit-footer {
 		display: flex;
 		flex-direction: column;
 		gap: 0.5rem;
 		padding: 1rem;
 		border-top: 1px solid var(--color-border);
-		flex-shrink: 0; /* Prevent footer from shrinking */
+		flex-shrink: 0;
 		background: var(--color-surface);
-	}
-
-	.reg-list-wrapper {
-		max-height: 600px;
-		overflow-y: auto;
-		scrollbar-width: none; /* Firefox - hides scrollbar */
-		-ms-overflow-style: none; /* IE/Edge - hides scrollbar */
-	}
-
-	/* Chrome/Safari/Opera - hides scrollbar */
-	.reg-list-wrapper::-webkit-scrollbar {
-		display: none;
 	}
 
 	.reg-empty {
@@ -1924,7 +1769,6 @@
 		margin: 0;
 	}
 
-	/* Update panel */
 	.update-panel {
 		background: var(--color-surface);
 		border: 2px solid #f59e0b;
@@ -2045,7 +1889,6 @@
 		gap: 0.3rem;
 	}
 
-	/* Mobile adjustments */
 	@media (max-width: 640px) {
 		.page {
 			padding: 0.75rem 1rem;
@@ -2074,7 +1917,6 @@
 		}
 	}
 
-	/* Small device horizontal scroll for course grid */
 	@media (max-width: 480px) {
 		.course-grid {
 			grid-template-columns: repeat(2, minmax(180px, 240px));
