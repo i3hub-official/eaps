@@ -1,100 +1,1010 @@
 <!-- src/routes/exam-officer/+layout.svelte -->
 <script lang="ts">
   import type { LayoutData } from './$types';
-  import { page } from '$app/stores';
+  import { page, navigating } from '$app/stores';
+  import { goto } from '$app/navigation';
+  import { initTheme, toggleTheme, getTheme } from '$lib/index.js';
+  import { onMount } from 'svelte';
+  import { slide } from 'svelte/transition';
+  import { cubicOut } from 'svelte/easing';
   import {
-    Home, ClipboardList, BarChart2,
-    Bell, User, LogOut, Menu, X
+    LayoutDashboard, ClipboardList, X,
+    Sun, Moon, LogOut, ChevronRight, LoaderCircle,
+    CirclePlus, ChartColumn, ChevronDown, Bell, CheckCheck,
+    Clock, Menu, User, PanelLeftClose, PanelLeftOpen,
+    Zap, Download, Settings, ListOrdered, Printer,
   } from '@lucide/svelte';
+  import { setContext } from 'svelte';
+  import { ROLE_CONTEXT_KEY } from '$lib/constants/context';
 
-  let { data, children }: { data: LayoutData; children: any } = $props();
-  let sidebarOpen = $state(false);
+  setContext(ROLE_CONTEXT_KEY, 'exam_officer');
 
-  const navItems = [
-    { href: '/exam-officer',          label: 'Dashboard', icon: Home },
-    { href: '/exam-officer/exams',    label: 'Exams',     icon: ClipboardList },
-    { href: '/exam-officer/results',  label: 'Results',   icon: BarChart2 },
+  let { data, children }: { data: LayoutData; children: import('svelte').Snippet } = $props();
+
+  onMount(() => initTheme());
+
+  // ── Core UI State ─────────────────────────────────────────────────────────
+  let theme         = $derived(getTheme());
+  let collapsed     = $state(false);
+  let mobileOpen    = $state(false);
+  let navLoading    = $state<string | null>(null);
+  let showSignout   = $state(false);
+  let isSigningOut  = $state(false);
+  let showNotifs    = $state(false);
+  let notifications = $state<any[]>(data.notifications ?? []);
+  let markingAll    = $state(false);
+
+  // ── Accordion State ──────────────────────────────────────────────────────
+  let userOpenGroup = $state<string | null>(null);
+
+  const unreadCount   = $derived(data.unreadCount ?? notifications.filter(n => !n.isRead).length);
+  const activeExams   = $derived(data.stats?.activeExams   ?? 0);
+  const totalExams    = $derived(data.stats?.totalExams    ?? 0);
+  const pendingResults = $derived(data.stats?.pendingResults ?? 0);
+
+  onMount(() => {
+    const saved = localStorage.getItem('eo-sidebar-collapsed');
+    if (saved !== null) collapsed = JSON.parse(saved);
+  });
+
+  $effect(() => {
+    if (typeof localStorage !== 'undefined')
+      localStorage.setItem('eo-sidebar-collapsed', JSON.stringify(collapsed));
+  });
+
+  $effect(() => { if ($navigating) mobileOpen = false; });
+
+  const currentPath = $derived($page.url.pathname);
+
+  // ── Derived: which group should be open based on route ───────────────────
+  const routeGroup = $derived.by(() => {
+    if (currentPath.startsWith('/exam-officer/exams'))   return 'Exams';
+    if (currentPath.startsWith('/exam-officer/results')) return 'Results';
+    return null;
+  });
+
+  const openGroup = $derived(userOpenGroup ?? routeGroup);
+
+  // ── Nav Structure ─────────────────────────────────────────────────────────
+  type NavChild = {
+    href: string;
+    label: string;
+    icon: any;
+    sectionLabel?: string;
+    badge?: () => number | null;
+  };
+  type NavItem = {
+    href: string;
+    label: string;
+    icon: any;
+    badge?: () => number | null;
+    children?: NavChild[];
+  };
+
+  const nav: NavItem[] = [
+    {
+      href:  '/exam-officer',
+      label: 'Dashboard',
+      icon:  LayoutDashboard,
+    },
+    {
+      href:  '/exam-officer/exams',
+      label: 'Exams',
+      icon:  ClipboardList,
+      badge: () => activeExams || null,
+      children: [
+        { href: '/exam-officer/exams',        label: 'All Exams',   icon: ListOrdered, sectionLabel: 'Overview' },
+        { href: '/exam-officer/exams/create', label: 'Create Exam', icon: CirclePlus,  sectionLabel: 'Actions'  },
+      ],
+    },
+    {
+      href:  '/exam-officer/results',
+      label: 'Results',
+      icon:  ChartColumn,
+      badge: () => pendingResults || null,
+      children: [
+        { href: '/exam-officer/results',        label: 'All Results', icon: ChartColumn, sectionLabel: 'Overview' },
+        { href: '/exam-officer/results/export', label: 'Export',      icon: Download,    sectionLabel: 'Actions'  },
+        { href: '/exam-officer/results/print',  label: 'Print',       icon: Printer      },
+      ],
+    },
+    {
+      href:  '/exam-officer/notifications',
+      label: 'Notifications',
+      icon:  Bell,
+    },
+    {
+      href:  '/exam-officer/profile',
+      label: 'Profile',
+      icon:  User,
+      children: [
+        { href: '/exam-officer/profile',           label: 'My Profile', icon: User,     sectionLabel: 'Personal'    },
+        { href: '/exam-officer/profile/settings',  label: 'Settings',   icon: Settings, sectionLabel: 'Preferences' },
+      ],
+    },
   ];
 
+  // ── Active Helpers ────────────────────────────────────────────────────────
   function isActive(href: string) {
-    return href === '/exam-officer'
-      ? $page.url.pathname === '/exam-officer'
-      : $page.url.pathname.startsWith(href);
+    const [path] = href.split('?');
+    if (path === '/exam-officer') return currentPath === '/exam-officer';
+    return currentPath === path;
   }
 
-  function initials(name: string) {
-    return name.split(' ').map((w: string) => w[0]).join('').slice(0, 2).toUpperCase();
+  function isGroupActive(item: NavItem) {
+    if (!item.children) return isActive(item.href);
+    return item.children.some(c => isActive(c.href)) ||
+      currentPath.startsWith(item.href + '/');
+  }
+
+  function isGroupOpen(item: NavItem) {
+    return openGroup === item.label;
+  }
+
+  function toggleGroup(item: NavItem) {
+    if (!item.children) return;
+    userOpenGroup = openGroup === item.label ? null : item.label;
+  }
+
+  // ── Navigation ────────────────────────────────────────────────────────────
+  async function navigate(href: string, e: MouseEvent) {
+    e.preventDefault();
+    if (navLoading) return;
+    navLoading = href;
+    mobileOpen = false;
+    try { await goto(href); }
+    finally { setTimeout(() => (navLoading = null), 300); }
+  }
+
+  // ── Sign Out ──────────────────────────────────────────────────────────────
+  async function confirmSignout() {
+    if (isSigningOut) return;
+    isSigningOut = true;
+    try {
+      await fetch('/logout', { method: 'POST', credentials: 'same-origin' });
+    } catch { /* fallback */ }
+    const f = document.createElement('form');
+    f.method = 'POST'; f.action = '/logout';
+    document.body.appendChild(f); f.submit();
+  }
+
+  function cancelSignout() {
+    if (!isSigningOut) showSignout = false;
+  }
+
+  // ── Notifications ─────────────────────────────────────────────────────────
+  async function markAllRead() {
+    if (markingAll || !unreadCount) return;
+    markingAll = true;
+    try {
+      const res = await fetch('/api/notifications/read-all', { method: 'POST' });
+      if (res.ok) notifications = notifications.map(n => ({ ...n, isRead: true }));
+    } finally { markingAll = false; }
+  }
+
+  async function markOneRead(id: string) {
+    const notif = notifications.find(n => n.id === id);
+    if (!notif || notif.isRead) return;
+    notifications = notifications.map(n => (n.id === id ? { ...n, isRead: true } : n));
+    try {
+      await fetch(`/api/notifications/${id}/read`, { method: 'POST' });
+    } catch {
+      notifications = notifications.map(n => (n.id === id ? { ...n, isRead: false } : n));
+    }
+  }
+
+  let notifRef = $state<HTMLDivElement | null>(null);
+  function handleDocClick(e: MouseEvent) {
+    if (showNotifs && notifRef && !notifRef.contains(e.target as Node)) showNotifs = false;
+  }
+  $effect(() => {
+    if (showNotifs) {
+      document.addEventListener('click', handleDocClick, true);
+      return () => document.removeEventListener('click', handleDocClick, true);
+    }
+  });
+
+  // ── Breadcrumbs ───────────────────────────────────────────────────────────
+  const breadcrumbs = $derived((() => {
+    const parts = currentPath.replace(/^\/exam-officer/, '').split('/').filter(Boolean);
+    if (!parts.length) return [];
+    const map: Record<string, string> = {
+      exams: 'Exams', create: 'Create', results: 'Results',
+      profile: 'Profile', notifications: 'Notifications',
+      export: 'Export', print: 'Print', settings: 'Settings',
+    };
+    const crumbs = [{ label: 'Home', href: '/exam-officer' }];
+    let built = '/exam-officer';
+    for (const p of parts) {
+      built += '/' + p;
+      const label = /^[0-9a-f-]{36}$/i.test(p) ? 'Exam' : (map[p] ?? p[0].toUpperCase() + p.slice(1).replace(/-/g, ' '));
+      crumbs.push({ label, href: built });
+    }
+    return crumbs;
+  })());
+
+  function reltime(date: string) {
+    const m = Math.floor((Date.now() - new Date(date).getTime()) / 60000);
+    if (m < 1) return 'Just now';
+    if (m < 60) return `${m}m ago`;
+    const h = Math.floor(m / 60);
+    if (h < 24) return `${h}h ago`;
+    return `${Math.floor(h / 24)}d ago`;
+  }
+
+  const initials = $derived(
+    (data.user?.fullName ?? 'E').trim().split(/\s+/).filter(Boolean)
+      .reduce((a: string, w: string, i: number, arr: string[]) =>
+        (i === 0 || i === arr.length - 1) ? a + w[0] : a, '')
+      .toUpperCase().slice(0, 2)
+  );
+
+  const fullname = $derived(data.user?.fullName ?? 'Exam Officer');
+
+  // ── Keyboard Shortcuts ────────────────────────────────────────────────────
+  function handleKeydown(e: KeyboardEvent) {
+    if (e.key === 'Escape') {
+      if (showSignout) { showSignout = false; return; }
+      if (showNotifs)  { showNotifs  = false; return; }
+      if (mobileOpen)  { mobileOpen  = false; return; }
+    }
+    if ((e.ctrlKey || e.metaKey) && e.key === 'b') {
+      e.preventDefault();
+      collapsed = !collapsed;
+    }
   }
 </script>
 
-<svelte:head>
-  <style>:root{--p-accent:#0ea5e9;--p-accent-dim:rgba(14,165,233,.12);--p-accent-hover:#0284c7;--p-accent-text:#0c4a6e;}</style>
-</svelte:head>
+<svelte:window onkeydown={handleKeydown} />
+<svelte:head><title>Exam Officer — MOUAU eTest</title></svelte:head>
 
-<div class="sidebar-overlay" class:open={sidebarOpen} onclick={() => sidebarOpen = false} role="none"></div>
+<!-- Mobile overlay -->
+{#if mobileOpen}
+  <div class="mob-overlay" onclick={() => (mobileOpen = false)} aria-hidden="true"></div>
+{/if}
 
-<div class="portal-shell">
-  <aside class="sidebar" class:open={sidebarOpen}>
-    <a href="/exam-officer" class="sidebar-logo">
-      <div class="sidebar-logo-icon"><ClipboardList size={17} /></div>
-      <div class="sidebar-logo-text">
-        <span class="sidebar-logo-title">MOUAU eTest</span>
-        <span class="sidebar-logo-role">Exam Officer</span>
+<!-- Sign-out modal -->
+{#if showSignout}
+  <div class="modal-bg" onclick={cancelSignout} role="dialog" aria-modal="true" aria-labelledby="signout-title">
+    <div class="modal" onclick={e => e.stopPropagation()}>
+      <div class="modal-ico" class:spinning={isSigningOut}>
+        {#if isSigningOut}<LoaderCircle size={22} class="spin" />{:else}<LogOut size={22} />{/if}
       </div>
-    </a>
+      <h3 id="signout-title">Sign out?</h3>
+      <p>You will need to sign in again to access your dashboard.</p>
+      <div class="modal-row">
+        <button class="btn-ghost" onclick={cancelSignout} disabled={isSigningOut} type="button">Cancel</button>
+        <button class="btn-danger" onclick={confirmSignout} disabled={isSigningOut} type="button">
+          {#if isSigningOut}<LoaderCircle size={14} class="spin" /><span>Signing out...</span>
+          {:else}<LogOut size={14} /><span>Sign out</span>{/if}
+        </button>
+      </div>
+    </div>
+  </div>
+{/if}
 
-    <nav class="sidebar-nav">
-      {#each navItems as item}
-        <a
-          href={item.href}
-          class="nav-link"
-          class:active={isActive(item.href)}
-          onclick={() => sidebarOpen = false}
-        >
-          <item.icon size={15} />{item.label}
-        </a>
+<!-- Shell -->
+<div class="shell" class:collapsed class:signing-out={isSigningOut}>
+
+  <!-- ═══ SIDEBAR ═══ -->
+  <aside class="sidebar" class:collapsed class:mob-open={mobileOpen}>
+
+    <!-- Brand -->
+    <div class="sidebar-top">
+      <a href="/exam-officer" class="brand" aria-label="Exam Officer home" onclick={e => navigate('/exam-officer', e)}>
+        <div class="brand-icon"><ClipboardList size={17} strokeWidth={2} /></div>
+        {#if !collapsed}
+          <div class="brand-copy">
+            <span class="brand-name">MOUAU <em>eTest</em></span>
+            <span class="brand-role">Exam Officer Portal</span>
+          </div>
+        {/if}
+      </a>
+      <button class="tog-btn desktop-only" type="button"
+        onclick={() => (collapsed = !collapsed)}
+        aria-label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+        title={collapsed ? 'Expand (Ctrl+B)' : 'Collapse (Ctrl+B)'}
+      >
+        {#if collapsed}<PanelLeftOpen size={15} />{:else}<PanelLeftClose size={15} />{/if}
+      </button>
+      <button class="tog-btn mobile-only" type="button" onclick={() => (mobileOpen = false)} aria-label="Close menu">
+        <X size={15} />
+      </button>
+    </div>
+
+    <!-- Stats strip -->
+    {#if !collapsed}
+      <div class="stats-row">
+        <div class="stat" class:pulse-stat={activeExams > 0}>
+          <div class="stat-dot" class:pulse={activeExams > 0}></div>
+          <span class="stat-n">{activeExams}</span>
+          <span class="stat-l">Active</span>
+        </div>
+        <div class="stat-div"></div>
+        <div class="stat">
+          <ClipboardList size={10} />
+          <span class="stat-n">{totalExams}</span>
+          <span class="stat-l">Total</span>
+        </div>
+        <div class="stat-div"></div>
+        <div class="stat" class:amber={pendingResults > 0}>
+          <Clock size={10} />
+          <span class="stat-n">{pendingResults}</span>
+          <span class="stat-l">Pending</span>
+        </div>
+      </div>
+    {/if}
+
+    <!-- Nav -->
+    <nav class="nav" aria-label="Exam Officer navigation">
+      {#each nav as item (item.label)}
+
+        {#if !item.children}
+          <!-- ── Flat link ─────────────────────────────────────────────── -->
+          {@const active  = isActive(item.href)}
+          {@const loading = navLoading === item.href}
+          <a
+            href={item.href}
+            class="nav-lnk"
+            class:active
+            class:loading
+            onclick={e => navigate(item.href, e)}
+            title={collapsed ? item.label : undefined}
+            aria-current={active ? 'page' : undefined}
+          >
+            <div class="nav-icon" class:active>
+              {#if loading}<div class="spinner"></div>
+              {:else}<item.icon size={16} strokeWidth={2} />{/if}
+            </div>
+            {#if !collapsed}
+              <span class="nav-label">{item.label}</span>
+              {#if item.label === 'Notifications' && unreadCount > 0}
+                <span class="badge-count">{unreadCount > 99 ? '99+' : unreadCount}</span>
+              {:else if item.badge?.()}
+                <span class="badge-count badge-live">{item.badge()}</span>
+              {/if}
+            {:else if (item.label === 'Notifications' && unreadCount > 0) || item.badge?.()}
+              <span class="collapsed-dot"></span>
+            {/if}
+          </a>
+
+        {:else if collapsed}
+          <!-- ── Collapsed group: icon-only link ───────────────────────── -->
+          {@const gactive = isGroupActive(item)}
+          <a
+            href={item.href}
+            class="nav-lnk"
+            class:active={gactive}
+            onclick={e => navigate(item.href, e)}
+            title={item.label}
+          >
+            <div class="nav-icon" class:active={gactive}>
+              <item.icon size={16} strokeWidth={2} />
+            </div>
+            {#if item.badge?.()}
+              <span class="collapsed-dot"></span>
+            {/if}
+          </a>
+
+        {:else}
+          <!-- ── Expanded group: accordion ─────────────────────────────── -->
+          {@const gopen   = isGroupOpen(item)}
+          {@const gactive = isGroupActive(item)}
+          <div class="nav-group">
+            <button
+              class="nav-lnk group-trigger"
+              class:active={gactive}
+              onclick={() => toggleGroup(item)}
+              type="button"
+              aria-expanded={gopen}
+            >
+              <div class="nav-icon" class:active={gactive}>
+                <item.icon size={16} strokeWidth={2} />
+              </div>
+              <span class="nav-label">{item.label}</span>
+              {#if item.badge?.()}
+                <span class="badge-count badge-live">{item.badge()}</span>
+              {/if}
+              <span class="chevron" class:open={gopen}>
+                <ChevronDown size={13} strokeWidth={2.5} />
+              </span>
+            </button>
+
+            {#if gopen}
+              <div class="nav-children" transition:slide={{ duration: 200, easing: cubicOut }}>
+                {#each item.children as child (child.href)}
+                  {#if child.sectionLabel}
+                    <div class="nav-section-label">{child.sectionLabel}</div>
+                  {/if}
+
+                  {@const cactive  = isActive(child.href)}
+                  {@const cloading = navLoading === child.href}
+                  <a
+                    href={child.href}
+                    class="nav-child"
+                    class:active={cactive}
+                    class:loading={cloading}
+                    onclick={e => navigate(child.href, e)}
+                    aria-current={cactive ? 'page' : undefined}
+                  >
+                    <span class="child-icon" class:active={cactive}>
+                      {#if cloading}
+                        <div class="spinner sm"></div>
+                      {:else}
+                        <child.icon size={13} strokeWidth={2} />
+                      {/if}
+                    </span>
+                    <span class="child-label">{child.label}</span>
+                    {#if cactive}<span class="child-pip"></span>{/if}
+                    {#if child.badge?.()}
+                      <span class="child-badge">{child.badge()}</span>
+                    {/if}
+                  </a>
+                {/each}
+              </div>
+            {/if}
+          </div>
+        {/if}
+
       {/each}
     </nav>
 
+    <!-- Loading bar -->
+    {#if navLoading}
+      <div class="load-bar"><div class="load-progress"></div></div>
+    {/if}
+
+    <!-- Footer -->
     <div class="sidebar-foot">
-      <a href="/exam-officer/notifications" class="nav-link" class:active={isActive('/exam-officer/notifications')} onclick={() => sidebarOpen = false}>
-        <Bell size={15} />Notifications
-        {#if data.unreadCount > 0}<span class="notif-badge">{data.unreadCount}</span>{/if}
+      <button class="foot-btn" type="button" onclick={toggleTheme}
+        title={collapsed ? (theme === 'dark' ? 'Light mode' : 'Dark mode') : undefined}
+      >
+        <div class="foot-icon">
+          {#if theme === 'dark'}<Sun size={14} />{:else}<Moon size={14} />{/if}
+        </div>
+        {#if !collapsed}<span>{theme === 'dark' ? 'Light mode' : 'Dark mode'}</span>{/if}
+      </button>
+
+      <a href="/exam-officer/profile" class="profile-row"
+        onclick={e => navigate('/exam-officer/profile', e)}
+        title={collapsed ? data.user?.fullName : undefined}
+      >
+        <div class="avatar">{initials}</div>
+        {#if !collapsed}
+          <div class="profile-copy">
+            <span class="profile-name">{fullname}</span>
+            <span class="profile-sub">Exam Officer</span>
+          </div>
+          <ChevronRight size={13} class="profile-arr" />
+        {/if}
       </a>
-      <a href="/exam-officer/profile" class="nav-link" class:active={isActive('/exam-officer/profile')}><User size={15} />Profile</a>
-      <a href="/logout" class="nav-link"><LogOut size={15} />Sign out</a>
+
+      <button class="foot-btn signout" type="button" onclick={() => (showSignout = true)}
+        title={collapsed ? 'Sign out' : undefined}
+      >
+        <div class="foot-icon"><LogOut size={14} /></div>
+        {#if !collapsed}<span>Sign out</span>{/if}
+      </button>
     </div>
   </aside>
 
-  <div class="portal-main">
-    <header class="portal-topbar">
-      <div class="topbar-left">
-        <button class="mob-toggle" onclick={() => sidebarOpen = !sidebarOpen}>
-          {#if sidebarOpen}<X size={18} />{:else}<Menu size={18} />{/if}
+  <!-- ═══ MAIN ═══ -->
+  <div class="main">
+
+    <!-- Topbar -->
+    <header class="topbar">
+      <div class="topbar-l">
+        <button class="mob-menu mobile-only" type="button" onclick={() => (mobileOpen = true)} aria-label="Open menu">
+          <Menu size={17} />
         </button>
-        <div class="topbar-breadcrumb">
-          Exam Officer &rsaquo; <strong>{data.user?.fullName ?? ''}</strong>
-        </div>
+
+        {#if breadcrumbs.length}
+          <nav class="bc" aria-label="Breadcrumb">
+            {#each breadcrumbs as crumb, i (crumb.href)}
+              {#if i > 0}<ChevronRight size={11} class="bc-sep" />{/if}
+              {#if i === breadcrumbs.length - 1}
+                <span class="bc-cur">{crumb.label}</span>
+              {:else}
+                <a href={crumb.href} class="bc-lnk" onclick={e => navigate(crumb.href, e)}>{crumb.label}</a>
+              {/if}
+            {/each}
+          </nav>
+        {:else}
+          <span class="greet">Welcome back, <strong>{fullname}</strong></span>
+        {/if}
       </div>
-      <div class="topbar-actions">
-        <a href="/exam-officer/notifications" class="topbar-icon-btn">
-          <Bell size={17} />
-          {#if data.unreadCount > 0}<span class="topbar-badge">{data.unreadCount}</span>{/if}
-        </a>
-        <a href="/exam-officer/profile" class="topbar-avatar">
-          {initials(data.user?.fullName ?? 'E')}
-        </a>
+
+      <div class="topbar-r">
+        {#if navLoading || $navigating}
+          <div class="load-pill"><LoaderCircle size={13} class="spin" /><span>Loading...</span></div>
+        {/if}
+
+        <!-- Notifications -->
+        <div class="notif-anchor" bind:this={notifRef}>
+          <button class="icon-btn" class:notif-lit={unreadCount > 0} type="button"
+            onclick={() => (showNotifs = !showNotifs)}
+            aria-label="Notifications" aria-haspopup="true" aria-expanded={showNotifs}
+          >
+            <Bell size={16} />
+            {#if unreadCount > 0}
+              <span class="notif-badge">{unreadCount > 99 ? '99+' : unreadCount}</span>
+            {/if}
+          </button>
+
+          {#if showNotifs}
+            <div class="notif-drop" onclick={e => e.stopPropagation()} transition:slide={{ duration: 150, easing: cubicOut }}>
+              <div class="notif-head">
+                <span class="notif-title">Notifications</span>
+                {#if unreadCount > 0}
+                  <button class="mark-all" onclick={markAllRead} disabled={markingAll} type="button">
+                    {#if markingAll}<LoaderCircle size={11} class="spin" />{:else}<CheckCheck size={11} />{/if}
+                    Mark all read
+                  </button>
+                {/if}
+              </div>
+              <div class="notif-list">
+                {#if !notifications.length}
+                  <div class="notif-empty"><Bell size={28} strokeWidth={1.2} /><p>No notifications</p></div>
+                {:else}
+                  {#each notifications.slice(0, 20) as n (n.id)}
+                    <button class="notif-item" class:unread={!n.isRead} onclick={() => markOneRead(n.id)} type="button">
+                      <div class="notif-pip" class:active={!n.isRead}></div>
+                      <div class="notif-body">
+                        <p class="notif-t">{n.title}</p>
+                        <p class="notif-m">{n.message}</p>
+                        <span class="notif-time">{reltime(n.createdAt)}</span>
+                      </div>
+                    </button>
+                  {/each}
+                {/if}
+              </div>
+              {#if notifications.length}
+                <div class="notif-foot">
+                  <a href="/exam-officer/notifications" onclick={e => { showNotifs = false; navigate('/exam-officer/notifications', e); }}>
+                    All notifications
+                  </a>
+                </div>
+              {/if}
+            </div>
+          {/if}
+        </div>
+
+        <button class="icon-btn" type="button" onclick={toggleTheme} aria-label="Toggle theme" title="Toggle theme">
+          {#if theme === 'dark'}<Sun size={16} />{:else}<Moon size={16} />{/if}
+        </button>
+
+        <div class="role-pill"><ClipboardList size={12} /><span>Exam Officer</span></div>
       </div>
     </header>
-    <main class="portal-content">{@render children()}</main>
+
+    <main class="content">
+      <div class="content-inner">
+        {@render children()}
+      </div>
+    </main>
   </div>
 </div>
 
 <style>
-  @import '$lib/styles/portals.css';
-  .topbar-left{display:flex;align-items:center;gap:.75rem;}
-  .topbar-icon-btn{position:relative;display:flex;align-items:center;justify-content:center;width:34px;height:34px;border-radius:.5rem;color:var(--color-muted);text-decoration:none;transition:background .15s,color .15s;}
-  .topbar-icon-btn:hover{background:var(--color-bg);color:var(--color-text);}
-  .topbar-badge{position:absolute;top:2px;right:2px;min-width:16px;height:16px;padding:0 4px;background:var(--p-accent);color:white;font-size:.58rem;font-weight:700;border-radius:2rem;display:flex;align-items:center;justify-content:center;}
-  .notif-badge{margin-left:auto;min-width:18px;height:18px;padding:0 5px;background:var(--p-accent);color:white;font-size:.62rem;font-weight:700;border-radius:2rem;display:flex;align-items:center;justify-content:center;}
+  /* ── Design tokens — sky-blue accent to match the existing exam-officer
+       portal accent (--p-accent: #0ea5e9) instead of the lecturer's indigo ── */
+  :global(:root) {
+    --eo-50:  #f0f9ff;
+    --eo-100: #e0f2fe;
+    --eo-200: #bae6fd;
+    --eo-300: #7dd3fc;
+    --eo-400: #38bdf8;
+    --eo-500: #0ea5e9;
+    --eo-600: #0284c7;
+    --eo-700: #0369a1;
+    --eo-800: #075985;
+    --eo-900: #0c4a6e;
+    --eo-soft: rgba(14, 165, 233, 0.08);
+  }
+
+  /* ── Shell ───────────────────────────────────────────────────────────────── */
+  .shell { display: flex; height: 100dvh; overflow: hidden; background: var(--color-bg); }
+  .shell.signing-out { pointer-events: none; opacity: 0.85; transition: opacity 0.3s ease; }
+  .main { flex: 1; display: flex; flex-direction: column; overflow: hidden; min-width: 0; }
+
+  /* ── Sidebar ─────────────────────────────────────────────────────────────── */
+  .sidebar {
+    width: 240px; flex-shrink: 0;
+    display: flex; flex-direction: column;
+    background: var(--color-surface);
+    border-right: 1px solid var(--color-border);
+    transition: width 0.25s cubic-bezier(.4,0,.2,1);
+    overflow: hidden; position: relative; z-index: 40;
+  }
+  .sidebar.collapsed { width: 60px; }
+
+  /* ── Brand ───────────────────────────────────────────────────────────────── */
+  .sidebar-top {
+    display: flex; align-items: center; gap: 0.5rem;
+    padding: 0.875rem 0.75rem 0.75rem;
+    border-bottom: 1px solid var(--color-border);
+    flex-shrink: 0;
+  }
+  .brand { display: flex; align-items: center; gap: 0.55rem; text-decoration: none; flex: 1; min-width: 0; }
+  .brand-icon {
+    width: 32px; height: 32px; border-radius: 0.5rem; flex-shrink: 0;
+    background: linear-gradient(135deg, var(--eo-700), var(--eo-500));
+    display: flex; align-items: center; justify-content: center; color: #fff;
+    box-shadow: 0 2px 8px rgba(14, 165, 233, 0.25);
+  }
+  .brand-copy { display: flex; flex-direction: column; min-width: 0; overflow: hidden; }
+  .brand-name { font-size: 0.85rem; font-weight: 800; color: var(--color-text); white-space: nowrap; letter-spacing: -0.02em; }
+  .brand-name em { font-style: normal; color: var(--eo-600); }
+  .brand-role { font-size: 0.62rem; color: var(--color-muted); font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em; }
+
+  .tog-btn {
+    width: 28px; height: 28px; border-radius: 0.4rem; flex-shrink: 0;
+    border: 1px solid var(--color-border); background: var(--color-bg);
+    display: flex; align-items: center; justify-content: center;
+    color: var(--color-muted); cursor: pointer; transition: all 0.15s ease;
+  }
+  .tog-btn:hover { color: var(--color-text); border-color: var(--eo-500); background: var(--eo-soft); }
+  .tog-btn:active { transform: scale(0.95); }
+
+  /* ── Stats row ───────────────────────────────────────────────────────────── */
+  .stats-row {
+    display: flex; align-items: center;
+    padding: 0.625rem 0.875rem;
+    border-bottom: 1px solid var(--color-border);
+    gap: 0.5rem; flex-shrink: 0;
+  }
+  .stat { display: flex; flex-direction: column; align-items: center; gap: 0.1rem; flex: 1; }
+  .stat-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--color-muted); }
+  .stat-dot.pulse { background: var(--eo-500); animation: ring 2s ease-in-out infinite; }
+  @keyframes ring {
+    0%, 100% { box-shadow: 0 0 0 0 rgba(14,165,233,0.5); }
+    50%       { box-shadow: 0 0 0 5px rgba(14,165,233,0); }
+  }
+  .stat-n { font-size: 0.875rem; font-weight: 800; color: var(--color-text); line-height: 1; }
+  .stat-l { font-size: 0.58rem; color: var(--color-muted); text-transform: uppercase; letter-spacing: 0.05em; font-weight: 600; }
+  .stat.amber .stat-n { color: var(--eo-600); }
+  .stat.pulse-stat .stat-n { color: var(--eo-600); }
+  .stat-div { width: 1px; height: 20px; background: var(--color-border); flex-shrink: 0; }
+
+  /* ── Nav ─────────────────────────────────────────────────────────────────── */
+  .nav {
+    flex: 1; overflow-y: auto; overflow-x: hidden;
+    padding: 0.5rem;
+    display: flex; flex-direction: column; gap: 1px;
+    scrollbar-width: thin;
+    scrollbar-color: var(--color-border) transparent;
+  }
+  .nav::-webkit-scrollbar { width: 4px; }
+  .nav::-webkit-scrollbar-thumb { background: var(--color-border); border-radius: 4px; }
+
+  .nav-lnk {
+    display: flex; align-items: center; gap: 0.55rem;
+    padding: 0.55rem 0.6rem;
+    border-radius: 0.55rem;
+    text-decoration: none; font-size: 0.825rem; font-weight: 600;
+    color: var(--color-muted);
+    border: none; background: none; cursor: pointer;
+    font-family: inherit; width: 100%; text-align: left;
+    transition: background 0.15s ease, color 0.15s ease;
+    position: relative;
+  }
+  .nav-lnk:hover { background: var(--color-bg); color: var(--color-text); }
+  .nav-lnk:active { transform: scale(0.98); }
+  .nav-lnk.active { background: var(--eo-soft); color: var(--eo-600); }
+  .nav-lnk.loading { opacity: 0.7; pointer-events: none; }
+
+  .nav-icon {
+    width: 28px; height: 28px; border-radius: 0.4rem; flex-shrink: 0;
+    display: flex; align-items: center; justify-content: center;
+    background: transparent; color: inherit;
+    transition: background 0.15s ease;
+  }
+  .nav-icon.active { background: rgba(14,165,233,0.12); color: var(--eo-600); }
+  .nav-lnk:hover .nav-icon:not(.active) { background: var(--color-border); }
+
+  .nav-label { flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+  .chevron {
+    flex-shrink: 0; color: var(--color-muted);
+    display: flex; align-items: center;
+    transition: transform 0.2s cubic-bezier(.4,0,.2,1);
+  }
+  .chevron.open { transform: rotate(180deg); }
+
+  .badge-count {
+    font-size: 0.6rem; font-weight: 800; padding: 0.1rem 0.4rem;
+    border-radius: 999px; background: var(--eo-soft); color: var(--eo-600); flex-shrink: 0;
+  }
+  .badge-live { background: rgba(22,163,74,0.12); color: #16a34a; }
+  .collapsed-dot {
+    position: absolute; top: 6px; right: 6px;
+    width: 6px; height: 6px; border-radius: 50%;
+    background: var(--eo-600);
+    animation: pulse-dot 2s ease-in-out infinite;
+  }
+  @keyframes pulse-dot { 0%, 100% { opacity: 1; } 50% { opacity: 0.4; } }
+
+  .nav-group { display: flex; flex-direction: column; }
+
+  .nav-children {
+    display: flex; flex-direction: column; gap: 1px;
+    margin: 2px 0 4px 14px;
+    padding-left: 10px;
+    border-left: 1.5px solid var(--color-border);
+  }
+
+  .nav-section-label {
+    font-size: 0.58rem; font-weight: 800; text-transform: uppercase;
+    letter-spacing: 0.09em; color: var(--color-muted);
+    padding: 0.55rem 0.5rem 0.2rem;
+    opacity: 0.55;
+  }
+  .nav-children > .nav-section-label:first-child { padding-top: 0.25rem; }
+
+  .nav-child {
+    display: flex; align-items: center; gap: 0.5rem;
+    padding: 0.44rem 0.6rem;
+    border-radius: 0.45rem;
+    text-decoration: none; font-size: 0.795rem; font-weight: 500;
+    color: var(--color-muted);
+    transition: background 0.12s ease, color 0.12s ease;
+    position: relative;
+  }
+  .nav-child:hover { background: var(--color-bg); color: var(--color-text); }
+  .nav-child.active {
+    background: var(--eo-soft);
+    color: var(--eo-600);
+    font-weight: 700;
+  }
+  .nav-child.loading { opacity: 0.6; pointer-events: none; }
+
+  .child-icon {
+    width: 22px; height: 22px; border-radius: 0.35rem; flex-shrink: 0;
+    display: flex; align-items: center; justify-content: center;
+    color: inherit; background: transparent; transition: background 0.12s;
+  }
+  .child-icon.active { background: rgba(14,165,233,0.1); color: var(--eo-600); }
+  .nav-child:hover .child-icon:not(.active) { background: var(--color-border); }
+
+  .child-label { flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .child-pip {
+    width: 5px; height: 5px; border-radius: 50%;
+    background: var(--eo-600); flex-shrink: 0; margin-left: auto;
+  }
+  .child-badge {
+    font-size: 0.55rem; font-weight: 700; padding: 0.05rem 0.35rem;
+    border-radius: 999px; background: var(--eo-soft); color: var(--eo-600);
+    flex-shrink: 0;
+  }
+
+  .spinner {
+    width: 14px; height: 14px; border-radius: 50%;
+    border: 2px solid var(--color-border); border-top-color: var(--eo-600);
+    animation: spin 0.6s linear infinite;
+  }
+  .spinner.sm { width: 11px; height: 11px; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  .load-bar { position: absolute; bottom: 0; left: 0; right: 0; height: 2px; background: var(--color-border); overflow: hidden; }
+  .load-progress { height: 100%; background: linear-gradient(90deg, var(--eo-600), var(--eo-400)); animation: loadbar 1.4s ease-in-out infinite; }
+  @keyframes loadbar {
+    0%   { width: 0%; margin-left: 0; }
+    50%  { width: 60%; margin-left: 20%; }
+    100% { width: 0%; margin-left: 100%; }
+  }
+
+  .sidebar-foot {
+    padding: 0.5rem; border-top: 1px solid var(--color-border);
+    display: flex; flex-direction: column; gap: 1px; flex-shrink: 0;
+  }
+  .foot-btn {
+    display: flex; align-items: center; gap: 0.55rem; padding: 0.5rem;
+    border-radius: 0.5rem; border: none; background: none; cursor: pointer;
+    color: var(--color-muted); font-size: 0.8rem; font-weight: 600;
+    font-family: inherit; width: 100%; text-align: left;
+    transition: background 0.12s ease, color 0.12s ease; white-space: nowrap;
+  }
+  .foot-btn:hover { background: var(--color-bg); color: var(--color-text); }
+  .foot-btn.signout:hover { color: #ef4444; background: rgba(239,68,68,0.06); }
+  .foot-icon {
+    width: 28px; height: 28px; border-radius: 0.4rem; flex-shrink: 0;
+    display: flex; align-items: center; justify-content: center;
+    background: var(--color-bg);
+  }
+  .profile-row {
+    display: flex; align-items: center; gap: 0.55rem; padding: 0.5rem;
+    border-radius: 0.5rem; text-decoration: none; transition: background 0.12s ease; cursor: pointer;
+  }
+  .profile-row:hover { background: var(--color-bg); }
+  .avatar {
+    width: 28px; height: 28px; border-radius: 0.4rem; flex-shrink: 0;
+    background: linear-gradient(135deg, var(--eo-700), var(--eo-500));
+    display: flex; align-items: center; justify-content: center;
+    font-size: 0.62rem; font-weight: 800; color: #fff; letter-spacing: 0.02em;
+  }
+  .profile-copy { flex: 1; display: flex; flex-direction: column; min-width: 0; overflow: hidden; }
+  .profile-name { font-size: 0.8rem; font-weight: 700; color: var(--color-text); white-space: nowrap; }
+  .profile-sub  { font-size: 0.62rem; color: var(--color-muted); font-weight: 600; }
+  .profile-arr { color: var(--color-muted); flex-shrink: 0; transition: transform 0.15s ease; }
+  .profile-row:hover .profile-arr { transform: translateX(2px); color: var(--color-text); }
+
+  .mob-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.45); z-index: 39; backdrop-filter: blur(3px); }
+
+  @media (max-width: 768px) {
+    .sidebar {
+      position: fixed; top: 0; left: 0; bottom: 0; z-index: 40;
+      transform: translateX(-100%);
+      transition: transform 0.25s cubic-bezier(.4,0,.2,1);
+      width: 260px !important;
+    }
+    .sidebar.mob-open { transform: translateX(0); }
+    .shell { display: block; }
+    .main  { height: 100dvh; }
+  }
+  .desktop-only { display: flex; }
+  .mobile-only  { display: none; }
+  @media (max-width: 768px) {
+    .desktop-only { display: none; }
+    .mobile-only  { display: flex; }
+  }
+
+  /* ── Topbar ──────────────────────────────────────────────────────────────── */
+  .topbar {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 0 1.25rem; height: 52px; flex-shrink: 0;
+    border-bottom: 1px solid var(--color-border);
+    background: var(--color-surface); gap: 1rem;
+  }
+  .topbar-l { display: flex; align-items: center; gap: 0.75rem; min-width: 0; }
+  .topbar-r { display: flex; align-items: center; gap: 0.5rem; flex-shrink: 0; }
+
+  .mob-menu {
+    width: 32px; height: 32px; border-radius: 0.5rem;
+    border: 1px solid var(--color-border); background: var(--color-bg);
+    display: none;
+    align-items: center; justify-content: center;
+    color: var(--color-muted); cursor: pointer; transition: all 0.15s ease;
+  }
+  .mob-menu:hover { border-color: var(--eo-500); color: var(--color-text); }
+
+  @media (max-width: 768px) {
+    .mob-menu { display: flex; }
+  }
+
+  .bc { display: flex; align-items: center; gap: 0.3rem; min-width: 0; }
+  .bc-lnk { font-size: 0.78rem; color: var(--color-muted); text-decoration: none; font-weight: 500; white-space: nowrap; transition: color 0.12s ease; }
+  .bc-lnk:hover { color: var(--eo-600); }
+  .bc-cur { font-size: 0.78rem; color: var(--color-text); font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .bc-sep { flex-shrink: 0; color: var(--color-muted); }
+  .greet { font-size: 0.82rem; color: var(--color-muted); }
+  .greet strong { color: var(--color-text); }
+
+  .load-pill {
+    display: flex; align-items: center; gap: 0.35rem;
+    font-size: 0.72rem; color: var(--color-muted); font-weight: 600;
+    padding: 0.3rem 0.6rem; border-radius: 999px;
+    background: var(--color-bg); border: 1px solid var(--color-border);
+  }
+  .icon-btn {
+    width: 32px; height: 32px; border-radius: 0.5rem;
+    border: 1px solid var(--color-border); background: var(--color-bg);
+    display: flex; align-items: center; justify-content: center;
+    color: var(--color-muted); cursor: pointer; position: relative;
+    transition: all 0.15s ease;
+  }
+  .icon-btn:hover { color: var(--color-text); border-color: var(--eo-500); background: var(--eo-soft); }
+  .icon-btn:active { transform: scale(0.95); }
+  .icon-btn.notif-lit { color: var(--eo-600); border-color: var(--eo-500); background: var(--eo-soft); }
+  .notif-badge {
+    position: absolute; top: -4px; right: -4px;
+    font-size: 0.55rem; font-weight: 800; padding: 0.1rem 0.3rem;
+    background: var(--eo-600); color: #fff;
+    border-radius: 999px; border: 1.5px solid var(--color-surface);
+    min-width: 14px; text-align: center;
+    animation: pop-in 0.3s ease;
+  }
+  @keyframes pop-in { 0% { transform: scale(0); } 80% { transform: scale(1.2); } 100% { transform: scale(1); } }
+
+  .role-pill {
+    display: flex; align-items: center; gap: 0.3rem;
+    font-size: 0.68rem; font-weight: 700; padding: 0.3rem 0.625rem;
+    border-radius: 999px; background: var(--eo-soft); color: var(--eo-600);
+    border: 1px solid color-mix(in srgb, var(--eo-600) 20%, transparent);
+  }
+
+  /* ── Notifications panel ─────────────────────────────────────────────────── */
+  .notif-anchor { position: relative; }
+  .notif-drop {
+    position: absolute; top: calc(100% + 8px); right: 0; width: 340px;
+    background: var(--color-surface); border: 1px solid var(--color-border);
+    border-radius: 0.875rem; box-shadow: 0 12px 40px rgba(0,0,0,0.16);
+    z-index: 200; overflow: hidden;
+  }
+  .notif-head {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 0.875rem 1rem 0.625rem;
+    border-bottom: 1px solid var(--color-border);
+  }
+  .notif-title { font-size: 0.82rem; font-weight: 800; color: var(--color-text); }
+  .mark-all {
+    display: flex; align-items: center; gap: 0.3rem;
+    font-size: 0.7rem; font-weight: 600; color: var(--eo-600);
+    background: none; border: none; cursor: pointer; font-family: inherit;
+    padding: 0.25rem 0.4rem; border-radius: 0.3rem; transition: background 0.12s ease;
+  }
+  .mark-all:hover { background: var(--eo-soft); }
+  .mark-all:disabled { opacity: 0.5; cursor: not-allowed; }
+  .notif-list { max-height: 320px; overflow-y: auto; scrollbar-width: thin; scrollbar-color: var(--color-border) transparent; }
+  .notif-item {
+    display: flex; align-items: flex-start; gap: 0.625rem;
+    padding: 0.75rem 1rem; width: 100%;
+    border: none; background: none; cursor: pointer; text-align: left;
+    font-family: inherit; border-bottom: 1px solid var(--color-border); transition: background 0.1s ease;
+  }
+  .notif-item:hover { background: var(--color-bg); }
+  .notif-item.unread { background: rgba(14,165,233,0.04); }
+  .notif-pip { width: 7px; height: 7px; border-radius: 50%; background: var(--color-border); flex-shrink: 0; margin-top: 4px; }
+  .notif-pip.active { background: var(--eo-600); animation: pulse-dot 2s ease-in-out infinite; }
+  .notif-body { flex: 1; min-width: 0; }
+  .notif-t { font-size: 0.78rem; font-weight: 700; color: var(--color-text); margin: 0 0 0.15rem; }
+  .notif-m { font-size: 0.72rem; color: var(--color-muted); margin: 0 0 0.25rem; line-height: 1.4; }
+  .notif-time { font-size: 0.65rem; color: var(--color-muted); font-weight: 600; }
+  .notif-empty { display: flex; flex-direction: column; align-items: center; gap: 0.5rem; padding: 2rem; color: var(--color-muted); font-size: 0.78rem; }
+  .notif-foot { padding: 0.625rem 1rem; border-top: 1px solid var(--color-border); }
+  .notif-foot a { font-size: 0.75rem; font-weight: 600; color: var(--eo-600); text-decoration: none; transition: opacity 0.12s ease; }
+  .notif-foot a:hover { opacity: 0.8; }
+
+  /* ── Content ─────────────────────────────────────────────────────────────── */
+  .content { flex: 1; overflow-y: auto; overflow-x: hidden; background: var(--color-bg); scroll-behavior: smooth; }
+  .content::-webkit-scrollbar { width: 6px; }
+  .content::-webkit-scrollbar-thumb { background: var(--color-border); border-radius: 6px; }
+  .content-inner { padding: 1.5rem; max-width: 1400px; margin: 0 auto; }
+  @media (max-width: 768px) { .content-inner { padding: 1rem; } }
+
+  /* ── Sign-out modal ──────────────────────────────────────────────────────── */
+  .modal-bg {
+    position: fixed; inset: 0; background: rgba(0,0,0,0.5); z-index: 300;
+    display: flex; align-items: center; justify-content: center;
+    backdrop-filter: blur(4px); animation: fade-in 0.2s ease;
+  }
+  @keyframes fade-in { from { opacity: 0; } to { opacity: 1; } }
+  .modal {
+    background: var(--color-surface); border: 1px solid var(--color-border);
+    border-radius: 1rem; padding: 1.75rem;
+    width: min(380px, calc(100vw - 2rem));
+    display: flex; flex-direction: column; align-items: center; gap: 0.625rem;
+    text-align: center; box-shadow: 0 24px 80px rgba(0,0,0,0.25);
+    animation: modal-in 0.25s cubic-bezier(.4,0,.2,1);
+  }
+  @keyframes modal-in { from { opacity: 0; transform: translateY(-10px) scale(0.98); } to { opacity: 1; transform: none; } }
+  .modal-ico {
+    width: 48px; height: 48px; border-radius: 50%;
+    background: rgba(239,68,68,0.1); color: #ef4444;
+    display: flex; align-items: center; justify-content: center;
+    margin-bottom: 0.25rem; transition: all 0.3s ease;
+  }
+  .modal-ico.spinning { background: var(--eo-soft); color: var(--eo-600); }
+  .modal h3 { font-size: 1.05rem; font-weight: 800; color: var(--color-text); margin: 0; }
+  .modal p  { font-size: 0.82rem; color: var(--color-muted); margin: 0; line-height: 1.5; }
+  .modal-row { display: flex; gap: 0.75rem; margin-top: 0.75rem; width: 100%; }
+  .btn-ghost {
+    flex: 1; padding: 0.625rem; border-radius: 0.625rem;
+    border: 1.5px solid var(--color-border); background: var(--color-bg);
+    font-size: 0.82rem; font-weight: 700; color: var(--color-text);
+    cursor: pointer; font-family: inherit; transition: all 0.15s ease;
+  }
+  .btn-ghost:hover:not(:disabled) { border-color: var(--color-text); background: var(--color-surface); }
+  .btn-ghost:active:not(:disabled) { transform: scale(0.98); }
+  .btn-danger {
+    flex: 1; padding: 0.625rem; border-radius: 0.625rem;
+    border: none; background: #ef4444; color: #fff;
+    font-size: 0.82rem; font-weight: 700; cursor: pointer;
+    font-family: inherit; display: flex; align-items: center; justify-content: center; gap: 0.4rem;
+    transition: all 0.15s ease;
+  }
+  .btn-danger:hover:not(:disabled) { background: #dc2626; box-shadow: 0 4px 12px rgba(239,68,68,0.3); }
+  .btn-danger:active:not(:disabled) { transform: scale(0.98); }
+  .btn-danger:disabled, .btn-ghost:disabled { opacity: 0.5; cursor: not-allowed; transform: none !important; }
+
+  :global(.spin) { animation: spin 0.7s linear infinite; display: inline-block; }
 </style>

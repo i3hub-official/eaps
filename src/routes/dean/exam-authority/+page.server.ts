@@ -1,7 +1,4 @@
-
-// src/routes/dean/exam-authority/page.server.ts
-import type { PageServerLoad, Actions } from './$types';
-import { requireDean } from '$lib/server/auth/guards.js';
+// src/routes/dean/exam-authority/+page.server.ts
 import type { PageServerLoad, Actions } from './$types';
 import { requireDean } from '$lib/server/auth/guards.js';
 import { getPrismaClient } from '$lib/server/db/index.js';
@@ -67,5 +64,45 @@ export const actions: Actions = {
 		} catch (err) {
 			return fail(400, { error: (err as Error).message });
 		}
+	},
+
+	setAuthorityBulk: async ({ request, locals }) => {
+		requireDean(locals.user);
+		const collegeId = locals.user!.collegeId!;
+		const form = await request.formData();
+
+		const offeringIdsRaw = form.get('offeringIds') as string;
+		const offeringIds = offeringIdsRaw.split(',').filter(Boolean);
+		const scope = form.get('scope') as ExamAuthorityScope;
+		const reason = (form.get('reason') as string) || undefined;
+		const assignedUserId = (form.get('assignedUserId') as string) || undefined;
+
+		const results = { success: 0, failed: 0, errors: [] as string[] };
+
+		for (const offeringId of offeringIds) {
+			try {
+				await setExamAuthority({
+					offeringId,
+					collegeId,
+					scope,
+					setByDeanId: locals.user!.id,
+					reason,
+					assignedUserId
+				});
+				results.success++;
+			} catch (err) {
+				results.failed++;
+				results.errors.push((err as Error).message);
+			}
+		}
+
+		if (results.failed > 0) {
+			return fail(400, {
+				error: `Applied to ${results.success} courses. ${results.failed} failed: ${results.errors[0]}`,
+				success: results.success > 0
+			});
+		}
+
+		return { success: true, count: results.success };
 	}
 };

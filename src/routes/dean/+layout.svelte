@@ -2,20 +2,25 @@
 <script lang="ts">
   import type { LayoutData } from './$types';
   import { page } from '$app/stores';
-  import { Home, Layers, ClipboardList, BarChart2, Bell, User, LogOut, Menu, X, GraduationCap } from '@lucide/svelte';
+  import { Home, Layers, ClipboardList, BarChart2, ShieldCheck, Users, Bell, User, LogOut, Menu, X, GraduationCap } from '@lucide/svelte';
 
   let { data, children }: { data: LayoutData; children: any } = $props();
   let sidebarOpen = $state(false);
 
   const navItems = [
-    { href: '/dean',             label: 'Dashboard',   icon: Home },
-    { href: '/dean/departments', label: 'Departments', icon: Layers },
-    { href: '/dean/exams',       label: 'Exams',       icon: ClipboardList },
-    { href: '/dean/results',     label: 'Results',     icon: BarChart2 },
+    { href: '/dean',                 label: 'Dashboard',      icon: Home },
+    { href: '/dean/departments',     label: 'Departments',    icon: Layers },
+    { href: '/dean/hods',            label: 'HODs',           icon: Users },
+    { href: '/dean/exam-officers', label: 'Exam Officers', icon: ShieldCheck },
+    { href: '/dean/exams',           label: 'Exams',          icon: ClipboardList },
+    { href: '/dean/exam-authority',  label: 'Exam Authority', icon: ShieldCheck },
+    { href: '/dean/results',         label: 'Results',        icon: BarChart2 },
   ];
 
   function isActive(href: string) {
-    return href === '/dean' ? $page.url.pathname === '/dean' : $page.url.pathname.startsWith(href);
+    if (href === '/dean') return $page.url.pathname === '/dean';
+    // Exact-segment match so e.g. "/dean/exams" doesn't also light up for "/dean/exam-authority"
+    return $page.url.pathname === href || $page.url.pathname.startsWith(href + '/');
   }
 
   function initials(name: string) {

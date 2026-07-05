@@ -4,4 +4,8 @@
   import NotificationsPage from '$lib/components/ui/NotificationsPage.svelte';
   let { data, form }: { data: PageData; form: ActionData } = $props();
 </script>
-<NotificationsPage {data} {form} accentColor="#0ea5e9" />
+
+<NotificationsPage
+  notifications={data.notifications ?? []}
+  unreadCount={data.unreadCount ?? 0}
+/>
