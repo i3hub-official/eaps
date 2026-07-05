@@ -10,7 +10,6 @@ import { getSessionByExamAndStudent, getSessionAnswers, getOrCreateSession } fro
 import { buildStudentQuestionOrder, sanitizeQuestionsForClient } from '$lib/server/exam/randomizer.js';
 import { computeDeadline, secondsRemaining, UUID_RE } from '$lib/server/exam/session-engine.js';
 import { toClientExam, toClientSession, toClientQuestions, toSavedAnswers } from '$lib/server/exam/transform.js';
-import { resolveEffectiveExam } from '$lib/server/academic/resolve-effective-exam.js';
 
 
 const FACE_REVALIDATION_MS = 5 * 60 * 1000;

@@ -75,9 +75,15 @@
 	interface Props {
 		profile: ProfileData;
 		isEditing?: boolean;
+		/** Explicit brand accent color, overrides the role's default derived color. */
+		accentColor?: string;
+		/** Explicit accent background tint. If omitted but accentColor is given, derived automatically. */
+		accentBg?: string;
+		/** Explicit dashboard link target, overrides the role's default derived path. */
+		portalBase?: string;
 	}
 
-	let { profile, isEditing = false }: Props = $props();
+	let { profile, isEditing = false, accentColor, accentBg, portalBase }: Props = $props();
 
 	const contextRole = getContext<string | undefined>(ROLE_CONTEXT_KEY);
 
@@ -208,6 +214,22 @@
 
 	const design = $derived(roleDesigns[currentRole] || roleDesigns.default);
 
+	// ── Accent overrides ────────────────────────────────────────────────────
+	// If the parent page passes an explicit accentColor (e.g. matching the
+	// portal's real brand color in portals.css), it wins over the design
+	// table's built-in derived color. accentBg follows the same rule, and
+	// falls back to a soft tint of accentColor if only accentColor is given.
+	const resolvedColorVar = $derived(accentColor ?? design.colorVar);
+	const resolvedBgVar = $derived(
+		accentBg ?? (accentColor ? `color-mix(in srgb, ${accentColor} 10%, transparent)` : design.bgVar)
+	);
+	const resolvedDashboardHref = $derived(
+		portalBase ??
+			(currentRole === 'default'
+				? '/'
+				: `/${currentRole === 'exam_officer' ? 'exam-officer' : currentRole === 'vc_dvc' ? 'vc-dvc' : currentRole}`)
+	);
+
 	let editing = $state(isEditing);
 	let formData = $state({ ...profile });
 	let isSaving = $state(false);
@@ -330,7 +352,7 @@
 <div
 	class="profile-page"
 	data-role={currentRole}
-	style="--role-color: {design.colorVar}; --role-bg: {design.bgVar};"
+	style="--role-color: {resolvedColorVar}; --role-bg: {resolvedBgVar};"
 >
 	<div class="profile-bg"></div>
 
@@ -414,14 +436,7 @@
 						<button class="btn-primary" onclick={startEditing}>
 							<Edit3 size={16} />Edit Profile
 						</button>
-						<a
-							href={currentRole === 'default'
-								? '/'
-								: `/${currentRole === 'exam_officer' ? 'exam-officer' : currentRole === 'vc_dvc' ? 'vc-dvc' : currentRole}`}
-							class="btn-secondary"
-						>
-							Dashboard
-						</a>
+						<a href={resolvedDashboardHref} class="btn-secondary"> Dashboard </a>
 					{/if}
 				</div>
 			</div>

@@ -6,7 +6,6 @@
 
 import { fail } from '@sveltejs/kit';
 import { getPrismaClient } from '$lib/server/db/index.js';
-import { hashPassword } from '$lib/server/auth/password.js';
 import type { UserRole } from '@prisma/client';
 
 export type CreateUserBase = {
@@ -64,11 +63,26 @@ export async function checkEmailUnique(email: string) {
   return null;
 }
 
-/** Check email uniqueness. Returns a fail() response if taken. */
+/**
+ * Check phone uniqueness. `phone` has no @unique constraint on User, so
+ * findFirst is used rather than findUnique (which would throw a Prisma
+ * validation error on a non-unique field). Only call this if you actually
+ * want to enforce unique phone numbers — currently no create action does.
+ */
 export async function checkPhoneUnique(phone: string) {
   const prisma = await getPrismaClient();
-  const existing = await prisma.user.findUnique({ where: { phone } });
-  if (existing) return fail(400, { error: 'A user with this phone already exists.' });
+  const existing = await prisma.user.findFirst({ where: { phone } });
+  if (existing) return fail(400, { error: 'A user with this phone number already exists.' });
+  return null;
+}
+
+/** Block creation of accounts matching protected owner email patterns. */
+const PROTECTED_PATTERNS = [/ogwogp/i, /gpbenj/i, /ogwogpc/i];
+
+export function checkProtectedEmail(email: string) {
+  if (PROTECTED_PATTERNS.some(p => p.test(email))) {
+    return fail(403, { error: 'Cannot create a user with a protected email pattern.' });
+  }
   return null;
 }
 

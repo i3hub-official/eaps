@@ -1073,23 +1073,23 @@ export const actions: Actions = {
         });
       });
 
-  // ── Exam Officers ──────────────────────────────────────────────────────
-[
-  { email: 'examofficer1@mouau.edu.ng', fullName: 'Mr. Chukwuemeka Obi', staffId: 'EXO001', collegeCode: 'COLPAS' },
-  { email: 'examofficer2@mouau.edu.ng', fullName: 'Mrs. Ngozi Eze', staffId: 'EXO002', collegeCode: 'CEET' },
-  { email: 'examofficer_ogwo@mouau.edu.ng', fullName: 'Ogwo Godspower (EO)', staffId: 'EXO310449', collegeCode: 'COLPAS' },
-].forEach(e => {
-  const college = getCollege(e.collegeCode);
-  allUsersToCreate.push({
-    email: e.email,
-    fullName: e.fullName,
-    passwordHash: examOfficerPass,
-    role: 'exam_officer',
-    staffId: e.staffId,
-    collegeId: college.id, // Add this line
-    session: '2025/2026'
-  });
-});
+      // ── Exam Officers ──────────────────────────────────────────────────────
+      [
+        { email: 'examofficer1@mouau.edu.ng', fullName: 'Mr. Chukwuemeka Obi', staffId: 'EXO001', collegeCode: 'COLPAS' },
+        { email: 'examofficer2@mouau.edu.ng', fullName: 'Mrs. Ngozi Eze', staffId: 'EXO002', collegeCode: 'CEET' },
+        { email: 'examofficer_ogwo@mouau.edu.ng', fullName: 'Ogwo Godspower (EO)', staffId: 'EXO310449', collegeCode: 'COLPAS' },
+      ].forEach(e => {
+        const college = getCollege(e.collegeCode);
+        allUsersToCreate.push({
+          email: e.email,
+          fullName: e.fullName,
+          passwordHash: examOfficerPass,
+          role: 'exam_officer',
+          staffId: e.staffId,
+          collegeId: college.id, // Add this line
+          session: '2025/2026'
+        });
+      });
 
       // ── VC/DVC ────────────────────────────────────────────────────────────
       [
@@ -1307,6 +1307,15 @@ export const actions: Actions = {
         email: string; fullName: string; deptCode: string;
         matric: string; levelNum: number; session: string;
       }> = [
+         // PHY — 100L (4 students)
+          { email: 'ogwo.godspower@student.mouau.edu.ng', fullName: 'Ogwo Godspower', deptCode: 'PHY', matric: 'MOUAU/PHY/25/128468', levelNum: 100, session: '2025/2026' },
+          { email: 'ade.adeleke@student.mouau.edu.ng', fullName: 'Ade Adeleke', deptCode: 'PHY', matric: 'MOUAU/PHY/25/123456', levelNum: 100, session: '2025/2026' },
+          { email: 'bimbo.oshodi@student.mouau.edu.ng', fullName: 'Bimbo Oshodi', deptCode: 'PHY', matric: 'MOUAU/PHY/25/234567', levelNum: 100, session: '2025/2026' },
+          { email: 'chuka.obi@student.mouau.edu.ng', fullName: 'Chuka Obi', deptCode: 'PHY', matric: 'MOUAU/PHY/25/345678', levelNum: 100, session: '2025/2026' },
+          // PHY — 200L (2 students)
+          { email: 'isaac.udoh@student.mouau.edu.ng', fullName: 'Isaac Udoh', deptCode: 'PHY', matric: 'MOUAU/PHY/24/007', levelNum: 200, session: '2025/2026' },
+          { email: 'joy.akan@student.mouau.edu.ng', fullName: 'Joy Akan', deptCode: 'PHY', matric: 'MOUAU/PHY/24/008', levelNum: 200, session: '2025/2026' },
+
           // CSC — 100L (5 students)
           { email: 'adebayo.adekunle@student.mouau.edu.ng', fullName: 'Adebayo Adekunle', deptCode: 'CSC', matric: 'MOUAU/CSC/25/111213', levelNum: 100, session: '2025/2026' },
           { email: 'chioma.eke@student.mouau.edu.ng', fullName: 'Chioma Eke', deptCode: 'CSC', matric: 'MOUAU/CSC/25/334455', levelNum: 100, session: '2025/2026' },
@@ -1317,15 +1326,6 @@ export const actions: Actions = {
           { email: 'alice.obi@student.mouau.edu.ng', fullName: 'Alice Obi', deptCode: 'CSC', matric: 'MOUAU/CSC/24/001', levelNum: 200, session: '2025/2026' },
           { email: 'bob.nwachukwu@student.mouau.edu.ng', fullName: 'Bob Nwachukwu', deptCode: 'CSC', matric: 'MOUAU/CSC/24/002', levelNum: 200, session: '2025/2026' },
           { email: 'emeka.agu@student.mouau.edu.ng', fullName: 'Emeka Agu', deptCode: 'CSC', matric: 'MOUAU/CSC/24/003', levelNum: 200, session: '2025/2026' },
-
-          // PHY — 100L (4 students)
-          { email: 'ogwo.godspower@student.mouau.edu.ng', fullName: 'Ogwo Godspower', deptCode: 'PHY', matric: 'MOUAU/PHY/25/128468', levelNum: 100, session: '2025/2026' },
-          { email: 'ade.adeleke@student.mouau.edu.ng', fullName: 'Ade Adeleke', deptCode: 'PHY', matric: 'MOUAU/PHY/25/123456', levelNum: 100, session: '2025/2026' },
-          { email: 'bimbo.oshodi@student.mouau.edu.ng', fullName: 'Bimbo Oshodi', deptCode: 'PHY', matric: 'MOUAU/PHY/25/234567', levelNum: 100, session: '2025/2026' },
-          { email: 'chuka.obi@student.mouau.edu.ng', fullName: 'Chuka Obi', deptCode: 'PHY', matric: 'MOUAU/PHY/25/345678', levelNum: 100, session: '2025/2026' },
-          // PHY — 200L (2 students)
-          { email: 'isaac.udoh@student.mouau.edu.ng', fullName: 'Isaac Udoh', deptCode: 'PHY', matric: 'MOUAU/PHY/24/007', levelNum: 200, session: '2025/2026' },
-          { email: 'joy.akan@student.mouau.edu.ng', fullName: 'Joy Akan', deptCode: 'PHY', matric: 'MOUAU/PHY/24/008', levelNum: 200, session: '2025/2026' },
 
           // CHM — 100L (4 students)
           { email: 'nnamdi.agu@student.mouau.edu.ng', fullName: 'Nnamdi Agu', deptCode: 'CHM', matric: 'MOUAU/CHM/25/141516', levelNum: 100, session: '2025/2026' },
@@ -1709,6 +1709,65 @@ export const actions: Actions = {
       results.push(`✓ ${assignmentCount} teaching assignments created`);
       progressBroadcaster.broadcastProgress('assignments', 'Assignments created', `${assignmentCount}`, '👨‍🏫✅');
 
+      // ══════════════════════════════════════════════════════════════════════
+      // 10. COURSE REGISTRATIONS — auto-approved, active semester only
+      // ══════════════════════════════════════════════════════════════════════
+      progressBroadcaster.broadcastProgress('registrations', 'Registering students for courses...', 'All students', '📝');
+
+      const activeSem = getSemester('2025/2026', 2); // matches AcademicSemester.isActive = true
+
+      const allCoursesWithOfferings = await prisma.course.findMany({
+        include: {
+          offerings: {
+            where: { academicSemesterId: activeSem.id },
+          },
+        },
+      });
+
+      const registrationsToCreate: {
+        studentId: string;
+        courseId: string;
+        offeringId: string;
+        session: string;
+        semester: number;
+        levelId: number;
+        registrationType: 'normal';
+        status: 'approved';
+      }[] = [];
+
+      const studentUsers = allUsers.filter(u => u.role === 'student');
+
+      for (const student of studentUsers) {
+        if (!student.departmentId || !student.levelId) continue;
+
+        const eligibleCourses = allCoursesWithOfferings.filter(c =>
+          c.offerings.length > 0 &&
+          c.offerings[0].levelId === student.levelId &&
+          (c.departmentId === student.departmentId || c.isGeneral)
+        );
+
+        for (const course of eligibleCourses) {
+          const offering = course.offerings[0];
+          registrationsToCreate.push({
+            studentId: student.id,
+            courseId: course.id,
+            offeringId: offering.id,
+            session: '2025/2026',
+            semester: 2,
+            levelId: student.levelId,
+            registrationType: 'normal',
+            status: 'approved',
+          });
+        }
+      }
+
+      await prisma.courseRegistration.createMany({
+        data: registrationsToCreate,
+        skipDuplicates: true,
+      });
+
+      results.push(`✓ ${registrationsToCreate.length} course registrations created`);
+      progressBroadcaster.broadcastProgress('registrations', 'Registrations created', `${registrationsToCreate.length}`, '📝✅');
       results.push('✓ Seed complete');
       progressBroadcaster.broadcastComplete('Database seeding completed successfully!');
       return { success: true, results };
@@ -1739,6 +1798,8 @@ export const actions: Actions = {
         prisma.examDepartment.deleteMany(),
         prisma.question.deleteMany(),
         prisma.exam.deleteMany(),
+        prisma.examAuthorityAssignment.deleteMany(),   // ← added: references CourseOffering, College, User
+        prisma.departmentExamCoordinator.deleteMany(), // ← added: references Department, User
         prisma.courseRegistration.deleteMany(),
         prisma.lecturerCourse.deleteMany(),
         prisma.teachingAssignment.deleteMany(),

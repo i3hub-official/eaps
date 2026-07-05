@@ -1,10 +1,9 @@
-// src/routes/admin/users/create/admin/+page.server.ts
 import type { PageServerLoad, Actions } from './$types';
 import { redirect } from '@sveltejs/kit';
 import { requireAdmin } from '$lib/server/auth/guards.js';
 import { getPrismaClient } from '$lib/server/db/index.js';
 import { hashPassword } from '$lib/server/auth/password.js';
-import { parseBaseFields, checkEmailUnique } from '$lib/server/admin/create-user.js';
+import { parseBaseFields, checkEmailUnique, checkProtectedEmail } from '$lib/server/admin/create-user.js';
 
 export const load: PageServerLoad = async ({ locals }) => {
   await requireAdmin(locals.user);
@@ -19,6 +18,9 @@ export const actions: Actions = {
 
     const base = parseBaseFields(fd);
     if ('error' in base) return base.error;
+
+    const protectedErr = checkProtectedEmail(base.email);
+    if (protectedErr) return protectedErr;
 
     const emailErr = await checkEmailUnique(base.email);
     if (emailErr) return emailErr;

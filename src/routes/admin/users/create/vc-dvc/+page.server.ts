@@ -4,7 +4,7 @@ import { redirect } from '@sveltejs/kit';
 import { requireAdmin } from '$lib/server/auth/guards.js';
 import { getPrismaClient } from '$lib/server/db/index.js';
 import { hashPassword } from '$lib/server/auth/password.js';
-import { parseBaseFields, checkEmailUnique } from '$lib/server/admin/create-user.js';
+import { parseBaseFields, checkEmailUnique, checkProtectedEmail } from '$lib/server/admin/create-user.js';
 
 export const load: PageServerLoad = async ({ locals }) => {
   await requireAdmin(locals.user);
@@ -20,8 +20,14 @@ export const actions: Actions = {
     const base = parseBaseFields(fd);
     if ('error' in base) return base.error;
 
+    const protectedErr = checkProtectedEmail(base.email);
+    if (protectedErr) return protectedErr;
+
     const emailErr = await checkEmailUnique(base.email);
     if (emailErr) return emailErr;
+
+    const subRole = String(fd.get('sub_role') ?? 'vc') === 'dvc' ? 'dvc' : 'vc';
+    const title = subRole === 'vc' ? 'Vice Chancellor' : 'Deputy Vice Chancellor';
 
     const passwordHash = await hashPassword(base.password);
 
@@ -33,6 +39,7 @@ export const actions: Actions = {
         role:         'vc_dvc',
         phone:        base.phone,
         staffId:      base.staffId,
+        title,
         isActive:     true,
       },
     });

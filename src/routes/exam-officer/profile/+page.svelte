@@ -1,7 +1,7 @@
 <!-- src/routes/exam-officer/profile/+page.svelte -->
 <script lang="ts">
-  import type { PageData, ActionData } from './$types';
+  import type { PageData } from './$types';
   import ProfilePage from '$lib/components/ui/ProfilePage.svelte';
-  let { data, form }: { data: PageData; form: ActionData } = $props();
+  let { data }: { data: PageData } = $props();
 </script>
-<ProfilePage {data} {form} accentColor="#0ea5e9" portalBase="/exam-officer" />
+<ProfilePage profile={data.profile} accentColor="#0ea5e9" portalBase="/exam-officer" />

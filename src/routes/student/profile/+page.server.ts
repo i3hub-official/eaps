@@ -6,10 +6,8 @@ import { loadProfile, buildProfileActions } from '$lib/server/profile.js';
 const getUser = (locals: App.Locals) => locals.user ?? null;
 
 export const load: PageServerLoad = async ({ locals }) => {
-   await requireStudent(locals.user);
-
-  const role = 'student';
-  return loadProfile(locals.user.id, role);
+  const user = requireStudent(locals.user);
+  return loadProfile(user.id, 'student');
 };
 
 export const actions: Actions = buildProfileActions(getUser);

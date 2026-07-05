@@ -1,4 +1,3 @@
-// src/routes/admin/users/create/invigilator/+page.server.ts
 import type { PageServerLoad, Actions } from './$types';
 import { redirect } from '@sveltejs/kit';
 import { requireAdmin } from '$lib/server/auth/guards.js';
@@ -9,6 +8,7 @@ import {
   parseBaseFields,
   resolveCollegeId,
   checkEmailUnique,
+  checkProtectedEmail,
 } from '$lib/server/admin/create-user.js';
 
 export const load: PageServerLoad = async ({ locals }) => {
@@ -23,8 +23,11 @@ export const actions: Actions = {
     const fd     = await request.formData();
     const get    = (k: string) => String(fd.get(k) ?? '').trim();
 
-    const base         = parseBaseFields(fd);
+    const base = parseBaseFields(fd);
     if ('error' in base) return base.error;
+
+    const protectedErr = checkProtectedEmail(base.email);
+    if (protectedErr) return protectedErr;
 
     const departmentId = get('department_id') || null;
     const collegeIdRaw = get('college_id') || null;

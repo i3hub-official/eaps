@@ -1,4 +1,3 @@
-// src/routes/admin/users/create/dean/+page.server.ts
 import type { PageServerLoad, Actions } from './$types';
 import { fail, redirect } from '@sveltejs/kit';
 import { requireAdmin } from '$lib/server/auth/guards.js';
@@ -8,6 +7,7 @@ import {
   loadCreatePageData,
   parseBaseFields,
   checkEmailUnique,
+  checkProtectedEmail,
 } from '$lib/server/admin/create-user.js';
 
 export const load: PageServerLoad = async ({ locals }) => {
@@ -22,8 +22,11 @@ export const actions: Actions = {
     const fd     = await request.formData();
     const get    = (k: string) => String(fd.get(k) ?? '').trim();
 
-    const base     = parseBaseFields(fd);
+    const base = parseBaseFields(fd);
     if ('error' in base) return base.error;
+
+    const protectedErr = checkProtectedEmail(base.email);
+    if (protectedErr) return protectedErr;
 
     const collegeIdRaw = get('college_id') || null;
     if (!collegeIdRaw) return fail(400, { error: 'College / Faculty is required for a Dean.' });

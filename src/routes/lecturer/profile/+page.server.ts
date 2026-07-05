@@ -1,14 +1,13 @@
 // src/routes/lecturer/profile/+page.server.ts
-import { redirect } from '@sveltejs/kit';
 import type { PageServerLoad, Actions } from './$types';
+import { requireLecturer } from '$lib/server/auth/guards.js';
 import { loadProfile, buildProfileActions } from '$lib/server/profile.js';
 
 const getUser = (locals: App.Locals) => locals.user ?? null;
 
 export const load: PageServerLoad = async ({ locals }) => {
-  if (!locals.user) throw redirect(303, '/login');
-  const role = 'lecturer';
-  return loadProfile(locals.user.id, role);
+  const user = requireLecturer(locals.user);
+  return loadProfile(user.id, 'lecturer');
 };
 
 export const actions: Actions = buildProfileActions(getUser);
