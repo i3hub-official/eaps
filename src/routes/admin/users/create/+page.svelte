@@ -2,14 +2,12 @@
 <script lang="ts">
   import { onMount } from 'svelte';
   import {
-    BookOpen,
-    Users,
-    Building2,
-    ClipboardList,
-    ShieldCheck,
-    Crown,
-    Shield,
-    ArrowRight,
+    Building2, Mail, IdCard, AlertCircle, Calendar, Clock,
+Award, BookMarked, FileText, Activity,
+Download, RefreshCw, Filter, ChevronDown,
+Edit3, Eye, Ban, CheckCircle, Phone, Briefcase,
+    UserCog, UserCheck, Crown, Users, Shield, BookOpen, ShieldCheck, ShieldAlert,
+    ArrowRight,CircleAlert,ClipboardList,
   } from '@lucide/svelte';
 
   let mounted = $state(false);

@@ -7,10 +7,10 @@
 import {
   Search, UserPlus, X, ChevronLeft, ChevronRight,
   Users, GraduationCap, BookOpen, ShieldCheck, ShieldAlert,
-  Building2, Mail, IdCard, AlertCircle, Calendar, Clock,
+  Building2, Mail, IdCard, CircleAlert, Calendar, Clock,
   Award, BookMarked, FileText, Activity,
-  Download, RefreshCw, Filter, ChevronDown,
-  Edit3, Eye, Ban, CheckCircle, Phone, Briefcase,
+  Download, RefreshCw, ChevronDown,
+  SquarePen, Eye, Ban, CircleCheck, Phone, Briefcase,
   UserCog, UserCheck, Crown
 } from '@lucide/svelte';
   import { tick } from 'svelte';
@@ -44,7 +44,7 @@ import {
     { key: 'dept_coordinator', label: 'Dept Coordinators', icon: Crown },
     { key: 'college_coordinator', label: 'College Coordinators', icon: UserCog },
     { key: 'dean', label: 'Deans', icon: Crown },
-{ key: 'vc_dvc', label: 'VC/DVC', icon: ShieldAlert },
+    { key: 'vc_dvc', label: 'VC/DVC', icon: ShieldAlert },
   ];
 
   // Derived
@@ -63,6 +63,8 @@ import {
     admin: data.counts?.admin ?? 0,
     exam_officer: data.counts?.exam_officer ?? 0,
     hod: data.counts?.hod ?? 0,
+    dean: data.counts?.dean ?? 0,
+    vc_dvc: data.counts?.vc_dvc ?? 0,
     dept_coordinator: data.counts?.dept_coordinator ?? 0,
     college_coordinator: data.counts?.college_coordinator ?? 0,
   });
@@ -75,11 +77,17 @@ import {
     hod: { color: '#2563eb', icon: UserCheck, bg: '#dbeafe', label: 'Head of Department' },
     exam_officer: { color: '#8b5cf6', icon: UserCog, bg: '#ede9fe', label: 'Exam Officer' },
     dean: { color: '#059669', icon: Crown, bg: '#d1fae5', label: 'Dean' },
-vc_dvc: { color: '#0891b2', icon: ShieldAlert, bg: '#cffafe', label: 'VC/DVC' },
+    vc_dvc: { color: '#0891b2', icon: ShieldAlert, bg: '#cffafe', label: 'VC/DVC' },
   };
 
   function getRoleMeta(role: string) {
     return ROLE_META[role] || { color: '#64748b', icon: Users, bg: '#e2e8f0', label: 'User' };
+  }
+
+  // Helper: level is a Prisma relation object ({ id, level, name, ... }),
+  // not a plain number — always read the nested numeric field.
+  function levelNumber(u: any): number | null {
+    return u?.level?.level ?? null;
   }
 
   function handleSearch() {
@@ -189,7 +197,7 @@ vc_dvc: { color: '#0891b2', icon: ShieldAlert, bg: '#cffafe', label: 'VC/DVC' },
         u.role,
         u.matricNumber || u.staffId || '',
         u.department?.name || '',
-        u.level || '',
+        levelNumber(u) ?? '',
         u.isActive ? 'Active' : 'Inactive',
         new Date(u.createdAt).toLocaleDateString(),
       ]) ?? [];
@@ -264,49 +272,49 @@ vc_dvc: { color: '#0891b2', icon: ShieldAlert, bg: '#cffafe', label: 'VC/DVC' },
   <!-- Alerts -->
   {#if form?.createError}
     <div class="alert error">
-      <AlertCircle size={14} />
+      <CircleAlert size={14} />
       <span>{form.createError}</span>
     </div>
   {/if}
   {#if form?.deactivateError}
     <div class="alert error">
-      <AlertCircle size={14} />
+      <CircleAlert size={14} />
       <span>{form.deactivateError}</span>
     </div>
   {/if}
   {#if form?.activateError}
     <div class="alert error">
-      <AlertCircle size={14} />
+      <CircleAlert size={14} />
       <span>{form.activateError}</span>
     </div>
   {/if}
   {#if form?.updateError}
     <div class="alert error">
-      <AlertCircle size={14} />
+      <CircleAlert size={14} />
       <span>{form.updateError}</span>
     </div>
   {/if}
   {#if form?.created}
     <div class="alert success">
-      <CheckCircle size={14} />
+      <CircleCheck size={14} />
       <span>User created successfully.</span>
     </div>
   {/if}
   {#if form?.deactivated}
     <div class="alert success">
-      <CheckCircle size={14} />
+      <CircleCheck size={14} />
       <span>{form.userName ?? 'User'} deactivated.</span>
     </div>
   {/if}
   {#if form?.activated}
     <div class="alert success">
-      <CheckCircle size={14} />
+      <CircleCheck size={14} />
       <span>{form.userName ?? 'User'} reactivated.</span>
     </div>
   {/if}
   {#if form?.updated}
     <div class="alert success">
-      <CheckCircle size={14} />
+      <CircleCheck size={14} />
       <span>User updated successfully.</span>
     </div>
   {/if}
@@ -448,7 +456,7 @@ vc_dvc: { color: '#0891b2', icon: ShieldAlert, bg: '#cffafe', label: 'VC/DVC' },
   {#if showEdit && selectedUser}
     <form method="POST" action="?/update" use:enhance class="create-form" onsubmit={() => { showEdit = false; }}>
       <div class="form-header">
-        <h2><Edit3 size={18} /> Edit User</h2>
+        <h2><SquarePen size={18} /> Edit User</h2>
         <button type="button" class="icon-btn" onclick={() => { showEdit = false; selectedUser = null; }}>
           <X size={18} />
         </button>
@@ -513,7 +521,7 @@ vc_dvc: { color: '#0891b2', icon: ShieldAlert, bg: '#cffafe', label: 'VC/DVC' },
             <select name="level">
               <option value="">— Select —</option>
               {#each [100, 200, 300, 400, 500] as l}
-                <option value={l} selected={selectedUser.level === l}>{l} Level</option>
+                <option value={l} selected={levelNumber(selectedUser) === l}>{l} Level</option>
               {/each}
             </select>
           </div>
@@ -527,7 +535,7 @@ vc_dvc: { color: '#0891b2', icon: ShieldAlert, bg: '#cffafe', label: 'VC/DVC' },
 
       <div class="form-footer">
         <button type="button" class="btn-ghost" onclick={() => { showEdit = false; selectedUser = null; }}>Cancel</button>
-        <button type="submit" class="btn-primary"><Edit3 size={14} /> Update User</button>
+        <button type="submit" class="btn-primary"><SquarePen size={14} /> Update User</button>
       </div>
     </form>
   {/if}
@@ -541,7 +549,7 @@ vc_dvc: { color: '#0891b2', icon: ShieldAlert, bg: '#cffafe', label: 'VC/DVC' },
           class:active={data.filterType === tab.key}
           onclick={() => changeFilter(tab.key)}
           type="button"
-          title={tab.key === 'dept_coordinator' ? 'Users with department_coordinator authority scope' : tab.key === 'college_coordinator' ? 'Exam Officers assigned to a college' : ''}
+          title={tab.key === 'dept_coordinator' ? 'Users with department_coordinator authority scope' : tab.key === 'college_coordinator' ? 'Exam Officers assigned as college coordinators' : ''}
         >
           <svelte:component this={tab.icon} size={14} />
           {tab.label}
@@ -609,7 +617,7 @@ vc_dvc: { color: '#0891b2', icon: ShieldAlert, bg: '#cffafe', label: 'VC/DVC' },
               </td>
               <td class="mono">{u.matricNumber || u.staffId || '—'}</td>
               <td>{u.department?.name || '—'}</td>
-              <td>{u.level ? `${u.level}L` : '—'}</td>
+              <td>{levelNumber(u) ? `${levelNumber(u)}L` : '—'}</td>
               <td>
                 <span class="status-badge" class:active={u.isActive}>
                   {u.isActive ? 'Active' : 'Inactive'}
@@ -622,7 +630,7 @@ vc_dvc: { color: '#0891b2', icon: ShieldAlert, bg: '#cffafe', label: 'VC/DVC' },
                     <Eye size={14} />
                   </button>
                   <button class="action-btn" title="Edit" onclick={() => openEditModal(u)}>
-                    <Edit3 size={14} />
+                    <SquarePen size={14} />
                   </button>
                   {#if u.isActive}
                     <button class="action-btn danger" title="Deactivate" onclick={() => openDeactivateModal(u)}>
@@ -632,7 +640,7 @@ vc_dvc: { color: '#0891b2', icon: ShieldAlert, bg: '#cffafe', label: 'VC/DVC' },
                     <form method="POST" action="?/activate" use:enhance style="display:inline">
                       <input type="hidden" name="id" value={u.id} />
                       <button type="submit" class="action-btn success" title="Activate">
-                        <CheckCircle size={14} />
+                        <CircleCheck size={14} />
                       </button>
                     </form>
                   {/if}
@@ -750,10 +758,10 @@ vc_dvc: { color: '#0891b2', icon: ShieldAlert, bg: '#cffafe', label: 'VC/DVC' },
                     <p class="mono">{selectedUser.staffId}</p>
                   </div>
                 {/if}
-                {#if selectedUser.level}
+                {#if levelNumber(selectedUser)}
                   <div class="profile-field">
                     <label><Award size={12} /> Level</label>
-                    <p>{selectedUser.level} Level</p>
+                    <p>{levelNumber(selectedUser)} Level</p>
                   </div>
                 {/if}
               </div>
@@ -842,7 +850,7 @@ vc_dvc: { color: '#0891b2', icon: ShieldAlert, bg: '#cffafe', label: 'VC/DVC' },
         <div class="modal-footer">
           <button class="btn-ghost" onclick={closeModals} type="button">Close</button>
           <button class="btn-outline" onclick={() => { closeModals(); openEditModal(selectedUser); }} type="button">
-            <Edit3 size={14} /> Edit
+            <SquarePen size={14} /> Edit
           </button>
           {#if selectedUser.isActive}
             <button class="btn-danger" onclick={() => { closeModals(); openDeactivateModal(selectedUser); }} type="button">
@@ -859,7 +867,7 @@ vc_dvc: { color: '#0891b2', icon: ShieldAlert, bg: '#cffafe', label: 'VC/DVC' },
     <div class="modal-overlay" onclick={closeModals}>
       <div class="modal modal-warning" onclick={(e) => e.stopPropagation()}>
         <div class="modal-header warning">
-          <h2><AlertCircle size={20} /> Confirm Deactivation</h2>
+          <h2><CircleAlert size={20} /> Confirm Deactivation</h2>
           <button class="modal-close" onclick={closeModals} type="button">
             <X size={20} />
           </button>

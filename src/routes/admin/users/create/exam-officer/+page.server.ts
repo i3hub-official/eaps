@@ -1,14 +1,18 @@
 // src/routes/admin/users/create/exam-officer/+page.server.ts
 import type { PageServerLoad, Actions } from './$types';
-import { redirect } from '@sveltejs/kit';
+import { fail, redirect } from '@sveltejs/kit';
 import { requireAdmin } from '$lib/server/auth/guards.js';
 import { getPrismaClient } from '$lib/server/db/index.js';
 import { hashPassword } from '$lib/server/auth/password.js';
-import { parseBaseFields, checkEmailUnique } from '$lib/server/admin/create-user.js';
+import {
+  loadCreatePageData,
+  parseBaseFields,
+  checkEmailUnique,
+} from '$lib/server/admin/create-user.js';
 
 export const load: PageServerLoad = async ({ locals }) => {
   await requireAdmin(locals.user);
-  return {};
+  return loadCreatePageData();
 };
 
 export const actions: Actions = {
@@ -16,9 +20,13 @@ export const actions: Actions = {
     await requireAdmin(locals.user);
     const prisma = await getPrismaClient();
     const fd     = await request.formData();
+    const get    = (k: string) => String(fd.get(k) ?? '').trim();
 
     const base = parseBaseFields(fd);
     if ('error' in base) return base.error;
+
+    const collegeIdRaw = get('college_id') || null;
+    if (!collegeIdRaw) return fail(400, { error: 'College / Faculty is required for an Exam Officer.' });
 
     const emailErr = await checkEmailUnique(base.email);
     if (emailErr) return emailErr;
@@ -33,6 +41,7 @@ export const actions: Actions = {
         role:         'exam_officer',
         phone:        base.phone,
         staffId:      base.staffId,
+        collegeId:    Number(collegeIdRaw),
         isActive:     true,
       },
     });

@@ -5,7 +5,7 @@ import { getPrismaClient } from '$lib/server/db/index.js';
 
 export const load: PageServerLoad = async ({ locals }) => {
   requireAdmin(locals.user);
-          const prisma = await getPrismaClient();
+  const prisma = await getPrismaClient();
 
   const now     = new Date();
   const weekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
@@ -20,7 +20,7 @@ export const load: PageServerLoad = async ({ locals }) => {
     activeSessions,
   ] = await Promise.all([
 
-    // User counts by role
+    // User counts by role — covers all 8 UserRole values
     prisma.user.groupBy({
       by: ['role'],
       _count: { role: true },
@@ -75,12 +75,21 @@ export const load: PageServerLoad = async ({ locals }) => {
 
   ]);
 
-  // ── Derived counts ──────────────────────────────────────────────
-  const totalStudents  = userCounts.find(u => u.role === 'student')?._count.role     ?? 0;
-  const totalLecturers = userCounts.find(u => u.role === 'lecturer')?._count.role    ?? 0;
-  const totalStaff     = userCounts.find(u => u.role === 'invigilator')?._count.role ?? 0;
-  const activeExams    = examCounts.find(e => e.status === 'active')?._count.status  ?? 0;
-  const totalExams     = examCounts.reduce((s, e) => s + e._count.status, 0);
+  // ── Derived counts — one per UserRole ───────────────────────────
+  const roleCount = (role: string) =>
+    userCounts.find(u => u.role === role)?._count.role ?? 0;
+
+  const totalStudents     = roleCount('student');
+  const totalLecturers    = roleCount('lecturer');
+  const totalStaff        = roleCount('invigilator'); // kept name for backward compat with existing template bindings
+  const totalAdmins       = roleCount('admin');
+  const totalHods         = roleCount('hod');
+  const totalDeans        = roleCount('dean');
+  const totalExamOfficers = roleCount('exam_officer');
+  const totalVcDvc        = roleCount('vc_dvc');
+
+  const activeExams = examCounts.find(e => e.status === 'active')?._count.status ?? 0;
+  const totalExams  = examCounts.reduce((s, e) => s + e._count.status, 0);
 
   // ── Shape audit logs ────────────────────────────────────────────
   const activity = recentActivity.map(l => ({
@@ -93,7 +102,6 @@ export const load: PageServerLoad = async ({ locals }) => {
   // ── Weekly chart data (last 7 days, grouped by day) ─────────────
   const DAY_LABELS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
-  // Build a map: dayIndex (0=Sun) → count
   function groupByDay(items: { createdAt: Date }[]) {
     const map: Record<number, number> = {};
     for (const item of items) {
@@ -106,7 +114,6 @@ export const load: PageServerLoad = async ({ locals }) => {
   const examsByDay  = groupByDay(weeklyExams);
   const loginsByDay = groupByDay(weeklyLogins);
 
-  // Start from today and go back 7 days
   const weeklyData = Array.from({ length: 7 }, (_, i) => {
     const d    = new Date(now.getTime() - (6 - i) * 24 * 60 * 60 * 1000);
     const idx  = d.getDay();
@@ -121,6 +128,11 @@ export const load: PageServerLoad = async ({ locals }) => {
     totalStudents,
     totalLecturers,
     totalStaff,
+    totalAdmins,
+    totalHods,
+    totalDeans,
+    totalExamOfficers,
+    totalVcDvc,
     activeExams,
     totalExams,
     threatCount,

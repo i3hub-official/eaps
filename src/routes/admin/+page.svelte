@@ -3,13 +3,14 @@
   import type { PageData } from './$types';
   import {
     Users, GraduationCap, ShieldCheck, BookOpen,
-    TrendingUp, AlertTriangle, Clock, Activity,
-    ArrowUpRight, ArrowDownRight, MoreHorizontal,
+    TrendingUp, TriangleAlert, Clock, Activity,
+    ArrowUpRight, ArrowDownRight,
     Zap, Database, Globe, Lock, FileText,
-    BarChart3, PieChart, Download, RefreshCw,
-    Shield, Server, Wifi, Fingerprint,
-    Calendar, ChevronRight, Eye, CheckCircle,
-    Sparkles, Target, Award, Coffee
+    ChartColumn, ChartPie, Download, RefreshCw,
+    Shield, Server, Wifi, FingerprintPattern,
+    Calendar, ChevronRight, Eye, CircleCheck,
+    Sparkles, Target, Award, Coffee,
+    ShieldAlert, UserCog, Crown
   } from '@lucide/svelte';
   import { tick, onMount } from 'svelte';
 
@@ -34,15 +35,27 @@
     return `${Math.floor(h / 24)}d ago`;
   }
 
-  // Derived totals
+  // Derived totals — covers all 8 roles, not just student/lecturer/invigilator
   const totalUsers = $derived(
-    (data.totalStudents ?? 0) + (data.totalLecturers ?? 0) + (data.totalStaff ?? 0)
+    (data.totalStudents ?? 0) +
+    (data.totalLecturers ?? 0) +
+    (data.totalStaff ?? 0) +
+    (data.totalAdmins ?? 0) +
+    (data.totalHods ?? 0) +
+    (data.totalDeans ?? 0) +
+    (data.totalExamOfficers ?? 0) +
+    (data.totalVcDvc ?? 0)
   );
 
   const groups = $derived([
-    { label: 'Students',     value: data.totalStudents ?? 0,  color: '#3b82f6', icon: GraduationCap, gradient: 'linear-gradient(135deg, #3b82f6, #2563eb)' },
-    { label: 'Lecturers',    value: data.totalLecturers ?? 0, color: '#22c55e', icon: BookOpen, gradient: 'linear-gradient(135deg, #22c55e, #16a34a)' },
-    { label: 'Invigilators', value: data.totalStaff ?? 0,     color: '#a78bfa', icon: ShieldCheck, gradient: 'linear-gradient(135deg, #a78bfa, #8b5cf6)' },
+    { label: 'Students',      value: data.totalStudents ?? 0,     color: '#3b82f6', icon: GraduationCap, gradient: 'linear-gradient(135deg, #3b82f6, #2563eb)' },
+    { label: 'Lecturers',     value: data.totalLecturers ?? 0,    color: '#22c55e', icon: BookOpen,       gradient: 'linear-gradient(135deg, #22c55e, #16a34a)' },
+    { label: 'Invigilators',  value: data.totalStaff ?? 0,        color: '#a78bfa', icon: ShieldCheck,    gradient: 'linear-gradient(135deg, #a78bfa, #8b5cf6)' },
+    { label: 'Admins',        value: data.totalAdmins ?? 0,       color: '#dc2626', icon: ShieldAlert,    gradient: 'linear-gradient(135deg, #dc2626, #b91c1c)' },
+    { label: 'HODs',          value: data.totalHods ?? 0,         color: '#2563eb', icon: Users,          gradient: 'linear-gradient(135deg, #2563eb, #1d4ed8)' },
+    { label: 'Exam Officers', value: data.totalExamOfficers ?? 0, color: '#8b5cf6', icon: UserCog,        gradient: 'linear-gradient(135deg, #8b5cf6, #7c3aed)' },
+    { label: 'Deans',         value: data.totalDeans ?? 0,        color: '#059669', icon: Crown,          gradient: 'linear-gradient(135deg, #059669, #047857)' },
+    { label: 'VC/DVC',        value: data.totalVcDvc ?? 0,        color: '#0891b2', icon: Crown,          gradient: 'linear-gradient(135deg, #0891b2, #0e7490)' },
   ]);
 
   // Action colour mapping for activity log
@@ -68,15 +81,15 @@
   ]);
 
   // Weekly activity data for chart
-const weeklyData = $derived(data.weeklyData ?? []);
+  const weeklyData = $derived(data.weeklyData ?? []);
 
   // Quick stats
- const quickStats = $derived([
-  { label: 'Active Sessions', value: String(data.activeSessions ?? 0),  change: 'right now',  trend: 'up',     icon: Users    },
-  { label: 'Active Exams',    value: String(data.activeExams ?? 0),      change: 'live',       trend: 'up',     icon: Activity },
-  { label: 'Total Users',     value: String(totalUsers),                  change: 'registered', trend: 'neutral',icon: Database },
-  { label: 'Threats (24h)',   value: String(data.threatCount ?? 0),       change: 'violations', trend: (data.threatCount ?? 0) > 0 ? 'down' : 'up', icon: Zap },
-]);
+  const quickStats = $derived([
+    { label: 'Active Sessions', value: String(data.activeSessions ?? 0), change: 'right now',   trend: 'up',      icon: Users    },
+    { label: 'Active Exams',    value: String(data.activeExams ?? 0),    change: 'live',        trend: 'up',      icon: Activity },
+    { label: 'Total Users',     value: String(totalUsers),                change: 'registered',  trend: 'neutral', icon: Database },
+    { label: 'Threats (24h)',   value: String(data.threatCount ?? 0),     change: 'violations',  trend: (data.threatCount ?? 0) > 0 ? 'down' : 'up', icon: Zap },
+  ]);
 
   // PDF Export
   async function exportToPDF() {
@@ -162,7 +175,6 @@ const weeklyData = $derived(data.weeklyData ?? []);
       </div>
       <h1 class="dash-title">
         Command Centre
-        <!-- <Sparkles size={24} class="title-sparkle" /> -->
       </h1>
       <p class="dash-subtitle">MOUAU eTest · Super Administrator</p>
     </div>
@@ -224,6 +236,51 @@ const weeklyData = $derived(data.weeklyData ?? []);
         <div class="kpi-trend neutral">—</div>
       </div>
 
+      <div class="kpi-card kpi-red">
+        <div class="kpi-icon"><ShieldAlert size={20} /></div>
+        <div class="kpi-body">
+          <span class="kpi-value">{data.totalAdmins ?? 0}</span>
+          <span class="kpi-label">Admins</span>
+        </div>
+        <div class="kpi-trend neutral">—</div>
+      </div>
+
+      <div class="kpi-card kpi-indigo">
+        <div class="kpi-icon"><Users size={20} /></div>
+        <div class="kpi-body">
+          <span class="kpi-value">{data.totalHods ?? 0}</span>
+          <span class="kpi-label">HODs</span>
+        </div>
+        <div class="kpi-trend neutral">—</div>
+      </div>
+
+      <div class="kpi-card kpi-purple">
+        <div class="kpi-icon"><UserCog size={20} /></div>
+        <div class="kpi-body">
+          <span class="kpi-value">{data.totalExamOfficers ?? 0}</span>
+          <span class="kpi-label">Exam Officers</span>
+        </div>
+        <div class="kpi-trend neutral">—</div>
+      </div>
+
+      <div class="kpi-card kpi-emerald">
+        <div class="kpi-icon"><Crown size={20} /></div>
+        <div class="kpi-body">
+          <span class="kpi-value">{data.totalDeans ?? 0}</span>
+          <span class="kpi-label">Deans</span>
+        </div>
+        <div class="kpi-trend neutral">—</div>
+      </div>
+
+      <div class="kpi-card kpi-cyan">
+        <div class="kpi-icon"><Crown size={20} /></div>
+        <div class="kpi-body">
+          <span class="kpi-value">{data.totalVcDvc ?? 0}</span>
+          <span class="kpi-label">VC/DVC</span>
+        </div>
+        <div class="kpi-trend neutral">—</div>
+      </div>
+
       <div class="kpi-card kpi-amber">
         <div class="kpi-icon"><Zap size={20} /></div>
         <div class="kpi-body">
@@ -277,7 +334,7 @@ const weeklyData = $derived(data.weeklyData ?? []);
       <div class="chart-card">
         <div class="chart-header">
           <div class="chart-title-wrap">
-            <BarChart3 size={16} color="#22c55e" />
+            <ChartColumn size={16} color="#22c55e" />
             <h3>Weekly Activity</h3>
           </div>
           <div class="chart-legend">
@@ -304,7 +361,7 @@ const weeklyData = $derived(data.weeklyData ?? []);
       <div class="chart-card">
         <div class="chart-header">
           <div class="chart-title-wrap">
-            <PieChart size={16} color="#a78bfa" />
+            <ChartPie size={16} color="#a78bfa" />
             <h3>User Distribution</h3>
           </div>
           <div class="chart-badge">
@@ -507,26 +564,26 @@ const weeklyData = $derived(data.weeklyData ?? []);
                 <span class="security-name">Encryption</span>
                 <span class="security-status">AES-256 Active</span>
               </div>
-              <CheckCircle size={14} color="#22c55e" class="security-status-icon" />
+              <CircleCheck size={14} color="#22c55e" class="security-status-icon" />
             </div>
             <div class="security-item">
-              <div class="security-icon green"><Fingerprint size={14} /></div>
+              <div class="security-icon green"><FingerprintPattern size={14} /></div>
               <div class="security-info">
                 <span class="security-name">Face Recognition</span>
                 <span class="security-status">Operational</span>
               </div>
-              <CheckCircle size={14} color="#22c55e" class="security-status-icon" />
+              <CircleCheck size={14} color="#22c55e" class="security-status-icon" />
             </div>
             <div class="security-item">
-              <div class="security-icon amber"><AlertTriangle size={14} /></div>
+              <div class="security-icon amber"><TriangleAlert size={14} /></div>
               <div class="security-info">
                 <span class="security-name">Active Threats</span>
                 <span class="security-status">{data.threatCount ?? 0} detected</span>
               </div>
               {#if (data.threatCount ?? 0) > 0}
-                <AlertTriangle size={14} color="#f59e0b" class="security-status-icon" />
+                <TriangleAlert size={14} color="#f59e0b" class="security-status-icon" />
               {:else}
-                <CheckCircle size={14} color="#22c55e" class="security-status-icon" />
+                <CircleCheck size={14} color="#22c55e" class="security-status-icon" />
               {/if}
             </div>
             <div class="security-item">
@@ -535,7 +592,7 @@ const weeklyData = $derived(data.weeklyData ?? []);
                 <span class="security-name">WebSocket</span>
                 <span class="security-status">Connected</span>
               </div>
-              <CheckCircle size={14} color="#22c55e" class="security-status-icon" />
+              <CircleCheck size={14} color="#22c55e" class="security-status-icon" />
             </div>
           </div>
         </section>
@@ -572,7 +629,7 @@ const weeklyData = $derived(data.weeklyData ?? []);
               <span>Lecturers</span>
               <ArrowUpRight size={12} class="action-arrow" />
             </a>
-            <a href="/admin/users?role=staff" class="action-tile">
+            <a href="/admin/users?role=invigilator" class="action-tile">
               <div class="action-icon teal"><ShieldCheck size={16} /></div>
               <span>Invigilators</span>
               <ArrowUpRight size={12} class="action-arrow" />
@@ -660,11 +717,6 @@ const weeklyData = $derived(data.weeklyData ?? []);
     display: flex;
     align-items: center;
     gap: 0.75rem;
-  }
-  
-  .title-sparkle {
-    color: #f59e0b;
-    opacity: 0.8;
   }
   
   .dash-subtitle {
@@ -816,6 +868,11 @@ const weeklyData = $derived(data.weeklyData ?? []);
   .kpi-amber .kpi-icon { color: #f59e0b; }
   .kpi-slate .kpi-icon { color: #64748b; }
   .kpi-teal .kpi-icon { color: #14b8a6; }
+  .kpi-red .kpi-icon { color: #dc2626; }
+  .kpi-indigo .kpi-icon { color: #2563eb; }
+  .kpi-purple .kpi-icon { color: #8b5cf6; }
+  .kpi-emerald .kpi-icon { color: #059669; }
+  .kpi-cyan .kpi-icon { color: #0891b2; }
   
   .kpi-body {
     display: flex;
@@ -1101,6 +1158,8 @@ const weeklyData = $derived(data.weeklyData ?? []);
     display: flex;
     flex-direction: column;
     gap: 1rem;
+    max-height: 320px;
+    overflow-y: auto;
   }
   
   .pie-legend-item {
@@ -1400,6 +1459,8 @@ const weeklyData = $derived(data.weeklyData ?? []);
     display: flex;
     flex-direction: column;
     gap: 1rem;
+    max-height: 420px;
+    overflow-y: auto;
   }
   
   .comp-row {
@@ -1412,7 +1473,7 @@ const weeklyData = $derived(data.weeklyData ?? []);
     display: flex;
     align-items: center;
     gap: 0.5rem;
-    min-width: 100px;
+    min-width: 110px;
   }
   
   .comp-label {
