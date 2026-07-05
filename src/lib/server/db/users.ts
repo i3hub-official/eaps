@@ -36,7 +36,6 @@ export async function getSafeUser(id: string): Promise<SafeUser | null> {
   return prisma.user.findUnique({ where: { id }, select: safeSelect });
 }
 
-// ✅ Fixed getUserById - using correct relation names from your schema
 export async function getUserById(id: string) {
   const prisma = await getPrismaClient();
 
@@ -57,7 +56,6 @@ export async function getUserById(id: string) {
           }
         }
       },
-      // ✅ Fixed: Use 'examSessions' instead of 'examAttempts'
       examSessions: {
         include: {
           exam: {
@@ -69,7 +67,6 @@ export async function getUserById(id: string) {
         orderBy: { startedAt: 'desc' },
         take: 10
       },
-      // ✅ Fixed: Use 'courseRegistrations' instead of 'courses'
       courseRegistrations: {
         include: {
           course: true
@@ -106,10 +103,19 @@ export async function listStudentsByDepartment(departmentId: string): Promise<Sa
   });
 }
 
+
 export async function createUser(input: {
-  email: string; fullName: string; passwordHash: string; role: UserRole;
-  matricNumber?: string; staffId?: string; departmentId?: string;
-  level?: number; photoUrl?: string;
+  email: string; 
+  fullName: string; 
+  passwordHash: string; 
+  role: UserRole;
+  matricNumber?: string; 
+  staffId?: string; 
+  departmentId?: string;
+  collegeId?: string;
+  level?: number; 
+  photoUrl?: string;
+  phone?: string;
 }) {
   const prisma = await getPrismaClient();
 
@@ -119,35 +125,50 @@ export async function createUser(input: {
     passwordHash: input.passwordHash,
     role: input.role,
     matricNumber: input.matricNumber?.toUpperCase().trim() ?? null,
-    staffId: input.stId?.trim() ?? null,
+    staffId: input.staffId?.trim() ?? null,
+    phone: input.phone?.trim() ?? null,
     photoUrl: input.photoUrl ?? null,
   };
 
+  // collegeId needs to be parsed as Int because it's an Int in the schema
+  if (input.collegeId) {
+    data.college = { connect: { id: parseInt(input.collegeId) } };
+  }
+  
   if (input.departmentId) {
     data.department = { connect: { id: input.departmentId } };
   }
 
-  // ✅ Connect by 'level' (the @unique academic value), not 'id'
   if (input.level != null) {
-    data.level = { connect: { level: input.level } };  // was: { id: input.level }
+    data.level = { connect: { level: input.level } };
   }
+  
   return prisma.user.create({ data });
 }
 
 export async function updateUser(id: string, input: {
-  fullName?: string; email?: string; departmentId?: string;
-  level?: number; photoUrl?: string; isActive?: boolean;
+  fullName?: string;
+  email?: string; 
+  departmentId?: string;
+  level?: number; 
+  photoUrl?: string; 
+  isActive?: boolean; 
+  collegeId?: string;
+  staffId?: string;
+  matricNumber?: string;
+  phone?: string;
 }): Promise<SafeUser> {
   const prisma = await getPrismaClient();
 
-  const { level, departmentId, ...data } = input;
+  const { level, departmentId, collegeId, ...data } = input;
 
   return prisma.user.update({
     where: { id },
     data: {
       ...data,
       department: departmentId ? { connect: { id: departmentId } } : undefined,
-      level: level != null ? { connect: { id: level } } : undefined,
+      level: level != null ? { connect: { level: level } } : undefined,
+      college: collegeId ? { connect: { id: parseInt(collegeId) } } : undefined,
     },
     select: safeSelect,
   });

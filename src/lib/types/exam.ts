@@ -136,3 +136,22 @@ export interface ExamFormResult {
   values: ExamFormValues;
   errors: Record<string, string>;
 }
+
+export interface ExamAuthorityGate {
+  allowed: boolean;
+  scope: 'lecturer' | 'department_coordinator' | 'college_coordinator';
+  activeHolderName: string | null;
+}
+
+export interface CreateExamPageData {
+  departments: Array<{ id: string; name: string; code: string }>;
+  levels: Array<{ id: string; name: string | null; value: number }>;
+  sessions: Array<{ id: string; session: string }>;
+  courses: Array<{ id: string; code: string; title: string }>;
+  defaultSemester?: number;
+  defaultSession?: string;
+  examTotal?: number;
+  caTotal?: number;
+  totalMarks?: number;
+  gateByCourseId: Record<string, ExamAuthorityGate>;
+}

@@ -3,7 +3,7 @@
   import type { LayoutData } from './$types';
   import { page } from '$app/stores';
   import { goto } from '$app/navigation';
-  import { Shield, Building2, Layers, BookMarked, GraduationCap, UserPlus } from '@lucide/svelte';
+  import { Shield, Building2, Layers, BookMarked, GraduationCap, UserPlus,UserCog, } from '@lucide/svelte';
 
   let { data, children }: { data: LayoutData; children: import('svelte').Snippet } = $props();
 
@@ -15,6 +15,7 @@
     { href: '/admin/manage/courses', label: 'Courses', icon: BookMarked },
     { href: '/admin/manage/levels', label: 'Levels', icon: GraduationCap },
     { href: '/admin/manage/course-registrations', label: 'Course Registrations', icon: UserPlus },
+    { href: '/admin/manage/exam-officers', label: 'College Exam-Officers', icon: UserCog },
   ];
 
   async function navigate(href: string, e: MouseEvent) {

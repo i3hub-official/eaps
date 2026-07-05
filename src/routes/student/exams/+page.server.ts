@@ -4,11 +4,14 @@ import { error, fail } from '@sveltejs/kit';
 import type { PageServerLoad, Actions } from './$types';
 import { requireStudent } from '$lib/server/auth/guards.js';
 import { getPrismaClient } from '$lib/server/db/index.js';
+import { resolveEffectiveExam } from '$lib/server/academic/resolve-effective-exam.js';
 import { getExamForSession } from '$lib/server/db/exams.js';
 import { getSessionByExamAndStudent, getSessionAnswers, getOrCreateSession } from '$lib/server/db/sessions.js';
 import { buildStudentQuestionOrder, sanitizeQuestionsForClient } from '$lib/server/exam/randomizer.js';
 import { computeDeadline, secondsRemaining, UUID_RE } from '$lib/server/exam/session-engine.js';
 import { toClientExam, toClientSession, toClientQuestions, toSavedAnswers } from '$lib/server/exam/transform.js';
+import { resolveEffectiveExam } from '$lib/server/academic/resolve-effective-exam.js';
+
 
 const FACE_REVALIDATION_MS = 5 * 60 * 1000;
 
@@ -80,6 +83,7 @@ export const load: PageServerLoad = async ({ locals, url, cookies }) => {
 
     // ── Fetch all data in parallel ──────────────────────────────────────────
     const [exams, submittedSessions, regs] = await Promise.all([
+
       prisma.exam.findMany({
         where: {
           status: { in: ['active', 'scheduled'] },
@@ -107,15 +111,16 @@ export const load: PageServerLoad = async ({ locals, url, cookies }) => {
           scheduledStart: true,
           questionsToPresent: true,
           courseId: true,
+          offeringId: true,          // ← added: needed to resolve exam authority below
           session: true,
           semester: true,
           department: true,
-          course: { 
-            select: { 
-              code: true, 
+          course: {
+            select: {
+              code: true,
               title: true,
-              level: true 
-            } 
+              level: true
+            }
           },
           // Include levels so we can check eligibility
           levels: { select: { level: true } },
@@ -148,6 +153,30 @@ export const load: PageServerLoad = async ({ locals, url, cookies }) => {
       }),
     ]);
 
+    // ── Filter to only the authoritative exam per offering ────────────────
+    // Multiple lecturers can each create their own Exam under `lecturer` scope,
+    // so without this, a student would see every lecturer's exam for a shared
+    // course. This keeps only the one exam that resolveEffectiveExam picks for
+    // this specific student. Exams with no offeringId (pre-dating this feature)
+    // pass through unfiltered.
+    const offeringIds = [...new Set(exams.map(e => e.offeringId).filter(Boolean))] as string[];
+
+    const effectiveExamIds = new Set<string>();
+    await Promise.all(
+      offeringIds.map(async (offeringId) => {
+        try {
+          const effectiveExam = await resolveEffectiveExam(offeringId, user.id);
+          effectiveExamIds.add(effectiveExam.id);
+        } catch {
+          // No resolvable exam for this offering yet (e.g. college_coordinator
+          // scope active but the coordinator hasn't created their exam yet) —
+          // the student correctly sees nothing for it.
+        }
+      })
+    );
+
+    const visibleExams = exams.filter(e => !e.offeringId || effectiveExamIds.has(e.id));
+
     // ── Fetch in-progress sessions ──────────────────────────────────────────
     const inProgressSessions = await prisma.examSession.findMany({
       where: { studentId: user.id, status: 'in_progress' },
@@ -168,19 +197,19 @@ export const load: PageServerLoad = async ({ locals, url, cookies }) => {
     });
 
     // ── Build available exams with eligibility info ────────────────────────
-    const availableExams: AvailableExam[] = exams.map(e => {
+    const availableExams: AvailableExam[] = visibleExams.map(e => {
       const reg = regByCourse.get(e.courseId) ?? null;
-      
+
       // Check eligibility manually - don't check department
       let isEligible = true;
       const ineligibilityReasons: string[] = [];
-      
+
       // 1. Check if exam is active
       if (e.status !== 'active') {
         isEligible = false;
         ineligibilityReasons.push(`Exam is ${e.status}`);
       }
-      
+
       // 2. Check level eligibility through exam levels
       if (e.levels && e.levels.length > 0) {
         const allowedLevels = e.levels.map(l => l.level);
@@ -189,22 +218,22 @@ export const load: PageServerLoad = async ({ locals, url, cookies }) => {
           ineligibilityReasons.push(`Requires one of these levels: ${allowedLevels.join(', ')} (you are level ${studentForElig.level.level})`);
         }
       }
-      
+
       // 3. Check if already submitted
       if (submittedSet.has(e.id)) {
         isEligible = false;
         ineligibilityReasons.push('You have already submitted this exam');
       }
-      
+
       // 4. Check if student is registered (already handled by the query, but double-check)
       if (!reg) {
         isEligible = false;
         ineligibilityReasons.push('You are not registered for this course');
       }
-      
+
       // 5. IMPORTANT: Do NOT check department - registration already validates this
       // The student is registered for the course, so they are eligible regardless of department
-      
+
       // If no specific reasons found but not eligible, add generic message
       if (!isEligible && ineligibilityReasons.length === 0) {
         ineligibilityReasons.push('You are not eligible for this exam');
@@ -263,7 +292,7 @@ export const load: PageServerLoad = async ({ locals, url, cookies }) => {
       semester: activeSemester?.semester,
       status: { notIn: ['rejected', 'withdrawn'] }
     },
-    select: { 
+    select: {
       id: true,
       registrationType: true,
       levelId: true
@@ -434,7 +463,7 @@ export const actions: Actions = {
         semester: activeSemester?.semester,
         status: { notIn: ['rejected', 'withdrawn'] }
       },
-      select: { 
+      select: {
         id: true,
         registrationType: true,
         levelId: true

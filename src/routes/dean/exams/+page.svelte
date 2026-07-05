@@ -3,7 +3,7 @@
   import type { PageData } from './$types';
   import { goto } from '$app/navigation';
   import { page } from '$app/stores';
-  import { Filter, Printer } from '@lucide/svelte';
+  import { Filter, Printer, ShieldCheck } from '@lucide/svelte';
 
   let { data }: { data: PageData } = $props();
   const totalPages = $derived(Math.ceil(data.total / data.take));
@@ -19,7 +19,10 @@
 
 <div class="page-header">
   <div class="page-header-text"><h1>Faculty Exams</h1><p>All exams across your faculty — read only.</p></div>
-  <button class="btn btn-outline" onclick={() => window.print()}><Printer size={14} /> Print</button>
+  <div class="header-actions">
+    <a href="/dean/exam-authority" class="btn btn-outline"><ShieldCheck size={14} /> Manage Exam Authority</a>
+    <button class="btn btn-outline" onclick={() => window.print()}><Printer size={14} /> Print</button>
+  </div>
 </div>
 
 <div class="filter-row">
@@ -60,6 +63,7 @@
 
 <style>
  @import '$lib/styles/portals.css';
+ .header-actions { display: flex; gap: 0.5rem; }
   .filter-row{display:flex;align-items:center;gap:.5rem;flex-wrap:wrap;margin-bottom:1rem;}
   .filter-pill{padding:.3rem .75rem;border:1px solid var(--color-border);border-radius:2rem;font-size:.76rem;font-weight:600;background:none;color:var(--color-muted);cursor:pointer;font-family:inherit;transition:all .15s;text-transform:capitalize;}
   .filter-pill.active{background:var(--p-accent-dim);border-color:var(--p-accent);color:var(--p-accent);}

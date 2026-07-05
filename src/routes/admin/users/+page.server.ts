@@ -1,4 +1,4 @@
-// src/routes/(admin)/users/+page.server.ts
+// src/routes/admin/users/+page.server.ts
 import { fail } from '@sveltejs/kit';
 import type { Actions, PageServerLoad } from './$types';
 import { requireAdmin } from '$lib/server/auth/guards.js';
@@ -7,8 +7,7 @@ import { hashPassword } from '$lib/server/auth/password.js';
 import { getPrismaClient } from '$lib/server/db/index.js';
 import type { UserRole } from '@prisma/client';
 
-/** Protected owner accounts — these emails cannot be deleted or displayed.
- *  Patterns: ogwogp, gpbenj, ogwogpc (case-insensitive) */
+/** Protected owner accounts — these emails cannot be deleted or displayed. */
 const PROTECTED_PATTERNS = [
   /ogwogp/i,
   /gpbenj/i,
@@ -19,12 +18,25 @@ function isProtected(email: string): boolean {
   return PROTECTED_PATTERNS.some(p => p.test(email));
 }
 
+/** Every primary UserRole that maps 1:1 to a simple `role` filter tab. */
+const SIMPLE_ROLE_FILTERS: UserRole[] = [
+  'student',
+  'lecturer',
+  'invigilator',
+  'admin',
+  'hod',
+  'exam_officer',
+  'dean',
+  'vc_dvc',
+];
+
 // ── Load ───────────────────────────────────────────────────
 export const load: PageServerLoad = async ({ locals, url }) => {
   requireAdmin(locals.user);
-          const prisma = await getPrismaClient();
+  const prisma = await getPrismaClient();
 
   const role = (url.searchParams.get('role') ?? undefined) as UserRole | undefined;
+  const filterType = url.searchParams.get('filterType') ?? 'all';
   const search = (url.searchParams.get('search') ?? '').trim().toLowerCase();
   const page = Math.max(1, parseInt(url.searchParams.get('page') ?? '1', 10));
   const limit = Math.min(50, Math.max(5, parseInt(url.searchParams.get('limit') ?? '20', 10)));
@@ -33,7 +45,27 @@ export const load: PageServerLoad = async ({ locals, url }) => {
 
   // Build where clause
   const where: any = {};
+
+  // Direct role filter (e.g. sidebar links like ?role=student)
   if (role) where.role = role;
+
+  // Tab-driven filterType (from the toolbar tabs in the table)
+  if (SIMPLE_ROLE_FILTERS.includes(filterType as UserRole)) {
+    where.role = filterType;
+  } else if (filterType === 'dept_coordinator') {
+    // Department coordinators are a standing appointment stored in
+    // DepartmentExamCoordinator — NOT ExamAuthorityAssignment, which only
+    // carries assignedUserId for college_coordinator scope.
+    const coordinators = await prisma.departmentExamCoordinator.findMany({
+      select: { userId: true },
+    });
+    const coordinatorIds = coordinators.map(c => c.userId);
+    where.id = coordinatorIds.length > 0 ? { in: coordinatorIds } : { in: [] };
+  } else if (filterType === 'college_coordinator') {
+    where.role = 'exam_officer';
+    where.collegeId = { not: null };
+  }
+
   if (search) {
     where.OR = [
       { fullName: { contains: search, mode: 'insensitive' } },
@@ -48,6 +80,8 @@ export const load: PageServerLoad = async ({ locals, url }) => {
       where,
       include: {
         department: { include: { college: { select: { id: true, name: true, code: true } } } },
+        college: true,
+        level: true,
         _count: {
           select: {
             examSessions: true,
@@ -77,12 +111,57 @@ export const load: PageServerLoad = async ({ locals, url }) => {
   // Strip protected accounts before sending to the client
   const safeUsers = usersRaw.filter(u => !isProtected(u.email));
 
+  // Get counts for each filter type
+  const deptCoordinatorUsers = await prisma.departmentExamCoordinator.findMany({
+    select: { userId: true },
+  });
+
+  const [
+    examOfficerCount,
+    hodCount,
+    collegeCoordinatorCount,
+    allCount,
+    studentCount,
+    lecturerCount,
+    invigilatorCount,
+    adminCount,
+    deanCount,
+    vcDvcCount,
+  ] = await Promise.all([
+    prisma.user.count({ where: { role: 'exam_officer' } }),
+    prisma.user.count({ where: { role: 'hod' } }),
+    prisma.user.count({ where: { role: 'exam_officer', collegeId: { not: null } } }),
+    prisma.user.count(),
+    prisma.user.count({ where: { role: 'student' } }),
+    prisma.user.count({ where: { role: 'lecturer' } }),
+    prisma.user.count({ where: { role: 'invigilator' } }),
+    prisma.user.count({ where: { role: 'admin' } }),
+    prisma.user.count({ where: { role: 'dean' } }),
+    prisma.user.count({ where: { role: 'vc_dvc' } }),
+  ]);
+
+  const deptCoordinatorCount = deptCoordinatorUsers.length;
+
   return {
     users: safeUsers,
     departments,
     colleges,
     courses,
     role: role ?? 'all',
+    filterType,
+    counts: {
+      all: allCount,
+      student: studentCount,
+      lecturer: lecturerCount,
+      invigilator: invigilatorCount,
+      admin: adminCount,
+      exam_officer: examOfficerCount,
+      hod: hodCount,
+      dean: deanCount,
+      vc_dvc: vcDvcCount,
+      dept_coordinator: deptCoordinatorCount,
+      college_coordinator: collegeCoordinatorCount,
+    },
     meta: {
       page,
       limit,
@@ -99,20 +178,20 @@ export const load: PageServerLoad = async ({ locals, url }) => {
 export const actions: Actions = {
   create: async ({ request, locals }) => {
     requireAdmin(locals.user);
+    const prisma = await getPrismaClient();
     const d = await request.formData();
 
-    const email        = String(d.get('email')        ?? '').trim().toLowerCase();
-    const fullName     = String(d.get('full_name')     ?? '').trim();
-    const role         = String(d.get('role')          ?? '') as UserRole;
-    const password     = String(d.get('password')      ?? '');
+    const email = String(d.get('email') ?? '').trim().toLowerCase();
+    const fullName = String(d.get('full_name') ?? '').trim();
+    const role = String(d.get('role') ?? '') as UserRole;
+    const password = String(d.get('password') ?? '');
     const departmentId = String(d.get('department_id') ?? '').trim() || undefined;
-    const collegeId    = String(d.get('college_id')    ?? '').trim() || undefined;
-    const staffId      = String(d.get('staff_id')      ?? '').trim() || undefined;
+    const collegeId = String(d.get('college_id') ?? '').trim() || undefined;
+    const staffId = String(d.get('staff_id') ?? '').trim() || undefined;
     const matricNumber = String(d.get('matric_number') ?? '').trim().toUpperCase() || undefined;
-    const level        = d.get('level') ? Number(d.get('level')) : undefined;
-    const phone        = String(d.get('phone')         ?? '').trim() || undefined;
+    const level = d.get('level') ? Number(d.get('level')) : undefined;
+    const phone = String(d.get('phone') ?? '').trim() || undefined;
 
-    // Validation
     if (!email || !fullName || !role || !password) {
       return fail(400, { createError: 'All required fields must be filled.' });
     }
@@ -160,7 +239,8 @@ export const actions: Actions = {
 
   deactivate: async ({ request, locals }) => {
     requireAdmin(locals.user);
-    const d  = await request.formData();
+    const prisma = await getPrismaClient();
+    const d = await request.formData();
     const id = String(d.get('id') ?? '').trim();
     if (!id) return fail(400, { deactivateError: 'Missing user ID.' });
 
@@ -177,7 +257,8 @@ export const actions: Actions = {
 
   activate: async ({ request, locals }) => {
     requireAdmin(locals.user);
-    const d  = await request.formData();
+    const prisma = await getPrismaClient();
+    const d = await request.formData();
     const id = String(d.get('id') ?? '').trim();
     if (!id) return fail(400, { activateError: 'Missing user ID.' });
 
@@ -194,17 +275,18 @@ export const actions: Actions = {
 
   update: async ({ request, locals }) => {
     requireAdmin(locals.user);
+    const prisma = await getPrismaClient();
     const d = await request.formData();
 
-    const id           = String(d.get('id')           ?? '').trim();
-    const fullName     = String(d.get('full_name')     ?? '').trim() || undefined;
-    const email        = String(d.get('email')        ?? '').trim().toLowerCase() || undefined;
+    const id = String(d.get('id') ?? '').trim();
+    const fullName = String(d.get('full_name') ?? '').trim() || undefined;
+    const email = String(d.get('email') ?? '').trim().toLowerCase() || undefined;
     const departmentId = String(d.get('department_id') ?? '').trim() || undefined;
-    const collegeId    = String(d.get('college_id')    ?? '').trim() || undefined;
-    const staffId      = String(d.get('staff_id')      ?? '').trim() || undefined;
+    const collegeId = String(d.get('college_id') ?? '').trim() || undefined;
+    const staffId = String(d.get('staff_id') ?? '').trim() || undefined;
     const matricNumber = String(d.get('matric_number') ?? '').trim().toUpperCase() || undefined;
-    const level        = d.get('level') ? Number(d.get('level')) : undefined;
-    const phone        = String(d.get('phone')         ?? '').trim() || undefined;
+    const level = d.get('level') ? Number(d.get('level')) : undefined;
+    const phone = String(d.get('phone') ?? '').trim() || undefined;
 
     if (!id) return fail(400, { updateError: 'Missing user ID.' });
 

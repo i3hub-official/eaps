@@ -15,6 +15,7 @@
     Shield, FileBarChart, BrainCircuit, BookMarked, Monitor,
     EyeOff, Fingerprint, Command, Search, Home,
     ChevronRight, Settings, Pin, Key, PlayCircle, Plus, User, Database, PlusCircle,
+    UserCog, Crown,
   } from '@lucide/svelte';
 
    import { setContext } from 'svelte';
@@ -159,6 +160,8 @@
         { href: '/admin/manage/courses', label: 'Courses', icon: BookMarked },
         { href: '/admin/manage/levels', label: 'Levels', icon: GraduationCap },
         { href: '/admin/manage/course-registrations', label: 'Course Registrations', icon: UserPlus },
+        { href: '/admin/manage/exam-officers', label: 'College Exam-Officers', icon: UserCog },
+
       ],
     },
 
@@ -173,6 +176,10 @@
         { href: '/admin/users?role=student', label: 'Students', icon: GraduationCap },
         { href: '/admin/users?role=lecturer', label: 'Lecturers', icon: BookOpen },
         { href: '/admin/users?role=invigilator', label: 'Invigilators', icon: ShieldCheck },
+        // NEW: College Exam Officers management
+{ href: '/admin/users?role=exam_officer', label: 'College Exam-Officers', icon: UserCog },
+        { href: '/admin/users?role=dean', label: 'Deans', icon: Crown },
+        { href: '/admin/users?role=vc_dvc', label: 'VC/DVC', icon: ShieldAlert },
       ],
     },
 
@@ -259,6 +266,8 @@
     if (href === '/admin/users' && !isChild) return currentPath === '/admin/users' && !currentSearch;
     if (href === '/admin/users' && isChild) return currentPath === '/admin/users' && !currentSearch;
     if (href.includes('?role=')) return currentPath === '/admin/users' && currentSearch === '?' + href.split('?')[1];
+    // exam-officers
+    if (href === '/admin/users/exam-officers') return currentPath === '/admin/users/exam-officers';
     // exams
     if (href === '/admin/exams' && !isChild) return currentPath === '/admin/exams' && !currentSearch;
     if (href === '/admin/exams' && isChild) return currentPath === '/admin/exams' && !currentSearch;
@@ -301,6 +310,8 @@
         label = 'Create Key';
       } else if (part === 'playground') {
         label = 'Playground';
+      } else if (part === 'exam-officers') {
+        label = 'Exam Officers';
       } else {
         label = part.split('-').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
       }

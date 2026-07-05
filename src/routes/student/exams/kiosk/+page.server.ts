@@ -23,6 +23,7 @@ import {
 } from '$lib/server/exam/session-engine.js';
 import { toClientExam } from '$lib/server/exam/transform.js';
 import { requireFaceVerified } from '$lib/server/auth/face-guard.js';
+import { resolveEffectiveExam } from '$lib/server/academic/resolve-effective-exam.js';
 
 export const load: PageServerLoad = async ({ locals, url, cookies }) => {
   const user   = await requireStudent(locals.user);
@@ -40,6 +41,14 @@ export const load: PageServerLoad = async ({ locals, url, cookies }) => {
   // ── Load exam ────────────────────────────────────────────────────────────
   const exam = await getExamForSession(examId);
   if (!exam) throw error(404, 'Exam not found');
+  if (exam.offeringId) {
+
+  const effectiveExam = await resolveEffectiveExam(exam.offeringId, user.id).catch(() => null);
+  if (!effectiveExam || effectiveExam.id !== exam.id) {
+    throw error(403, 'This exam is not currently the active exam for your registration.');
+  }
+}
+
 
   // ── Active semester ──────────────────────────────────────────────────────
   const activeSemester = await prisma.academicSemester.findFirst({

@@ -24,6 +24,8 @@ import { getExamForSession }                from '$lib/server/db/exams.js';
 import { getSessionByExamAndStudent }       from '$lib/server/db/sessions.js';
 import { computeDeadline, secondsRemaining, UUID_RE, finalizeSession } from '$lib/server/exam/session-engine.js';
 import { buildStudentQuestionOrder }        from '$lib/server/exam/randomizer.js';
+import { resolveEffectiveExam } from '$lib/server/academic/resolve-effective-exam.js';
+
 
 // Face verification cookie must be fresh (5 min)
 const FACE_REVALIDATION_MS = 5 * 60 * 1000;
@@ -55,6 +57,13 @@ export const POST: RequestHandler = async ({ params, locals, cookies }) => {
   // ── Load exam ──────────────────────────────────────────────────────────────
   const exam = await getExamForSession(examId);
   if (!exam) throw error(404, 'Exam not found');
+
+  if (exam.offeringId) {
+  const effectiveExam = await resolveEffectiveExam(exam.offeringId, user.id).catch(() => null);
+  if (!effectiveExam || effectiveExam.id !== exam.id) {
+    throw error(403, 'This exam is not currently the active exam for your registration.');
+  }
+}
 
   if (exam.status !== 'active' && exam.status !== 'scheduled') {
     throw error(403, 'Exam is not currently accepting submissions');

@@ -12,10 +12,13 @@ export const load: PageServerLoad = async ({ locals, url }) => {
   const page   = Math.max(1, Number(url.searchParams.get('page') || 1));
   const take   = 20;
 
-  const where = {
-    examDepartments: { some: { departmentId: deptId } },
-    ...(status ? { status: status as any } : {}),
-  };
+const where = {
+  OR: [
+    { course: { departmentId: deptId } },
+    { offering: { departments: { some: { departmentId: deptId } } } },
+  ],
+  ...(status ? { status: status as any } : {}),
+};
 
   const [exams, total] = await Promise.all([
     prisma.exam.findMany({

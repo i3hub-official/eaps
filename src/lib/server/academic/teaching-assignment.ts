@@ -5,14 +5,15 @@ export async function assignLecturer(
 	offeringId: string,
 	lecturerId: string,
 	assignedById?: string,
-	isPrimary = true
+	isPrimary = true,
+	departmentId?: string
 ) {
 	const prisma = await getPrismaClient();
 
 	return prisma.teachingAssignment.upsert({
 		where: { offeringId_lecturerId: { offeringId, lecturerId } },
-		create: { offeringId, lecturerId, assignedById, isPrimary },
-		update: { isPrimary }
+		create: { offeringId, lecturerId, assignedById, isPrimary, departmentId },
+		update: { isPrimary, departmentId }
 	});
 }
 

@@ -4,14 +4,15 @@
   import { goto } from '$app/navigation';
   import { page } from '$app/stores';
   import type { PageData, ActionData } from './$types';
-  import {
-    Search, UserPlus, X, ChevronLeft, ChevronRight,
-    Users, GraduationCap, BookOpen, ShieldCheck, ShieldAlert,
-    Building2, Mail, IdCard, AlertCircle, Calendar, Clock,
-    Award, BookMarked, FileText, Activity,
-    Download, RefreshCw, Filter, ChevronDown,
-    Edit3, Eye, Ban, CheckCircle, Phone, Briefcase
-  } from '@lucide/svelte';
+import {
+  Search, UserPlus, X, ChevronLeft, ChevronRight,
+  Users, GraduationCap, BookOpen, ShieldCheck, ShieldAlert,
+  Building2, Mail, IdCard, AlertCircle, Calendar, Clock,
+  Award, BookMarked, FileText, Activity,
+  Download, RefreshCw, Filter, ChevronDown,
+  Edit3, Eye, Ban, CheckCircle, Phone, Briefcase,
+  UserCog, UserCheck, Crown
+} from '@lucide/svelte';
   import { tick } from 'svelte';
 
   let { data, form }: { data: PageData; form: ActionData } = $props();
@@ -31,6 +32,21 @@
   let openDropdown = $state<string | null>(null);
   let dropdownSearch = $state('');
 
+  // Tabs definition
+  const tabs = [
+    { key: 'all', label: 'All', icon: Users },
+    { key: 'student', label: 'Students', icon: GraduationCap },
+    { key: 'lecturer', label: 'Lecturers', icon: BookOpen },
+    { key: 'invigilator', label: 'Invigilators', icon: ShieldCheck },
+    { key: 'admin', label: 'Admins', icon: ShieldAlert },
+    { key: 'exam_officer', label: 'Exam Officers', icon: UserCog },
+    { key: 'hod', label: 'HODs', icon: UserCheck },
+    { key: 'dept_coordinator', label: 'Dept Coordinators', icon: Crown },
+    { key: 'college_coordinator', label: 'College Coordinators', icon: UserCog },
+    { key: 'dean', label: 'Deans', icon: Crown },
+{ key: 'vc_dvc', label: 'VC/DVC', icon: ShieldAlert },
+  ];
+
   // Derived
   const PAGE_SIZE = $derived(data.meta?.limit ?? 20);
   const currentPage = $derived(data.meta?.page ?? 1);
@@ -40,11 +56,15 @@
   const endItem = $derived(Math.min(currentPage * PAGE_SIZE, totalCount));
 
   const counts = $derived({
-    all: data.meta?.totalCount ?? 0,
-    student: data.users?.filter((u: any) => u.role === 'student').length ?? 0,
-    lecturer: data.users?.filter((u: any) => u.role === 'lecturer').length ?? 0,
-    invigilator: data.users?.filter((u: any) => u.role === 'invigilator').length ?? 0,
-    admin: data.users?.filter((u: any) => u.role === 'admin').length ?? 0,
+    all: data.counts?.all ?? data.meta?.totalCount ?? 0,
+    student: data.counts?.student ?? 0,
+    lecturer: data.counts?.lecturer ?? 0,
+    invigilator: data.counts?.invigilator ?? 0,
+    admin: data.counts?.admin ?? 0,
+    exam_officer: data.counts?.exam_officer ?? 0,
+    hod: data.counts?.hod ?? 0,
+    dept_coordinator: data.counts?.dept_coordinator ?? 0,
+    college_coordinator: data.counts?.college_coordinator ?? 0,
   });
 
   const ROLE_META: Record<string, { color: string; icon: any; bg: string; label: string }> = {
@@ -52,14 +72,14 @@
     lecturer: { color: '#7c3aed', icon: BookOpen, bg: '#f3e8ff', label: 'Lecturer' },
     invigilator: { color: '#f59e0b', icon: ShieldCheck, bg: '#fef3c7', label: 'Invigilator' },
     student: { color: '#16a34a', icon: GraduationCap, bg: '#dcfce7', label: 'Student' },
+    hod: { color: '#2563eb', icon: UserCheck, bg: '#dbeafe', label: 'Head of Department' },
+    exam_officer: { color: '#8b5cf6', icon: UserCog, bg: '#ede9fe', label: 'Exam Officer' },
+    dean: { color: '#059669', icon: Crown, bg: '#d1fae5', label: 'Dean' },
+vc_dvc: { color: '#0891b2', icon: ShieldAlert, bg: '#cffafe', label: 'VC/DVC' },
   };
 
   function getRoleMeta(role: string) {
     return ROLE_META[role] || { color: '#64748b', icon: Users, bg: '#e2e8f0', label: 'User' };
-  }
-
-  function roleLabel(r: string) {
-    return r.charAt(0).toUpperCase() + r.slice(1);
   }
 
   function handleSearch() {
@@ -69,22 +89,35 @@
       if (search) url.searchParams.set('search', search);
       else url.searchParams.delete('search');
       url.searchParams.set('page', '1');
-      goto(url.toString(), { replaceState: true });
+      const newUrl = url.toString();
+      if (newUrl !== $page.url.toString()) {
+        goto(newUrl, { replaceState: true });
+      }
     }, 300);
   }
 
   function goToPage(p: number) {
     const url = new URL($page.url);
     url.searchParams.set('page', String(p));
-    goto(url.toString(), { replaceState: true });
+    const newUrl = url.toString();
+    if (newUrl !== $page.url.toString()) {
+      goto(newUrl, { replaceState: true });
+    }
   }
 
-  function changeRole(role: string) {
+  function changeFilter(filterType: string) {
     const url = new URL($page.url);
-    if (role !== 'all') url.searchParams.set('role', role);
-    else url.searchParams.delete('role');
+    if (filterType !== 'all') {
+      url.searchParams.set('filterType', filterType);
+    } else {
+      url.searchParams.delete('filterType');
+    }
+    url.searchParams.delete('role');
     url.searchParams.set('page', '1');
-    goto(url.toString(), { replaceState: true });
+    const newUrl = url.toString();
+    if (newUrl !== $page.url.toString()) {
+      goto(newUrl, { replaceState: true });
+    }
   }
 
   function toggleDropdown(id: string) {
@@ -225,13 +258,6 @@
         {/if}
         Export CSV
       </button>
-      <!-- <button class="btn-primary" onclick={() => { showCreate = !showCreate; showEdit = false; }} type="button">
-        {#if showCreate}
-          <X size={16} /> Cancel
-        {:else}
-          <UserPlus size={16} /> Add User
-        {/if}
-      </button> -->
     </div>
   </header>
 
@@ -311,6 +337,8 @@
             <option value="lecturer">Lecturer</option>
             <option value="invigilator">Invigilator</option>
             <option value="admin">Admin</option>
+            <option value="hod">HOD</option>
+            <option value="exam_officer">Exam Officer</option>
           </select>
         </div>
         <div class="field">
@@ -507,15 +535,17 @@
   <!-- Toolbar -->
   <div class="toolbar">
     <div class="role-tabs">
-      {#each ['all', 'student', 'lecturer', 'invigilator', 'admin'] as r}
+      {#each tabs as tab}
         <button
           class="tab"
-          class:active={data.role === r}
-          onclick={() => changeRole(r)}
+          class:active={data.filterType === tab.key}
+          onclick={() => changeFilter(tab.key)}
           type="button"
+          title={tab.key === 'dept_coordinator' ? 'Users with department_coordinator authority scope' : tab.key === 'college_coordinator' ? 'Exam Officers assigned to a college' : ''}
         >
-          {r === 'all' ? 'All' : roleLabel(r) + 's'}
-          <span class="tab-count">{counts[r as keyof typeof counts]}</span>
+          <svelte:component this={tab.icon} size={14} />
+          {tab.label}
+          <span class="tab-count">{counts[tab.key as keyof typeof counts]}</span>
         </button>
       {/each}
     </div>
@@ -856,6 +886,7 @@
   {/if}
 
 </div>
+<!-- END: .page -->
 
 <style>
   .page {
@@ -1202,7 +1233,6 @@
     color: var(--color-muted);
     cursor: pointer;
     transition: all 0.15s;
-    border-bottom: none;
   }
   .tab:hover {
     color: var(--color-text);

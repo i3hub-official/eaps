@@ -284,6 +284,42 @@ export async function getExamForLecturer(examId: string, lecturerId: string) {
   });
 }
 
+/**
+ * Courses an HOD can create exams for — everything taught within their own department.
+ */
+export async function getCoursesForHod({ departmentId }: { departmentId: string }) {
+  const prisma = await getPrismaClient();
+
+  return prisma.course.findMany({
+    where: { departmentId, isActive: true, isDiscontinued: false },
+    select: { id: true, code: true, title: true },
+    orderBy: { code: 'asc' },
+  });
+}
+
+/**
+ * Courses an Exam Officer can create exams for — everything taught across
+ * every department in their college, including GST/shared offerings that
+ * span multiple departments within that college.
+ */
+export async function getCoursesForExamOfficer({ collegeId }: { collegeId: number }) {
+  const prisma = await getPrismaClient();
+
+  return prisma.course.findMany({
+    where: {
+      isActive: true,
+      isDiscontinued: false,
+      OR: [
+        { department: { collegeId } },
+        { offerings: { some: { departments: { some: { department: { collegeId } } } } } },
+      ],
+    },
+    select: { id: true, code: true, title: true },
+    orderBy: { code: 'asc' },
+    distinct: ['id'],
+  });
+}
+
 export async function createExam(input: {
   courseId: string;
   offeringId?: string | null;

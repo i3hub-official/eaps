@@ -1,24 +1,26 @@
-// src/routes/lecturer/exams/create/+page.server.ts
+// src/routes/exam-officer/exams/create/+page.server.ts
 import { error, fail, redirect } from '@sveltejs/kit';
 import type { Actions, PageServerLoad } from './$types';
 import { getPrismaClient } from '$lib/server/db/index.js';
-import { requireLecturer } from '$lib/server/auth/guards.js';
-import { createExam, getActiveAcademicSemester, getCoursesForLecturer } from '$lib/server/db/exams.js';
+import { requireExamOfficer } from '$lib/server/auth/guards.js';
+import { createExam, getActiveAcademicSemester, getCoursesForExamOfficer } from '$lib/server/db/exams.js';
 import { parseExamForm } from '$lib/server/exam/exam-form.js';
 import { canSubmitQuestions } from '$lib/server/academic/exam-authority-gate.js';
-import type { CreateExamPageData, ExamAuthorityGate } from '$lib/types/exam.js';
+import type { CreateExamPageData } from '$lib/types/exam.js';
 
 export const load: PageServerLoad = async (event) => {
-  const user = await requireLecturer(event.locals.user);
+  const user = requireExamOfficer(event.locals.user);
+  if (!user.collegeId) throw error(400, 'Exam officer must be associated with a college');
+  const collegeId = user.collegeId;
   const prisma = await getPrismaClient();
 
   const [courses, levels, departments, semesterRows, activeSemester] = await Promise.all([
-    getCoursesForLecturer({ departmentId: (user as any).departmentId ?? null }),
+    getCoursesForExamOfficer({ collegeId }),
     prisma.level.findMany({
       orderBy: { order: 'asc' },
       select: { id: true, name: true, level: true },
     }).then(rows => rows.map(r => ({ id: String(r.id), name: r.name || `${r.level} Level`, value: r.level }))),
-    prisma.department.findMany({ orderBy: { name: 'asc' }, select: { id: true, name: true, code: true } }),
+    prisma.department.findMany({ where: { collegeId }, orderBy: { name: 'asc' }, select: { id: true, name: true, code: true } }),
     prisma.academicSemester.findMany({
       orderBy: { session: 'desc' },
       select: { id: true, session: true, semester: true, isActive: true },
@@ -44,58 +46,52 @@ export const load: PageServerLoad = async (event) => {
     );
   }
 
-  // Resolve each course to its active offering, then compute the gate per course.
-  // This is a one-time lookup — cheap even for 20-30 courses, and lets the client
-  // dropdown flip the gate instantly without a round-trip on course selection.
-const gateByCourseId: Record<string, ExamAuthorityGate> = {};
+  const gateByCourseId: Record<string, { allowed: boolean; scope: string; activeHolderName: string | null }> = {};
 
   await Promise.all(
     courses.map(async (course: any) => {
       const offering = await prisma.courseOffering.findFirst({
         where: { courseId: course.id, status: 'open' },
-        select: { id: true, departments: { select: { department: { select: { collegeId: true } } }, take: 1 } },
+        select: { id: true },
         orderBy: { createdAt: 'desc' },
       });
 
-      if (!offering || !offering.departments[0]) {
-        // No open offering yet for this course — default to lecturer-allowed,
-        // since there's nothing for a Dean to have overridden.
-        gateByCourseId[course.id] = { allowed: true, scope: 'lecturer', activeHolderName: null };
+      if (!offering) {
+        gateByCourseId[course.id] = { allowed: false, scope: 'college_coordinator', activeHolderName: null };
         return;
       }
 
-      const collegeId = offering.departments[0].department.collegeId;
       gateByCourseId[course.id] = await canSubmitQuestions({
         offeringId: offering.id,
         userId: user.id,
-        userRole: 'lecturer',
+        userRole: 'exam_officer',
         collegeId,
       });
     })
   );
 
- const data: CreateExamPageData = {
-  courses,
-  levels,
-  departments,
-  sessions,
-  defaultSession: activeSemester?.session ?? derivedSession,
-  defaultSemester: activeSemester?.semester ?? 1,
-  examTotal: 70,
-  caTotal: 30,
-  totalMarks: 100,
-  gateByCourseId,
-};
+  const data: CreateExamPageData = {
+    courses,
+    levels,
+    departments,
+    sessions,
+    defaultSession: activeSemester?.session ?? derivedSession,
+    defaultSemester: activeSemester?.semester ?? 1,
+    examTotal: 70,
+    caTotal: 30,
+    totalMarks: 100,
+    gateByCourseId,
+  };
 
-return data;
+  return data;
 };
-
 
 export const actions: Actions = {
   default: async (event) => {
     const user = event.locals.user;
     if (!user) throw redirect(303, '/login');
-    if (user.role !== 'lecturer') throw error(403, 'Lecturer access only');
+    if (user.role !== 'exam_officer') throw error(403, 'Exam Officer access only');
+    if (!user.collegeId) throw error(400, 'Exam officer must be associated with a college');
 
     const formData = await event.request.formData();
     const { values, errors } = parseExamForm(formData);
@@ -107,16 +103,16 @@ export const actions: Actions = {
     const prisma = await getPrismaClient();
     const offering = await prisma.courseOffering.findFirst({
       where: { courseId: values.courseId, status: 'open' },
-      select: { id: true, departments: { select: { department: { select: { collegeId: true } } }, take: 1 } },
+      select: { id: true },
       orderBy: { createdAt: 'desc' },
     });
 
-    if (offering && offering.departments[0]) {
+    if (offering) {
       const gate = await canSubmitQuestions({
         offeringId: offering.id,
         userId: user.id,
-        userRole: 'lecturer',
-        collegeId: offering.departments[0].department.collegeId,
+        userRole: 'exam_officer',
+        collegeId: user.collegeId,
       });
       if (!gate.allowed) {
         return fail(403, {
@@ -127,30 +123,30 @@ export const actions: Actions = {
     }
 
     const exam = await createExam({
-      courseId:           values.courseId,
-      createdBy:          user.id,
-      title:              values.title,
-      instructions:       values.instructions ?? undefined,
-      durationMinutes:    values.durationMinutes,
-      totalMarks:         values.totalMarks,
-      passMark:           values.passMark,
-      scheduledStart:     values.scheduledStart ?? undefined,
-      scheduledEnd:       values.scheduledEnd   ?? undefined,
-      allowLateEntry:     values.allowLateEntry,
-      lateEntryMinutes:   values.lateEntryMinutes,
+      courseId: values.courseId,
+      createdBy: user.id,
+      title: values.title,
+      instructions: values.instructions ?? undefined,
+      durationMinutes: values.durationMinutes,
+      totalMarks: values.totalMarks,
+      passMark: values.passMark,
+      scheduledStart: values.scheduledStart ?? undefined,
+      scheduledEnd: values.scheduledEnd ?? undefined,
+      allowLateEntry: values.allowLateEntry,
+      lateEntryMinutes: values.lateEntryMinutes,
       randomizeQuestions: values.randomizeQuestions,
-      randomizeOptions:   values.randomizeOptions,
-      showResultAfter:    values.showResultAfter,
-      maxViolations:      values.maxViolations,
+      randomizeOptions: values.randomizeOptions,
+      showResultAfter: values.showResultAfter,
+      maxViolations: values.maxViolations,
       questionsToPresent: values.questionsToPresent,
-      marksPerQuestion:   values.marksPerQuestion,
-      session:            values.session,
-      semester:           values.semester,
-      levels:             values.levels,
-      department:         values.department,
+      marksPerQuestion: values.marksPerQuestion,
+      session: values.session,
+      semester: values.semester,
+      levels: values.levels,
+      department: values.department,
     });
 
-    throw redirect(303, `/lecturer/exams/${exam.id}`);
+    throw redirect(303, `/exam-officer/exams/${exam.id}`);
   },
 };
 
@@ -158,6 +154,6 @@ function serialize(values: ReturnType<typeof parseExamForm>['values']) {
   return {
     ...values,
     scheduledStart: values.scheduledStart?.toISOString() ?? '',
-    scheduledEnd:   values.scheduledEnd?.toISOString()   ?? '',
+    scheduledEnd: values.scheduledEnd?.toISOString() ?? '',
   };
 }

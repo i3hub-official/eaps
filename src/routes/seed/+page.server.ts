@@ -1073,19 +1073,23 @@ export const actions: Actions = {
         });
       });
 
-      // ── Exam Officers ──────────────────────────────────────────────────────
-      [
-        { email: 'examofficer1@mouau.edu.ng', fullName: 'Mr. Chukwuemeka Obi', staffId: 'EXO001' },
-        { email: 'examofficer2@mouau.edu.ng', fullName: 'Mrs. Ngozi Eze', staffId: 'EXO002' },
-        { email: 'examofficer_ogwo@mouau.edu.ng', fullName: 'Ogwo Godspower (EO)', staffId: 'EXO310449' },
-      ].forEach(e => allUsersToCreate.push({
-        email: e.email,
-        fullName: e.fullName,
-        passwordHash: examOfficerPass,
-        role: 'exam_officer',
-        staffId: e.staffId,
-        session: '2025/2026'
-      }));
+  // ── Exam Officers ──────────────────────────────────────────────────────
+[
+  { email: 'examofficer1@mouau.edu.ng', fullName: 'Mr. Chukwuemeka Obi', staffId: 'EXO001', collegeCode: 'COLPAS' },
+  { email: 'examofficer2@mouau.edu.ng', fullName: 'Mrs. Ngozi Eze', staffId: 'EXO002', collegeCode: 'CEET' },
+  { email: 'examofficer_ogwo@mouau.edu.ng', fullName: 'Ogwo Godspower (EO)', staffId: 'EXO310449', collegeCode: 'COLPAS' },
+].forEach(e => {
+  const college = getCollege(e.collegeCode);
+  allUsersToCreate.push({
+    email: e.email,
+    fullName: e.fullName,
+    passwordHash: examOfficerPass,
+    role: 'exam_officer',
+    staffId: e.staffId,
+    collegeId: college.id, // Add this line
+    session: '2025/2026'
+  });
+});
 
       // ── VC/DVC ────────────────────────────────────────────────────────────
       [
