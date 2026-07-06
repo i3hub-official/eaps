@@ -3,10 +3,10 @@
   import type { PageData, ActionData } from './$types';
   import { enhance } from '$app/forms';
   import {
-    ShieldCheck, Shield, Users, GraduationCap, BookOpen,
-    ChevronDown, Check, X, Search, Filter, AlertCircle,
-    RotateCcw, Save, Eye, EyeOff, Layers, Hash,
-    ChevronLeft, ChevronRight
+    ShieldCheck, Shield, Users, BookOpen, UserCog, UserCheck,
+    ChevronDown, Check, X, Search, AlertCircle,
+    RotateCcw, Save, EyeOff, Layers,
+    ChevronLeft, ChevronRight, GraduationCap, Building2
   } from '@lucide/svelte';
 
   let { data, form }: { data: PageData; form: ActionData } = $props();
@@ -17,7 +17,7 @@
   let officerDrafts = $state<Record<string, string>>({});
 
   let search = $state('');
-  let levelFilter = $state<string>('all'); // 'all' | '100' | '200' | ... (scales to whatever levels exist)
+  let levelFilter = $state<string>('all');
   let deptFilter = $state<string>('all');
   let scopeFilter = $state<'all' | 'lecturer' | 'department_coordinator' | 'college_coordinator'>('all');
   let showOnlyPending = $state(false);
@@ -35,7 +35,7 @@
   let pageSize = $state(10);
   const pageSizeOptions = [10, 20, 50, 100];
 
-  // ─── Level detection (scalable — reads whatever levels exist in the data) ───
+  // ─── Level detection ───
   function getLevel(code: string): string | null {
     const m = code.match(/(\d{3,})/);
     if (!m) return null;
@@ -81,9 +81,8 @@
     });
   });
 
-  // Reset to page 1 whenever the filtered set changes shape (search/filter change)
+  // Reset to page 1 whenever the filtered set changes
   $effect(() => {
-    // touch all filter deps so this reruns when they change
     void search; void levelFilter; void deptFilter; void scopeFilter; void showOnlyPending; void pageSize;
     currentPage = 1;
   });
@@ -118,8 +117,6 @@
     return pages;
   });
 
-  // Selection is tracked across the *filtered* set (not just current page),
-  // so bulk apply can span multiple pages if the user selects, pages, selects more.
   const selectableIds = $derived(() => new Set(filteredOfferings().map(o => o.id)));
   const pageIds = $derived(() => new Set(paginatedOfferings().map(o => o.id)));
   const allOnPageSelected = $derived(() => {
@@ -140,16 +137,24 @@
   // ─── Helpers ───
   function scopeLabel(s: string | undefined) {
     return {
-      lecturer: 'Lecturer submits',
-      department_coordinator: 'Department HOD submits',
-      college_coordinator: 'College exam officer submits'
-    }[s ?? 'lecturer'] ?? 'Lecturer submits';
+      lecturer: 'Lecturer',
+      department_coordinator: 'Dept Coordinator',
+      college_coordinator: 'Exam Officer'
+    }[s ?? 'lecturer'] ?? 'Lecturer';
+  }
+
+  function scopeDescription(s: string | undefined) {
+    return {
+      lecturer: 'Lecturer creates exams for this course',
+      department_coordinator: 'Dept Coordinator creates exams for this course',
+      college_coordinator: 'Exam Officer creates exams for this course (college-wide)'
+    }[s ?? 'lecturer'] ?? 'Lecturer creates exams';
   }
 
   function scopeIcon(s: string | undefined) {
     return {
       lecturer: GraduationCap,
-      department_coordinator: Users,
+      department_coordinator: Building2,
       college_coordinator: ShieldCheck
     }[s ?? 'lecturer'] ?? GraduationCap;
   }
@@ -168,6 +173,20 @@
       department_coordinator: '#f3e8ff',
       college_coordinator: '#e0f2fe'
     }[s ?? 'lecturer'] ?? '#e2e8f0';
+  }
+
+  function getAssignableUsers(scope: string) {
+    if (scope === 'college_coordinator') {
+      return data.examOfficers.map(o => ({ ...o, role: 'Exam Officer' }));
+    } else if (scope === 'department_coordinator') {
+      return data.departmentCoordinators.map(c => ({ ...c, role: 'Dept Coordinator' }));
+    } else {
+      // Lecturer scope - can be assigned to anyone (Exam Officer or Dept Coordinator will manage)
+      return [
+        ...data.examOfficers.map(o => ({ ...o, role: 'Exam Officer' })),
+        ...data.departmentCoordinators.map(c => ({ ...c, role: 'Dept Coordinator' }))
+      ];
+    }
   }
 
   function toggleSelect(id: string) {
@@ -233,12 +252,12 @@
     <div class="header-left">
       <div class="header-icon"><Shield size={26} color="#0ea5e9" /></div>
       <div>
-        <h1>Exam Authority</h1>
+        <h1>Exam Authority Management</h1>
         <p class="subtitle">
           {data.offerings.length} course offerings &middot;
           <span style="color:#16a34a">{scopeCounts().lecturer} lecturer</span> &middot;
-          <span style="color:#7c3aed">{scopeCounts().department_coordinator} HOD</span> &middot;
-          <span style="color:#0ea5e9">{scopeCounts().college_coordinator} college officer</span>
+          <span style="color:#7c3aed">{scopeCounts().department_coordinator} coordinator</span> &middot;
+          <span style="color:#0ea5e9">{scopeCounts().college_coordinator} exam officer</span>
           {#if scopeCounts().unset > 0}
             &middot; <span style="color:#dc2626">{scopeCounts().unset} unset</span>
           {/if}
@@ -277,6 +296,17 @@
     </div>
   {/if}
 
+  <!-- ═══ Info Banner ═══ -->
+  <div class="info-banner">
+    <UserCog size={18} />
+    <div>
+      <strong>College Authority Delegation:</strong>
+      As Dean, you delegate exam authority to <strong>Exam Officers</strong> and 
+      <strong>Department Coordinators</strong>. They will manage who actually creates 
+      exams for each course. Course Coordinators handle teaching assignments separately.
+    </div>
+  </div>
+
   <!-- ═══ Filters Bar ═══ -->
   <div class="filters-bar">
     <div class="filter-group">
@@ -310,8 +340,8 @@
       <select class="filter-select" bind:value={scopeFilter}>
         <option value="all">All Scopes</option>
         <option value="lecturer">Lecturer</option>
-        <option value="department_coordinator">HOD</option>
-        <option value="college_coordinator">College Officer</option>
+        <option value="department_coordinator">Coordinator</option>
+        <option value="college_coordinator">Exam Officer</option>
       </select>
 
       <label class="toggle-pill" class:active={showOnlyPending}>
@@ -374,21 +404,53 @@
       >
         <input type="hidden" name="offeringIds" value={Array.from(selectedIds).join(',')} />
 
-        <select name="scope" bind:value={bulkScope} required class="bulk-select">
-          <option value="" disabled>Select scope...</option>
-          <option value="lecturer">Each lecturer submits</option>
-          <option value="department_coordinator">Department HOD submits</option>
-          <option value="college_coordinator">College exam officer submits</option>
+        <select 
+          name="scope" 
+          bind:value={bulkScope} 
+          required 
+          class="bulk-select"
+          onchange={() => { bulkOfficer = ''; }}
+        >
+          <option value="" disabled>Select who creates exams...</option>
+          <option value="lecturer">Lecturer creates exams</option>
+          <option value="department_coordinator">Department Coordinator creates exams</option>
+          <option value="college_coordinator">Exam Officer creates exams (college-wide)</option>
         </select>
 
-        {#if bulkScope === 'college_coordinator'}
-          <select name="assignedUserId" bind:value={bulkOfficer} required class="bulk-select">
-            <option value="" disabled>Select exam officer</option>
+        <select 
+          name="assignedUserId" 
+          bind:value={bulkOfficer} 
+          required 
+          class="bulk-select"
+          disabled={!bulkScope}
+        >
+          <option value="" disabled>Select person to assign...</option>
+          {#if bulkScope === 'college_coordinator'}
             {#each data.examOfficers as officer}
-              <option value={officer.id}>{officer.fullName}</option>
+              <option value={officer.id}>
+                {officer.fullName} (Exam Officer)
+              </option>
             {/each}
-          </select>
-        {/if}
+          {:else if bulkScope === 'department_coordinator'}
+            {#each data.departmentCoordinators as coordinator}
+              <option value={coordinator.id}>
+                {coordinator.fullName} (Dept Coordinator)
+              </option>
+            {/each}
+          {:else}
+            <!-- Lecturer scope - can assign to Exam Officer or Dept Coordinator -->
+            {#each data.examOfficers as officer}
+              <option value={officer.id}>
+                {officer.fullName} (Exam Officer)
+              </option>
+            {/each}
+            {#each data.departmentCoordinators as coordinator}
+              <option value={coordinator.id}>
+                {coordinator.fullName} (Dept Coordinator)
+              </option>
+            {/each}
+          {/if}
+        </select>
 
         <input
           type="text"
@@ -398,7 +460,7 @@
           bind:value={bulkReason}
         />
 
-        <button type="submit" class="btn btn-primary" disabled={!bulkScope}>
+        <button type="submit" class="btn btn-primary" disabled={!bulkScope || !bulkOfficer}>
           <Save size={14} /> Apply to {selectedCount()} courses
         </button>
       </form>
@@ -418,7 +480,7 @@
     </label>
     <span class="th-course">Course</span>
     <span class="th-dept">Departments</span>
-    <span class="th-status">Current</span>
+    <span class="th-status">Current Authority</span>
     <span class="th-action">Action</span>
   </div>
 
@@ -430,6 +492,7 @@
       {@const isSelected = selectedIds.has(o.id)}
       {@const isExpanded = expandedCards.has(o.id)}
       {@const ScopeIcon = scopeIcon(o.authority?.scope)}
+      {@const assignableUsers = getAssignableUsers(scope)}
 
       <div
         class="authority-card"
@@ -513,39 +576,77 @@
 
               <div class="form-row">
                 <div class="field">
-                  <label>Who submits questions?</label>
-                  <select name="scope" bind:value={scopeDrafts[o.id]}>
-                    <option value="lecturer" selected={scope === 'lecturer'}>Each lecturer submits their own</option>
-                    <option value="department_coordinator" selected={scope === 'department_coordinator'}>Department HOD submits on behalf</option>
-                    <option value="college_coordinator" selected={scope === 'college_coordinator'}>College exam officer submits</option>
+                  <label>Who creates exams for this course? <span class="req">*</span></label>
+                  <select 
+                    name="scope" 
+                    bind:value={scopeDrafts[o.id]}
+                    onchange={() => { 
+                      officerDrafts[o.id] = '';
+                    }}
+                    required
+                  >
+                    <option value="lecturer" selected={scope === 'lecturer'}>
+                      Lecturer (assigned by Exam Officer)
+                    </option>
+                    <option value="department_coordinator" selected={scope === 'department_coordinator'}>
+                      Department Coordinator
+                    </option>
+                    <option value="college_coordinator" selected={scope === 'college_coordinator'}>
+                      College Exam Officer (college-wide)
+                    </option>
                   </select>
+                  <span class="field-hint">
+                    {scopeDescription(scope)}
+                  </span>
                 </div>
 
-                {#if scope === 'college_coordinator'}
-                  <div class="field">
-                    <label>Assign to exam officer <span class="req">*</span></label>
-                    <select name="assignedUserId" bind:value={officerDrafts[o.id]} required>
-                      <option value="" disabled selected>Choose officer...</option>
-                      {#each data.examOfficers as officer}
-                        <option value={officer.id}>{officer.fullName}</option>
-                      {/each}
-                    </select>
-                  </div>
-                {/if}
+                <!-- Assign to specific person -->
+                <div class="field">
+                  <label>Assign to <span class="req">*</span></label>
+                  <select 
+                    name="assignedUserId" 
+                    bind:value={officerDrafts[o.id]} 
+                    required
+                    disabled={assignableUsers.length === 0}
+                  >
+                    <option value="" disabled selected>Select person...</option>
+                    {#each assignableUsers as user}
+                      <option value={user.id}>
+                        {user.fullName} ({user.role})
+                      </option>
+                    {/each}
+                  </select>
+                  {#if assignableUsers.length === 0}
+                    <span class="field-hint" style="color:#dc2626;">
+                      No eligible users found for this scope.
+                      {#if scope === 'college_coordinator'}
+                        Please add an Exam Officer to the college.
+                      {:else if scope === 'department_coordinator'}
+                        Please add Department Coordinators.
+                      {:else}
+                        Please add Exam Officers or Department Coordinators.
+                      {/if}
+                    </span>
+                  {/if}
+                </div>
 
                 <div class="field field-grow">
                   <label>Reason for change</label>
                   <input
                     type="text"
                     name="reason"
-                    placeholder="e.g. agreed at college meeting on 5th July"
+                    placeholder="e.g. delegated to exam officer for this course"
                     bind:value={reasonDrafts[o.id]}
                   />
                 </div>
 
                 <div class="field field-submit">
                   <label>&nbsp;</label>
-                  <button type="submit" class="btn btn-primary">
+                  <button 
+                    type="submit" 
+                    class="btn btn-primary"
+                    disabled={!officerDrafts[o.id] || assignableUsers.length === 0}
+                  >
                     <Save size={13} /> Apply
                   </button>
                 </div>
@@ -702,6 +803,27 @@
   }
   :global([data-theme='dark']) .alert-error { background: #451a1a; color: #fca5a5; }
 
+  /* Info Banner */
+  .info-banner {
+    display: flex;
+    gap: 0.75rem;
+    padding: 0.75rem 1rem;
+    background: #eff6ff;
+    border: 1px solid #93c5fd;
+    border-radius: 0.5rem;
+    font-size: 0.85rem;
+    color: #1e40af;
+    align-items: flex-start;
+  }
+  .info-banner strong {
+    font-weight: 700;
+  }
+  :global([data-theme='dark']) .info-banner {
+    background: #1e293b;
+    border-color: #3b82f6;
+    color: #93c5fd;
+  }
+
   /* Filters */
   .filters-bar {
     display: flex; justify-content: space-between; align-items: center;
@@ -826,6 +948,7 @@
   .bulk-select { min-width: 180px; cursor: pointer; }
   .bulk-input { min-width: 240px; flex: 1; }
   .bulk-select:focus, .bulk-input:focus { outline: none; border-color: #3b82f6; }
+  .bulk-select:disabled { opacity: 0.5; cursor: not-allowed; }
 
   /* Table Header */
   .table-header {
@@ -1015,10 +1138,16 @@
     outline: none; border-color: #3b82f6;
   }
   .field select { cursor: pointer; }
+  .field select:disabled { opacity: 0.5; cursor: not-allowed; }
   .field-grow { flex: 1; min-width: 220px; }
   .field-grow input { width: 100%; box-sizing: border-box; }
   .field-submit { min-width: auto; }
   .req { color: #dc2626; }
+  .field-hint {
+    font-size: 0.7rem;
+    color: var(--color-muted);
+    margin-top: 0.2rem;
+  }
 
   .btn {
     display: inline-flex; align-items: center; gap: 0.4rem;
@@ -1030,7 +1159,7 @@
   .btn-primary {
     background: #3b82f6; color: white; border-color: #3b82f6;
   }
-  .btn-primary:hover { background: #1d4ed8; border-color: #1d4ed8; }
+  .btn-primary:hover:not(:disabled) { background: #1d4ed8; border-color: #1d4ed8; }
   .btn-primary:disabled { opacity: 0.5; cursor: not-allowed; }
 
   /* Empty */
@@ -1125,5 +1254,7 @@
     .bulk-form { flex-direction: column; align-items: stretch; }
     .pagination-bar { flex-direction: column; align-items: stretch; text-align: center; }
     .page-controls { justify-content: center; flex-wrap: wrap; }
+    .card-form { padding: 0 0.75rem 0.75rem 2.5rem; }
+    .info-banner { flex-direction: column; align-items: center; text-align: center; }
   }
 </style>

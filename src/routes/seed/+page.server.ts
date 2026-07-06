@@ -866,16 +866,17 @@ export const actions: Actions = {
       // ══════════════════════════════════════════════════════════════════════
       // 7. PASSWORDS
       // ══════════════════════════════════════════════════════════════════════
-      const [adminPass, lecturerPass, invigilatorPass, studentPass, hodPass, deanPass, examOfficerPass, vcDvcPass] = await Promise.all([
-        hashPassword('admin123'),
-        hashPassword('lecturer123'),
-        hashPassword('invigilator123'),
-        hashPassword('student123'),
-        hashPassword('hod123'),
-        hashPassword('dean123'),
-        hashPassword('examofficer123'),
-        hashPassword('vcdvc123'),
-      ]);
+      const [adminPass, lecturerPass, invigilatorPass, studentPass, hodPass, deanPass, examOfficerPass, vcDvcPass, coordinatorPass] = await Promise.all([
+  hashPassword('admin123'),
+  hashPassword('lecturer123'),
+  hashPassword('invigilator123'),
+  hashPassword('student123'),
+  hashPassword('hod123'),
+  hashPassword('dean123'),
+  hashPassword('examofficer123'),
+  hashPassword('vcdvc123'),
+  hashPassword('coordinator123'),
+]);
 
       // ══════════════════════════════════════════════════════════════════════
       // 8. USERS
@@ -1045,6 +1046,113 @@ export const actions: Actions = {
           session: '2025/2026'
         });
       });
+
+      // ── Department Coordinators ──────────────────────────────────────────────
+      // Add this after the HODs section and before the Deans section
+      const coordinatorData = [
+        // COLPAS
+        { email: 'coord.csc@mouau.edu.ng', fullName: 'Dr. Adaobi Nwosu (Coordinator CSC)', staffId: 'CRD001', deptCode: 'CSC' },
+        { email: 'coord.mth@mouau.edu.ng', fullName: 'Dr. Emeka Okafor (Coordinator MTH)', staffId: 'CRD002', deptCode: 'MTH' },
+        { email: 'coord.phy@mouau.edu.ng', fullName: 'Dr. Chidi Eze (Coordinator PHY)', staffId: 'CRD003', deptCode: 'PHY' },
+        { email: 'coord.chm@mouau.edu.ng', fullName: 'Dr. Ngozi Obi (Coordinator CHM)', staffId: 'CRD004', deptCode: 'CHM' },
+        { email: 'coord.sta@mouau.edu.ng', fullName: 'Dr. Uche Okafor (Coordinator STA)', staffId: 'CRD005', deptCode: 'STA' },
+        { email: 'coord.glg@mouau.edu.ng', fullName: 'Dr. Kelechi Ogbonna (Coordinator GLG)', staffId: 'CRD006', deptCode: 'GLG' },
+
+        // CEET
+        { email: 'coord.eee@mouau.edu.ng', fullName: 'Dr. Basil Ani (Coordinator EEE)', staffId: 'CRD007', deptCode: 'EEE' },
+        { email: 'coord.cpe@mouau.edu.ng', fullName: 'Dr. Ikenna Ozoemena (Coordinator CPE)', staffId: 'CRD008', deptCode: 'CPE' },
+        { email: 'coord.cve@mouau.edu.ng', fullName: 'Dr. Eze Obi (Coordinator CVE)', staffId: 'CRD009', deptCode: 'CVE' },
+        { email: 'coord.abe@mouau.edu.ng', fullName: 'Dr. Chidi Nwachukwu (Coordinator ABE)', staffId: 'CRD010', deptCode: 'ABE' },
+        { email: 'coord.che@mouau.edu.ng', fullName: 'Dr. Adaobi Eze (Coordinator CHE)', staffId: 'CRD011', deptCode: 'CHE' },
+        { email: 'coord.mce@mouau.edu.ng', fullName: 'Dr. Okechukwu Eze (Coordinator MCE)', staffId: 'CRD012', deptCode: 'MCE' },
+
+        // COLMAS
+        { email: 'coord.acc@mouau.edu.ng', fullName: 'Dr. Adaeze Okon (Coordinator ACC)', staffId: 'CRD013', deptCode: 'ACC' },
+        { email: 'coord.bus@mouau.edu.ng', fullName: 'Dr. Amaka Okonkwo (Coordinator BUS)', staffId: 'CRD014', deptCode: 'BUS' },
+        { email: 'coord.hrm@mouau.edu.ng', fullName: 'Dr. Ngozi Ekwueme (Coordinator HRM)', staffId: 'CRD015', deptCode: 'HRM' },
+        { email: 'coord.mkt@mouau.edu.ng', fullName: 'Dr. Chukwudum Eze (Coordinator MKT)', staffId: 'CRD016', deptCode: 'MKT' },
+        { email: 'coord.bnf@mouau.edu.ng', fullName: 'Dr. Obiageli Okafor (Coordinator BNF)', staffId: 'CRD017', deptCode: 'BNF' },
+        { email: 'coord.ecn@mouau.edu.ng', fullName: 'Dr. Chidi Agu (Coordinator ECN)', staffId: 'CRD018', deptCode: 'ECN' },
+        { email: 'coord.ent@mouau.edu.ng', fullName: 'Dr. Nnamdi Obi (Coordinator ENT)', staffId: 'CRD019', deptCode: 'ENT' },
+        { email: 'coord.irp@mouau.edu.ng', fullName: 'Dr. Ebere Nwosu (Coordinator IRP)', staffId: 'CRD020', deptCode: 'IRP' },
+
+        // COLNAS
+        { email: 'coord.bch@mouau.edu.ng', fullName: 'Dr. Chidi Agu (Coordinator BCH)', staffId: 'CRD021', deptCode: 'BCH' },
+        { email: 'coord.mcb@mouau.edu.ng', fullName: 'Dr. Ogechukwu Eze (Coordinator MCB)', staffId: 'CRD022', deptCode: 'MCB' },
+        { email: 'coord.psb@mouau.edu.ng', fullName: 'Dr. Chiamaka Nwosu (Coordinator PSB)', staffId: 'CRD023', deptCode: 'PSB' },
+        { email: 'coord.zeb@mouau.edu.ng', fullName: 'Dr. Adaeze Obi (Coordinator ZEB)', staffId: 'CRD024', deptCode: 'ZEB' },
+
+        // CAERSE
+        { email: 'coord.abm@mouau.edu.ng', fullName: 'Dr. Peter Ugwu (Coordinator ABM)', staffId: 'CRD025', deptCode: 'ABM' },
+        { email: 'coord.aec@mouau.edu.ng', fullName: 'Dr. Chuka Nwankwo (Coordinator AEC)', staffId: 'CRD026', deptCode: 'AEC' },
+        { email: 'coord.aers@mouau.edu.ng', fullName: 'Dr. Ngozi Eze (Coordinator AERS)', staffId: 'CRD027', deptCode: 'AERS' },
+
+        // CASAP
+        { email: 'coord.apl@mouau.edu.ng', fullName: 'Dr. Emeka Okafor (Coordinator APL)', staffId: 'CRD028', deptCode: 'APL' },
+        { email: 'coord.abp@mouau.edu.ng', fullName: 'Dr. Ada Eze (Coordinator ABP)', staffId: 'CRD029', deptCode: 'ABP' },
+        { email: 'coord.anf@mouau.edu.ng', fullName: 'Dr. Chidi Okonkwo (Coordinator ANF)', staffId: 'CRD030', deptCode: 'ANF' },
+
+        // CAFST
+        { email: 'coord.fst@mouau.edu.ng', fullName: 'Dr. Chidinma Amadi (Coordinator FST)', staffId: 'CRD031', deptCode: 'FST' },
+        { email: 'coord.hnd@mouau.edu.ng', fullName: 'Dr. Ezinne Nwachukwu (Coordinator HND)', staffId: 'CRD032', deptCode: 'HND' },
+        { email: 'coord.hht@mouau.edu.ng', fullName: 'Dr. Tunde Bello (Coordinator HHT)', staffId: 'CRD033', deptCode: 'HHT' },
+
+        // CCSS
+        { email: 'coord.agr@mouau.edu.ng', fullName: 'Dr. Ugwu Okafor (Coordinator AGR)', staffId: 'CRD034', deptCode: 'AGR' },
+        { email: 'coord.phm@mouau.edu.ng', fullName: 'Dr. Chijioke Obi (Coordinator PHM)', staffId: 'CRD035', deptCode: 'PHM' },
+        { email: 'coord.ssm@mouau.edu.ng', fullName: 'Dr. Funmilayo Adebayo (Coordinator SSM)', staffId: 'CRD036', deptCode: 'SSM' },
+        { email: 'coord.wrm@mouau.edu.ng', fullName: 'Dr. Ken Okafor (Coordinator WRM)', staffId: 'CRD037', deptCode: 'WRM' },
+
+        // CNREM
+        { email: 'coord.emt@mouau.edu.ng', fullName: 'Dr. Chinwe Okonkwo (Coordinator EMT)', staffId: 'CRD038', deptCode: 'EMT' },
+        { email: 'coord.far@mouau.edu.ng', fullName: 'Dr. Olu Adeyemi (Coordinator FAR)', staffId: 'CRD039', deptCode: 'FAR' },
+        { email: 'coord.fem@mouau.edu.ng', fullName: 'Dr. Nkechi Obi (Coordinator FEM)', staffId: 'CRD040', deptCode: 'FEM' },
+
+        // COED
+        { email: 'coord.ace@mouau.edu.ng', fullName: 'Dr. Grace Nwosu (Coordinator ACE)', staffId: 'CRD041', deptCode: 'ACE' },
+        { email: 'coord.ahe@mouau.edu.ng', fullName: 'Dr. Bisi Oladipo (Coordinator AHE)', staffId: 'CRD042', deptCode: 'AHE' },
+        { email: 'coord.bed@mouau.edu.ng', fullName: 'Dr. Chidi Okafor (Coordinator BED)', staffId: 'CRD043', deptCode: 'BED' },
+        { email: 'coord.ece@mouau.edu.ng', fullName: 'Dr. Ada Eze (Coordinator ECE)', staffId: 'CRD044', deptCode: 'ECE' },
+        { email: 'coord.edm@mouau.edu.ng', fullName: 'Dr. Emeka Nwosu (Coordinator EDM)', staffId: 'CRD045', deptCode: 'EDM' },
+        { email: 'coord.ite@mouau.edu.ng', fullName: 'Dr. Chukwudi Okonkwo (Coordinator ITE)', staffId: 'CRD046', deptCode: 'ITE' },
+        { email: 'coord.lis@mouau.edu.ng', fullName: 'Dr. Joy Okafor (Coordinator LIS)', staffId: 'CRD047', deptCode: 'LIS' },
+        { email: 'coord.gca@mouau.edu.ng', fullName: 'Dr. Patience Obi (Coordinator GCA)', staffId: 'CRD048', deptCode: 'GCA' },
+        { email: 'coord.ise@mouau.edu.ng', fullName: 'Dr. Ken Eze (Coordinator ISE)', staffId: 'CRD049', deptCode: 'ISE' },
+
+        // CVM
+        { email: 'coord.vet@mouau.edu.ng', fullName: 'Dr. Samuel Onyekachi (Coordinator VET)', staffId: 'CRD050', deptCode: 'VET' },
+        { email: 'coord.thr@mouau.edu.ng', fullName: 'Dr. Okechukwu Nwosu (Coordinator THR)', staffId: 'CRD051', deptCode: 'THR' },
+        { email: 'coord.vam@mouau.edu.ng', fullName: 'Dr. Ngozi Eze (Coordinator VAM)', staffId: 'CRD052', deptCode: 'VAM' },
+        { email: 'coord.vmb@mouau.edu.ng', fullName: 'Dr. Ikenna Obi (Coordinator VMB)', staffId: 'CRD053', deptCode: 'VMB' },
+        { email: 'coord.vph@mouau.edu.ng', fullName: 'Dr. Adaobi Okonkwo (Coordinator VPH)', staffId: 'CRD054', deptCode: 'VPH' },
+        { email: 'coord.vsr@mouau.edu.ng', fullName: 'Dr. Emeka Eze (Coordinator VSR)', staffId: 'CRD055', deptCode: 'VSR' },
+
+        // SGS
+        { email: 'coord.eng@mouau.edu.ng', fullName: 'Dr. Nnamdi Nzeka (Coordinator ENG)', staffId: 'CRD056', deptCode: 'ENG' },
+        { email: 'coord.frn@mouau.edu.ng', fullName: 'Dr. Chidi French (Coordinator FRN)', staffId: 'CRD057', deptCode: 'FRN' },
+        { email: 'coord.ger@mouau.edu.ng', fullName: 'Dr. Ulrike Schmidt (Coordinator GER)', staffId: 'CRD058', deptCode: 'GER' },
+        { email: 'coord.his@mouau.edu.ng', fullName: 'Dr. Chukwuma History (Coordinator HIS)', staffId: 'CRD059', deptCode: 'HIS' },
+        { email: 'coord.soc@mouau.edu.ng', fullName: 'Dr. Bola Ogunleye (Coordinator SOC)', staffId: 'CRD060', deptCode: 'SOC' },
+        { email: 'coord.phe@mouau.edu.ng', fullName: 'Dr. Kayode Ogun (Coordinator PHE)', staffId: 'CRD061', deptCode: 'PHE' },
+        { email: 'coord.phl@mouau.edu.ng', fullName: 'Dr. Uchenna Philosophy (Coordinator PHL)', staffId: 'CRD062', deptCode: 'PHL' },
+        { email: 'coord.pcs@mouau.edu.ng', fullName: 'Dr. Ijeoma Peace (Coordinator PCS)', staffId: 'CRD063', deptCode: 'PCS' },
+      ];
+
+      // Add coordinators to users
+      coordinatorData.forEach(c => {
+        const dept = getDept(c.deptCode);
+        allUsersToCreate.push({
+          email: c.email,
+          fullName: c.fullName,
+          passwordHash: coordinatorPass,
+          role: 'department_coordinator',
+          staffId: c.staffId,
+          collegeId: dept.collegeId,
+          departmentId: dept.id,
+          session: '2025/2026'
+        });
+      });
+
 
       // ── Deans for ALL Colleges ─────────────────────────────────────────────
       [
@@ -1307,7 +1415,7 @@ export const actions: Actions = {
         email: string; fullName: string; deptCode: string;
         matric: string; levelNum: number; session: string;
       }> = [
-         // PHY — 100L (4 students)
+          // PHY — 100L (4 students)
           { email: 'ogwo.godspower@student.mouau.edu.ng', fullName: 'Ogwo Godspower', deptCode: 'PHY', matric: 'MOUAU/PHY/25/128468', levelNum: 100, session: '2025/2026' },
           { email: 'ade.adeleke@student.mouau.edu.ng', fullName: 'Ade Adeleke', deptCode: 'PHY', matric: 'MOUAU/PHY/25/123456', levelNum: 100, session: '2025/2026' },
           { email: 'bimbo.oshodi@student.mouau.edu.ng', fullName: 'Bimbo Oshodi', deptCode: 'PHY', matric: 'MOUAU/PHY/25/234567', levelNum: 100, session: '2025/2026' },
@@ -1661,30 +1769,55 @@ export const actions: Actions = {
           update: {},
         });
       }
+
+
+      // Also add department coordinators as lecturers for teaching assignments
+      const coordinators = allUsers.filter(u => u.role === 'department_coordinator' && u.departmentId);
+      for (const coordinator of coordinators) {
+        // Optionally add them as lecturers too
+        await prisma.userRoleAssignment.upsert({
+          where: {
+            userId_role: {
+              userId: coordinator.id,
+              role: 'lecturer',
+            }
+          },
+          create: {
+            userId: coordinator.id,
+            role: 'lecturer',
+            assignedById: allUsers.find(u => u.role === 'admin')?.id,
+          },
+          update: {},
+        });
+      }
+
+
       results.push(`✓ ${hodsWhoLecture.length} HODs assigned secondary lecturer role`);
 
       // ──────────────────────────────────────────────────────────────────────
       // After creating all users, create TeachingAssignments
       // ──────────────────────────────────────────────────────────────────────
-      progressBroadcaster.broadcastProgress('assignments', 'Creating teaching assignments...', 'Lecturers to offerings', '👨‍🏫');
+      progressBroadcaster.broadcastProgress('assignments', 'Creating teaching assignments...', 'Lecturers & Coordinators to offerings', '👨‍🏫');
 
-      // Get all lecturers
+      // Get all lecturers and coordinators
       const assignmentUsers = await prisma.user.findMany();
-      const lecturers = assignmentUsers.filter(u => u.role === 'lecturer');
+      const educators = assignmentUsers.filter(u =>
+        u.role === 'lecturer' || u.role === 'department_coordinator'
+      );
       let assignmentCount = 0;
 
-      // For each lecturer, assign them to offerings in their department
-      for (const lecturer of lecturers) {
-        if (!lecturer.departmentId) continue;
+      // For each educator, assign them to offerings in their department
+      for (const educator of educators) {
+        if (!educator.departmentId) continue;
 
         // Get offerings for this department
         const deptOfferings = await prisma.courseOffering.findMany({
           where: {
             course: {
-              departmentId: lecturer.departmentId,
+              departmentId: educator.departmentId,
             },
           },
-          take: 5, // Assign each lecturer to up to 5 offerings
+          take: 5, // Assign each educator to up to 5 offerings
         });
 
         for (const offering of deptOfferings) {
@@ -1692,12 +1825,12 @@ export const actions: Actions = {
             where: {
               offeringId_lecturerId: {
                 offeringId: offering.id,
-                lecturerId: lecturer.id,
+                lecturerId: educator.id,
               }
             },
             create: {
               offeringId: offering.id,
-              lecturerId: lecturer.id,
+              lecturerId: educator.id,
               assignedById: allUsers.find(u => u.role === 'admin')?.id,
             },
             update: {},

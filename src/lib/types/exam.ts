@@ -141,6 +141,7 @@ export interface ExamAuthorityGate {
   allowed: boolean;
   scope: 'lecturer' | 'department_coordinator' | 'college_coordinator';
   activeHolderName: string | null;
+  reason?: string;
 }
 
 export interface CreateExamPageData {

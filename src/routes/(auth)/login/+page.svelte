@@ -15,13 +15,23 @@
     vc_dvc:       { primary: '#e11d48', primaryHover: '#be123c', primaryLight: 'rgba(225,29,72,0.1)'  },
     invigilator:  { primary: '#f59e0b', primaryHover: '#d97706', primaryLight: 'rgba(245,158,11,0.1)' },
     student:      { primary: '#10b981', primaryHover: '#059669', primaryLight: 'rgba(16,185,129,0.1)' },
+    // NEW: Department Coordinator
+    department_coordinator: { primary: '#059669', primaryHover: '#047857', primaryLight: 'rgba(5,150,105,0.1)' },
     default:      { primary: '#059669', primaryHover: '#047857', primaryLight: '#d1fae5'               },
   };
 
   const roleLabels: Record<string, string> = {
-    admin: 'Admin Portal', lecturer: 'Lecturer Portal', hod: 'HOD Portal',
-    dean: 'Dean Portal', exam_officer: 'Exam Officer Portal', vc_dvc: 'VC / DVC Portal',
-    invigilator: 'Invigilator Portal', student: 'Student Portal', default: 'eTest Portal',
+    admin: 'Admin Portal', 
+    lecturer: 'Lecturer Portal', 
+    hod: 'HOD Portal',
+    dean: 'Dean Portal', 
+    exam_officer: 'Exam Officer Portal', 
+    vc_dvc: 'VC / DVC Portal',
+    invigilator: 'Invigilator Portal', 
+    student: 'Student Portal', 
+    // NEW: Department Coordinator
+    department_coordinator: 'Dept Coordinator Portal',
+    default: 'eTest Portal',
   };
 
   const t = $derived(roleTokens[data.roleHint] ?? roleTokens.default);

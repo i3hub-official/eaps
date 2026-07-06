@@ -2,23 +2,64 @@
 import { error, fail, redirect } from '@sveltejs/kit';
 import type { Actions, PageServerLoad } from './$types';
 import { getPrismaClient } from '$lib/server/db/index.js';
-import { requireLecturer } from '$lib/server/auth/guards.js';
+import { requireExamCreator } from '$lib/server/auth/guards.js';
 import { createExam, getActiveAcademicSemester, getCoursesForLecturer } from '$lib/server/db/exams.js';
 import { parseExamForm } from '$lib/server/exam/exam-form.js';
 import { canSubmitQuestions } from '$lib/server/academic/exam-authority-gate.js';
 import type { CreateExamPageData, ExamAuthorityGate } from '$lib/types/exam.js';
 
 export const load: PageServerLoad = async (event) => {
-  const user = await requireLecturer(event.locals.user);
+  // ✅ Use the new guard - allows lecturers, department coordinators, exam officers, and HODs
+  const user = requireExamCreator(event.locals.user);
   const prisma = await getPrismaClient();
 
-  const [courses, levels, departments, semesterRows, activeSemester] = await Promise.all([
-    getCoursesForLecturer({ departmentId: (user as any).departmentId ?? null }),
+  // Get courses based on user role
+  let courses;
+  if (user.role === 'exam_officer') {
+    // Exam officers can see all courses in their college
+    courses = await prisma.course.findMany({
+      where: {
+        offerings: {
+          some: {
+            departments: {
+              some: {
+                department: {
+                  collegeId: user.collegeId
+                }
+              }
+            }
+          }
+        }
+      },
+      select: {
+        id: true,
+        code: true,
+        title: true,
+        offerings: {
+          where: { status: 'open' },
+          select: { id: true },
+          take: 1
+        }
+      },
+      orderBy: { code: 'asc' }
+    });
+  } else {
+    // Lecturers, department coordinators, and HODs see courses in their department
+    courses = await getCoursesForLecturer({ 
+      departmentId: user.departmentId ?? null 
+    });
+  }
+
+  const [levels, departments, semesterRows, activeSemester] = await Promise.all([
     prisma.level.findMany({
       orderBy: { order: 'asc' },
       select: { id: true, name: true, level: true },
     }).then(rows => rows.map(r => ({ id: String(r.id), name: r.name || `${r.level} Level`, value: r.level }))),
-    prisma.department.findMany({ orderBy: { name: 'asc' }, select: { id: true, name: true, code: true } }),
+    prisma.department.findMany({ 
+      where: user.collegeId ? { collegeId: user.collegeId } : {},
+      orderBy: { name: 'asc' }, 
+      select: { id: true, name: true, code: true } 
+    }),
     prisma.academicSemester.findMany({
       orderBy: { session: 'desc' },
       select: { id: true, session: true, semester: true, isActive: true },
@@ -45,57 +86,73 @@ export const load: PageServerLoad = async (event) => {
   }
 
   // Resolve each course to its active offering, then compute the gate per course.
-  // This is a one-time lookup — cheap even for 20-30 courses, and lets the client
-  // dropdown flip the gate instantly without a round-trip on course selection.
-const gateByCourseId: Record<string, ExamAuthorityGate> = {};
+  const gateByCourseId: Record<string, ExamAuthorityGate> = {};
 
   await Promise.all(
     courses.map(async (course: any) => {
       const offering = await prisma.courseOffering.findFirst({
         where: { courseId: course.id, status: 'open' },
-        select: { id: true, departments: { select: { department: { select: { collegeId: true } } }, take: 1 } },
+        select: { 
+          id: true, 
+          departments: { 
+            select: { 
+              department: { 
+                select: { 
+                  collegeId: true,
+                  id: true 
+                } 
+              } 
+            }, 
+            take: 1 
+          } 
+        },
         orderBy: { createdAt: 'desc' },
       });
 
       if (!offering || !offering.departments[0]) {
-        // No open offering yet for this course — default to lecturer-allowed,
-        // since there's nothing for a Dean to have overridden.
+        // No open offering yet for this course — default to allowed
         gateByCourseId[course.id] = { allowed: true, scope: 'lecturer', activeHolderName: null };
         return;
       }
 
       const collegeId = offering.departments[0].department.collegeId;
+      const departmentId = offering.departments[0].department.id;
+      
+      // ✅ Use the actual user's role
       gateByCourseId[course.id] = await canSubmitQuestions({
         offeringId: offering.id,
         userId: user.id,
-        userRole: 'lecturer',
+        userRole: user.role,
         collegeId,
+        departmentId: user.departmentId || departmentId,
       });
     })
   );
 
- const data: CreateExamPageData = {
-  courses,
-  levels,
-  departments,
-  sessions,
-  defaultSession: activeSemester?.session ?? derivedSession,
-  defaultSemester: activeSemester?.semester ?? 1,
-  examTotal: 70,
-  caTotal: 30,
-  totalMarks: 100,
-  gateByCourseId,
-};
+  const data: CreateExamPageData = {
+    courses: courses.map((c: any) => ({
+      id: c.id,
+      code: c.code,
+      title: c.title
+    })),
+    levels,
+    departments,
+    sessions,
+    defaultSession: activeSemester?.session ?? derivedSession,
+    defaultSemester: activeSemester?.semester ?? 1,
+    examTotal: 70,
+    caTotal: 30,
+    totalMarks: 100,
+    gateByCourseId,
+  };
 
-return data;
+  return data;
 };
-
 
 export const actions: Actions = {
   default: async (event) => {
-    const user = event.locals.user;
-    if (!user) throw redirect(303, '/login');
-    if (user.role !== 'lecturer') throw error(403, 'Lecturer access only');
+    // ✅ Use the new guard
+    const user = requireExamCreator(event.locals.user);
 
     const formData = await event.request.formData();
     const { values, errors } = parseExamForm(formData);
@@ -107,17 +164,36 @@ export const actions: Actions = {
     const prisma = await getPrismaClient();
     const offering = await prisma.courseOffering.findFirst({
       where: { courseId: values.courseId, status: 'open' },
-      select: { id: true, departments: { select: { department: { select: { collegeId: true } } }, take: 1 } },
+      select: { 
+        id: true, 
+        departments: { 
+          select: { 
+            department: { 
+              select: { 
+                collegeId: true,
+                id: true 
+              } 
+            } 
+          }, 
+          take: 1 
+        } 
+      },
       orderBy: { createdAt: 'desc' },
     });
 
     if (offering && offering.departments[0]) {
+      const collegeId = offering.departments[0].department.collegeId;
+      const departmentId = offering.departments[0].department.id;
+      
+      // ✅ Use the actual user's role
       const gate = await canSubmitQuestions({
         offeringId: offering.id,
         userId: user.id,
-        userRole: 'lecturer',
-        collegeId: offering.departments[0].department.collegeId,
+        userRole: user.role,
+        collegeId,
+        departmentId: user.departmentId || departmentId,
       });
+      
       if (!gate.allowed) {
         return fail(403, {
           error: `Question submission for this course is currently assigned to ${gate.activeHolderName ?? 'someone else'}, set by the Dean.`,

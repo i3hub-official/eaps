@@ -1,9 +1,25 @@
 /* src/lib/styles/portals.css
-   Design tokens for HOD, Dean, Exam Officer, VC/DVC portals.
+   Design tokens for all portals.
    Each portal imports this and overrides --p-* with its own accent.
 */
 
-/* ── HOD  (amber) ─────────────────────────────── */
+/* ── Student (green) ───────────────────────────── */
+:root[data-portal="student"] {
+  --p-accent:       #10b981;
+  --p-accent-dim:   rgba(16,185,129,.12);
+  --p-accent-hover: #059669;
+  --p-accent-text:  #065f46;
+}
+
+/* ── Department Coordinator (teal) ───────────────── */
+:root[data-portal="coordinator"] {
+  --p-accent:       #0d9488;
+  --p-accent-dim:   rgba(13,148,136,.12);
+  --p-accent-hover: #0f766e;
+  --p-accent-text:  #115e59;
+}
+
+/* ── HOD (amber) ─────────────────────────────── */
 :root[data-portal="hod"] {
   --p-accent:       #f59e0b;
   --p-accent-dim:   rgba(245,158,11,.12);
@@ -11,7 +27,7 @@
   --p-accent-text:  #92400e;
 }
 
-/* ── Dean  (emerald) ──────────────────────────── */
+/* ── Dean (emerald) ──────────────────────────── */
 :root[data-portal="dean"] {
   --p-accent:       #10b981;
   --p-accent-dim:   rgba(16,185,129,.12);
@@ -19,7 +35,7 @@
   --p-accent-text:  #065f46;
 }
 
-/* ── Exam Officer  (sky) ──────────────────────── */
+/* ── Exam Officer (sky) ──────────────────────── */
 :root[data-portal="exam-officer"] {
   --p-accent:       #0ea5e9;
   --p-accent-dim:   rgba(14,165,233,.12);
@@ -27,12 +43,36 @@
   --p-accent-text:  #0c4a6e;
 }
 
-/* ── VC / DVC  (violet) ───────────────────────── */
+/* ── VC / DVC (violet) ───────────────────────── */
 :root[data-portal="vc-dvc"] {
   --p-accent:       #8b5cf6;
   --p-accent-dim:   rgba(139,92,246,.12);
   --p-accent-hover: #7c3aed;
   --p-accent-text:  #4c1d95;
+}
+
+/* ── Lecturer (indigo) ───────────────────────── */
+:root[data-portal="lecturer"] {
+  --p-accent:       #6366f1;
+  --p-accent-dim:   rgba(99,102,241,.12);
+  --p-accent-hover: #4f46e5;
+  --p-accent-text:  #3730a3;
+}
+
+/* ── Invigilator (amber/yellow) ───────────────── */
+:root[data-portal="invigilator"] {
+  --p-accent:       #f59e0b;
+  --p-accent-dim:   rgba(245,158,11,.12);
+  --p-accent-hover: #d97706;
+  --p-accent-text:  #92400e;
+}
+
+/* ── Admin (blue) ────────────────────────────── */
+:root[data-portal="admin"] {
+  --p-accent:       #3b82f6;
+  --p-accent-dim:   rgba(59,130,246,.12);
+  --p-accent-hover: #2563eb;
+  --p-accent-text:  #1e3a8a;
 }
 
 /* ── Shared portal layout primitives ─────────────────────────────────────── */
@@ -405,8 +445,239 @@
   color: var(--color-text);
 }
 
+/* ── Quick Actions Grid ──────────────────────────────────────────────────── */
+.actions-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: .75rem;
+  margin-top: 1rem;
+}
+
+.action-item {
+  display: flex;
+  align-items: center;
+  gap: .625rem;
+  padding: .75rem 1rem;
+  background: var(--color-bg);
+  border: 1px solid var(--color-border);
+  border-radius: .5rem;
+  text-decoration: none;
+  color: var(--color-text);
+  font-size: .85rem;
+  font-weight: 500;
+  transition: all .15s ease;
+}
+
+.action-item:hover {
+  border-color: var(--p-accent);
+  background: var(--p-accent-dim);
+  transform: translateY(-1px);
+}
+
+.action-item :global(svg) {
+  color: var(--p-accent);
+}
+
+/* ── Course/Lecturer Chips ───────────────────────────────────────────────── */
+.chip-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: .5rem;
+}
+
+.chip {
+  display: flex;
+  align-items: center;
+  gap: .5rem;
+  padding: .35rem .65rem;
+  background: var(--color-bg);
+  border: 1px solid var(--color-border);
+  border-radius: .4rem;
+  font-size: .78rem;
+}
+
+.chip-code {
+  font-weight: 700;
+  color: var(--p-accent);
+}
+
+.chip-remove {
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: var(--color-muted);
+  padding: .1rem;
+  border-radius: .2rem;
+  display: flex;
+  align-items: center;
+  transition: all .15s;
+}
+
+.chip-remove:hover {
+  color: #dc2626;
+  background: rgba(220,38,38,.08);
+}
+
+/* ── Modal ────────────────────────────────────────────────────────────────── */
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,.5);
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  backdrop-filter: blur(4px);
+  animation: fadeIn .2s ease;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+.modal {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: .75rem;
+  width: min(500px, 90vw);
+  max-height: 80vh;
+  overflow: hidden;
+  animation: modalSlide .25s cubic-bezier(.4,0,.2,1);
+}
+
+@keyframes modalSlide {
+  from {
+    opacity: 0;
+    transform: scale(.95) translateY(-10px);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}
+
+.modal-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 1rem 1.25rem;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.modal-header h3 {
+  margin: 0;
+  font-size: 1rem;
+  font-weight: 700;
+}
+
+.modal-close {
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: var(--color-muted);
+  padding: .25rem;
+  border-radius: .3rem;
+  display: flex;
+  align-items: center;
+}
+
+.modal-close:hover {
+  background: var(--color-bg);
+  color: var(--color-text);
+}
+
+.modal-body {
+  padding: 1.25rem;
+}
+
+.modal-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: .5rem;
+  padding: .75rem 1.25rem;
+  border-top: 1px solid var(--color-border);
+}
+
+/* ── Form Fields ──────────────────────────────────────────────────────────── */
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: .35rem;
+}
+
+.field label {
+  font-size: .8rem;
+  font-weight: 600;
+  color: var(--color-text);
+}
+
+.field select,
+.field input[type="text"],
+.field input[type="email"],
+.field input[type="password"] {
+  padding: .5rem .6rem;
+  border: 1px solid var(--color-border);
+  border-radius: .4rem;
+  background: var(--color-bg);
+  color: var(--color-text);
+  font-size: .85rem;
+  font-family: inherit;
+  transition: border-color .15s;
+}
+
+.field select:focus,
+.field input:focus {
+  outline: none;
+  border-color: var(--p-accent);
+  box-shadow: 0 0 0 3px var(--p-accent-dim);
+}
+
+.field select:disabled,
+.field input:disabled {
+  opacity: .5;
+  cursor: not-allowed;
+}
+
+.req {
+  color: #dc2626;
+}
+
+.field-hint {
+  font-size: .7rem;
+  color: var(--color-muted);
+  margin-top: .2rem;
+}
+
+/* ── Empty State ──────────────────────────────────────────────────────────── */
+.empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: .5rem;
+  padding: 2rem 1rem;
+  color: var(--color-muted);
+  text-align: center;
+}
+
+.empty-state.large {
+  padding: 3rem 1rem;
+}
+
+.empty-state p {
+  margin: 0;
+  font-size: .85rem;
+}
+
+.empty-state .hint {
+  font-size: .75rem;
+  opacity: .7;
+}
+
+/* ── Responsive ───────────────────────────────────────────────────────────── */
 @media (max-width: 768px) {
   .mob-toggle { display: flex; }
+  
   .sidebar {
     position: fixed;
     left: -260px;
@@ -415,10 +686,12 @@
     transition: left .22s ease;
     box-shadow: none;
   }
+  
   .sidebar.open {
     left: 0;
     box-shadow: 4px 0 24px rgba(0,0,0,.18);
   }
+  
   .sidebar-overlay {
     display: none;
     position: fixed;
@@ -426,6 +699,29 @@
     background: rgba(0,0,0,.4);
     z-index: 99;
   }
+  
   .sidebar-overlay.open { display: block; }
+  
   .portal-content { padding: 1.125rem; }
+  
+  .stat-grid {
+    grid-template-columns: 1fr 1fr;
+  }
+  
+  .actions-grid {
+    grid-template-columns: 1fr;
+  }
+  
+  .page-header {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+  
+  .topbar-breadcrumb {
+    font-size: .75rem;
+  }
+  
+  .portal-topbar {
+    padding: 0 1rem;
+  }
 }

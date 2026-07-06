@@ -13,6 +13,7 @@
     CirclePlus, ChartColumn, ChevronDown, Bell, CheckCheck,
     Clock, Menu, User, PanelLeftClose, PanelLeftOpen,
     Zap, Download, Settings, ListOrdered, Printer,
+    ShieldCheck, Users, GraduationCap, Building2
   } from '@lucide/svelte';
   import { setContext } from 'svelte';
   import { ROLE_CONTEXT_KEY } from '$lib/constants/context';
@@ -60,6 +61,7 @@
   const routeGroup = $derived.by(() => {
     if (currentPath.startsWith('/exam-officer/exams'))   return 'Exams';
     if (currentPath.startsWith('/exam-officer/results')) return 'Results';
+    if (currentPath.startsWith('/exam-officer/authority')) return 'Authority';
     return null;
   });
 
@@ -95,6 +97,16 @@
       children: [
         { href: '/exam-officer/exams',        label: 'All Exams',   icon: ListOrdered, sectionLabel: 'Overview' },
         { href: '/exam-officer/exams/create', label: 'Create Exam', icon: CirclePlus,  sectionLabel: 'Actions'  },
+      ],
+    },
+    {
+      href:  '/exam-officer/authority',
+      label: 'Exam Authority',
+      icon:  ShieldCheck,
+      children: [
+        { href: '/exam-officer/authority',           label: 'Manage Authority', icon: ShieldCheck, sectionLabel: 'Overview' },
+        { href: '/exam-officer/authority/assign',    label: 'Assign Creator',   icon: Users,       sectionLabel: 'Actions' },
+        { href: '/exam-officer/authority/history',   label: 'History',          icon: Clock,       sectionLabel: 'History' },
       ],
     },
     {
@@ -212,12 +224,13 @@
       exams: 'Exams', create: 'Create', results: 'Results',
       profile: 'Profile', notifications: 'Notifications',
       export: 'Export', print: 'Print', settings: 'Settings',
+      authority: 'Exam Authority', assign: 'Assign Creator', history: 'History',
     };
     const crumbs = [{ label: 'Home', href: '/exam-officer' }];
     let built = '/exam-officer';
     for (const p of parts) {
       built += '/' + p;
-      const label = /^[0-9a-f-]{36}$/i.test(p) ? 'Exam' : (map[p] ?? p[0].toUpperCase() + p.slice(1).replace(/-/g, ' '));
+      const label = /^[0-9a-f-]{36}$/i.test(p) ? 'Details' : (map[p] ?? p[0].toUpperCase() + p.slice(1).replace(/-/g, ' '));
       crumbs.push({ label, href: built });
     }
     return crumbs;
@@ -586,8 +599,7 @@
 </div>
 
 <style>
-  /* ── Design tokens — sky-blue accent to match the existing exam-officer
-       portal accent (--p-accent: #0ea5e9) instead of the lecturer's indigo ── */
+  /* ── Design tokens — sky-blue accent ───────────────────────────────────── */
   :global(:root) {
     --eo-50:  #f0f9ff;
     --eo-100: #e0f2fe;

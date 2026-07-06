@@ -9,14 +9,15 @@ import { getPrismaClient } from '$lib/server/db/index.js';
 
 function roleHome(role: UserRole): string {
   switch (role) {
-    case 'student':      return '/student';
-    case 'lecturer':     return '/lecturer';
-    case 'invigilator':  return '/invigilator';
-    case 'admin':        return '/admin';
-    case 'hod':          return '/hod';
-    case 'dean':         return '/dean';
-    case 'exam_officer': return '/exam-officer';
-    case 'vc_dvc':       return '/vc-dvc';
+    case 'student':                return '/student';
+    case 'lecturer':               return '/lecturer';
+    case 'invigilator':            return '/invigilator';
+    case 'admin':                  return '/admin';
+    case 'hod':                    return '/hod';
+    case 'dean':                   return '/dean';
+    case 'exam_officer':           return '/exam-officer';
+    case 'vc_dvc':                 return '/vc-dvc';
+    case 'department_coordinator': return '/coordinator';
     // TypeScript will error here if a new role is added to the enum
     // but not handled — exhaustiveness check at compile time
     default: {

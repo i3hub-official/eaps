@@ -1,11 +1,11 @@
 // src/routes/lecturer/+page.server.ts
 import type { PageServerLoad } from './$types';
-import { requireLecturer } from '$lib/server/auth/guards.js'; 
+import { requireLecturer } from '$lib/server/auth/guards.js';
 import { getPrismaClient } from '$lib/server/db/index.js';
 
 export const load: PageServerLoad = async ({ locals }) => {
-  const user =  await requireLecturer(locals.user);
-          const prisma = await getPrismaClient();
+  const user = await requireLecturer(locals.user);
+  const prisma = await getPrismaClient();
 
   const [
     allExams,
@@ -83,13 +83,13 @@ export const load: PageServerLoad = async ({ locals }) => {
   return {
     stats: {
       activeExams,
-      totalExams:    allExams.length,
+      totalExams: allExams.length,
       totalStudents,
-      avgScore:      Math.round(Number(resultStats._avg.percentage ?? 0)),
+      avgScore: Math.round(Number(resultStats._avg.percentage ?? 0)),
       pendingGrades,
       passRate,
     },
-    recentExams:   allExams.slice(0, 6),
+    recentExams: allExams.slice(0, 6),
     upcomingExams,
   };
 };

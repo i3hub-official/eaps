@@ -2,25 +2,64 @@
 import { error, fail, redirect } from '@sveltejs/kit';
 import type { Actions, PageServerLoad } from './$types';
 import { getPrismaClient } from '$lib/server/db/index.js';
-import { requireExamOfficer } from '$lib/server/auth/guards.js';
+import { requireExamCreator } from '$lib/server/auth/guards.js';
 import { createExam, getActiveAcademicSemester, getCoursesForExamOfficer } from '$lib/server/db/exams.js';
 import { parseExamForm } from '$lib/server/exam/exam-form.js';
 import { canSubmitQuestions } from '$lib/server/academic/exam-authority-gate.js';
-import type { CreateExamPageData } from '$lib/types/exam.js';
+import type { CreateExamPageData, ExamAuthorityGate } from '$lib/types/exam.js';
 
 export const load: PageServerLoad = async (event) => {
-  const user = requireExamOfficer(event.locals.user);
-  if (!user.collegeId) throw error(400, 'Exam officer must be associated with a college');
+  // ✅ Use the new guard - allows lecturers, department coordinators, exam officers, and HODs
+  const user = requireExamCreator(event.locals.user);
+  if (!user.collegeId) throw error(400, 'Exam creator must be associated with a college');
   const collegeId = user.collegeId;
   const prisma = await getPrismaClient();
 
-  const [courses, levels, departments, semesterRows, activeSemester] = await Promise.all([
-    getCoursesForExamOfficer({ collegeId }),
+  // Get courses based on user role
+  let courses;
+  if (user.role === 'exam_officer') {
+    // Exam officers can see all courses in their college
+    courses = await getCoursesForExamOfficer({ collegeId });
+  } else {
+    // Lecturers, department coordinators, and HODs see courses in their department
+    courses = await prisma.course.findMany({
+      where: {
+        offerings: {
+          some: {
+            departments: {
+              some: {
+                department: {
+                  id: user.departmentId
+                }
+              }
+            }
+          }
+        }
+      },
+      select: {
+        id: true,
+        code: true,
+        title: true,
+        offerings: {
+          where: { status: 'open' },
+          select: { id: true },
+          take: 1
+        }
+      },
+      orderBy: { code: 'asc' }
+    });
+  }
+
+  const [levels, departments, semesterRows, activeSemester] = await Promise.all([
     prisma.level.findMany({
       orderBy: { order: 'asc' },
       select: { id: true, name: true, level: true },
     }).then(rows => rows.map(r => ({ id: String(r.id), name: r.name || `${r.level} Level`, value: r.level }))),
-    prisma.department.findMany({ where: { collegeId }, orderBy: { name: 'asc' }, select: { id: true, name: true, code: true } }),
+    prisma.department.findMany({ 
+      where: { collegeId: user.collegeId },
+      orderBy: { name: 'asc' }, 
+      select: { id: true, name: true, code: true } 
+    }),
     prisma.academicSemester.findMany({
       orderBy: { session: 'desc' },
       select: { id: true, session: true, semester: true, isActive: true },
@@ -46,32 +85,56 @@ export const load: PageServerLoad = async (event) => {
     );
   }
 
-  const gateByCourseId: Record<string, { allowed: boolean; scope: string; activeHolderName: string | null }> = {};
+  // Resolve each course to its active offering, then compute the gate per course.
+  const gateByCourseId: Record<string, ExamAuthorityGate> = {};
 
   await Promise.all(
     courses.map(async (course: any) => {
       const offering = await prisma.courseOffering.findFirst({
         where: { courseId: course.id, status: 'open' },
-        select: { id: true },
+        select: { 
+          id: true, 
+          departments: { 
+            select: { 
+              department: { 
+                select: { 
+                  collegeId: true,
+                  id: true 
+                } 
+              } 
+            }, 
+            take: 1 
+          } 
+        },
         orderBy: { createdAt: 'desc' },
       });
 
-      if (!offering) {
-        gateByCourseId[course.id] = { allowed: false, scope: 'college_coordinator', activeHolderName: null };
+      if (!offering || !offering.departments[0]) {
+        // No open offering yet for this course — default to allowed
+        gateByCourseId[course.id] = { allowed: true, scope: 'lecturer', activeHolderName: null };
         return;
       }
 
+      const collegeId = offering.departments[0].department.collegeId;
+      const departmentId = offering.departments[0].department.id;
+      
+      // ✅ Use the actual user's role
       gateByCourseId[course.id] = await canSubmitQuestions({
         offeringId: offering.id,
         userId: user.id,
-        userRole: 'exam_officer',
+        userRole: user.role,
         collegeId,
+        departmentId: user.departmentId || departmentId,
       });
     })
   );
 
   const data: CreateExamPageData = {
-    courses,
+    courses: courses.map((c: any) => ({
+      id: c.id,
+      code: c.code,
+      title: c.title
+    })),
     levels,
     departments,
     sessions,
@@ -88,10 +151,9 @@ export const load: PageServerLoad = async (event) => {
 
 export const actions: Actions = {
   default: async (event) => {
-    const user = event.locals.user;
-    if (!user) throw redirect(303, '/login');
-    if (user.role !== 'exam_officer') throw error(403, 'Exam Officer access only');
-    if (!user.collegeId) throw error(400, 'Exam officer must be associated with a college');
+    // ✅ Use the new guard
+    const user = requireExamCreator(event.locals.user);
+    if (!user.collegeId) throw error(400, 'Exam creator must be associated with a college');
 
     const formData = await event.request.formData();
     const { values, errors } = parseExamForm(formData);
@@ -103,17 +165,36 @@ export const actions: Actions = {
     const prisma = await getPrismaClient();
     const offering = await prisma.courseOffering.findFirst({
       where: { courseId: values.courseId, status: 'open' },
-      select: { id: true },
+      select: { 
+        id: true, 
+        departments: { 
+          select: { 
+            department: { 
+              select: { 
+                collegeId: true,
+                id: true 
+              } 
+            } 
+          }, 
+          take: 1 
+        } 
+      },
       orderBy: { createdAt: 'desc' },
     });
 
-    if (offering) {
+    if (offering && offering.departments[0]) {
+      const collegeId = offering.departments[0].department.collegeId;
+      const departmentId = offering.departments[0].department.id;
+      
+      // ✅ Use the actual user's role
       const gate = await canSubmitQuestions({
         offeringId: offering.id,
         userId: user.id,
-        userRole: 'exam_officer',
-        collegeId: user.collegeId,
+        userRole: user.role,
+        collegeId,
+        departmentId: user.departmentId || departmentId,
       });
+      
       if (!gate.allowed) {
         return fail(403, {
           error: `Question submission for this course is currently assigned to ${gate.activeHolderName ?? 'someone else'}, set by the Dean.`,
@@ -123,27 +204,27 @@ export const actions: Actions = {
     }
 
     const exam = await createExam({
-      courseId: values.courseId,
-      createdBy: user.id,
-      title: values.title,
-      instructions: values.instructions ?? undefined,
-      durationMinutes: values.durationMinutes,
-      totalMarks: values.totalMarks,
-      passMark: values.passMark,
-      scheduledStart: values.scheduledStart ?? undefined,
-      scheduledEnd: values.scheduledEnd ?? undefined,
-      allowLateEntry: values.allowLateEntry,
-      lateEntryMinutes: values.lateEntryMinutes,
+      courseId:           values.courseId,
+      createdBy:          user.id,
+      title:              values.title,
+      instructions:       values.instructions ?? undefined,
+      durationMinutes:    values.durationMinutes,
+      totalMarks:         values.totalMarks,
+      passMark:           values.passMark,
+      scheduledStart:     values.scheduledStart ?? undefined,
+      scheduledEnd:       values.scheduledEnd   ?? undefined,
+      allowLateEntry:     values.allowLateEntry,
+      lateEntryMinutes:   values.lateEntryMinutes,
       randomizeQuestions: values.randomizeQuestions,
-      randomizeOptions: values.randomizeOptions,
-      showResultAfter: values.showResultAfter,
-      maxViolations: values.maxViolations,
+      randomizeOptions:   values.randomizeOptions,
+      showResultAfter:    values.showResultAfter,
+      maxViolations:      values.maxViolations,
       questionsToPresent: values.questionsToPresent,
-      marksPerQuestion: values.marksPerQuestion,
-      session: values.session,
-      semester: values.semester,
-      levels: values.levels,
-      department: values.department,
+      marksPerQuestion:   values.marksPerQuestion,
+      session:            values.session,
+      semester:           values.semester,
+      levels:             values.levels,
+      department:         values.department,
     });
 
     throw redirect(303, `/exam-officer/exams/${exam.id}`);
@@ -154,6 +235,6 @@ function serialize(values: ReturnType<typeof parseExamForm>['values']) {
   return {
     ...values,
     scheduledStart: values.scheduledStart?.toISOString() ?? '',
-    scheduledEnd: values.scheduledEnd?.toISOString() ?? '',
+    scheduledEnd:   values.scheduledEnd?.toISOString()   ?? '',
   };
 }

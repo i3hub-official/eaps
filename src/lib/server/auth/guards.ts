@@ -4,7 +4,7 @@
 // Usage: const user = requireAdmin(locals.user)  — returns User or throws redirect/error
 //        await requireAdminOrApiKey(ctx, 'read_users') — session OR API key
 import { error, redirect } from '@sveltejs/kit';
-import type { UserRole, User } from '@prisma/client';
+import type { UserRole } from '@prisma/client';
 import type { ApiScope } from '@prisma/client';
 import { requireApiKey } from './api-key-guard.js';
 
@@ -89,6 +89,14 @@ export function requireVcDvc(user: MaybeUser): NonNullable<MaybeUser> {
   return user;
 }
 
+// ── Department Coordinator Guard ─────────────────────────────────────────────
+
+export function requireDepartmentCoordinator(user: MaybeUser): NonNullable<MaybeUser> {
+  assertActive(user);
+  if (user.role !== 'department_coordinator') error(403, 'Department Coordinator access required.');
+  return user;
+}
+
 // ── Role + Admin combo guards ─────────────────────────────────────────────────
 
 export function requireLecturerOrAdmin(user: MaybeUser): NonNullable<MaybeUser> {
@@ -140,6 +148,15 @@ export function requireVcDvcOrAdmin(user: MaybeUser): NonNullable<MaybeUser> {
   return user;
 }
 
+export function requireDepartmentCoordinatorOrAdmin(user: MaybeUser): NonNullable<MaybeUser> {
+  assertActive(user);
+  const allowed: UserRole[] = ['department_coordinator', 'admin'];
+  if (!allowed.includes(user.role)) {
+    error(403, 'Access denied. Only department coordinators or admins can access this resource.');
+  }
+  return user;
+}
+
 // ── Multi-role guards (OR semantics) ─────────────────────────────────────────
 
 /** Routes accessible by admin OR exam officer (e.g. exam schedule management). */
@@ -177,6 +194,101 @@ export function requireLecturerOrHod(
 export function requireStaff(user: MaybeUser): NonNullable<MaybeUser> {
   assertActive(user);
   if (user.role === 'student') error(403, 'Staff access required.');
+  return user;
+}
+
+// ── Exam Creator Guards ──────────────────────────────────────────────────────
+
+/**
+ * Routes accessible by users who can create exams:
+ * - Lecturers (teach courses)
+ * - Department Coordinators (oversee department exams)
+ * - Exam Officers (college-level exam management)
+ * - HODs (department heads)
+ * 
+ * This is the primary guard for exam creation pages.
+ * Individual course-level permissions are checked separately via canSubmitQuestions().
+ */
+export function requireExamCreator(user: MaybeUser): NonNullable<MaybeUser> {
+  assertActive(user);
+  const allowed: UserRole[] = ['lecturer', 'department_coordinator', 'exam_officer', 'hod'];
+  if (!allowed.includes(user.role)) {
+    error(403, 'Access denied. Only lecturers, department coordinators, exam officers, and HODs can create exams.');
+  }
+  return user;
+}
+
+/**
+ * Exam Creator OR Admin - for routes that admins might need to access
+ */
+export function requireExamCreatorOrAdmin(user: MaybeUser): NonNullable<MaybeUser> {
+  assertActive(user);
+  const allowed: UserRole[] = ['lecturer', 'department_coordinator', 'exam_officer', 'hod', 'admin'];
+  if (!allowed.includes(user.role)) {
+    error(403, 'Access denied. Only exam creators or admins can access this resource.');
+  }
+  return user;
+}
+
+// ─── Department Coordinator Portal Guards ──────────────────────────────────
+
+/**
+ * Routes accessible by Department Coordinators AND HODs who also have coordinator access
+ * For the Department Coordinator portal
+ */
+export function requireDeptCoordinatorPortal(user: MaybeUser): NonNullable<MaybeUser> {
+  assertActive(user);
+  const allowed: UserRole[] = ['department_coordinator', 'hod'];
+  if (!allowed.includes(user.role)) {
+    error(403, 'Access denied. Only Department Coordinators and HODs can access this portal.');
+  }
+  return user;
+}
+
+/**
+ * Department Coordinator Portal OR Admin - for admin access
+ */
+export function requireDeptCoordinatorPortalOrAdmin(user: MaybeUser): NonNullable<MaybeUser> {
+  assertActive(user);
+  const allowed: UserRole[] = ['department_coordinator', 'hod', 'admin'];
+  if (!allowed.includes(user.role)) {
+    error(403, 'Access denied. Only Department Coordinators, HODs, or admins can access this resource.');
+  }
+  return user;
+}
+
+/**
+ * Routes accessible by users who can manage department-level resources:
+ * - Department Coordinators
+ * - HODs (with lecturer secondary role)
+ * - Exam Officers (college-level oversight)
+ * 
+ * Used for department-level management pages like courses, lecturers, etc.
+ */
+export function requireDeptManagement(user: MaybeUser): NonNullable<MaybeUser> {
+  assertActive(user);
+  const allowed: UserRole[] = ['department_coordinator', 'hod', 'exam_officer'];
+  if (!allowed.includes(user.role)) {
+    error(403, 'Access denied. Only department coordinators, HODs, and exam officers can manage department resources.');
+  }
+  return user;
+}
+
+/**
+ * Routes accessible by users who can view department-level resources (read-only):
+ * - Department Coordinators
+ * - HODs
+ * - Exam Officers
+ * - Deans (college oversight)
+ * 
+ * Used for department-level view pages like results, reports, etc.
+ */
+export function requireDeptViewer(user: MaybeUser): NonNullable<MaybeUser> {
+  assertActive(user);
+  const allowed: UserRole[] = ['department_coordinator', 'hod', 'exam_officer', 'dean'];
+  if (!allowed.includes(user.role)) {
+    error(403, 'Access denied. Only department coordinators, HODs, exam officers, and deans can view department resources.');
+  }
   return user;
 }
 

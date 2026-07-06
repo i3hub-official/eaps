@@ -28,6 +28,7 @@ enum UserRole {
   dean
   exam_officer
   vc_dvc
+  department_coordinator
 }
 
 enum SecondaryRole {

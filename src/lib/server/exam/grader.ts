@@ -1,34 +1,6 @@
 // src/lib/server/exam/grader.ts
 //
 // Grading model:
-//
-//   EXAM-ONLY (always computed on submission)
-//   ─────────────────────────────────────────
-//   score       = sum of marks_earned on presented questions
-//   percentage  = (score / sum of presented question marks) × 100
-//   grade       = MOUAU A–F derived from percentage
-//   passed      = percentage >= 40
-//
-//   These live on ExamResult.score / .percentage / .grade / .passed.
-//   They represent the exam sitting only and are NEVER overwritten by CA.
-//
-//   COMBINED FINAL (computed once CA is uploaded by the lecturer)
-//   ─────────────────────────────────────────────────────────────
-//   examWeight     = exam.totalMarks          (e.g. 70 for a 70-mark exam)
-//   caWeight       = 100 - exam.totalMarks    (e.g. 30)
-//   examContrib    = (examPercentage / 100) × examWeight
-//   caContrib      = (caPercentage   / 100) × caWeight
-//   finalScore     = examContrib + caContrib  (out of 100)
-//   finalGrade     = MOUAU A–F derived from finalScore
-//   finalPassed    = finalScore >= 40
-//
-//   These live on ExamResult.finalScore / .finalPercentage / .finalGrade / .finalPassed.
-//   When null → CA has not been uploaded yet → UI shows "CA Pending" badge.
-//
-//   WHY totalMarks = examWeight:
-//   The lecturer sets totalMarks when creating the exam.
-//   BIO = 70 means the exam is worth 70/100 of the final mark; CA is 30/100.
-//   A 50-mark exam means 50/100 exam, 50/100 CA. No extra field needed.
 
 import { getPrismaClient, sql } from '$lib/server/db/index.js';
 

@@ -20,7 +20,13 @@ export const load: PageServerLoad = async ({ locals }) => {
 			id: true,
 			course: { select: { code: true, title: true } },
 			academicSemester: { select: { label: true, session: true, semester: true } },
-			departments: { select: { department: { select: { id: true, name: true } } } }
+			departments: { 
+				select: { 
+					department: { 
+						select: { id: true, name: true } 
+					} 
+				} 
+			}
 		},
 		orderBy: { createdAt: 'desc' }
 	});
@@ -29,14 +35,42 @@ export const load: PageServerLoad = async ({ locals }) => {
 		offerings.map((o) => getActiveExamAuthority(o.id, collegeId))
 	);
 
+	// Fetch Exam Officers (Dean delegates exam authority to them)
 	const examOfficers = await prisma.user.findMany({
-		where: { role: 'exam_officer', collegeId },
-		select: { id: true, fullName: true }
+		where: { 
+			role: 'exam_officer', 
+			collegeId, 
+			isActive: true 
+		},
+		select: { 
+			id: true, 
+			fullName: true, 
+			email: true 
+		}
+	});
+
+	// Fetch Department Coordinators (Dean delegates course coordination to them)
+	const departmentCoordinators = await prisma.user.findMany({
+		where: { 
+			role: 'department_coordinator', 
+			collegeId, 
+			isActive: true 
+		},
+		select: { 
+			id: true, 
+			fullName: true, 
+			email: true,
+			departmentId: true 
+		}
 	});
 
 	return {
-		offerings: offerings.map((o, i) => ({ ...o, authority: authorities[i] })),
-		examOfficers
+		offerings: offerings.map((o, i) => ({ 
+			...o, 
+			authority: authorities[i],
+		})),
+		examOfficers,
+		departmentCoordinators
 	};
 };
 
@@ -48,8 +82,22 @@ export const actions: Actions = {
 
 		const offeringId = form.get('offeringId') as string;
 		const scope = form.get('scope') as ExamAuthorityScope;
-		const reason = (form.get('reason') as string) || undefined;
 		const assignedUserId = (form.get('assignedUserId') as string) || undefined;
+		const reason = (form.get('reason') as string) || undefined;
+
+		if (!assignedUserId) {
+			return fail(400, { 
+				error: 'Please select an Exam Officer or Department Coordinator to assign authority.' 
+			});
+		}
+
+		if (!offeringId) {
+			return fail(400, { error: 'Course offering ID is required' });
+		}
+
+		if (!scope) {
+			return fail(400, { error: 'Please select an authority scope' });
+		}
 
 		try {
 			await setExamAuthority({
@@ -74,8 +122,22 @@ export const actions: Actions = {
 		const offeringIdsRaw = form.get('offeringIds') as string;
 		const offeringIds = offeringIdsRaw.split(',').filter(Boolean);
 		const scope = form.get('scope') as ExamAuthorityScope;
-		const reason = (form.get('reason') as string) || undefined;
 		const assignedUserId = (form.get('assignedUserId') as string) || undefined;
+		const reason = (form.get('reason') as string) || undefined;
+
+		if (!assignedUserId) {
+			return fail(400, { 
+				error: 'Please select an Exam Officer or Department Coordinator to assign authority.' 
+			});
+		}
+
+		if (offeringIds.length === 0) {
+			return fail(400, { error: 'No courses selected for bulk action' });
+		}
+
+		if (!scope) {
+			return fail(400, { error: 'Please select an authority scope' });
+		}
 
 		const results = { success: 0, failed: 0, errors: [] as string[] };
 
@@ -98,8 +160,9 @@ export const actions: Actions = {
 
 		if (results.failed > 0) {
 			return fail(400, {
-				error: `Applied to ${results.success} courses. ${results.failed} failed: ${results.errors[0]}`,
-				success: results.success > 0
+				error: `Applied to ${results.success} courses. ${results.failed} failed: ${results.errors.slice(0, 3).join(', ')}`,
+				success: results.success > 0,
+				details: results.errors
 			});
 		}
 
