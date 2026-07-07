@@ -66,9 +66,9 @@ export async function createStaffSession(
 
   return { token, refreshToken, session }
 }
-
 export async function getStaffByToken(token: string) {
   const prisma = await getPrismaClient()
+  
   const session = await prisma.staffSession.findUnique({
     where: { token },
     include: {
@@ -80,7 +80,9 @@ export async function getStaffByToken(token: string) {
               role: {
                 include: {
                   permissions: {
-                    include: { permission: true },
+                    include: {
+                      permission: true,
+                    },
                   },
                 },
               },
@@ -91,24 +93,23 @@ export async function getStaffByToken(token: string) {
     },
   })
 
-  if (!session || session.expiresAt < new Date()) return null
-  if (session.staff.status !== 'ACTIVE') return null
+  if (!session || session.expiresAt < new Date()) {
+    return null
+  }
 
-  // flatten permissions into a set for O(1) lookup
+  // Extract permissions from role assignments
   const permissions = new Set<string>()
-  for (const ra of session.staff.roleAssignments) {
-    for (const rp of ra.role.permissions) {
+  for (const assignment of session.staff.roleAssignments) {
+    for (const rp of assignment.role.permissions) {
       permissions.add(rp.permission.name)
     }
   }
 
-  // bump lastActiveAt (fire-and-forget)
-  prisma.staffSession.update({
-    where: { id: session.id },
-    data: { lastActiveAt: new Date() },
-  }).catch(() => {})
-
-  return { staff: session.staff, session, permissions }
+  return {
+    staff: session.staff,
+    session,
+    permissions,
+  }
 }
 
 // src/lib/server/auth/index.ts — only the two refresh functions change

@@ -18,7 +18,7 @@
     onFailed: (reason: string) => void
   } = $props()
 
-  type VerifyPhase = 'loading' | 'ready' | 'detecting' | 'verified' | 'failed'
+  type VerifyPhase = 'loading' | 'ready' | 'detecting' |'matching' | 'verified' | 'failed'
 
   let phase = $state<VerifyPhase>('loading')
   let message = $state('Initialising face detection...')

@@ -13,6 +13,22 @@
   --color-focus: #10b981;
   --color-primary-light: #34d399;
   --color-primary-glow: rgba(16, 185, 129, 0.15);
+  --blue-soft: rgba(59, 130, 246, 0.1);
+  --blue-accent: #3b82f6;
+  --green-soft: rgba(34, 197, 94, 0.1);
+  --green-accent: #22c55e;
+  --purple-soft: rgba(168, 85, 247, 0.1);
+  --purple-accent: #a855f7;
+  --orange-soft: rgba(251, 146, 60, 0.1);
+  --orange-accent: #fb923c;
+  --pink-soft: rgba(236, 72, 153, 0.1);
+  --pink-accent: #ec4899;
+  --red-soft: rgba(239, 68, 68, 0.1);
+  --red-accent: #ef4444;
+  --yellow-soft: rgba(234, 179, 8, 0.1);
+  --yellow-accent: #eab308;
+  --gray-soft: rgba(107, 114, 128, 0.1);
+  --gray-accent: #6b7280;
 
 /* Indigo scale — used by admin portal */
   --ad50:  #eef2ff;
@@ -142,6 +158,23 @@
   --color-warning: #fbbf24;
   --color-success: #4ade80;
   --color-info: #60a5fa;
+
+  --blue-soft: rgba(59, 130, 246, 0.1);
+  --blue-accent: #3b82f6;
+  --green-soft: rgba(34, 197, 94, 0.1);
+  --green-accent: #22c55e;
+  --purple-soft: rgba(168, 85, 247, 0.1);
+  --purple-accent: #a855f7;
+  --orange-soft: rgba(251, 146, 60, 0.1);
+  --orange-accent: #fb923c;
+  --pink-soft: rgba(236, 72, 153, 0.1);
+  --pink-accent: #ec4899;
+  --red-soft: rgba(239, 68, 68, 0.1);
+  --red-accent: #ef4444;
+  --yellow-soft: rgba(234, 179, 8, 0.1);
+  --yellow-accent: #eab308;
+  --gray-soft: rgba(107, 114, 128, 0.1);
+  --gray-accent: #6b7280;
 
   /* Green scale dark */
   --g50:  #052e16;

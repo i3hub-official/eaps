@@ -1,4 +1,4 @@
-// src/routes/(student)/verify/+page.server.ts
+// src/routes/student/verify/+page.server.ts
 import { redirect, error } from '@sveltejs/kit';
 import type { PageServerLoad } from './$types';
 import { requireStudent } from '$lib/server/auth/guards.js';

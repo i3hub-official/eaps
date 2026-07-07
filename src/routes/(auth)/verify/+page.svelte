@@ -1,4 +1,4 @@
-<!-- src/routes/(student)/verify/+page.svelte -->
+<!-- src/routes/student/verify/+page.svelte -->
 <script lang="ts">
   import { onMount, onDestroy } from 'svelte';
   import { goto } from '$app/navigation';
@@ -28,7 +28,7 @@
   let scanY = $state(0);
   let scanDir = 1;
 
-  let faceapi: typeof import('@vladmandic/face-api') | null = null;
+  let faceapi: typeof import('@vladmandic/human') | null = null;
 
   const GESTURES = [
     { id: 'open_mouth',  label: 'Open your mouth' },
@@ -332,7 +332,7 @@
       if (!faceapi) {
         faceapi = await import('@vladmandic/human');
         await Promise.all([
-          faceapi.nets.tinyFaceDetector.loadFromUri('/models/human'),
+          faceapi.tinyFaceDetector.loadFromUri('/models/human'),
           faceapi.nets.faceLandmark68TinyNet.loadFromUri('/models/human'),
           faceapi.nets.faceRecognitionNet.loadFromUri('/models/human'),
         ]);

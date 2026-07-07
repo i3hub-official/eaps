@@ -419,9 +419,9 @@ async function main() {
     console.log(`     ✓ ${roleDisplayNames[roleName as StaffRole]} — ${permNames.length} permissions`)
   }
 
-  // 4. Levels (100–700)
+  // 4. Levels (100–200)
   console.log('\n  → Academic levels...')
-  const levels = [100, 200, 300, 400, 500, 600, 700]
+  const levels = [100, 200]
   for (const lvl of levels) {
     await prisma.level.upsert({
       where: { name: lvl },

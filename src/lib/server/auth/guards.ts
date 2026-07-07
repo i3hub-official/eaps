@@ -43,7 +43,16 @@ export async function requireStaff(event: RequestEvent) {
     throw redirect(303, '/login')
   }
 
-  return result // { staff, session, permissions }
+  // Convert permissions to Set if not already
+  const permissions = result.permissions instanceof Set 
+    ? result.permissions 
+    : new Set(result.permissions || [])
+
+  return { 
+    staff: result.staff, 
+    session: result.session, 
+    permissions 
+  }
 }
 
 // ─── Role-specific guards ────────────────────────────────────────────────────

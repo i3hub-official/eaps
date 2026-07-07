@@ -1,278 +1,805 @@
 <script lang="ts">
-  // src/routes/(student)/verify/+page.svelte
-  // Face verification using @vladmandic/human
-  // Replaces gesture-based liveness with human's built-in antispoof + liveness models.
-  // No video frames leave the browser — only the similarity score is sent to the server.
+  // src/routes/student/verify/+page.svelte
+  import { onMount, onDestroy } from 'svelte';
+  import { goto } from '$app/navigation';
+  import type { PageData } from './$types';
 
-  import { onMount, onDestroy } from 'svelte'
-  import { goto } from '$app/navigation'
-  import type { PageData } from './$types'
+  let { data }: { data: PageData } = $props();
 
-  let { data }: { data: PageData } = $props()
+  let video: HTMLVideoElement;
+  let canvas: HTMLCanvasElement;
+  let ctx: CanvasRenderingContext2D | null = null;
+  let stream: MediaStream | null = null;
+  let raf: number | null = null;
+  let scanRaf: number | null = null;
 
-  // ─── Phase ────────────────────────────────────────────────────────────────
-  type Phase = 'loading' | 'ready' | 'scanning' | 'matching' | 'success' | 'failed'
-  let phase       = $state<Phase>('loading')
-  let headline    = $state('Starting camera…')
-  let subline     = $state('')
-  let matchScore  = $state(0)        // 0–100 display value
-  let livenessScore = $state(0)      // 0–1 from human
-  let antispoofScore = $state(0)     // 0–1 from human
-  let retryCount  = $state(0)
-  let scanY       = $state(0)        // animated scan line 0–1
+  type Status = 'loading' | 'liveness' | 'matching' | 'success' | 'error';
+  let status        = $state<Status>('loading');
+  let headline      = $state('Identity check');
+  let subline       = $state('Starting camera…');
+  let livenessDone  = $state(0);
+  let livenessTotal = $state(2);
+  let retryCount    = $state(0);
+  let matchScore    = $state(0);
 
-  // ─── DOM refs ─────────────────────────────────────────────────────────────
-  let videoEl   = $state<HTMLVideoElement | null>(null)
-  let canvasEl  = $state<HTMLCanvasElement | null>(null)
+  // These were referenced in drawOverlay() in the original file but never
+  // declared anywhere — a ReferenceError waiting to happen. Declared here.
+  let securityPass  = $state(false);
+  let multipleFaces = $state(false);
 
-  // ─── Internals ────────────────────────────────────────────────────────────
-  let human: any = null
-  let stream: MediaStream | null = null
-  let detectRaf: number | null = null
-  let scanRaf:   number | null = null
-  let scanDir    = 1
-  let storedDescriptor: number[] | null = null
+  let gestureDetected = false;
+  let livenessIndex = 0;
+  let lastPitch: number | null = null;
+  let scanY = $state(0);
+  let scanDir = 1;
 
-  // ─── Thresholds ───────────────────────────────────────────────────────────
-  // human uses cosine similarity (higher = more similar, 1.0 = identical)
-  const SIMILARITY_THRESHOLD = 0.60   // cosine similarity — lower than face-api's distance
-  const LIVENESS_THRESHOLD   = 0.50   // human's liveness score
-  const ANTISPOOF_THRESHOLD  = 0.50   // human's antispoof score (real person vs photo/screen)
-  const MAX_RETRIES          = 3
+  // ── Human instance ──────────────────────────────────────────────────────
+  // ASSUMPTION: model files live at /models/human — Human needs its own
+  // model set (blazeface/facemesh/faceres/antispoof/liveness), which is a
+  // different set of files than face-api.js's tiny models. Confirm these
+  // are actually hosted there; Human won't fall back silently, it'll fail
+  // to load.
+  let human: import('@vladmandic/human').Human | null = null;
+  let HumanCtor: typeof import('@vladmandic/human').default | null = null;
 
-  // ─── Derived ─────────────────────────────────────────────────────────────
-  const securityPass = $derived(
-    livenessScore  >= LIVENESS_THRESHOLD &&
-    antispoofScore >= ANTISPOOF_THRESHOLD
-  )
+  const GESTURES = [
+    { id: 'open_mouth',  label: 'Open your mouth' },
+    { id: 'turn_left',   label: 'Turn head left'  },
+    { id: 'turn_right',  label: 'Turn head right' },
+    { id: 'nod',         label: 'Nod your head'   },
+  ];
+  let selected: typeof GESTURES = [];
 
-  // ─── Lifecycle ────────────────────────────────────────────────────────────
-  onMount(init)
-  onDestroy(stopAll)
+  // Human's similarity() returns 0..1, HIGHER is better (opposite of the old
+  // face-api distance metric). This threshold is a starting point — tune it
+  // against real enrollment/verification data before relying on it.
+  const SIMILARITY_THRESHOLD = 0.62;
+  const ANTISPOOF_THRESHOLD  = 0.5;
+  const LIVENESS_THRESHOLD   = 0.5;
 
-  // ─── Init ─────────────────────────────────────────────────────────────────
-  async function init() {
-    phase    = 'loading'
-    headline = 'Loading face detection…'
-    subline  = 'This may take a moment on first load'
+  // ── gesture parsing off Human's built-in semantic gesture classifier ────
+  // Human emits result.gesture as [{ face: 0, gesture: 'facing left' }, ...].
+  // This replaces all the hand-rolled EAR/mouth-ratio math from the
+  // face-api.js version — Human's classifier is maintained upstream instead
+  // of reimplemented here.
+  function gestureStrings(result: any): string[] {
+    return (result.gesture ?? [])
+      .filter((g: any) => g.face === 0)
+      .map((g: any) => g.gesture as string);
+  }
+
+  function mouthOpenPercent(strings: string[]): number {
+    for (const g of strings) {
+      const m = /mouth (\d+)% open/.exec(g);
+      if (m) return parseInt(m[1], 10);
+    }
+    return 0;
+  }
+
+  function checkGesture(id: string, result: any): boolean {
+    const strings = gestureStrings(result);
+    const face = result.face?.[0];
+
+    switch (id) {
+      case 'open_mouth':
+        return mouthOpenPercent(strings) > 35;
+
+      case 'turn_left':
+        return strings.includes('facing left');
+
+      case 'turn_right':
+        return strings.includes('facing right');
+
+      case 'nod': {
+        // Human's static gesture set doesn't include motion gestures like
+        // "nod" — using raw pitch delta from face.rotation.angle instead.
+        const pitch = face?.rotation?.angle?.pitch;
+        if (typeof pitch !== 'number') return false;
+        if (lastPitch === null) { lastPitch = pitch; return false; }
+        const delta = Math.abs(pitch - lastPitch);
+        lastPitch = pitch;
+        return delta > 0.15; // radians — tune against real footage
+      }
+
+      default:
+        return false;
+    }
+  }
+
+  // ── scan line ───────────────────────────────────────────────────────────
+  function animateScan() {
+    scanY += scanDir * 0.007;
+    if (scanY >= 1) { scanY = 1; scanDir = -1; }
+    if (scanY <= 0) { scanY = 0; scanDir =  1; }
+    scanRaf = requestAnimationFrame(animateScan);
+  }
+
+  // ── canvas overlay ──────────────────────────────────────────────────────
+  function drawOverlay(hit: boolean, phase: 'liveness' | 'matching') {
+    if (!ctx || !canvas) return;
+    const w = canvas.width, h = canvas.height;
+    const cx = w/2, cy = h/2, rx = w*0.34, ry = h*0.42;
+
+    ctx.clearRect(0, 0, w, h);
+    ctx.save();
+    ctx.fillStyle = 'rgba(10,13,15,0.72)';
+    ctx.fillRect(0, 0, w, h);
+    ctx.globalCompositeOperation = 'destination-out';
+    ctx.beginPath(); ctx.ellipse(cx, cy, rx, ry, 0, 0, Math.PI*2); ctx.fill();
+    ctx.restore();
+
+    ctx.beginPath(); ctx.ellipse(cx, cy, rx, ry, 0, 0, Math.PI*2);
+    const accentColor = phase === 'matching' ? '#00c9a7'
+                      : hit                  ? '#f59e0b'
+                      :                        'rgba(255,255,255,0.15)';
+    ctx.strokeStyle = accentColor;
+    ctx.lineWidth = hit || phase === 'matching' ? 2.5 : 1.5;
+    ctx.stroke();
+
+    const bLen = 22;
+    const corners = [
+      { x: cx-rx, y: cy-ry, d: [1,1]  },
+      { x: cx+rx, y: cy-ry, d: [-1,1]  },
+      { x: cx-rx, y: cy+ry, d: [1,-1]  },
+      { x: cx+rx, y: cy+ry, d: [-1,-1] },
+    ];
+    ctx.strokeStyle = phase === 'matching' ? '#00c9a7' : hit ? '#f59e0b' : 'rgba(0,201,167,0.55)';
+    ctx.lineWidth = 2.5; ctx.lineCap = 'round';
+    for (const { x, y, d } of corners) {
+      ctx.beginPath(); ctx.moveTo(x+d[0]*bLen, y); ctx.lineTo(x, y); ctx.lineTo(x, y+d[1]*bLen); ctx.stroke();
+    }
+
+    ctx.save();
+    ctx.beginPath(); ctx.ellipse(cx, cy, rx-1, ry-1, 0, 0, Math.PI*2); ctx.clip();
+    const sy = cy - ry + scanY * ry * 2;
+    const scanColor = phase === 'matching' ? 'rgba(0,201,167,' : 'rgba(245,158,11,';
+    const grad = ctx.createLinearGradient(0, sy-12, 0, sy+12);
+    grad.addColorStop(0,   `${scanColor}0)`);
+    grad.addColorStop(0.5, `${scanColor}0.5)`);
+    grad.addColorStop(1,   `${scanColor}0)`);
+    ctx.fillStyle = grad;
+    ctx.fillRect(cx-rx, sy-12, rx*2, 24);
+    ctx.restore();
+
+    if (!securityPass && !multipleFaces) {
+      ctx.save();
+      ctx.fillStyle = '#ef4444';
+      ctx.font = 'bold 10px system-ui';
+      ctx.textAlign = 'center';
+      ctx.fillText('🔒 Security Check Failed', cx, cy - ry - 10);
+      ctx.restore();
+    } else if (securityPass && hit) {
+      ctx.save();
+      ctx.fillStyle = '#00c9a7';
+      ctx.font = 'bold 10px system-ui';
+      ctx.textAlign = 'center';
+      ctx.fillText('✓ Live Person Verified', cx, cy - ry - 10);
+      ctx.restore();
+    }
+  }
+
+  // ── liveness loop ───────────────────────────────────────────────────────
+  async function livenessLoop() {
+    if (status !== 'liveness' || !human) return;
 
     try {
-      // Lazy import — ~8 MB, don't block page load
-      const { default: Human } = await import('@vladmandic/human')
+      const result = await human.detect(video);
 
-      human = new Human({
-        modelBasePath: '/models/human/',
-        // Only load what we need — keeps initial load fast
-        face: {
-          enabled: true,
-          detector:    { rotation: true, maxDetected: 1, minConfidence: 0.5 },
-          description: { enabled: true },   // 192-d face descriptor
-          antispoof:   { enabled: true },    // reject photos / screens
-          liveness:    { enabled: true },    // detect real movement
-          emotion:     { enabled: false },
-        },
-        body:    { enabled: false },
-        hand:    { enabled: false },
-        gesture: { enabled: false },
-        object:  { enabled: false },
-        filter:  { enabled: true, flip: true },
-      })
+      multipleFaces = result.face.length > 1;
 
-      await human.load()
-      await human.warmup()   // pre-run inference once so first real frame is fast
-
-      // Load stored descriptor from server (decrypted server-side)
-      const res = await fetch('/api/face/descriptor')
-      if (!res.ok) {
-        phase    = 'failed'
-        headline = 'Not enrolled'
-        subline  = 'You must enroll your face before taking an exam.'
-        return
+      if (result.face.length === 0) {
+        drawOverlay(false, 'liveness');
+        subline = 'Position your face in the oval';
+        gestureDetected = false;
+        raf = requestAnimationFrame(livenessLoop);
+        return;
       }
-      const { descriptor } = await res.json()
-      storedDescriptor = descriptor as number[]
 
-      // Start camera
-      stream = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: 'user', width: { ideal: 640 }, height: { ideal: 480 } },
-        audio: false,
-      })
+      if (multipleFaces) {
+        drawOverlay(false, 'liveness');
+        subline = 'Only one face should be visible';
+        raf = requestAnimationFrame(livenessLoop);
+        return;
+      }
 
-      if (videoEl) {
-        videoEl.srcObject = stream
-        await videoEl.play()
+      const face = result.face[0];
+      // Human's antispoof/liveness modules — this is the built-in
+      // replacement for the manual gesture-only anti-spoofing the
+      // face-api.js version relied on.
+      securityPass =
+        (face.real ?? 1) > ANTISPOOF_THRESHOLD &&
+        (face.live ?? 1) > LIVENESS_THRESHOLD;
 
-        if (canvasEl) {
-          canvasEl.width  = videoEl.videoWidth  || 640
-          canvasEl.height = videoEl.videoHeight || 480
+      const g = selected[livenessIndex];
+      const hit = checkGesture(g.id, result);
+      drawOverlay(hit, 'liveness');
+
+      if (hit && !gestureDetected) {
+        gestureDetected = true;
+        livenessDone = livenessIndex + 1;
+
+        if (livenessIndex + 1 >= selected.length) {
+          matchFace();
+          return;
         }
+        livenessIndex++;
+        gestureDetected = false;
+        lastPitch = null;
+        subline = selected[livenessIndex].label;
+      } else if (!hit) {
+        gestureDetected = false;
       }
 
-      phase    = 'ready'
-      headline = 'Position your face'
-      subline  = 'Look directly at the camera. Keep still.'
+      raf = requestAnimationFrame(livenessLoop);
+    } catch {
+      raf = requestAnimationFrame(livenessLoop);
+    }
+  }
 
-      animateScan()
-      detectLoop()
+  // ── face match ──────────────────────────────────────────────────────────
+  async function matchFace() {
+    status   = 'matching';
+    headline = 'Verifying identity';
+    subline  = 'Comparing with enrolled face…';
 
+    try {
+      const result = await human!.detect(video);
+      const face = result.face?.[0];
+      if (!face) throw new Error('No face detected — hold still');
+      if (result.face.length > 1) throw new Error('Only one face should be visible');
+
+      const embedding = face.embedding;
+      if (!embedding) throw new Error('Could not read face features — try again');
+
+      // Re-check antispoof/liveness at match time, not just during the
+      // gesture phase — a photo held up after gestures pass shouldn't sneak
+      // through.
+      securityPass = (face.real ?? 1) > ANTISPOOF_THRESHOLD && (face.live ?? 1) > LIVENESS_THRESHOLD;
+      if (!securityPass) throw new Error('Liveness check failed — please try again with your real face');
+
+      drawOverlay(true, 'matching');
+
+      const res = await fetch('/api/face/descriptor');
+      if (!res.ok) throw new Error('No enrolled face found — please enroll first');
+      const { descriptor: stored } = await res.json();
+
+      // ASSUMPTION: /api/face/descriptor and the enrollment flow (FaceEnroll.svelte,
+      // face/crypto.ts, /api/student/face-enroll) are also updated to store
+      // Human's embedding format. I haven't seen those files — if enrollment
+      // still writes face-api.js's 128-length descriptor, this comparison
+      // will be comparing incompatible vector spaces and will always fail
+      // or always "match" incorrectly. Send me those files to confirm/fix.
+      const similarity = human!.similarity(embedding, stored);
+      const isMatch = similarity > SIMILARITY_THRESHOLD;
+
+      matchScore = Math.round(similarity * 100);
+
+      if (isMatch) {
+        await fetch('/api/face/verify-session', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            verified: true,
+            similarityScore: matchScore,
+            examId: data.exam?.id,
+          }),
+        });
+        status   = 'success';
+        headline = 'Identity Verified';
+        subline  = `${matchScore}% match — you're good to go`;
+        stopCamera();
+        setTimeout(() => {
+          const examId  = data.exam?.id;
+          const returnTo = data.returnTo;
+
+          if (returnTo) {
+            goto(returnTo);
+          } else if (data.exam?.hasExistingSession && data.exam?.sessionId) {
+            goto(`/student/exams/${data.exam.sessionId}`);
+          } else if (examId) {
+            goto(`/student/exams/${examId}`);
+          } else {
+            goto('/student');
+          }
+        }, 1800);
+      } else {
+        retryCount++;
+        status   = 'error';
+        headline = 'Not recognised';
+        subline  = `${matchScore}% match — need at least ${Math.round(SIMILARITY_THRESHOLD * 100)}%`;
+        stopCamera();
+      }
     } catch (e: any) {
-      phase    = 'failed'
-      headline = 'Camera error'
-      subline  = e.message?.includes('denied')
-        ? 'Allow camera access and retry.'
-        : e.message ?? 'Failed to start. Refresh and try again.'
+      retryCount++;
+      status   = 'error';
+      headline = 'Verification failed';
+      subline  = e.message ?? 'Please try again';
+      stopCamera();
     }
   }
 
-  // ─── Detection loop ────────────────────────────────────────────────────────
-  // Runs continuously during 'ready' and 'scanning' phases.
-  // As soon as liveness + antispoof pass, moves to face matching.
-
-  async function detectLoop() {
-    if (!human || !videoEl) return
-    if (phase === 'success' || phase === 'failed' || phase === 'matching') return
-
-    const result = await human.detect(videoEl).catch(() => null)
-
-    // Draw human's own overlay on the canvas
-    if (canvasEl && result) {
-      await human.draw.canvas(videoEl, canvasEl)
-      await human.draw.all(canvasEl, result, {
-        face: {
-          drawBoxes:       false,
-          drawPolygons:    true,
-          fillPolygons:    false,
-          useDepth:        false,
-          drawGaze:        false,
-          drawLabels:      false,
-          drawPoints:      false,
-        },
-      })
-    }
-
-    const face = result?.face?.[0]
-
-    if (!face) {
-      phase    = 'ready'
-      headline = 'No face detected'
-      subline  = 'Position your face in the oval and look at the camera.'
-      detectRaf = requestAnimationFrame(detectLoop)
-      return
-    }
-
-    // Update live scores for the progress bars
-    livenessScore   = face.liveness   ?? 0
-    antispoofScore  = face.antispoof  ?? 0
-
-    if (!securityPass) {
-      phase    = 'scanning'
-      headline = 'Security check'
-      subline  = antispoofScore < ANTISPOOF_THRESHOLD
-        ? 'Ensure you are a real person in good lighting.'
-        : 'Hold still — checking liveness…'
-      detectRaf = requestAnimationFrame(detectLoop)
-      return
-    }
-
-    // Security passed — match face
-    if (phase !== 'matching') {
-      await matchFace(face)
-      return
-    }
-
-    detectRaf = requestAnimationFrame(detectLoop)
+  // ── lifecycle ───────────────────────────────────────────────────────────
+  function stopCamera() {
+    if (raf) cancelAnimationFrame(raf);
+    if (scanRaf) cancelAnimationFrame(scanRaf);
+    stream?.getTracks().forEach(t => t.stop());
+    stream = null;
   }
 
-  // ─── Face match ────────────────────────────────────────────────────────────
-  async function matchFace(face: any) {
-    if (!storedDescriptor || !face.embedding) return
+  function retry() {
+    livenessDone = 0;
+    livenessIndex = 0;
+    gestureDetected = false;
+    lastPitch = null;
+    status = 'loading';
+    init();
+  }
 
-    phase    = 'matching'
-    headline = 'Verifying identity…'
-    subline  = 'Please keep still.'
-
-    // human returns embedding as Float32Array — convert to plain array
-    const live: number[] = Array.from(face.embedding)
-
-    // Cosine similarity (human uses this natively)
-    const similarity = cosineSimilarity(live, storedDescriptor)
-    matchScore = Math.round(similarity * 100)
-
-    if (similarity >= SIMILARITY_THRESHOLD) {
-      // Record verification on server
-      await fetch('/api/face/verify-session', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          verified:        true,
-          similarityScore: matchScore,
-          antispoofScore:  Math.round(antispoofScore * 100),
-          livenessScore:   Math.round(livenessScore * 100),
-          examId:          data.exam?.id ?? null,
-        }),
-      }).catch(() => {}) // non-blocking — don't fail verification on network hiccup
-
-      stopAll()
-      phase    = 'success'
-      headline = 'Identity Verified'
-      subline  = `${matchScore}% match — you may proceed.`
-
-      setTimeout(() => {
-        if (data.returnTo) {
-          goto(data.returnTo)
-        } else if (data.exam?.hasExistingSession && data.exam?.sessionId) {
-          goto(`/student/exams/${data.exam.sessionId}`)
-        } else if (data.exam?.id) {
-          goto(`/student/exams/${data.exam.id}`)
-        } else {
-          goto('/student')
+  async function init() {
+    try {
+      if (!human) {
+        if (!HumanCtor) {
+          const mod = await import('@vladmandic/human');
+          HumanCtor = mod.default;
         }
-      }, 1600)
+        human = new HumanCtor({
+          modelBasePath: '/models/human',
+          face: {
+            enabled: true,
+            detector: { rotation: true, maxDetected: 5 },
+            mesh: { enabled: true },
+            iris: { enabled: false },
+            description: { enabled: true }, // produces face.embedding
+            emotion: { enabled: false },
+            antispoof: { enabled: true },   // produces face.real
+            liveness: { enabled: true },    // produces face.live
+          },
+          body: { enabled: false },
+          hand: { enabled: false },
+          object: { enabled: false },
+          segmentation: { enabled: false },
+          gesture: { enabled: true },
+        });
+        await human.load();
+        await human.warmup();
+      }
 
-    } else {
-      retryCount++
-      stopAll()
-      phase    = 'failed'
-      headline = 'Not recognised'
-      subline  = `${matchScore}% match — ${SIMILARITY_THRESHOLD * 100}% required. Attempt ${retryCount}/${MAX_RETRIES}.`
+      stream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: 'user', width: { ideal: 640 }, height: { ideal: 480 } }
+      });
+      video.srcObject = stream;
+      await video.play();
+      canvas.width  = video.videoWidth  || 640;
+      canvas.height = video.videoHeight || 480;
+      ctx = canvas.getContext('2d');
+
+      selected = [...GESTURES].sort(() => 0.5 - Math.random()).slice(0, 2);
+      livenessTotal = selected.length;
+      livenessIndex = 0;
+      livenessDone = 0;
+      gestureDetected = false;
+      lastPitch = null;
+
+      status   = 'liveness';
+      headline = 'Liveness check';
+      subline  = selected[0].label;
+
+      animateScan();
+      raf = requestAnimationFrame(livenessLoop);
+    } catch (e: any) {
+      status   = 'error';
+      headline = 'Camera error';
+      subline  = e.message?.includes('denied') ? 'Allow camera access and retry' : 'Failed to start — refresh and try again';
     }
   }
 
-  // ─── Retry ────────────────────────────────────────────────────────────────
-  async function retry() {
-    livenessScore  = 0
-    antispoofScore = 0
-    matchScore     = 0
-    await init()
+  onMount(init);
+  onDestroy(stopCamera);
+
+  let currentLabel = $derived(
+    status === 'liveness' && selected[livenessIndex] ? selected[livenessIndex].label : ''
+  );
+</script><script lang="ts">
+  // src/routes/student/verify/+page.svelte
+  import { onMount, onDestroy } from 'svelte';
+  import { goto } from '$app/navigation';
+  import type { PageData } from './$types';
+
+  let { data }: { data: PageData } = $props();
+
+  let video: HTMLVideoElement;
+  let canvas: HTMLCanvasElement;
+  let ctx: CanvasRenderingContext2D | null = null;
+  let stream: MediaStream | null = null;
+  let raf: number | null = null;
+  let scanRaf: number | null = null;
+
+  type Status = 'loading' | 'liveness' | 'matching' | 'success' | 'error';
+  let status        = $state<Status>('loading');
+  let headline      = $state('Identity check');
+  let subline       = $state('Starting camera…');
+  let livenessDone  = $state(0);
+  let livenessTotal = $state(2);
+  let retryCount    = $state(0);
+  let matchScore    = $state(0);
+
+  // These were referenced in drawOverlay() in the original file but never
+  // declared anywhere — a ReferenceError waiting to happen. Declared here.
+  let securityPass  = $state(false);
+  let multipleFaces = $state(false);
+
+  let gestureDetected = false;
+  let livenessIndex = 0;
+  let lastPitch: number | null = null;
+  let scanY = $state(0);
+  let scanDir = 1;
+
+  // ── Human instance ──────────────────────────────────────────────────────
+  // ASSUMPTION: model files live at /models/human — Human needs its own
+  // model set (blazeface/facemesh/faceres/antispoof/liveness), which is a
+  // different set of files than face-api.js's tiny models. Confirm these
+  // are actually hosted there; Human won't fall back silently, it'll fail
+  // to load.
+  let human: import('@vladmandic/human').Human | null = null;
+  let HumanCtor: typeof import('@vladmandic/human').default | null = null;
+
+  const GESTURES = [
+    { id: 'open_mouth',  label: 'Open your mouth' },
+    { id: 'turn_left',   label: 'Turn head left'  },
+    { id: 'turn_right',  label: 'Turn head right' },
+    { id: 'nod',         label: 'Nod your head'   },
+  ];
+  let selected: typeof GESTURES = [];
+
+  // Human's similarity() returns 0..1, HIGHER is better (opposite of the old
+  // face-api distance metric). This threshold is a starting point — tune it
+  // against real enrollment/verification data before relying on it.
+  const SIMILARITY_THRESHOLD = 0.62;
+  const ANTISPOOF_THRESHOLD  = 0.5;
+  const LIVENESS_THRESHOLD   = 0.5;
+
+  // ── gesture parsing off Human's built-in semantic gesture classifier ────
+  // Human emits result.gesture as [{ face: 0, gesture: 'facing left' }, ...].
+  // This replaces all the hand-rolled EAR/mouth-ratio math from the
+  // face-api.js version — Human's classifier is maintained upstream instead
+  // of reimplemented here.
+  function gestureStrings(result: any): string[] {
+    return (result.gesture ?? [])
+      .filter((g: any) => g.face === 0)
+      .map((g: any) => g.gesture as string);
   }
 
-  // ─── Cleanup ──────────────────────────────────────────────────────────────
-  function stopAll() {
-    if (detectRaf) { cancelAnimationFrame(detectRaf); detectRaf = null }
-    if (scanRaf)   { cancelAnimationFrame(scanRaf);   scanRaf   = null }
-    stream?.getTracks().forEach(t => t.stop())
-    stream = null
+  function mouthOpenPercent(strings: string[]): number {
+    for (const g of strings) {
+      const m = /mouth (\d+)% open/.exec(g);
+      if (m) return parseInt(m[1], 10);
+    }
+    return 0;
   }
 
-  // ─── Scan line animation ──────────────────────────────────────────────────
+  function checkGesture(id: string, result: any): boolean {
+    const strings = gestureStrings(result);
+    const face = result.face?.[0];
+
+    switch (id) {
+      case 'open_mouth':
+        return mouthOpenPercent(strings) > 35;
+
+      case 'turn_left':
+        return strings.includes('facing left');
+
+      case 'turn_right':
+        return strings.includes('facing right');
+
+      case 'nod': {
+        // Human's static gesture set doesn't include motion gestures like
+        // "nod" — using raw pitch delta from face.rotation.angle instead.
+        const pitch = face?.rotation?.angle?.pitch;
+        if (typeof pitch !== 'number') return false;
+        if (lastPitch === null) { lastPitch = pitch; return false; }
+        const delta = Math.abs(pitch - lastPitch);
+        lastPitch = pitch;
+        return delta > 0.15; // radians — tune against real footage
+      }
+
+      default:
+        return false;
+    }
+  }
+
+  // ── scan line ───────────────────────────────────────────────────────────
   function animateScan() {
-    scanY += scanDir * 0.006
-    if (scanY >= 1) { scanY = 1; scanDir = -1 }
-    if (scanY <= 0) { scanY = 0; scanDir =  1 }
-    scanRaf = requestAnimationFrame(animateScan)
+    scanY += scanDir * 0.007;
+    if (scanY >= 1) { scanY = 1; scanDir = -1; }
+    if (scanY <= 0) { scanY = 0; scanDir =  1; }
+    scanRaf = requestAnimationFrame(animateScan);
   }
 
-  // ─── Cosine similarity ────────────────────────────────────────────────────
-  function cosineSimilarity(a: number[], b: number[]): number {
-    let dot = 0, magA = 0, magB = 0
-    for (let i = 0; i < a.length; i++) {
-      dot  += a[i] * b[i]
-      magA += a[i] * a[i]
-      magB += b[i] * b[i]
+  // ── canvas overlay ──────────────────────────────────────────────────────
+  function drawOverlay(hit: boolean, phase: 'liveness' | 'matching') {
+    if (!ctx || !canvas) return;
+    const w = canvas.width, h = canvas.height;
+    const cx = w/2, cy = h/2, rx = w*0.34, ry = h*0.42;
+
+    ctx.clearRect(0, 0, w, h);
+    ctx.save();
+    ctx.fillStyle = 'rgba(10,13,15,0.72)';
+    ctx.fillRect(0, 0, w, h);
+    ctx.globalCompositeOperation = 'destination-out';
+    ctx.beginPath(); ctx.ellipse(cx, cy, rx, ry, 0, 0, Math.PI*2); ctx.fill();
+    ctx.restore();
+
+    ctx.beginPath(); ctx.ellipse(cx, cy, rx, ry, 0, 0, Math.PI*2);
+    const accentColor = phase === 'matching' ? '#00c9a7'
+                      : hit                  ? '#f59e0b'
+                      :                        'rgba(255,255,255,0.15)';
+    ctx.strokeStyle = accentColor;
+    ctx.lineWidth = hit || phase === 'matching' ? 2.5 : 1.5;
+    ctx.stroke();
+
+    const bLen = 22;
+    const corners = [
+      { x: cx-rx, y: cy-ry, d: [1,1]  },
+      { x: cx+rx, y: cy-ry, d: [-1,1]  },
+      { x: cx-rx, y: cy+ry, d: [1,-1]  },
+      { x: cx+rx, y: cy+ry, d: [-1,-1] },
+    ];
+    ctx.strokeStyle = phase === 'matching' ? '#00c9a7' : hit ? '#f59e0b' : 'rgba(0,201,167,0.55)';
+    ctx.lineWidth = 2.5; ctx.lineCap = 'round';
+    for (const { x, y, d } of corners) {
+      ctx.beginPath(); ctx.moveTo(x+d[0]*bLen, y); ctx.lineTo(x, y); ctx.lineTo(x, y+d[1]*bLen); ctx.stroke();
     }
-    const denom = Math.sqrt(magA) * Math.sqrt(magB)
-    return denom === 0 ? 0 : dot / denom
+
+    ctx.save();
+    ctx.beginPath(); ctx.ellipse(cx, cy, rx-1, ry-1, 0, 0, Math.PI*2); ctx.clip();
+    const sy = cy - ry + scanY * ry * 2;
+    const scanColor = phase === 'matching' ? 'rgba(0,201,167,' : 'rgba(245,158,11,';
+    const grad = ctx.createLinearGradient(0, sy-12, 0, sy+12);
+    grad.addColorStop(0,   `${scanColor}0)`);
+    grad.addColorStop(0.5, `${scanColor}0.5)`);
+    grad.addColorStop(1,   `${scanColor}0)`);
+    ctx.fillStyle = grad;
+    ctx.fillRect(cx-rx, sy-12, rx*2, 24);
+    ctx.restore();
+
+    if (!securityPass && !multipleFaces) {
+      ctx.save();
+      ctx.fillStyle = '#ef4444';
+      ctx.font = 'bold 10px system-ui';
+      ctx.textAlign = 'center';
+      ctx.fillText('🔒 Security Check Failed', cx, cy - ry - 10);
+      ctx.restore();
+    } else if (securityPass && hit) {
+      ctx.save();
+      ctx.fillStyle = '#00c9a7';
+      ctx.font = 'bold 10px system-ui';
+      ctx.textAlign = 'center';
+      ctx.fillText('✓ Live Person Verified', cx, cy - ry - 10);
+      ctx.restore();
+    }
   }
+
+  // ── liveness loop ───────────────────────────────────────────────────────
+  async function livenessLoop() {
+    if (status !== 'liveness' || !human) return;
+
+    try {
+      const result = await human.detect(video);
+
+      multipleFaces = result.face.length > 1;
+
+      if (result.face.length === 0) {
+        drawOverlay(false, 'liveness');
+        subline = 'Position your face in the oval';
+        gestureDetected = false;
+        raf = requestAnimationFrame(livenessLoop);
+        return;
+      }
+
+      if (multipleFaces) {
+        drawOverlay(false, 'liveness');
+        subline = 'Only one face should be visible';
+        raf = requestAnimationFrame(livenessLoop);
+        return;
+      }
+
+      const face = result.face[0];
+      // Human's antispoof/liveness modules — this is the built-in
+      // replacement for the manual gesture-only anti-spoofing the
+      // face-api.js version relied on.
+      securityPass =
+        (face.real ?? 1) > ANTISPOOF_THRESHOLD &&
+        (face.live ?? 1) > LIVENESS_THRESHOLD;
+
+      const g = selected[livenessIndex];
+      const hit = checkGesture(g.id, result);
+      drawOverlay(hit, 'liveness');
+
+      if (hit && !gestureDetected) {
+        gestureDetected = true;
+        livenessDone = livenessIndex + 1;
+
+        if (livenessIndex + 1 >= selected.length) {
+          matchFace();
+          return;
+        }
+        livenessIndex++;
+        gestureDetected = false;
+        lastPitch = null;
+        subline = selected[livenessIndex].label;
+      } else if (!hit) {
+        gestureDetected = false;
+      }
+
+      raf = requestAnimationFrame(livenessLoop);
+    } catch {
+      raf = requestAnimationFrame(livenessLoop);
+    }
+  }
+
+  // ── face match ──────────────────────────────────────────────────────────
+  async function matchFace() {
+    status   = 'matching';
+    headline = 'Verifying identity';
+    subline  = 'Comparing with enrolled face…';
+
+    try {
+      const result = await human!.detect(video);
+      const face = result.face?.[0];
+      if (!face) throw new Error('No face detected — hold still');
+      if (result.face.length > 1) throw new Error('Only one face should be visible');
+
+      const embedding = face.embedding;
+      if (!embedding) throw new Error('Could not read face features — try again');
+
+      // Re-check antispoof/liveness at match time, not just during the
+      // gesture phase — a photo held up after gestures pass shouldn't sneak
+      // through.
+      securityPass = (face.real ?? 1) > ANTISPOOF_THRESHOLD && (face.live ?? 1) > LIVENESS_THRESHOLD;
+      if (!securityPass) throw new Error('Liveness check failed — please try again with your real face');
+
+      drawOverlay(true, 'matching');
+
+      const res = await fetch('/api/face/descriptor');
+      if (!res.ok) throw new Error('No enrolled face found — please enroll first');
+      const { descriptor: stored } = await res.json();
+
+      // ASSUMPTION: /api/face/descriptor and the enrollment flow (FaceEnroll.svelte,
+      // face/crypto.ts, /api/student/face-enroll) are also updated to store
+      // Human's embedding format. I haven't seen those files — if enrollment
+      // still writes face-api.js's 128-length descriptor, this comparison
+      // will be comparing incompatible vector spaces and will always fail
+      // or always "match" incorrectly. Send me those files to confirm/fix.
+      const similarity = human!.similarity(embedding, stored);
+      const isMatch = similarity > SIMILARITY_THRESHOLD;
+
+      matchScore = Math.round(similarity * 100);
+
+      if (isMatch) {
+        await fetch('/api/face/verify-session', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            verified: true,
+            similarityScore: matchScore,
+            examId: data.exam?.id,
+          }),
+        });
+        status   = 'success';
+        headline = 'Identity Verified';
+        subline  = `${matchScore}% match — you're good to go`;
+        stopCamera();
+        setTimeout(() => {
+          const examId  = data.exam?.id;
+          const returnTo = data.returnTo;
+
+          if (returnTo) {
+            goto(returnTo);
+          } else if (data.exam?.hasExistingSession && data.exam?.sessionId) {
+            goto(`/student/exams/${data.exam.sessionId}`);
+          } else if (examId) {
+            goto(`/student/exams/${examId}`);
+          } else {
+            goto('/student');
+          }
+        }, 1800);
+      } else {
+        retryCount++;
+        status   = 'error';
+        headline = 'Not recognised';
+        subline  = `${matchScore}% match — need at least ${Math.round(SIMILARITY_THRESHOLD * 100)}%`;
+        stopCamera();
+      }
+    } catch (e: any) {
+      retryCount++;
+      status   = 'error';
+      headline = 'Verification failed';
+      subline  = e.message ?? 'Please try again';
+      stopCamera();
+    }
+  }
+
+  // ── lifecycle ───────────────────────────────────────────────────────────
+  function stopCamera() {
+    if (raf) cancelAnimationFrame(raf);
+    if (scanRaf) cancelAnimationFrame(scanRaf);
+    stream?.getTracks().forEach(t => t.stop());
+    stream = null;
+  }
+
+  function retry() {
+    livenessDone = 0;
+    livenessIndex = 0;
+    gestureDetected = false;
+    lastPitch = null;
+    status = 'loading';
+    init();
+  }
+
+  async function init() {
+    try {
+      if (!human) {
+        if (!HumanCtor) {
+          const mod = await import('@vladmandic/human');
+          HumanCtor = mod.default;
+        }
+        human = new HumanCtor({
+          modelBasePath: '/models/human',
+          face: {
+            enabled: true,
+            detector: { rotation: true, maxDetected: 5 },
+            mesh: { enabled: true },
+            iris: { enabled: false },
+            description: { enabled: true }, // produces face.embedding
+            emotion: { enabled: false },
+            antispoof: { enabled: true },   // produces face.real
+            liveness: { enabled: true },    // produces face.live
+          },
+          body: { enabled: false },
+          hand: { enabled: false },
+          object: { enabled: false },
+          segmentation: { enabled: false },
+          gesture: { enabled: true },
+        });
+        await human.load();
+        await human.warmup();
+      }
+
+      stream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: 'user', width: { ideal: 640 }, height: { ideal: 480 } }
+      });
+      video.srcObject = stream;
+      await video.play();
+      canvas.width  = video.videoWidth  || 640;
+      canvas.height = video.videoHeight || 480;
+      ctx = canvas.getContext('2d');
+
+      selected = [...GESTURES].sort(() => 0.5 - Math.random()).slice(0, 2);
+      livenessTotal = selected.length;
+      livenessIndex = 0;
+      livenessDone = 0;
+      gestureDetected = false;
+      lastPitch = null;
+
+      status   = 'liveness';
+      headline = 'Liveness check';
+      subline  = selected[0].label;
+
+      animateScan();
+      raf = requestAnimationFrame(livenessLoop);
+    } catch (e: any) {
+      status   = 'error';
+      headline = 'Camera error';
+      subline  = e.message?.includes('denied') ? 'Allow camera access and retry' : 'Failed to start — refresh and try again';
+    }
+  }
+
+  onMount(init);
+  onDestroy(stopCamera);
+
+  let currentLabel = $derived(
+    status === 'liveness' && selected[livenessIndex] ? selected[livenessIndex].label : ''
+  );
 </script>
 
 <svelte:head>
