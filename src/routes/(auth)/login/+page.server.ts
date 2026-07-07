@@ -1,25 +1,42 @@
 // src/routes/(auth)/login/+page.server.ts
+// Staff portal login
+
 import { fail, redirect } from '@sveltejs/kit';
 import type { Actions, PageServerLoad } from './$types';
-import type { UserRole } from '@prisma/client';
-import { findUserByEmail } from '$lib/server/db/users.js';
-import { verifyPassword } from '$lib/server/auth/password.js';
-import { createSession, setSessionCookie, clearSessionCookie } from '$lib/server/auth/session.js';
+import type { StaffRole } from '@prisma/client';
 import { getPrismaClient } from '$lib/server/db/index.js';
+import {
+  verifyPassword,
+  createStaffSession,
+  invalidateAllStaffSessions,
+  STAFF_COOKIE,
+  cookieOptions,
+} from '$lib/server/auth/index.js';
+import { getStaffUser } from '$lib/server/auth/guards.js';
 
-function roleHome(role: UserRole): string {
+// ASSUMPTION: several granular StaffRole values share a landing page.
+// Confirm this grouping matches your actual route folders.
+function staffRoleHome(role: StaffRole): string {
   switch (role) {
-    case 'student':                return '/student';
-    case 'lecturer':               return '/lecturer';
-    case 'invigilator':            return '/invigilator';
-    case 'admin':                  return '/admin';
-    case 'hod':                    return '/hod';
-    case 'dean':                   return '/dean';
-    case 'exam_officer':           return '/exam-officer';
-    case 'vc_dvc':                 return '/vc-dvc';
-    case 'department_coordinator': return '/coordinator';
-    // TypeScript will error here if a new role is added to the enum
-    // but not handled — exhaustiveness check at compile time
+    case 'SUPER_ADMIN':
+    case 'VC':
+    case 'DVC':
+    case 'REGISTRAR':
+    case 'UNIVERSITY_EXAM_OFFICER':
+    case 'UNIVERSITY_COURSE_COORDINATOR':
+      return '/admin';
+    case 'DEAN':
+      return '/dean';
+    case 'HOD':
+    case 'COLLEGE_EXAM_OFFICER':
+    case 'COLLEGE_COORDINATOR':
+    case 'DEPARTMENT_EXAM_OFFICER':
+    case 'DEPARTMENT_COORDINATOR':
+      return '/hod';
+    case 'LECTURER':
+      return '/lecturer';
+    case 'INVIGILATOR':
+      return '/invigilator';
     default: {
       const _exhaustive: never = role;
       return '/';
@@ -27,22 +44,23 @@ function roleHome(role: UserRole): string {
   }
 }
 
-export const load: PageServerLoad = async ({ locals, cookies, url }) => {
-  const user = locals.user;
+export const load: PageServerLoad = async (event) => {
+  const result = await getStaffUser(event);
 
-  if (user) {
-    if (user.isActive && !user.isSuspended) {
-      redirect(302, roleHome(user.role as UserRole));
+  if (result) {
+    if (result.staff.status === 'ACTIVE') {
+      redirect(302, staffRoleHome(result.staff.primaryRole));
     }
-    clearSessionCookie(cookies);
+    event.cookies.delete(STAFF_COOKIE, { path: '/' });
   }
 
-  const roleHint = url.searchParams.get('role') ?? 'default';
+  const roleHint = event.url.searchParams.get('role') ?? 'default';
   return { roleHint };
 };
 
 export const actions: Actions = {
-  default: async ({ request, cookies, getClientAddress }) => {
+  default: async (event) => {
+    const { request, cookies, getClientAddress } = event;
     const data     = await request.formData();
     const email    = String(data.get('email')    ?? '').trim().toLowerCase();
     const password = String(data.get('password') ?? '');
@@ -52,33 +70,26 @@ export const actions: Actions = {
     }
 
     const prisma = await getPrismaClient();
-
-    const user    = await findUserByEmail(email);
+    const staff = await prisma.staff.findUnique({ where: { email } });
     const INVALID = fail(401, { error: 'Invalid email or password' });
-    if (!user) return INVALID;
+    if (!staff) return INVALID;
 
-    const freshUser = await prisma.user.findUnique({
-      where: { id: user.id },
-      select: { isActive: true, isSuspended: true, passwordHash: true, role: true },
-    });
-
-    if (!freshUser || !freshUser.isActive || freshUser.isSuspended) {
+    if (staff.status !== 'ACTIVE') {
       return fail(403, { error: 'Your account is inactive or suspended.' });
     }
 
-    const valid = await verifyPassword(password, freshUser.passwordHash);
+    const valid = await verifyPassword(password, staff.passwordHash);
     if (!valid) return INVALID;
 
-    // Invalidate any existing sessions before creating a new one
-    await prisma.authSession.deleteMany({ where: { userId: user.id } });
+    await invalidateAllStaffSessions(staff.id);
 
-    const token = await createSession(
-      user.id,
-      getClientAddress(),
-      request.headers.get('user-agent') ?? ''
-    );
-    setSessionCookie(cookies, token);
+    const { token } = await createStaffSession(staff.id, {
+      ipAddress: getClientAddress(),
+      userAgent: request.headers.get('user-agent') ?? undefined,
+    });
 
-    redirect(302, roleHome(freshUser.role));
+    cookies.set(STAFF_COOKIE, token, cookieOptions);
+
+    redirect(302, staffRoleHome(staff.primaryRole));
   },
 };

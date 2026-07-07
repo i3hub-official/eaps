@@ -16,7 +16,7 @@ export default defineConfig({
   // Migration output directory + seed script
   migrations: {
     path: 'prisma/migrations',
-    seed: 'tsx prisma/seed.ts',
+    seed: 'prisma/seed.ts',
   },
 
   // Database connection — moved here from schema.prisma in Prisma 7

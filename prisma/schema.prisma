@@ -1,9 +1,7 @@
-// MOUAU eTest — Prisma schema
-// prisma · postgresql
-//
-// Commands:
-//   pnpm prisma migrate dev --name <name>
-//   pnpm prisma generate
+// ============================================================
+// MOUAU eTEST — Prisma Schema
+// Domain 1: Auth & Users + Academic Structure
+// ============================================================
 
 generator client {
   provider = "prisma-client-js"
@@ -13,1020 +11,1067 @@ datasource db {
   provider = "postgresql"
 }
 
-enum ExamAuthorityScope {
-  lecturer
-  department_coordinator
-  college_coordinator
-}
+// ============================================================
+// ENUMS
+// ============================================================
 
-enum UserRole {
-  admin
-  lecturer
-  invigilator
-  student
-  hod
-  dean
-  exam_officer
-  vc_dvc
-  department_coordinator
-}
-
-enum SecondaryRole {
-  lecturer
-}
-
-enum ExamStatus {
-  draft
-  scheduled
-  active
-  completed
-  cancelled
-}
-
-enum QuestionType {
-  mcq
-  fill_in_the_blank
-  true_false
-  essay
-  generic
-}
-
-enum FlagType {
-  tab_switch
-  window_blur
-  fullscreen_exit
-  copy_attempt
-  devtools_open
-  screenshot_attempt
-  multiple_faces
-  no_face_detected
-  face_mismatch
-  invigilator_manual
-}
-
-enum ViolationAction {
-  warning
-  invigilator_alerted
-  exam_paused
-  auto_submitted
-}
-
-enum ApiScope {
-  read_users
-  write_users
-  read_exams
-  write_exams
-  read_results
-  read_reports
-  read_violations
-  write_violations
-  admin_full
-}
-
-enum ApiKeyStatus {
-  active
-  revoked
-  expired
-}
-
-enum NotificationType {
-  info
-  warning
-  alert
-  error
-  critical
-}
-
-enum RiskLevel {
-  low
-  medium
-  high
-  critical
-}
-
-enum RegistrationType {
-  normal
-  carry_over
-  borrowed
-}
-
-enum RegistrationStatus {
-  pending
-  approved
-  rejected
-  withdrawn
+enum StaffRole {
+  SUPER_ADMIN
+  VC
+  DVC
+  REGISTRAR
+  UNIVERSITY_EXAM_OFFICER
+  UNIVERSITY_COURSE_COORDINATOR
+  DEAN
+  HOD
+  COLLEGE_EXAM_OFFICER
+  COLLEGE_COORDINATOR
+  DEPARTMENT_EXAM_OFFICER
+  DEPARTMENT_COORDINATOR
+  LECTURER
+  INVIGILATOR
 }
 
 enum Gender {
-  male
-  female
-  non_binary
-  prefer_not_to_say
-  required
+  MALE
+  FEMALE
+  OTHER
 }
 
-enum CourseOfferingStatus {
-  draft
-  open
-  closed
-  archived
+enum StudentStatus {
+  ACTIVE
+  SUSPENDED
+  EXPELLED
+  GRADUATED
+  WITHDRAWN
+  DEFERRED
 }
 
-enum CurriculumType {
-  core
-  gst
-  borrowed
-  elective
+enum StaffStatus {
+  ACTIVE
+  INACTIVE
+  SUSPENDED
+  RETIRED
 }
 
-model Curriculum {
-  id           String         @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  departmentId String         @map("department_id") @db.Uuid
-  levelId      Int            @map("level_id")
-  semester     Int            @db.SmallInt
-  courseId     String         @map("course_id") @db.Uuid
-  type         CurriculumType @default(core)
-  isActive     Boolean        @default(true) @map("is_active")
-  createdAt    DateTime       @default(now()) @map("created_at") @db.Timestamptz()
-
-  department Department @relation(fields: [departmentId], references: [id], onDelete: Cascade)
-  level      Level      @relation(fields: [levelId], references: [id])
-  course     Course     @relation(fields: [courseId], references: [id], onDelete: Cascade)
-
-  @@unique([departmentId, levelId, semester, courseId])
-  @@index([departmentId, levelId, semester])
-  @@map("curricula")
+enum SemesterType {
+  FIRST
+  SECOND
+  SUMMER
 }
 
-model CourseOffering {
-  id                 String               @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  courseId           String               @map("course_id") @db.Uuid
-  academicSemesterId Int                  @map("academic_semester_id")
-  levelId            Int                  @map("level_id")
-  status             CourseOfferingStatus @default(draft)
-  capacity           Int?
-  createdAt          DateTime             @default(now()) @map("created_at") @db.Timestamptz()
-  updatedAt          DateTime             @default(now()) @updatedAt @map("updated_at") @db.Timestamptz()
-
-  course                   Course                     @relation(fields: [courseId], references: [id])
-  academicSemester         AcademicSemester           @relation(fields: [academicSemesterId], references: [id])
-  level                    Level                      @relation(fields: [levelId], references: [id])
-  departments              CourseOfferingDepartment[]
-  teachingAssignments      TeachingAssignment[]
-  registrations            CourseRegistration[]
-  exams                    Exam[]
-  examAuthorityAssignments ExamAuthorityAssignment[]
-
-  @@unique([courseId, academicSemesterId, levelId])
-  @@index([academicSemesterId, levelId])
-  @@map("course_offerings")
+enum ProgrammeType {
+  UNDERGRADUATE
+  POSTGRADUATE_DIPLOMA
+  MASTERS
+  PHD
+  CERTIFICATE
+  DIPLOMA
 }
 
-model CourseOfferingDepartment {
-  offeringId   String  @map("offering_id") @db.Uuid
-  departmentId String  @map("department_id") @db.Uuid
-  isPrimary    Boolean @default(false) @map("is_primary")
-
-  offering   CourseOffering @relation(fields: [offeringId], references: [id], onDelete: Cascade)
-  department Department     @relation(fields: [departmentId], references: [id], onDelete: Cascade)
-
-  @@id([offeringId, departmentId])
-  @@index([departmentId])
-  @@map("course_offering_departments")
+enum AcademicSessionStatus {
+  UPCOMING
+  ACTIVE
+  COMPLETED
 }
 
-model TeachingAssignment {
-  id           String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  offeringId   String   @map("offering_id") @db.Uuid
-  lecturerId   String   @map("lecturer_id") @db.Uuid
-  isPrimary    Boolean  @default(true) @map("is_primary")
-  assignedAt   DateTime @default(now()) @map("assigned_at") @db.Timestamptz()
-  assignedById String?  @map("assigned_by_id") @db.Uuid
-  departmentId String?  @map("department_id") @db.Uuid
+enum CourseStatus {
+  ACTIVE
+  INACTIVE
+  DISCONTINUED
+}
 
-  offering   CourseOffering @relation(fields: [offeringId], references: [id], onDelete: Cascade)
-  lecturer   User           @relation("TeachingAssignments", fields: [lecturerId], references: [id], onDelete: Cascade)
-  assignedBy User?          @relation("TeachingAssignmentAssignedBy", fields: [assignedById], references: [id])
-  department Department?    @relation(fields: [departmentId], references: [id])
+enum CourseType {
+  COMPULSORY
+  ELECTIVE
+  GENERAL_STUDIES
+  CARRYOVER_ELIGIBLE
+}
 
-  @@unique([offeringId, lecturerId])
-  @@index([lecturerId])
-  @@map("teaching_assignments")
+// ============================================================
+// RBAC — Security,Roles & Permission
+// ============================================================
+
+model OtpRecord {
+  id        String   @id @default(cuid())
+  email     String
+  otp       String
+  type      String   // 'STAFF_RESET' | 'STUDENT_RESET' | 'STAFF_2FA'
+  used      Boolean  @default(false)
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  @@index([email, type])
+}
+
+model PasswordResetToken {
+  id         String    @id @default(cuid())
+  userType   String    // "staff" | "student"
+  staffId    String?
+  studentId  String?
+  token      String    @unique
+  expiresAt  DateTime
+  consumedAt DateTime?
+  createdAt  DateTime  @default(now())
+
+  staff   Staff?   @relation(fields: [staffId], references: [id], onDelete: Cascade)
+  student Student? @relation(fields: [studentId], references: [id], onDelete: Cascade)
+
+  @@index([token])
+  @@index([userType, staffId, studentId])
+}
+
+model Permission {
+  id          String   @id @default(cuid())
+  name        String   @unique // e.g. "exam:create", "result:release"
+  description String?
+  group       String // e.g. "Examination", "Result", "Student"
+  createdAt   DateTime @default(now())
+
+  rolePermissions RolePermission[]
+}
+
+model Role {
+  id          String   @id @default(cuid())
+  name        String   @unique // mirrors StaffRole values
+  displayName String
+  description String?
+  isSystem    Boolean  @default(true) // system roles cannot be deleted
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  permissions RolePermission[]
+  staffRoles  StaffRoleAssignment[]
+}
+
+model RolePermission {
+  id           String   @id @default(cuid())
+  roleId       String
+  permissionId String
+  createdAt    DateTime @default(now())
+
+  role       Role       @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  permission Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
+
+  @@unique([roleId, permissionId])
+}
+
+model StaffRoleAssignment {
+  id         String    @id @default(cuid())
+  staffId    String
+  roleId     String
+  assignedBy String?
+  assignedAt DateTime  @default(now())
+  expiresAt  DateTime?
+  isActive   Boolean   @default(true)
+
+  staff    Staff  @relation(fields: [staffId], references: [id], onDelete: Cascade)
+  role     Role   @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  assigner Staff? @relation("RoleAssigner", fields: [assignedBy], references: [id])
+
+  @@unique([staffId, roleId])
+}
+
+// ============================================================
+// ACADEMIC STRUCTURE
+// ============================================================
+
+model University {
+  id        String   @id @default(cuid())
+  name      String
+  shortName String   @unique
+  address   String?
+  website   String?
+  email     String?
+  phone     String?
+  logo      String? // file path/url
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  colleges College[]
 }
 
 model College {
-  id           Int     @id @default(autoincrement())
+  id           String   @id @default(cuid())
+  universityId String
   name         String
-  abbreviation String?
-  code         String? @unique
+  shortName    String
+  code         String   @unique
+  email        String?
+  phone        String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
 
-  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz()
+  university  University   @relation(fields: [universityId], references: [id])
+  departments Department[]
+  staff       Staff[]
 
-  departments              Department[]
-  users                    User[]
-  examAuthorityAssignments ExamAuthorityAssignment[]
-
-  @@unique([name])
-  @@map("colleges")
+  @@unique([universityId, shortName])
 }
 
 model Department {
-  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  collegeId Int      @map("college_id")
+  id        String   @id @default(cuid())
+  collegeId String
   name      String
+  shortName String
   code      String   @unique
-  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz()
-
-  college         College          @relation(fields: [collegeId], references: [id], onDelete: Cascade)
-  users           User[]
-  courses         Course[]
-  programmes      Programme[]
-  examDepartments ExamDepartment[]
-  lecturerCourses LecturerCourse[]
-
-  curriculums         Curriculum[]
-  courseOfferings     CourseOfferingDepartment[]
-  teachingAssignments TeachingAssignment[]
-  examCoordinator DepartmentExamCoordinator?
-
-
-  @@unique([name, collegeId])
-  @@index([collegeId])
-  @@map("departments")
-}
-
-model Level {
-  id        Int      @id @default(autoincrement())
-  level     Int      @unique
-  name      String?
-  isDefault Boolean  @default(false)
-  order     Int      @default(0)
-  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz()
-  updatedAt DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz()
-
-  users           User[]                @relation("UserLevel")
-  exams           Exam[]                @relation("ExamLevels")
-  registrations   CourseRegistration[]
-  examLevels      ExamLevel[]
-  semesterConfigs LevelSemesterConfig[]
-
-  curriculums Curriculum[]
-  offerings   CourseOffering[]
-
-  @@map("levels")
-}
-
-model LevelSemesterConfig {
-  id           Int      @id @default(autoincrement())
-  levelId      Int      @map("level_id")
-  semester     Int      @db.SmallInt
-  maxCredits   Int      @default(24) @map("max_credits") @db.SmallInt
-  maxCarryOver Int      @default(6) @map("max_carry_over") @db.SmallInt
-  maxBorrowed  Int      @default(6) @map("max_borrowed") @db.SmallInt
-  createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz()
-  updatedAt    DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz()
-
-  level Level @relation(fields: [levelId], references: [id], onDelete: Cascade)
-
-  @@unique([levelId, semester])
-  @@map("level_semester_configs")
-}
-
-model AcademicSemester {
-  id          Int      @id @default(autoincrement())
-  session     String
-  semester    Int      @db.SmallInt
-  label       String?
-  startDate   DateTime @map("start_date") @db.Timestamptz()
-  endDate     DateTime @map("end_date") @db.Timestamptz()
-  isActive    Boolean  @default(false) @map("is_active")
-  regOpen     Boolean  @default(true) @map("reg_open")
-  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz()
-  updatedAt   DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz()
-  createdById String?  @map("created_by_id") @db.Uuid
-
-  createdBy User? @relation("SemesterCreatedBy", fields: [createdById], references: [id])
-
-  offerings CourseOffering[]
-
-  @@unique([session, semester])
-  @@map("academic_semesters")
-}
-
-model User {
-  id            String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  email         String   @unique
-  fullName      String   @map("full_name")
-  passwordHash  String   @map("password_hash")
-  role          UserRole
-  isActive      Boolean  @default(true) @map("is_active")
-  createdAt     DateTime @default(now()) @map("created_at") @db.Timestamptz()
-  updatedAt     DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz()
-  emailVerified Boolean  @default(false) @map("email_verified")
-
-  phone   String?
-  title   String?
-  address String?
-
-  gender      Gender   @default(required) @map("gender")
-  dateOfBirth DateTime @default(now()) @map("date_of_birth") @db.Timestamptz()
-
-  matricNumber String? @unique @map("matric_number")
-  staffId      String? @unique @map("staff_id")
-  jambRegNo    String? @unique @map("jamb_reg_no")
-
-  levelId Int?    @map("level_id")
-  level   Level?  @relation("UserLevel", fields: [levelId], references: [id])
-  session String?
-
-  collegeId    Int?        @map("college_id")
-  college      College?    @relation(fields: [collegeId], references: [id])
-  departmentId String?     @map("department_id") @db.Uuid
-  department   Department? @relation(fields: [departmentId], references: [id])
-  programmeId  String?     @db.Uuid
-  programme    Programme?  @relation(fields: [programmeId], references: [id])
-
-  photoUrl      String? @map("photo_url")
-  twitter       String?
-  linkedin      String?
-  github        String?
-  bio           String?
-  nationality   String?
-  stateoforigin String? @map("state_of_origin")
-  lga           String?
-
-  receiptNo     String? @map("receipt_no")
-  receiptRef    String? @map("receipt_ref")
-  receiptSource String? @map("receipt_source")
-
-  isSuspended   Boolean   @default(false) @map("is_suspended")
-  suspendedAt   DateTime? @map("suspended_at") @db.Timestamptz()
-  suspendedById String?   @map("suspended_by_id")
-
-  faceDescriptor FaceDescriptor?
-
-  secondaryRoles UserRoleAssignment[] @relation("UserSecondaryRoles")
-
-  roleAssignmentsCreated UserRoleAssignment[] @relation("RoleAssignedBy")
-
-  authSessions        AuthSession[]
-  courseRegistrations CourseRegistration[]
-  createdExams        Exam[]               @relation("LecturerExams")
-  examSessions        ExamSession[]        @relation("StudentSessions")
-  invigilatedSessions ExamSession[]        @relation("InvigilatorSessions")
-  examInvigilators    ExamInvigilator[]
-  examResults         ExamResult[]
-  auditLogs           AuditLog[]
-  notifications       Notification[]
-  createdApiKeys      ApiKey[]             @relation("ApiKeyCreatedBy")
-  revokedApiKeys      ApiKey[]             @relation("ApiKeyRevokedBy")
-  userPreferences     UserPreference[]
-  createdSemesters    AcademicSemester[]   @relation("SemesterCreatedBy")
-
-  verificationLogs  FaceVerificationLog[] @relation("StudentVerifications")
-  faceSimilaritiesA FaceSimilarity[]      @relation("StudentA")
-  faceSimilaritiesB FaceSimilarity[]      @relation("StudentB")
-  passwordResets    PasswordReset[]
-  caUploads         ExamResult[]          @relation("CaUploadedBy")
-
-  lecturerCourses         LecturerCourse[]   @relation("LecturerCourses")
-  assignedLecturerCourses LecturerCourse[]   @relation("LecturerCourseAssignedBy")
-  studentUploads          StudentUpload[]
-  questionImports         QuestionImport[]
-  questionFavorites       QuestionFavorite[]
-
-  teachingAssignments         TeachingAssignment[] @relation("TeachingAssignments")
-  teachingAssignmentsAssigned TeachingAssignment[] @relation("TeachingAssignmentAssignedBy")
-
-  examAuthorityAssignedTo ExamAuthorityAssignment[] @relation("ExamAuthorityAssignedUser")
-  examAuthoritySetAsDean  ExamAuthorityAssignment[] @relation("ExamAuthoritySetByDean")
-
-deptExamCoordinatorRole      DepartmentExamCoordinator? @relation("DeptExamCoordinatorUser")
-deptExamCoordinatorsAssigned DepartmentExamCoordinator[] @relation("DeptExamCoordinatorAssignedBy")
-
-  @@index([role])
-  @@index([collegeId])
-  @@index([departmentId])
-  @@index([matricNumber])
-  @@index([jambRegNo])
-  @@index([staffId])
-  @@index([isSuspended])
-  @@index([levelId])
-  @@map("users")
-}
-
-model QuestionFavorite {
-  id         String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  userId     String   @map("user_id") @db.Uuid
-  questionId String   @map("question_id") @db.Uuid
-  createdAt  DateTime @default(now()) @map("created_at") @db.Timestamptz()
-  updatedAt  DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz()
-
-  user     User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  question Question @relation(fields: [questionId], references: [id], onDelete: Cascade)
-
-  @@unique([userId, questionId])
-  @@index([userId])
-  @@index([questionId])
-  @@map("question_favorites")
-}
-
-model UserRoleAssignment {
-  id           String        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  userId       String        @map("user_id") @db.Uuid
-  role         SecondaryRole
-  assignedAt   DateTime      @default(now()) @map("assigned_at") @db.Timestamptz()
-  assignedById String?       @map("assigned_by_id") @db.Uuid
-
-  user       User  @relation("UserSecondaryRoles", fields: [userId], references: [id], onDelete: Cascade)
-  assignedBy User? @relation("RoleAssignedBy", fields: [assignedById], references: [id])
-
-  @@unique([userId, role])
-  @@index([userId])
-  @@index([role])
-  @@map("user_role_assignments")
-}
-
-model PasswordReset {
-  token     String    @id
-  userId    String    @map("user_id") @db.Uuid
-  expiresAt DateTime  @map("expires_at") @db.Timestamptz()
-  usedAt    DateTime? @map("used_at") @db.Timestamptz()
-
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-  @@index([userId])
-  @@index([expiresAt])
-  @@map("password_resets")
-}
-
-model FaceDescriptor {
-  studentId           String   @id @map("student_id") @db.Uuid
-  descriptor          String
-  enrolledAt          DateTime @default(now()) @map("enrolled_at") @db.Timestamptz()
-  updatedAt           DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz()
-  embedding_dimension Int      @default(512) @map("embedding_dimension")
-  student             User     @relation(fields: [studentId], references: [id], onDelete: Cascade)
-
-  @@map("face_descriptors")
-}
-
-model FaceSimilarity {
-  id                 String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  examId             String    @map("exam_id") @db.Uuid
-  studentAId         String    @map("student_a_id") @db.Uuid
-  studentBId         String    @map("student_b_id") @db.Uuid
-  similarityScore    Decimal   @map("similarity_score") @db.Decimal(5, 3)
-  sharedAnswers      Int       @default(0) @map("shared_answers") @db.SmallInt
-  sharedWrongAnswers Int       @default(0) @map("shared_wrong_answers") @db.SmallInt
-  totalQuestions     Int       @default(0) @map("total_questions") @db.SmallInt
-  riskLevel          RiskLevel @map("risk_level")
-  generatedAt        DateTime  @default(now()) @map("generated_at") @db.Timestamptz()
-
-  exam     Exam @relation(fields: [examId], references: [id], onDelete: Cascade)
-  studentA User @relation("StudentA", fields: [studentAId], references: [id])
-  studentB User @relation("StudentB", fields: [studentBId], references: [id])
-
-  @@unique([examId, studentAId, studentBId])
-  @@index([examId])
-  @@index([examId, riskLevel])
-  @@index([examId, similarityScore(sort: Desc)])
-  @@index([examId, studentAId, studentBId])
-  @@map("face_similarity")
-}
-
-model FaceVerificationLog {
-  id              String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  studentId       String   @map("student_id") @db.Uuid
-  examId          String?  @map("exam_id") @db.Uuid
-  similarityScore Decimal? @map("similarity_score") @db.Decimal(5, 2)
-  distance        Decimal? @db.Decimal(6, 4)
-  success         Boolean
-  ipAddress       String?  @map("ip_address")
-  userAgent       String?  @map("user_agent")
-  verifiedAt      DateTime @default(now()) @map("verified_at") @db.Timestamptz()
-
-  student User  @relation("StudentVerifications", fields: [studentId], references: [id], onDelete: Cascade)
-  exam    Exam? @relation(fields: [examId], references: [id], onDelete: SetNull)
-
-  @@index([studentId])
-  @@index([examId])
-  @@index([verifiedAt(sort: Desc)])
-  @@map("face_verification_logs")
-}
-
-model AuthSession {
-  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  userId    String   @map("user_id") @db.Uuid
-  token     String   @unique
-  ipAddress String?  @map("ip_address")
-  userAgent String?  @map("user_agent")
-  expiresAt DateTime @map("expires_at") @db.Timestamptz()
-  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz()
-
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-  @@index([token])
-  @@index([userId])
-  @@map("auth_sessions")
-}
-
-model Course {
-  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  departmentId   String   @map("department_id") @db.Uuid
-  code           String   @unique
-  title          String
-  creditUnits    Int      @default(2) @map("credit_units") @db.SmallInt
-  level          Int?     @db.SmallInt
-  isGeneral      Boolean  @default(false) @map("is_general")
-  isDiscontinued Boolean  @default(false) @map("is_discontinued")
-  isActive       Boolean  @default(true) @map("is_active")
-  semester       Int?     @db.SmallInt
-  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz()
-
-  department          Department           @relation(fields: [departmentId], references: [id])
-  registrations       CourseRegistration[]
-  lecturerAssignments LecturerCourse[]
-
-  exams       Exam[]
-  programme   Programme? @relation(fields: [programmeId], references: [id])
-  programmeId String?    @db.Uuid
-
-  curriculums Curriculum[]
-  offerings   CourseOffering[]
-
-  @@map("courses")
-}
-
-model CourseRegistration {
-  id               String             @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  studentId        String             @map("student_id") @db.Uuid
-  courseId         String             @map("course_id") @db.Uuid
-  session          String
-  levelId          Int?               @map("level_id")
-  semester         Int                @db.SmallInt
-  registrationType RegistrationType   @default(normal) @map("registration_type")
-  status           RegistrationStatus @default(pending) @map("status")
-  createdAt        DateTime           @default(now()) @map("created_at") @db.Timestamptz()
-
-  student    User            @relation(fields: [studentId], references: [id], onDelete: Cascade)
-  course     Course          @relation(fields: [courseId], references: [id], onDelete: Cascade)
-  level      Level?          @relation(fields: [levelId], references: [id])
-  offeringId String?         @map("offering_id") @db.Uuid
-  offering   CourseOffering? @relation(fields: [offeringId], references: [id])
-
-  @@unique([studentId, courseId, session, semester])
-  @@map("course_registrations")
-}
-
-model StudentUpload {
-  id           String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  fileName     String   @map("file_name")
-  fileType     String   @map("file_type")
-  fileSize     Int      @map("file_size")
-  rowCount     Int      @map("row_count")
-  successCount Int      @default(0) @map("success_count")
-  errorCount   Int      @default(0) @map("error_count")
-  uploadedById String   @map("uploaded_by") @db.Uuid
-  uploadedAt   DateTime @default(now()) @map("uploaded_at") @db.Timestamptz()
-
-  uploadedBy User @relation(fields: [uploadedById], references: [id], onDelete: Cascade)
-
-  @@index([uploadedById])
-  @@index([uploadedAt(sort: Desc)])
-  @@map("student_uploads")
+  email     String?
+  phone     String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  college     College                 @relation(fields: [collegeId], references: [id])
+  programmes  Programme[]
+  staff       Staff[]
+  students    Student[]
+  courses     Course[]
+  eligibility AssessmentEligibility[]
+
+  @@unique([collegeId, shortName])
 }
 
 model Programme {
-  id            String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  departmentId  String   @map("department_id") @db.Uuid
-  name          String   @default("Full Time Regular")
-  code          String?  @unique
-  durationYears Int      @default(4) @map("duration_years") @db.SmallInt
-  createdAt     DateTime @default(now()) @map("created_at") @db.Timestamptz()
-  updatedAt     DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz()
+  id            String        @id @default(cuid())
+  departmentId  String
+  name          String
+  shortName     String
+  type          ProgrammeType @default(UNDERGRADUATE)
+  durationYears Int           @default(4)
+  isActive      Boolean       @default(true)
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
 
-  department Department @relation(fields: [departmentId], references: [id], onDelete: Cascade)
-  users      User[]
-  courses    Course[]
+  department Department @relation(fields: [departmentId], references: [id])
+  students   Student[]
 
-  @@unique([name, departmentId])
-  @@index([departmentId])
-  @@map("programmes")
+  @@unique([departmentId, shortName])
 }
 
-model LecturerCourse {
-  id           String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  lecturerId   String   @map("lecturer_id") @db.Uuid
-  courseId     String   @map("course_id") @db.Uuid
-  departmentId String   @map("department_id") @db.Uuid
-  assignedAt   DateTime @default(now()) @map("assigned_at") @db.Timestamptz()
-  assignedById String?  @map("assigned_by_id") @db.Uuid
+// Represents a level (100, 200, ... 700) — no hardcoded values
+model Level {
+  id        String   @id @default(cuid())
+  name      Int      @unique // 100, 200, 300, ...
+  label     String // "100 Level", "Postgraduate", etc.
+  createdAt DateTime @default(now())
 
-  lecturer   User       @relation("LecturerCourses", fields: [lecturerId], references: [id], onDelete: Cascade)
-  course     Course     @relation(fields: [courseId], references: [id], onDelete: Cascade)
-  department Department @relation(fields: [departmentId], references: [id], onDelete: Cascade)
-  assignedBy User?      @relation("LecturerCourseAssignedBy", fields: [assignedById], references: [id])
-
-  @@unique([lecturerId, courseId])
-  @@index([lecturerId])
-  @@index([courseId])
-  @@index([departmentId])
-  @@map("lecturer_courses")
+  courseRegistrations CourseRegistration[]
+  courses             Course[]
+  students            Student[]               @relation("CurrentLevel")
+  eligibility         AssessmentEligibility[]
 }
 
-model Exam {
-  id                 String     @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  courseId           String     @map("course_id") @db.Uuid
-  createdBy          String     @map("created_by") @db.Uuid
-  title              String
-  instructions       String?
-  durationMinutes    Int        @default(60) @map("duration_minutes") @db.SmallInt
-  totalMarks         Int        @default(100) @map("total_marks") @db.SmallInt
-  passMark           Int        @default(40) @map("pass_mark") @db.SmallInt
-  status             ExamStatus @default(draft)
-  scheduledStart     DateTime?  @map("scheduled_start") @db.Timestamptz()
-  scheduledEnd       DateTime?  @map("scheduled_end") @db.Timestamptz()
-  allowLateEntry     Boolean    @default(false) @map("allow_late_entry")
-  lateEntryMinutes   Int        @default(10) @map("late_entry_minutes") @db.SmallInt
-  randomizeQuestions Boolean    @default(true) @map("randomize_questions")
-  randomizeOptions   Boolean    @default(true) @map("randomize_options")
-  questionsToPresent Int        @default(0) @map("questions_to_present") @db.SmallInt
+model AcademicSession {
+  id        String                @id @default(cuid())
+  name      String                @unique // e.g. "2024/2025"
+  startDate DateTime
+  endDate   DateTime
+  status    AcademicSessionStatus @default(UPCOMING)
+  isCurrent Boolean               @default(false)
+  createdAt DateTime              @default(now())
+  updatedAt DateTime              @updatedAt
 
-  marksPerQuestion Decimal? @db.Decimal(5, 2)
-
-  showResultAfter Boolean  @default(false) @map("show_result_after")
-  maxViolations   Int      @default(5) @map("max_violations") @db.SmallInt
-  session         String
-  department      String?
-  semester        Int      @db.SmallInt
-  createdAt       DateTime @default(now()) @map("created_at") @db.Timestamptz()
-  updatedAt       DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz()
-
-  course               Course                @relation(fields: [courseId], references: [id])
-  lecturer             User                  @relation("LecturerExams", fields: [createdBy], references: [id])
-  questions            Question[]
-  examSessions         ExamSession[]
-  invigilators         ExamInvigilator[]
-  examResults          ExamResult[]
-  levels               Level[]               @relation("ExamLevels")
-  examLevels           ExamLevel[]
-  faceSimilarities     FaceSimilarity[]
-  faceVerificationLogs FaceVerificationLog[]
-  examDepartments      ExamDepartment[]
-  offeringId           String?               @map("offering_id") @db.Uuid
-  offering             CourseOffering?       @relation(fields: [offeringId], references: [id])
-
-  @@index([courseId])
-  @@index([status])
-  @@map("exams")
+  semesters           Semester[]
+  courseRegistrations CourseRegistration[]
+  transcriptEntries   TranscriptEntry[]
 }
 
-model ExamLevel {
-  examId  String @map("exam_id") @db.Uuid
-  levelId Int    @map("level_id")
+model Semester {
+  id         String       @id @default(cuid())
+  sessionId  String
+  type       SemesterType
+  startDate  DateTime
+  endDate    DateTime
+  regOpenAt  DateTime? // when registration opens
+  regCloseAt DateTime? // when registration closes
+  isCurrent  Boolean      @default(false)
+  createdAt  DateTime     @default(now())
+  updatedAt  DateTime     @updatedAt
 
-  exam  Exam  @relation(fields: [examId], references: [id], onDelete: Cascade)
-  level Level @relation(fields: [levelId], references: [id], onDelete: Cascade)
+  session             AcademicSession      @relation(fields: [sessionId], references: [id])
+  courseRegistrations CourseRegistration[]
+  courses             CourseOffering[]
 
-  @@id([examId, levelId])
-  @@map("exam_levels")
+  @@unique([sessionId, type])
 }
 
-model ExamDepartment {
-  examId       String @map("exam_id") @db.Uuid
-  departmentId String @map("department_id") @db.Uuid
+// ============================================================
+// COURSES
+// ============================================================
 
-  exam       Exam       @relation(fields: [examId], references: [id], onDelete: Cascade)
-  department Department @relation(fields: [departmentId], references: [id], onDelete: Cascade)
+model Course {
+  id           String       @id @default(cuid())
+  departmentId String
+  levelId      String
+  code         String       @unique // e.g. "CSC301"
+  title        String
+  creditUnits  Int          @default(2)
+  type         CourseType   @default(COMPULSORY)
+  status       CourseStatus @default(ACTIVE)
+  description  String?
+  createdAt    DateTime     @default(now())
+  updatedAt    DateTime     @updatedAt
 
-  @@id([examId, departmentId])
-  @@map("exam_departments")
+  department        Department           @relation(fields: [departmentId], references: [id])
+  level             Level                @relation(fields: [levelId], references: [id])
+  offerings         CourseOffering[]
+  registrations     CourseRegistration[]
+  questions         Question[]
+  assessments       Assessment[]
+  transcriptEntries TranscriptEntry[]
 }
 
-model ExamAuthorityAssignment {
-  id             String             @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  offeringId     String             @map("offering_id") @db.Uuid
-  collegeId      Int                @map("college_id")
-  scope          ExamAuthorityScope
-  assignedUserId String?            @map("assigned_user_id") @db.Uuid
-  reason         String?
-  isActive       Boolean            @default(true) @map("is_active")
-  setByDeanId    String             @map("set_by_dean_id") @db.Uuid
-  createdAt      DateTime           @default(now()) @map("created_at") @db.Timestamptz()
-  supersededAt   DateTime?          @map("superseded_at") @db.Timestamptz()
+// A specific offering of a course in a semester (who teaches it, exam details)
+model CourseOffering {
+  id         String   @id @default(cuid())
+  courseId   String
+  semesterId String
+  lecturerId String? // primary lecturer
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
 
-  offering     CourseOffering @relation(fields: [offeringId], references: [id], onDelete: Cascade)
-  college      College        @relation(fields: [collegeId], references: [id], onDelete: Cascade)
-  assignedUser User?          @relation("ExamAuthorityAssignedUser", fields: [assignedUserId], references: [id])
-  setByDean    User           @relation("ExamAuthoritySetByDean", fields: [setByDeanId], references: [id])
+  course   Course   @relation(fields: [courseId], references: [id])
+  semester Semester @relation(fields: [semesterId], references: [id])
+  lecturer Staff?   @relation("CourseOfferings", fields: [lecturerId], references: [id])
 
-  @@index([offeringId, collegeId, isActive])
-  @@map("exam_authority_assignments")
+  @@unique([courseId, semesterId])
 }
 
-model DepartmentExamCoordinator {
-  departmentId String   @id @map("department_id") @db.Uuid
-  userId       String   @unique @map("user_id") @db.Uuid
-  assignedById String   @map("assigned_by_id") @db.Uuid
-  assignedAt   DateTime @default(now()) @map("assigned_at") @db.Timestamptz()
+// ============================================================
+// COURSE REGISTRATION
+// ============================================================
 
-  department Department @relation(fields: [departmentId], references: [id], onDelete: Cascade)
-  user       User       @relation("DeptExamCoordinatorUser", fields: [userId], references: [id])
-  assignedBy User       @relation("DeptExamCoordinatorAssignedBy", fields: [assignedById], references: [id])
-
-  @@map("department_exam_coordinators")
+enum RegistrationStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  CANCELLED
 }
 
-model Question {
-  id         String       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  examId     String       @map("exam_id") @db.Uuid
-  type       QuestionType
-  body       String
-  topic      String?
-  imageUrl   String?      @map("image_url")
-  marks      Int          @default(1) @db.SmallInt
-  orderIndex Int?         @map("order_index") @db.SmallInt
-  createdAt  DateTime     @default(now()) @map("created_at") @db.Timestamptz()
-
-  exam                 Exam                   @relation(fields: [examId], references: [id], onDelete: Cascade)
-  options              QuestionOption[]
-  fitbAnswers          FitbAnswer[]
-  studentAnswers       StudentAnswer[]
-  sessionQuestionOrder SessionQuestionOrder[]
-  sessionOptionOrder   SessionOptionOrder[]
-  favorites            QuestionFavorite[]
-
-  @@index([examId])
-  @@map("questions")
+enum RegistrationType {
+  NORMAL // current level courses
+  CARRY_OVER // retaking a failed course
+  EXTRA // additional course (with approval)
 }
 
-model QuestionOption {
-  id         String  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  questionId String  @map("question_id") @db.Uuid
-  optionText String  @map("option_text")
-  isCorrect  Boolean @default(false) @map("is_correct")
-  orderIndex Int?    @map("order_index") @db.SmallInt
+model CourseRegistration {
+  id           String             @id @default(cuid())
+  studentId    String
+  courseId     String
+  sessionId    String
+  semesterId   String
+  levelId      String
+  type         RegistrationType   @default(NORMAL)
+  status       RegistrationStatus @default(PENDING)
+  editCount    Int                @default(0) // max 3
+  approvedBy   String?
+  approvedAt   DateTime?
+  rejectedAt   DateTime?
+  rejectedNote String?
+  createdAt    DateTime           @default(now())
+  updatedAt    DateTime           @updatedAt
 
-  question           Question             @relation(fields: [questionId], references: [id], onDelete: Cascade)
-  studentAnswers     StudentAnswer[]
-  sessionOptionOrder SessionOptionOrder[]
+  student  Student         @relation(fields: [studentId], references: [id])
+  course   Course          @relation(fields: [courseId], references: [id])
+  session  AcademicSession @relation(fields: [sessionId], references: [id])
+  semester Semester        @relation(fields: [semesterId], references: [id])
+  level    Level           @relation(fields: [levelId], references: [id])
+  approver Staff?          @relation("RegistrationApprover", fields: [approvedBy], references: [id])
 
-  @@map("question_options")
+  @@unique([studentId, courseId, sessionId, semesterId])
 }
 
-model QuestionImport {
-  id           String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  fileName     String   @map("file_name")
-  fileType     String   @map("file_type")
-  rowCount     Int      @map("row_count")
-  successCount Int      @default(0) @map("success_count")
-  errorCount   Int      @default(0) @map("error_count")
-  importedById String   @map("imported_by") @db.Uuid
-  importedAt   DateTime @default(now()) @map("imported_at") @db.Timestamptz()
+// ============================================================
+// STAFF
+// ============================================================
 
-  importedBy User @relation(fields: [importedById], references: [id], onDelete: Cascade)
+model Staff {
+  id                 String      @id @default(cuid())
+  staffNumber        String      @unique
+  email              String      @unique
+  passwordHash       String
+  firstName          String
+  lastName           String
+  otherNames         String?
+  phone              String?
+  gender             Gender?
+  avatar             String?
+  primaryRole        StaffRole // their main role in the system
+  collegeId          String?
+  departmentId       String?
+  status             StaffStatus @default(ACTIVE)
+  mustChangePassword Boolean     @default(false)
+  lastLoginAt        DateTime?
+  createdAt          DateTime    @default(now())
+  updatedAt          DateTime    @updatedAt
 
-  @@index([importedById])
-  @@index([importedAt(sort: Desc)])
-  @@map("question_imports")
+  college    College?    @relation(fields: [collegeId], references: [id])
+  department Department? @relation(fields: [departmentId], references: [id])
+
+  // RBAC
+  roleAssignments StaffRoleAssignment[]
+  assignedRoles   StaffRoleAssignment[] @relation("RoleAssigner")
+
+  // Relations to other domains (added as we build)
+  authoredQuestions Question[]           @relation("QuestionAuthor")
+  sessions          StaffSession[]
+  courseOfferings   CourseOffering[]     @relation("CourseOfferings")
+  approvedRegs      CourseRegistration[] @relation("RegistrationApprover")
+  auditLogs         AuditLog[]
+  passwordResets PasswordResetToken[]
+
+  createdAssessments Assessment[]            @relation("AssessmentAuthor")
+  invigilations      AssessmentInvigilator[]
+  gradedAnswers      StudentAnswer[]         @relation("AnswerGrader")
+  releasedResults    AssessmentResult[]      @relation("ResultReleaser")
+  resultRevisions    ResultRevision[]
+
+  @@index([email])
+  @@index([staffNumber])
 }
 
-model FitbAnswer {
-  id             String  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  questionId     String  @map("question_id") @db.Uuid
-  acceptedAnswer String  @map("accepted_answer")
-  isPrimary      Boolean @default(false) @map("is_primary")
+model StaffSession {
+  id           String   @id @default(cuid())
+  staffId      String
+  token        String   @unique
+  refreshToken String?  @unique
+  ipAddress    String?
+  userAgent    String?
+  expiresAt    DateTime
+  createdAt    DateTime @default(now())
+  refreshTokenExpiresAt DateTime?
+  lastActiveAt DateTime @default(now())
 
-  question Question @relation(fields: [questionId], references: [id], onDelete: Cascade)
+  staff Staff @relation(fields: [staffId], references: [id], onDelete: Cascade)
 
-  @@map("fitb_answers")
+  @@index([token])
 }
 
-model ExamSession {
-  id                String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  examId            String    @map("exam_id") @db.Uuid
-  studentId         String    @map("student_id") @db.Uuid
-  invigilatorId     String?   @map("invigilator_id") @db.Uuid
-  status            String    @default("not_started")
-  startedAt         DateTime? @map("started_at") @db.Timestamptz()
-  submittedAt       DateTime? @map("submitted_at") @db.Timestamptz()
-  timeRemainingSecs Int?      @map("time_remaining_secs")
-  ipAddress         String?   @map("ip_address")
-  deviceInfo        String?   @map("device_info")
-  score             Decimal?  @db.Decimal(5, 2)
-  isGraded          Boolean   @default(false) @map("is_graded")
-  violationCount    Int       @default(0) @map("violation_count") @db.SmallInt
-  createdAt         DateTime  @default(now()) @map("created_at") @db.Timestamptz()
+// ============================================================
+// STUDENT
+// ============================================================
 
-  exam                 Exam                   @relation(fields: [examId], references: [id])
-  student              User                   @relation("StudentSessions", fields: [studentId], references: [id])
-  invigilator          User?                  @relation("InvigilatorSessions", fields: [invigilatorId], references: [id])
-  studentAnswers       StudentAnswer[]
-  violations           Violation[]
-  examResult           ExamResult?
-  sessionQuestionOrder SessionQuestionOrder[]
-  sessionOptionOrder   SessionOptionOrder[]
+model Student {
+  id                 String        @id @default(cuid())
+  matricNumber       String        @unique
+  jambRegNo           String  @unique
+  receiptNo           String?
+  receiptRef          String?
+  receiptSource       String?
+  registrationSession String?
+  email              String        @unique
+  passwordHash       String
+  firstName          String
+  lastName           String
+  otherNames         String?
+  phone              String?
+  gender             Gender?
+  avatar             String?
+  dateOfBirth        DateTime?
+  departmentId       String
+  programmeId        String
+  currentLevelId     String
+  entryYear          Int // e.g. 2026
+  status             StudentStatus @default(ACTIVE)
+  // face enrollment — descriptor stored separately for security
+  faceEnrolledAt     DateTime?
+  mustChangePassword Boolean       @default(false)
+  lastLoginAt        DateTime?
+  createdAt          DateTime      @default(now())
+  updatedAt          DateTime      @updatedAt
 
-  @@unique([examId, studentId])
-  @@index([examId])
-  @@index([studentId])
-  @@index([status])
-  @@map("exam_sessions")
+  department   Department @relation(fields: [departmentId], references: [id])
+  programme    Programme  @relation(fields: [programmeId], references: [id])
+  currentLevel Level      @relation("CurrentLevel", fields: [currentLevelId], references: [id])
+
+  // Relations to other domains (added as we build)
+  sessions            StudentSession[]
+  courseRegistrations CourseRegistration[]
+  faceDescriptor      FaceDescriptor?
+  notifications       Notification[]
+  auditLogs           AuditLog[]
+  eligibility        AssessmentEligibility[]
+  assessmentSessions AssessmentSession[]
+  results            AssessmentResult[]
+  transcriptEntries  TranscriptEntry[]
+  passwordResets PasswordResetToken[]
+
+  @@index([matricNumber])
+  @@index([email])
 }
 
-model SessionQuestionOrder {
-  id           String @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  sessionId    String @map("session_id") @db.Uuid
-  questionId   String @map("question_id") @db.Uuid
-  displayIndex Int    @map("display_index") @db.SmallInt
+model StudentSession {
+  id                String   @id @default(cuid())
+  studentId         String
+  token             String   @unique
+  refreshToken      String?  @unique
+  ipAddress         String?
+  userAgent         String?
+  deviceFingerprint String?
+  expiresAt         DateTime
+  refreshTokenExpiresAt DateTime?
+  createdAt         DateTime @default(now())
+  lastActiveAt      DateTime @default(now())
 
-  session  ExamSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
-  question Question    @relation(fields: [questionId], references: [id])
+  student Student @relation(fields: [studentId], references: [id], onDelete: Cascade)
 
-  @@unique([sessionId, questionId])
-  @@map("session_question_order")
+  @@index([token])
 }
 
-model SessionOptionOrder {
-  id           String @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  sessionId    String @map("session_id") @db.Uuid
-  questionId   String @map("question_id") @db.Uuid
-  optionId     String @map("option_id") @db.Uuid
-  displayIndex Int    @map("display_index") @db.SmallInt
+// ============================================================
+// FACE RECOGNITION
+// ============================================================
 
-  session  ExamSession    @relation(fields: [sessionId], references: [id], onDelete: Cascade)
-  question Question       @relation(fields: [questionId], references: [id])
-  option   QuestionOption @relation(fields: [optionId], references: [id])
+model FaceDescriptor {
+  id                String   @id @default(cuid())
+  studentId         String   @unique
+  encryptedData     String // AES-256-GCM encrypted face embedding
+  iv                String // encryption IV
+  enrolledAt        DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+  enrolledIpAddress String?
 
-  @@unique([sessionId, optionId])
-  @@map("session_option_order")
+  student Student @relation(fields: [studentId], references: [id], onDelete: Cascade)
 }
 
-model StudentAnswer {
-  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  sessionId      String   @map("session_id") @db.Uuid
-  questionId     String   @map("question_id") @db.Uuid
-  selectedOption String?  @map("selected_option") @db.Uuid
-  textAnswer     String?  @map("text_answer")
-  isCorrect      Boolean? @map("is_correct")
-  marksEarned    Decimal  @default(0) @map("marks_earned") @db.Decimal(4, 2)
-  timeSpentSecs  Int?     @map("time_spent_secs")
-  answeredAt     DateTime @default(now()) @map("answered_at") @db.Timestamptz()
+// ============================================================
+// NOTIFICATIONS (stub — expanded in notifications domain)
+// ============================================================
 
-  session  ExamSession     @relation(fields: [sessionId], references: [id], onDelete: Cascade)
-  question Question        @relation(fields: [questionId], references: [id])
-  option   QuestionOption? @relation(fields: [selectedOption], references: [id])
-
-  @@unique([sessionId, questionId])
-  @@index([sessionId])
-  @@map("student_answers")
-}
-
-model Violation {
-  id          String           @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  sessionId   String           @map("session_id") @db.Uuid
-  flagType    FlagType         @map("flag_type")
-  actionTaken ViolationAction? @map("action_taken")
-  note        String?
-  flaggedAt   DateTime         @default(now()) @map("flagged_at") @db.Timestamptz()
-
-  session ExamSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
-
-  @@index([sessionId])
-  @@index([flagType])
-  @@map("violations")
-}
-
-model ExamInvigilator {
-  id            String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  examId        String   @map("exam_id") @db.Uuid
-  invigilatorId String   @map("invigilator_id") @db.Uuid
-  assignedAt    DateTime @default(now()) @map("assigned_at") @db.Timestamptz()
-
-  exam        Exam @relation(fields: [examId], references: [id], onDelete: Cascade)
-  invigilator User @relation(fields: [invigilatorId], references: [id])
-
-  @@unique([examId, invigilatorId])
-  @@map("exam_invigilators")
-}
-
-model ExamResult {
-  id              String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  sessionId       String    @unique @map("session_id") @db.Uuid
-  studentId       String    @map("student_id") @db.Uuid
-  examId          String    @map("exam_id") @db.Uuid
-  totalQuestions  Int?      @map("total_questions") @db.SmallInt
-  answered        Int?      @db.SmallInt
-  correct         Int?      @db.SmallInt
-  score           Decimal?  @db.Decimal(5, 2)
-  percentage      Decimal?  @db.Decimal(5, 2)
-  caScore         Decimal?  @map("ca_score") @db.Decimal(5, 2)
-  caMaxScore      Decimal?  @map("ca_max_score") @db.Decimal(5, 2)
-  caUploadedAt    DateTime? @map("ca_uploaded_at") @db.Timestamptz()
-  caUploadedById  String?   @map("ca_uploaded_by_id") @db.Uuid
-  finalScore      Decimal?  @map("final_score") @db.Decimal(5, 2)
-  finalPercentage Decimal?  @map("final_percentage") @db.Decimal(5, 2)
-  finalGrade      String?   @map("final_grade") @db.Char(2)
-  finalPassed     Boolean?  @map("final_passed")
-  passed          Boolean?
-  grade           String?   @db.Char(2)
-  violationCount  Int       @default(0) @map("violation_count") @db.SmallInt
-  timeTakenSecs   Int?      @map("time_taken_secs")
-  submittedAt     DateTime? @map("submitted_at") @db.Timestamptz()
-  generatedAt     DateTime  @default(now()) @map("generated_at") @db.Timestamptz()
-
-  session      ExamSession @relation(fields: [sessionId], references: [id])
-  student      User        @relation(fields: [studentId], references: [id])
-  exam         Exam        @relation(fields: [examId], references: [id])
-  caUploadedBy User?       @relation("CaUploadedBy", fields: [caUploadedById], references: [id])
-
-  @@index([examId])
-  @@index([studentId])
-  @@map("exam_results")
-}
-
-model AuditLog {
-  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  userId    String?  @map("user_id") @db.Uuid
-  action    String
-  entity    String?
-  entityId  String?  @map("entity_id") @db.Uuid
-  metadata  Json?
-  ipAddress String?  @map("ip_address")
-  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz()
-
-  user User? @relation(fields: [userId], references: [id])
-
-  @@index([userId])
-  @@index([entity, entityId])
-  @@map("audit_logs")
+enum NotificationType {
+  REGISTRATION_REMINDER
+  MISSING_COURSE_ALERT
+  EXAM_SCHEDULE
+  FACE_ENROLLMENT_REMINDER
+  PAYMENT_REMINDER
+  RESULT_RELEASED
+  EXAM_STARTING
+  VIOLATION_ALERT
+  PENDING_APPROVAL
+  GENERAL
 }
 
 model Notification {
-  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  userId    String   @map("user_id") @db.Uuid
+  id        String           @id @default(cuid())
+  studentId String?
+  staffId   String?
+  type      NotificationType
   title     String
-  message   String
-  isRead    Boolean  @default(false) @map("is_read")
-  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz()
+  body      String
+  isRead    Boolean          @default(false)
+  readAt    DateTime?
+  link      String? // optional deep-link
+  createdAt DateTime         @default(now())
 
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-  @@index([userId])
-  @@map("notifications")
+  student Student? @relation(fields: [studentId], references: [id], onDelete: Cascade)
 }
 
-model ApiKey {
-  id           String       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  name         String
-  keyHash      String       @unique @map("key_hash")
-  keyPrefix    String       @map("key_prefix")
-  scopes       ApiScope[]
-  status       ApiKeyStatus @default(active)
-  createdById  String       @map("created_by_id") @db.Uuid
-  lastUsedAt   DateTime?    @map("last_used_at") @db.Timestamptz()
-  expiresAt    DateTime?    @map("expires_at") @db.Timestamptz()
-  revokedAt    DateTime?    @map("revoked_at") @db.Timestamptz()
-  revokedById  String?      @map("revoked_by_id") @db.Uuid
-  ipWhitelist  String[]     @default([]) @map("ip_whitelist")
-  requestCount Int          @default(0) @map("request_count")
-  createdAt    DateTime     @default(now()) @map("created_at") @db.Timestamptz()
-  updatedAt    DateTime     @default(now()) @updatedAt @map("updated_at") @db.Timestamptz()
+// ============================================================
+// AUDIT LOG (global — used by all domains)
+// ============================================================
 
-  createdBy User  @relation("ApiKeyCreatedBy", fields: [createdById], references: [id])
-  revokedBy User? @relation("ApiKeyRevokedBy", fields: [revokedById], references: [id])
+model AuditLog {
+  id         String   @id @default(cuid())
+  actorType  String // "staff" | "student" | "system"
+  staffId    String?
+  studentId  String?
+  action     String // e.g. "EXAM_SUBMITTED", "RESULT_RELEASED"
+  entity     String // table/domain name
+  entityId   String?
+  beforeData Json? // snapshot before change
+  afterData  Json? // snapshot after change
+  ipAddress  String?
+  userAgent  String?
+  createdAt  DateTime @default(now())
 
-  accessLogs ApiAccessLog[]
+  staff   Staff?   @relation(fields: [staffId], references: [id])
+  student Student? @relation(fields: [studentId], references: [id])
 
-  @@index([status])
-  @@index([createdById])
-  @@map("api_keys")
-}
-
-model ApiAccessLog {
-  id         String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  keyId      String   @map("key_id") @db.Uuid
-  endpoint   String
-  method     String   @db.VarChar(10)
-  statusCode Int      @map("status_code") @db.SmallInt
-  ipAddress  String?  @map("ip_address")
-  durationMs Int?     @map("duration_ms") @db.SmallInt
-  createdAt  DateTime @default(now()) @map("created_at") @db.Timestamptz()
-
-  key ApiKey @relation(fields: [keyId], references: [id], onDelete: Cascade)
-
-  @@index([keyId])
+  @@index([actorType, staffId])
+  @@index([actorType, studentId])
+  @@index([entity, entityId])
   @@index([createdAt])
-  @@map("api_access_logs")
 }
 
-model UserPreference {
-  userId    String   @id @map("user_id") @db.Uuid
-  prefs     Json     @default("{}")
-  updatedAt DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz()
+// ============================================================
+// MOUAU eTEST — Domain 2: Assessments + Question Bank
+// Append this to prisma/schema.prisma (after Domain 1)
+// ============================================================
 
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+// ============================================================
+// ENUMS
+// ============================================================
 
-  @@map("user_preferences")
+enum AssessmentType {
+  PRACTICE // unlimited attempts, instant feedback
+  ASSIGNMENT // due dates, submission, grading
+  TEST // 30 marks, face verification
+  EXAMINATION // 70 marks, highest security
 }
+
+enum AssessmentStatus {
+  DRAFT
+  PUBLISHED
+  SCHEDULED // published, not yet open
+  ACTIVE // currently accepting sessions
+  ENDED // past end time
+  CANCELLED
+}
+
+enum QuestionType {
+  SINGLE_CHOICE // one correct answer
+  MULTIPLE_CHOICE // multiple correct answers
+  TRUE_FALSE
+  FILL_BLANK
+  MATCHING
+  ESSAY
+  ORDERING
+}
+
+enum DifficultyLevel {
+  EASY
+  MEDIUM
+  HARD
+  EXPERT
+}
+
+enum SessionStatus {
+  PENDING // created, not yet started
+  IN_PROGRESS
+  PAUSED // network drop / tab switch
+  SUBMITTED
+  TIMED_OUT // auto-submitted at time expiry
+  DISQUALIFIED
+}
+
+enum SubmissionMode {
+  MANUAL // student clicked submit
+  AUTO_TIME // server auto-submitted on timeout
+  AUTO_VIOLATION // auto-submitted due to violations
+  FORCE // admin forced submission
+}
+
+enum GradeLabel {
+  A
+  B
+  C
+  D
+  E
+  F
+}
+
+// ============================================================
+// QUESTION BANK
+// ============================================================
+
+// Tags for searchability
+model QuestionTag {
+  id        String   @id @default(cuid())
+  name      String   @unique
+  createdAt DateTime @default(now())
+
+  questions QuestionTagMap[]
+}
+
+model QuestionTagMap {
+  questionId String
+  tagId      String
+
+  question Question    @relation(fields: [questionId], references: [id], onDelete: Cascade)
+  tag      QuestionTag @relation(fields: [tagId], references: [id], onDelete: Cascade)
+
+  @@id([questionId, tagId])
+}
+
+model Question {
+  id          String          @id @default(cuid())
+  createdById String // staff who created it
+  courseId    String? // optional — can be global bank
+  type        QuestionType
+  difficulty  DifficultyLevel @default(MEDIUM)
+  body        String // question text (supports markdown)
+  explanation String? // shown after answer in practice/assignment
+  imageUrl    String?
+  audioUrl    String?
+  videoUrl    String?
+  marks       Decimal         @default(1) @db.Decimal(6, 2)
+  isActive    Boolean         @default(true)
+  version     Int             @default(1)
+  parentId    String? // if this is a revised version
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  createdBy Staff      @relation("QuestionAuthor", fields: [createdById], references: [id])
+  course    Course?    @relation(fields: [courseId], references: [id])
+  parent    Question?  @relation("QuestionVersions", fields: [parentId], references: [id])
+  versions  Question[] @relation("QuestionVersions")
+
+  options       QuestionOption[]
+  matchPairs    MatchPair[]
+  tags          QuestionTagMap[]
+  assessmentQs  AssessmentQuestion[]
+  answers       StudentAnswer[]
+  sessionOrders SessionQuestionOrder[]
+}
+
+// For SINGLE_CHOICE, MULTIPLE_CHOICE, TRUE_FALSE
+model QuestionOption {
+  id         String  @id @default(cuid())
+  questionId String
+  body       String
+  imageUrl   String?
+  isCorrect  Boolean @default(false)
+  order      Int     @default(0)
+
+  question Question @relation(fields: [questionId], references: [id], onDelete: Cascade)
+}
+
+// For MATCHING questions: left side → right side
+model MatchPair {
+  id         String @id @default(cuid())
+  questionId String
+  leftItem   String
+  rightItem  String
+  order      Int    @default(0)
+
+  question Question @relation(fields: [questionId], references: [id], onDelete: Cascade)
+}
+
+// ============================================================
+// ASSESSMENTS (Exam / Test / Assignment / Practice)
+// ============================================================
+
+model Assessment {
+  id                    String           @id @default(cuid())
+  createdById           String // staff/lecturer
+  courseId              String
+  type                  AssessmentType
+  status                AssessmentStatus @default(DRAFT)
+  title                 String
+  instructions          String?
+  totalMarks            Decimal          @db.Decimal(6, 2) // 70 for Exam, 30 for Test
+  passMark              Decimal          @db.Decimal(6, 2) // e.g. 40% of totalMarks
+  durationMinutes       Int // how long each session lasts
+  startTime             DateTime? // when students can begin
+  endTime               DateTime? // after this, no new sessions
+  maxAttempts           Int              @default(1) // PRACTICE: 999
+  questionCount         Int // how many to pick from pool
+  shuffleQuestions      Boolean          @default(true)
+  shuffleOptions        Boolean          @default(true)
+  showResultImmediately Boolean          @default(false) // PRACTICE/ASSIGNMENT: true
+  allowReview           Boolean          @default(false) // can student review answers?
+  requireFaceVerify     Boolean          @default(false) // TEST + EXAM: true
+  requireLiveness       Boolean          @default(false) // EXAM only: true
+  offlineEnabled        Boolean          @default(false) // EXAM only
+  fullscreenRequired    Boolean          @default(false) // TEST + EXAM: true
+  // Assignment-specific
+  dueDate               DateTime?
+  allowLateSubmission   Boolean          @default(false)
+  latePenaltyPercent    Decimal?         @db.Decimal(5, 2)
+  // Exam paper variants (Type A/B/C)
+  paperVariants         Int              @default(1)
+
+  publishedAt DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  createdBy Staff  @relation("AssessmentAuthor", fields: [createdById], references: [id])
+  course    Course @relation(fields: [courseId], references: [id])
+
+  questions    AssessmentQuestion[]
+  sessions     AssessmentSession[]
+  invigilators AssessmentInvigilator[]
+  eligibility  AssessmentEligibility[]
+  results      AssessmentResult[]
+}
+
+// The question pool for an assessment — ordered, with per-question mark override
+model AssessmentQuestion {
+  id            String   @id @default(cuid())
+  assessmentId  String
+  questionId    String
+  order         Int      @default(0) // for drag-reorder in builder
+  marksOverride Decimal? @db.Decimal(6, 2) // if null, use question.marks
+
+  assessment Assessment @relation(fields: [assessmentId], references: [id], onDelete: Cascade)
+  question   Question   @relation(fields: [questionId], references: [id])
+
+  @@unique([assessmentId, questionId])
+}
+
+// Who is eligible — by department, level, or individual student
+model AssessmentEligibility {
+  id           String  @id @default(cuid())
+  assessmentId String
+  departmentId String?
+  levelId      String?
+  studentId    String? // for individual overrides
+
+  assessment Assessment  @relation(fields: [assessmentId], references: [id], onDelete: Cascade)
+  department Department? @relation(fields: [departmentId], references: [id])
+  level      Level?      @relation(fields: [levelId], references: [id])
+  student    Student?    @relation(fields: [studentId], references: [id])
+
+  @@unique([assessmentId, departmentId, levelId, studentId])
+}
+
+// Invigilators assigned to an exam session
+model AssessmentInvigilator {
+  id           String   @id @default(cuid())
+  assessmentId String
+  staffId      String
+  assignedAt   DateTime @default(now())
+
+  assessment Assessment @relation(fields: [assessmentId], references: [id], onDelete: Cascade)
+  staff      Staff      @relation(fields: [staffId], references: [id])
+
+  @@unique([assessmentId, staffId])
+}
+
+// ============================================================
+// ASSESSMENT SESSIONS (one per student per attempt)
+// ============================================================
+
+model AssessmentSession {
+  id            String        @id @default(cuid())
+  assessmentId  String
+  studentId     String
+  attemptNumber Int           @default(1)
+  status        SessionStatus @default(PENDING)
+  paperVariant  String? // "A", "B", "C"
+
+  // timing
+  startedAt   DateTime?
+  submittedAt DateTime?
+  expiresAt   DateTime? // startedAt + durationMinutes
+
+  // submission
+  submissionMode    SubmissionMode?
+  ipAddress         String?
+  deviceFingerprint String?
+  userAgent         String?
+
+  // face verification result
+  faceVerifiedAt DateTime?
+  faceScore      Float? // cosine similarity at verification
+
+  // server-authoritative timer (seconds remaining at last sync)
+  timeRemainingSeconds Int?
+
+  // offline
+  isOffline  Boolean   @default(false)
+  lastSyncAt DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  assessment Assessment        @relation(fields: [assessmentId], references: [id])
+  student    Student           @relation(fields: [studentId], references: [id])
+  answers    StudentAnswer[]
+  violations Violation[]
+  result     AssessmentResult?
+
+  // the shuffled question order for this specific session
+  questionOrder SessionQuestionOrder[]
+
+  @@unique([assessmentId, studentId, attemptNumber])
+  @@index([assessmentId, status])
+  @@index([studentId])
+}
+
+// The randomised question order for a session
+// Stored so student sees same order if they rejoin
+model SessionQuestionOrder {
+  id          String @id @default(cuid())
+  sessionId   String
+  questionId  String
+  position    Int // 1-based position in this student's paper
+  optionOrder Json // array of option IDs in shuffled order
+
+  session  AssessmentSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  question Question          @relation(fields: [questionId], references: [id])
+
+  @@unique([sessionId, position])
+}
+
+// ============================================================
+// STUDENT ANSWERS
+// ============================================================
+
+model StudentAnswer {
+  id              String    @id @default(cuid())
+  sessionId       String
+  questionId      String
+  // for choice questions: array of selected option IDs
+  selectedOptions Json?
+  // for fill blank / essay / ordering
+  textAnswer      String?
+  orderAnswer     Json? // array of item IDs in student's order
+  matchAnswer     Json? // { leftId: rightId } map
+  // scoring (null until graded)
+  marksAwarded    Decimal?  @db.Decimal(6, 2)
+  isCorrect       Boolean?
+  isManualGraded  Boolean   @default(false)
+  gradedAt        DateTime?
+  gradedById      String? // staff who manually graded
+
+  answeredAt DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  session  AssessmentSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  question Question          @relation(fields: [questionId], references: [id])
+  gradedBy Staff?            @relation("AnswerGrader", fields: [gradedById], references: [id])
+
+  @@unique([sessionId, questionId])
+}
+
+// ============================================================
+// VIOLATIONS
+// ============================================================
+
+enum ViolationType {
+  FULLSCREEN_EXIT
+  TAB_SWITCH
+  COPY_ATTEMPT
+  PASTE_ATTEMPT
+  DEVTOOLS_OPEN
+  FACE_NOT_DETECTED
+  FACE_MISMATCH
+  MULTIPLE_FACES
+  IDLE_TIMEOUT
+  NETWORK_DROP
+  SCREEN_CAPTURE
+  FOCUS_LOSS
+  KEYBOARD_SHORTCUT
+  CLOCK_TAMPER
+}
+
+model Violation {
+  id         String        @id @default(cuid())
+  sessionId  String
+  type       ViolationType
+  severity   Int           @default(1) // 1=warn, 2=serious, 3=critical
+  metadata   Json? // e.g. { faceScore: 0.4 }
+  screenshot String? // file path
+  createdAt  DateTime      @default(now())
+
+  // cooldown: prevent duplicate logging within N seconds
+  // (enforced in application layer)
+
+  session AssessmentSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+
+  @@index([sessionId, type])
+  @@index([sessionId, createdAt])
+}
+
+// ============================================================
+// RESULTS & GRADING
+// ============================================================
+
+model AssessmentResult {
+  id           String @id @default(cuid())
+  sessionId    String @unique
+  assessmentId String
+  studentId    String
+
+  // raw scores
+  totalMarks    Decimal @db.Decimal(6, 2) // max possible
+  marksObtained Decimal @db.Decimal(6, 2)
+  percentage    Decimal @db.Decimal(5, 2)
+
+  // computed grade (stored permanently — never recalculate)
+  grade       GradeLabel
+  gradePoints Decimal    @db.Decimal(3, 1) // 5.0, 4.0, ...
+  passed      Boolean
+
+  // per-section breakdown (optional JSON for future use)
+  breakdown Json?
+
+  // for combined CA + Exam: contributions stored separately
+  // (CA result from Test, Exam result from Examination, combined in TranscriptEntry)
+
+  isReleased   Boolean   @default(false)
+  releasedAt   DateTime?
+  releasedById String?
+
+  // immutability: once released, any change creates a revision
+  isRevised     Boolean @default(false)
+  revisedFromId String? // original result ID
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  session    AssessmentSession @relation(fields: [sessionId], references: [id])
+  assessment Assessment        @relation(fields: [assessmentId], references: [id])
+  student    Student           @relation(fields: [studentId], references: [id])
+  releasedBy Staff?            @relation("ResultReleaser", fields: [releasedById], references: [id])
+  revisions  ResultRevision[]
+
+  @@index([assessmentId, studentId])
+  @@index([isReleased])
+}
+
+// Every modification to a released result is tracked here
+// Original result row is never changed
+model ResultRevision {
+  id          String   @id @default(cuid())
+  resultId    String
+  revisedById String
+  reason      String
+  beforeData  Json // snapshot of result before change
+  afterData   Json // snapshot after change
+  createdAt   DateTime @default(now())
+
+  result    AssessmentResult @relation(fields: [resultId], references: [id])
+  revisedBy Staff            @relation(fields: [revisedById], references: [id])
+}
+
+// ============================================================
+// GRADE SCALE (configurable per institution)
+// ============================================================
+
+model GradeScale {
+  id          String     @id @default(cuid())
+  label       GradeLabel @unique
+  minPercent  Decimal    @db.Decimal(5, 2)
+  maxPercent  Decimal    @db.Decimal(5, 2)
+  points      Decimal    @db.Decimal(3, 1)
+  description String?
+
+  @@index([minPercent])
+}
+
+// ============================================================
+// COMBINED SCORE (CA 30 + Exam 70 = Final 100)
+// ============================================================
+
+model TranscriptEntry {
+  id        String @id @default(cuid())
+  studentId String
+  courseId  String
+  sessionId String // academic session
+
+  testMark    Decimal?    @db.Decimal(5, 2) // out of 30
+  examMark    Decimal?    @db.Decimal(5, 2) // out of 70
+  totalMark   Decimal?    @db.Decimal(5, 2) // out of 100
+  percentage  Decimal?    @db.Decimal(5, 2)
+  grade       GradeLabel?
+  gradePoints Decimal?    @db.Decimal(3, 1)
+  passed      Boolean?
+  creditUnits Int?
+
+  isFinalized Boolean   @default(false)
+  finalizedAt DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  student Student         @relation(fields: [studentId], references: [id])
+  course  Course          @relation(fields: [courseId], references: [id])
+  session AcademicSession @relation(fields: [sessionId], references: [id])
+
+  @@unique([studentId, courseId, sessionId])
+  @@index([studentId, sessionId])
+}
+
+

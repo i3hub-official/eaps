@@ -1,332 +1,135 @@
 // src/lib/server/auth/guards.ts
+// Route-level auth guards for all portals
 //
-// Role guards for all portals.
-// Usage: const user = requireAdmin(locals.user)  — returns User or throws redirect/error
-//        await requireAdminOrApiKey(ctx, 'read_users') — session OR API key
-import { error, redirect } from '@sveltejs/kit';
-import type { UserRole } from '@prisma/client';
-import type { ApiScope } from '@prisma/client';
-import { requireApiKey } from './api-key-guard.js';
+// Usage in +page.server.ts:
+//   const { student } = await requireStudent(event)
+//   const { staff }   = await requireStaff(event)
+//   const { staff }   = await requirePermission(event, 'exam:create')
 
-// guards.ts — update MaybeUser
-type MaybeUser = {
-  id: string;
-  role: UserRole;
-  fullName: string;
-  isActive: boolean;
-  isSuspended: boolean;
-  collegeId?: number | null;   // Int? in schema
-  levelId?: number | null;     // Int? in schema
-  departmentId?: string | null; // String (Uuid)? in schema
-} | null | undefined;
+import { redirect, error } from '@sveltejs/kit'
+import type { RequestEvent } from '@sveltejs/kit'
+import {
+  getStaffByToken,
+  getStudentByToken,
+  STAFF_COOKIE,
+  STUDENT_COOKIE,
+} from './index'
+import type { StaffRole } from '@prisma/client'
 
+// ─── Student guard ───────────────────────────────────────────────────────────
 
-function assertActive(user: MaybeUser, loginPath = '/login'): asserts user is NonNullable<MaybeUser> {
-  if (!user) redirect(303, loginPath);
-  if (!user.isActive || user.isSuspended) error(403, 'Account suspended or inactive.');
-}
+export async function requireStudent(event: RequestEvent) {
+  const token = event.cookies.get(STUDENT_COOKIE)
+  if (!token) throw redirect(303, '/student/login')
 
-// ── Core auth ─────────────────────────────────────────────────────────────────
-
-export function requireAuth(user: MaybeUser): NonNullable<MaybeUser> {
-  assertActive(user);
-  return user;
-}
-
-export function requireOwnership(user: NonNullable<MaybeUser>, ownerId: string): void {
-  if (user.id !== ownerId && user.role !== 'admin') {
-    error(403, 'You do not have permission to access this resource.');
-  }
-}
-
-// ── Single-role guards ────────────────────────────────────────────────────────
-
-export function requireAdmin(user: MaybeUser): NonNullable<MaybeUser> {
-  assertActive(user);
-  if (user.role !== 'admin') error(403, 'Admin access required.');
-  return user;
-}
-
-export function requireLecturer(user: MaybeUser): NonNullable<MaybeUser> {
-  assertActive(user);
-  if (user.role !== 'lecturer' && user.role !== 'hod') error(403, 'Lecturer access required.');
-  return user;
-}
-
-export function requireInvigilator(user: MaybeUser): NonNullable<MaybeUser> {
-  assertActive(user);
-  if (user.role !== 'invigilator') error(403, 'Invigilator access required.');
-  return user;
-}
-
-export function requireStudent(user: MaybeUser): NonNullable<MaybeUser> {
-  assertActive(user);
-  if (user.role !== 'student') error(403, 'Student access required.');
-  return user;
-}
-
-export function requireHod(user: MaybeUser): NonNullable<MaybeUser> {
-  assertActive(user);
-  if (user.role !== 'hod') error(403, 'HOD access required.');
-  return user;
-}
-
-export function requireDean(user: MaybeUser): NonNullable<MaybeUser> {
-  assertActive(user);
-  if (user.role !== 'dean') error(403, 'Dean access required.');
-  return user;
-}
-
-export function requireExamOfficer(user: MaybeUser): NonNullable<MaybeUser> {
-  assertActive(user);
-  if (user.role !== 'exam_officer') error(403, 'Exam Officer access required.');
-  return user;
-}
-
-export function requireVcDvc(user: MaybeUser): NonNullable<MaybeUser> {
-  assertActive(user);
-  if (user.role !== 'vc_dvc') error(403, 'VC/DVC access required.');
-  return user;
-}
-
-// ── Department Coordinator Guard ─────────────────────────────────────────────
-
-export function requireDepartmentCoordinator(user: MaybeUser): NonNullable<MaybeUser> {
-  assertActive(user);
-  if (user.role !== 'department_coordinator') error(403, 'Department Coordinator access required.');
-  return user;
-}
-
-// ── Role + Admin combo guards ─────────────────────────────────────────────────
-
-export function requireLecturerOrAdmin(user: MaybeUser): NonNullable<MaybeUser> {
-  assertActive(user);
-  const allowed: UserRole[] = ['lecturer', 'hod', 'admin'];
-  if (!allowed.includes(user.role)) error(403, 'Lecturer or Admin access required.');
-  return user;
-}
-
-export function requireInvigilatorOrAdmin(user: MaybeUser): NonNullable<MaybeUser> {
-  assertActive(user);
-  const allowed: UserRole[] = ['invigilator', 'admin'];
-  if (!allowed.includes(user.role)) error(403, 'Invigilator or Admin access required.');
-  return user;
-}
-
-export function requireStudentOrAdmin(user: MaybeUser): NonNullable<MaybeUser> {
-  assertActive(user);
-  const allowed: UserRole[] = ['student', 'admin'];
-  if (!allowed.includes(user.role)) error(403, 'Student or Admin access required.');
-  return user;
-}
-
-export function requireHodOrAdmin(user: MaybeUser): NonNullable<MaybeUser> {
-  assertActive(user);
-  const allowed: UserRole[] = ['hod', 'admin'];
-  if (!allowed.includes(user.role)) error(403, 'HOD or Admin access required.');
-  return user;
-}
-
-export function requireDeanOrAdmin(user: MaybeUser): NonNullable<MaybeUser> {
-  assertActive(user);
-  const allowed: UserRole[] = ['dean', 'admin'];
-  if (!allowed.includes(user.role)) error(403, 'Dean or Admin access required.');
-  return user;
-}
-
-export function requireExamOfficerOrAdmin(user: MaybeUser): NonNullable<MaybeUser> {
-  assertActive(user);
-  const allowed: UserRole[] = ['exam_officer', 'admin'];
-  if (!allowed.includes(user.role)) error(403, 'Exam Officer or Admin access required.');
-  return user;
-}
-
-export function requireVcDvcOrAdmin(user: MaybeUser): NonNullable<MaybeUser> {
-  assertActive(user);
-  const allowed: UserRole[] = ['vc_dvc', 'admin'];
-  if (!allowed.includes(user.role)) error(403, 'VC/DVC or Admin access required.');
-  return user;
-}
-
-export function requireDepartmentCoordinatorOrAdmin(user: MaybeUser): NonNullable<MaybeUser> {
-  assertActive(user);
-  const allowed: UserRole[] = ['department_coordinator', 'admin'];
-  if (!allowed.includes(user.role)) {
-    error(403, 'Access denied. Only department coordinators or admins can access this resource.');
-  }
-  return user;
-}
-
-// ── Multi-role guards (OR semantics) ─────────────────────────────────────────
-
-/** Routes accessible by admin OR exam officer (e.g. exam schedule management). */
-export function requireExamManagement(user: MaybeUser): NonNullable<MaybeUser> {
-  assertActive(user);
-  const allowed: UserRole[] = ['admin', 'exam_officer'];
-  if (!allowed.includes(user.role)) error(403, 'Exam management access required.');
-  return user;
-}
-
-/** Routes readable by governance accounts (VC/DVC, Dean, Exam Officer, Admin). */
-export function requireReportAccess(user: MaybeUser): NonNullable<MaybeUser> {
-  assertActive(user);
-  const allowed: UserRole[] = ['admin', 'exam_officer', 'dean', 'vc_dvc'];
-  if (!allowed.includes(user.role)) error(403, 'Report access required.');
-  return user;
-}
-
-/**
- * Routes accessible by lecturers AND HODs who also lecture.
- * Pass the user's secondaryRoles (loaded from UserRoleAssignment) for HOD check.
- */
-export function requireLecturerOrHod(
-  user: MaybeUser,
-  secondaryRoles: string[] = []
-): NonNullable<MaybeUser> {
-  assertActive(user);
-  const isLecturer = user.role === 'lecturer';
-  const isHodWhoLectures = user.role === 'hod' && secondaryRoles.includes('lecturer');
-  if (!isLecturer && !isHodWhoLectures) error(403, 'Lecturer access required.');
-  return user;
-}
-
-/** Any authenticated, active staff member (non-student). */
-export function requireStaff(user: MaybeUser): NonNullable<MaybeUser> {
-  assertActive(user);
-  if (user.role === 'student') error(403, 'Staff access required.');
-  return user;
-}
-
-// ── Exam Creator Guards ──────────────────────────────────────────────────────
-
-/**
- * Routes accessible by users who can create exams:
- * - Lecturers (teach courses)
- * - Department Coordinators (oversee department exams)
- * - Exam Officers (college-level exam management)
- * - HODs (department heads)
- * 
- * This is the primary guard for exam creation pages.
- * Individual course-level permissions are checked separately via canSubmitQuestions().
- */
-export function requireExamCreator(user: MaybeUser): NonNullable<MaybeUser> {
-  assertActive(user);
-  const allowed: UserRole[] = ['lecturer', 'department_coordinator', 'exam_officer', 'hod'];
-  if (!allowed.includes(user.role)) {
-    error(403, 'Access denied. Only lecturers, department coordinators, exam officers, and HODs can create exams.');
-  }
-  return user;
-}
-
-/**
- * Exam Creator OR Admin - for routes that admins might need to access
- */
-export function requireExamCreatorOrAdmin(user: MaybeUser): NonNullable<MaybeUser> {
-  assertActive(user);
-  const allowed: UserRole[] = ['lecturer', 'department_coordinator', 'exam_officer', 'hod', 'admin'];
-  if (!allowed.includes(user.role)) {
-    error(403, 'Access denied. Only exam creators or admins can access this resource.');
-  }
-  return user;
-}
-
-// ─── Department Coordinator Portal Guards ──────────────────────────────────
-
-/**
- * Routes accessible by Department Coordinators AND HODs who also have coordinator access
- * For the Department Coordinator portal
- */
-export function requireDeptCoordinatorPortal(user: MaybeUser): NonNullable<MaybeUser> {
-  assertActive(user);
-  const allowed: UserRole[] = ['department_coordinator', 'hod'];
-  if (!allowed.includes(user.role)) {
-    error(403, 'Access denied. Only Department Coordinators and HODs can access this portal.');
-  }
-  return user;
-}
-
-/**
- * Department Coordinator Portal OR Admin - for admin access
- */
-export function requireDeptCoordinatorPortalOrAdmin(user: MaybeUser): NonNullable<MaybeUser> {
-  assertActive(user);
-  const allowed: UserRole[] = ['department_coordinator', 'hod', 'admin'];
-  if (!allowed.includes(user.role)) {
-    error(403, 'Access denied. Only Department Coordinators, HODs, or admins can access this resource.');
-  }
-  return user;
-}
-
-/**
- * Routes accessible by users who can manage department-level resources:
- * - Department Coordinators
- * - HODs (with lecturer secondary role)
- * - Exam Officers (college-level oversight)
- * 
- * Used for department-level management pages like courses, lecturers, etc.
- */
-export function requireDeptManagement(user: MaybeUser): NonNullable<MaybeUser> {
-  assertActive(user);
-  const allowed: UserRole[] = ['department_coordinator', 'hod', 'exam_officer'];
-  if (!allowed.includes(user.role)) {
-    error(403, 'Access denied. Only department coordinators, HODs, and exam officers can manage department resources.');
-  }
-  return user;
-}
-
-/**
- * Routes accessible by users who can view department-level resources (read-only):
- * - Department Coordinators
- * - HODs
- * - Exam Officers
- * - Deans (college oversight)
- * 
- * Used for department-level view pages like results, reports, etc.
- */
-export function requireDeptViewer(user: MaybeUser): NonNullable<MaybeUser> {
-  assertActive(user);
-  const allowed: UserRole[] = ['department_coordinator', 'hod', 'exam_officer', 'dean'];
-  if (!allowed.includes(user.role)) {
-    error(403, 'Access denied. Only department coordinators, HODs, exam officers, and deans can view department resources.');
-  }
-  return user;
-}
-
-// ── Admin OR API Key ──────────────────────────────────────────────────────────
-
-type AdminOrKeySuccess = { ok: true; user?: MaybeUser; keyId?: string; scopes?: string[] };
-type AdminOrKeyFailure = { ok: false; response: Response };
-
-/**
- * Allows either:
- *   1. An authenticated admin session (cookie-based), or
- *   2. A valid API key with the required scope.
- *
- * Usage in +server.ts:
- *   const auth = await requireAdminOrApiKey({ locals, request }, 'read_users');
- *   if (!auth.ok) return auth.response;
- */
-export async function requireAdminOrApiKey(
-  ctx: { locals: App.Locals; request: Request },
-  requiredScope?: ApiScope,
-  endpoint = '(unknown)'
-): Promise<AdminOrKeySuccess | AdminOrKeyFailure> {
-  const user = ctx.locals.user as MaybeUser;
-  if (user?.role === 'admin' && user.isActive && !user.isSuspended) {
-    return { ok: true, user };
+  const result = await getStudentByToken(token)
+  if (!result) {
+    event.cookies.delete(STUDENT_COOKIE, { path: '/' })
+    throw redirect(303, '/student/login')
   }
 
-  const auth = await requireApiKey(ctx.request, requiredScope, endpoint);
-  if (!auth.ok) {
-    return { ok: false, response: auth.response };
-  }
-
-  return { ok: true, keyId: auth.keyId, scopes: auth.scopes };
+  return result // { student, session }
 }
 
-// ── Utility ───────────────────────────────────────────────────────────────────
+// ─── Staff guard (any authenticated staff) ───────────────────────────────────
 
-/** True if the user holds a given secondary role. */
-export function hasSecondaryRole(secondaryRoles: string[], role: string): boolean {
-  return secondaryRoles.includes(role);
+export async function requireStaff(event: RequestEvent) {
+  const token = event.cookies.get(STAFF_COOKIE)
+  if (!token) throw redirect(303, '/login')
+
+  const result = await getStaffByToken(token)
+  if (!result) {
+    event.cookies.delete(STAFF_COOKIE, { path: '/' })
+    throw redirect(303, '/login')
+  }
+
+  return result // { staff, session, permissions }
+}
+
+// ─── Role-specific guards ────────────────────────────────────────────────────
+
+export async function requireAdmin(event: RequestEvent) {
+  const result = await requireStaff(event)
+  const adminRoles: StaffRole[] = ['SUPER_ADMIN', 'REGISTRAR', 'UNIVERSITY_EXAM_OFFICER']
+  if (!adminRoles.includes(result.staff.primaryRole)) {
+    throw error(403, 'Access denied')
+  }
+  return result
+}
+
+export async function requireLecturer(event: RequestEvent) {
+  const result = await requireStaff(event)
+  const lecturerRoles: StaffRole[] = [
+    'LECTURER',
+    'DEPARTMENT_EXAM_OFFICER',
+    'DEPARTMENT_COORDINATOR',
+    'HOD',
+    'COLLEGE_EXAM_OFFICER',
+    'UNIVERSITY_EXAM_OFFICER',
+    'SUPER_ADMIN',
+  ]
+  if (!lecturerRoles.includes(result.staff.primaryRole)) {
+    throw error(403, 'Access denied')
+  }
+  return result
+}
+
+export async function requireInvigilator(event: RequestEvent) {
+  const result = await requireStaff(event)
+  const invigilatorRoles: StaffRole[] = [
+    'INVIGILATOR',
+    'LECTURER',
+    'DEPARTMENT_EXAM_OFFICER',
+    'HOD',
+    'SUPER_ADMIN',
+  ]
+  if (!invigilatorRoles.includes(result.staff.primaryRole)) {
+    throw error(403, 'Access denied')
+  }
+  return result
+}
+
+// ─── Permission guard ────────────────────────────────────────────────────────
+// Fine-grained check — use this when role alone isn't enough
+
+export async function requirePermission(event: RequestEvent, permission: string) {
+  const result = await requireStaff(event)
+  if (!result.permissions.has(permission)) {
+    throw error(403, `You don't have permission to: ${permission}`)
+  }
+  return result
+}
+
+// Multiple permissions (AND — all required)
+export async function requireAllPermissions(event: RequestEvent, permissions: string[]) {
+  const result = await requireStaff(event)
+  for (const p of permissions) {
+    if (!result.permissions.has(p)) {
+      throw error(403, `You don't have permission to: ${p}`)
+    }
+  }
+  return result
+}
+
+// Multiple permissions (OR — any one is enough)
+export async function requireAnyPermission(event: RequestEvent, permissions: string[]) {
+  const result = await requireStaff(event)
+  if (!permissions.some(p => result.permissions.has(p))) {
+    throw error(403, 'Access denied')
+  }
+  return result
+}
+
+// ─── Helpers for layouts (don't throw — return null if not logged in) ────────
+
+export async function getStaffUser(event: RequestEvent) {
+  const token = event.cookies.get(STAFF_COOKIE)
+  if (!token) return null
+  return getStaffByToken(token)
+}
+
+export async function getStudentUser(event: RequestEvent) {
+  const token = event.cookies.get(STUDENT_COOKIE)
+  if (!token) return null
+  return getStudentByToken(token)
 }

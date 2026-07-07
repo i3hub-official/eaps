@@ -2,14 +2,12 @@
 import { fail } from '@sveltejs/kit';
 import type { Actions, PageServerLoad } from './$types';
 import { verifyResetToken, consumeResetToken } from '$lib/server/auth/reset.js';
-import { updatePasswordHash } from '$lib/server/db/users.js';
-import { hashPassword } from '$lib/server/auth/password.js';
-import { destroyAllUserSessions } from '$lib/server/auth/session.js';
+import { updatePasswordHash } from '$lib/server/db/accounts.js';
+import { hashPassword, invalidateAllStaffSessions, invalidateAllStudentSessions } from '$lib/server/auth/index.js';
 
 export const load: PageServerLoad = async () => ({});
 
 export const actions: Actions = {
-  // Step 1: verify OTP
   verifyToken: async ({ request }) => {
     const d     = await request.formData();
     const token = String(d.get('token') ?? '').toUpperCase().trim();
@@ -26,7 +24,6 @@ export const actions: Actions = {
     return { step: 'verified', token };
   },
 
-  // Step 2: set new password
   resetPassword: async ({ request }) => {
     const d        = await request.formData();
     const token    = String(d.get('token')    ?? '').toUpperCase().trim();
@@ -43,15 +40,18 @@ export const actions: Actions = {
     }
 
     const result = await verifyResetToken(token);
-    if (!result.valid) {
+    if (!result.valid || !result.userType || !result.userId) {
       return fail(400, { step: 'reset', error: result.error ?? 'Token expired. Please start over.', token });
     }
 
     const passwordHash = await hashPassword(password);
+
     await Promise.all([
-      updatePasswordHash(result.userId!, passwordHash),
+      updatePasswordHash(result.userType, result.userId, passwordHash),
       consumeResetToken(token),
-      destroyAllUserSessions(result.userId!),
+      result.userType === 'staff'
+        ? invalidateAllStaffSessions(result.userId)
+        : invalidateAllStudentSessions(result.userId),
     ]);
 
     return { step: 'done' };

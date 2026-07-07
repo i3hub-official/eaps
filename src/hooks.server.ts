@@ -1,57 +1,52 @@
-import type { Handle } from '@sveltejs/kit';
-import { getWss }                from '$lib/server/ws/server.js';
-import { tickExamScheduler }     from '$lib/server/exam/scheduler.js';
-import { finalizeExpiredSessions } from '$jobs/finalize-expired-sessions.js';
-import { expireApiKeys }         from '$jobs/expire-api-keys.js';
-import { sessionMiddleware }     from '$lib/server/middleware/session.middleware.js';
-import { faceExamMiddleware }    from '$lib/server/middleware/face-exam.middleware.js';
-import { apiAuthMiddleware }     from '$lib/server/middleware/api-auth.middleware.js';
-import { rateLimitMiddleware }   from '$lib/server/middleware/rate-limit.middleware.js';
+// src/hooks.server.ts
+// Mounts the invigilator WebSocket server on HTTP upgrade requests.
+// SvelteKit does not handle WS natively — we intercept the upgrade event
+// from the underlying Node HTTP server.
+// Also redirects the root landing page straight to /login.
 
-// ─── Background services ──────────────────────────────────────────────────────
+import { redirect, type Handle } from '@sveltejs/kit'
+import { createInvigilatorWSS } from '$lib/server/invigilator/websocket'
 
-async function safeTick<T>(label: string, fn: () => Promise<T>) {
-  try {
-    await fn();
-  } catch (err) {
-    console.error(`[${label}] Tick failed (non-fatal):`, err);
-  }
+let wss: any = null
+
+// Attach upgrade handler once to the Node HTTP server
+// This runs once at startup (not per request)
+if (typeof globalThis.__wsAttached === 'undefined') {
+  globalThis.__wsAttached = false
 }
 
-try {
-  getWss();
-} catch (err) {
-  console.error('[WS] Failed to initialise WebSocket server:', err);
+declare global {
+  var __wsAttached: boolean
 }
-
-setInterval(() => {
-  finalizeExpiredSessions().catch((err) => console.error('[jobs] finalize-expired-sessions failed:', err));
-}, 30_000); // exam deadlines need tighter polling than most jobs
-
-console.log('[Cron] Exam scheduler starting');
-safeTick('Scheduler', tickExamScheduler);
-setInterval(() => safeTick('Scheduler', tickExamScheduler), 30_000);
-
-console.log('[Cron] API key expiration job registered (every 5 min)');
-safeTick('API Keys', expireApiKeys);
-setInterval(() => safeTick('API Keys', expireApiKeys), 5 * 60_000);
-
-// ─── Request handler ──────────────────────────────────────────────────────────
 
 export const handle: Handle = async ({ event, resolve }) => {
-  // 1. Rate limit before doing any DB work
-  const rateLimitResponse = await rateLimitMiddleware(event);
-  if (rateLimitResponse) return rateLimitResponse;
+  // No more landing page — send root straight to login
+  if (event.url.pathname === '/') {
+    redirect(307, '/login')
+  }
 
-  // 2. Populate event.locals.user from session cookie
-  await sessionMiddleware(event);
+  // Attach WS upgrade handler to the Node server on first request
+  if (!globalThis.__wsAttached) {
+    if (!wss) {
+      wss = await createInvigilatorWSS()
+    }
+    const server = (event.platform as any)?.server
+      ?? (globalThis as any).__sveltekitDevServer
 
-  // 3. Block unauthenticated access to protected API routes
-  const apiResponse = apiAuthMiddleware(event);
-  if (apiResponse) return apiResponse;
+    if (server) {
+      server.on('upgrade', (req: any, socket: any, head: any) => {
+        const url = new URL(req.url ?? '/', 'http://localhost')
+        if (url.pathname.startsWith('/ws/invigilator')) {
+          wss.handleUpgrade(req, socket, head, (ws: any) => {
+            wss.emit('connection', ws, req)
+          })
+        } else {
+          socket.destroy()
+        }
+      })
+      globalThis.__wsAttached = true
+    }
+  }
 
-  // 4. Enforce face verification on exam routes (may throw redirect)
-  faceExamMiddleware(event);
-
-  return resolve(event);
-};
+  return resolve(event)
+}

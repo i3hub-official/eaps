@@ -1,81 +1,76 @@
 // src/lib/server/auth/reset.ts
-import { randomBytes } from 'crypto';
-import { sql } from '$lib/server/db/index.js';
+// Password reset tokens — shared between staff and student portals
 
-const TOKEN_TTL_MINUTES = 15;
+import { randomInt } from 'crypto'
+import { getPrismaClient } from '$lib/server/db/index.js'
+import type { Staff, Student } from '@prisma/client'
 
-// ── Table DDL (run once) ──────────────────────────────────────────────────────
-// CREATE TABLE IF NOT EXISTS password_resets (
-//   token       TEXT        PRIMARY KEY,
-//   user_id     UUID        NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-//   expires_at  TIMESTAMPTZ NOT NULL,
-//   used_at     TIMESTAMPTZ
-// );
-// CREATE INDEX IF NOT EXISTS idx_password_resets_user ON password_resets(user_id);
+const RESET_TOKEN_TTL_MINUTES = 30
 
-// ── Generate a 6-char alphanumeric token ──────────────────────────────────────
-function generateToken(): string {
-  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; // no ambiguous chars (0/O, 1/I)
-  const bytes = randomBytes(6);
-  return Array.from(bytes)
-    .map(b => chars[b % chars.length])
-    .join('');
+function generateOtp(): string {
+  // 6-char alphanumeric, uppercase, no ambiguous chars (0/O, 1/I)
+  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'
+  let out = ''
+  for (let i = 0; i < 6; i++) out += chars[randomInt(chars.length)]
+  return out
 }
 
-// ── Create a reset token for a user ──────────────────────────────────────────
-export async function createPasswordReset(userId: string): Promise<string> {
-  // Invalidate any existing unused tokens for this user
-  await sql(
-    `DELETE FROM password_resets WHERE user_id = $1 AND used_at IS NULL`,
-    [userId]
-  );
+export type ResetSubject =
+  | { type: 'staff'; user: Staff }
+  | { type: 'student'; user: Student }
 
-  const token     = generateToken();
-  const expiresAt = new Date(Date.now() + TOKEN_TTL_MINUTES * 60_000);
+/** Look up an account by email across both Staff and Student tables. */
+export async function findAccountByEmail(email: string): Promise<ResetSubject | null> {
+  const prisma = await getPrismaClient()
+  const normalized = email.trim().toLowerCase()
 
-  await sql(
-    `INSERT INTO password_resets (token, user_id, expires_at)
-     VALUES ($1, $2, $3)`,
-    [token, userId, expiresAt]
-  );
+  const staff = await prisma.staff.findUnique({ where: { email: normalized } })
+  if (staff) return { type: 'staff', user: staff }
 
-  return token;
+  const student = await prisma.student.findUnique({ where: { email: normalized } })
+  if (student) return { type: 'student', user: student }
+
+  return null
 }
 
-// ── Verify a token — returns userId if valid ──────────────────────────────────
+export async function createPasswordReset(subject: ResetSubject): Promise<string> {
+  const prisma = await getPrismaClient()
+  const token = generateOtp()
+  const expiresAt = new Date(Date.now() + RESET_TOKEN_TTL_MINUTES * 60 * 1000)
+
+  await prisma.passwordResetToken.create({
+    data: {
+      token,
+      userType: subject.type,
+      staffId: subject.type === 'staff' ? subject.user.id : undefined,
+      studentId: subject.type === 'student' ? subject.user.id : undefined,
+      expiresAt,
+    },
+  })
+
+  return token
+}
+
 export async function verifyResetToken(
-  token: string
-): Promise<{ valid: boolean; userId?: string; error?: string }> {
-  const rows = await sql<{
-    user_id: string;
-    expires_at: Date;
-    used_at: Date | null;
-  }>(
-    `SELECT user_id, expires_at, used_at
-     FROM password_resets
-     WHERE token = $1`,
-    [token.toUpperCase().trim()]
-  );
+  token: string,
+): Promise<{ valid: boolean; error?: string; userType?: 'staff' | 'student'; userId?: string }> {
+  const prisma = await getPrismaClient()
+  const record = await prisma.passwordResetToken.findUnique({ where: { token } })
 
-  const row = rows[0];
+  if (!record) return { valid: false, error: 'Invalid code.' }
+  if (record.consumedAt) return { valid: false, error: 'This code has already been used.' }
+  if (record.expiresAt < new Date()) return { valid: false, error: 'This code has expired.' }
 
-  if (!row)              return { valid: false, error: 'Invalid code — check you copied it correctly.' };
-  if (row.used_at)       return { valid: false, error: 'This code has already been used.' };
-  if (new Date() > row.expires_at)
-                         return { valid: false, error: 'Code expired — request a new one.' };
+  const userId = record.userType === 'staff' ? record.staffId : record.studentId
+  if (!userId) return { valid: false, error: 'Invalid code.' }
 
-  return { valid: true, userId: row.user_id };
+  return { valid: true, userType: record.userType as 'staff' | 'student', userId }
 }
 
-// ── Mark token as used ────────────────────────────────────────────────────────
 export async function consumeResetToken(token: string): Promise<void> {
-  await sql(
-    `UPDATE password_resets SET used_at = now() WHERE token = $1`,
-    [token.toUpperCase().trim()]
-  );
-}
-
-// ── Cleanup expired tokens (call periodically) ────────────────────────────────
-export async function purgeExpiredResetTokens(): Promise<void> {
-  await sql(`DELETE FROM password_resets WHERE expires_at < now()`);
+  const prisma = await getPrismaClient()
+  await prisma.passwordResetToken.update({
+    where: { token },
+    data: { consumedAt: new Date() },
+  })
 }
