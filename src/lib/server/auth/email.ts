@@ -30,22 +30,20 @@ function getTransporter(): Transporter {
     transporter = nodemailer.createTransport({
       host: SMTP_HOST,
       port: SMTP_PORT,
-      secure: SMTP_PORT === 465,
+      secure: false, // TLS uses port 587
       auth: {
         user: SMTP_USER,
-        pass: SMTP_PASS,
+        pass: SMTP_PASS.replace(/\s/g, ''), // Strip any spaces
       },
       tls: {
         rejectUnauthorized: false,
       },
-      pool: true,
-      maxConnections: 5,
-      maxMessages: 100,
     })
 
     transporter.verify((error) => {
       if (error) {
         console.error('[email] SMTP connection error:', error)
+        console.error('[email] Check your SMTP_USER and SMTP_PASS in .env')
       } else {
         console.log('[email] SMTP server is ready to send emails')
       }
