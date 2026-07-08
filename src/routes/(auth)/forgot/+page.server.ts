@@ -1,4 +1,4 @@
-// src/routes/(auth)/forgot-password/+page.server.ts
+// src/routes/(auth)/forgot/+page.server.ts
 import { fail } from '@sveltejs/kit'
 import type { Actions, PageServerLoad } from './$types'
 import {
@@ -11,14 +11,33 @@ import {
 } from '$lib/server/auth/reset'
 import { hashPassword, validatePasswordStrength } from '$lib/server/auth'
 import { getPrismaClient } from '$lib/server/db/index.js'
+import { revealEmail, revealName } from '$lib/security/dataProtection'
+import { sendResetEmail } from '$lib/server/auth/email'
+import type { ResetSubject } from '$lib/server/auth/reset'
 
 export const load: PageServerLoad = async () => {
   return {}
 }
 
+function safeDecrypt<T>(decryptFn: () => T, fallback: T): T {
+  try {
+    return decryptFn()
+  } catch {
+    return fallback
+  }
+}
+
+function decryptContact(account: ResetSubject): { email: string | null; fullName: string } {
+  const email = safeDecrypt(() => revealEmail(account.user.email), null)
+  const firstName = safeDecrypt(() => revealName(account.user.firstName), '')
+  const lastName = safeDecrypt(() => revealName(account.user.lastName), '')
+  const fullName = `${firstName} ${lastName}`.trim() || 'there'
+  return { email, fullName }
+}
+
 export const actions: Actions = {
   // Step 1: Request OTP
-  requestOtp: async ({ request }) => {
+  requestOtp: async ({ request, url }) => {
     const form = await request.formData()
     const identifier = form.get('identifier')?.toString()?.trim() ?? ''
 
@@ -63,12 +82,26 @@ export const actions: Actions = {
     const token = await createPasswordReset(account)
     const expiryMinutes = getResetTokenExpiryMinutes()
 
-    // In production, send email with the token
-    // For development, log it
-    console.log(`[RESET] Token for ${identifier}: ${token}`)
+    // Send to the account's real, decrypted email — never the raw identifier,
+    // since that could be a matric number rather than an address.
+    const { email, fullName } = decryptContact(account)
 
-    // TODO: Send email with OTP
-    // await sendResetEmail(account.user.email, token, expiryMinutes)
+    if (!email) {
+      console.error('[requestOtp] Could not decrypt email for account', account.user.id)
+      return fail(500, {
+        step: 'identifier',
+        error: 'Unable to send verification code right now. Please try again shortly.',
+      })
+    }
+
+    const sendResult = await sendResetEmail(email, fullName, token, url.origin)
+    if (!sendResult.success) {
+      console.error('[requestOtp] Failed to send reset email:', sendResult.error)
+      return fail(500, {
+        step: 'identifier',
+        error: 'Unable to send verification code right now. Please try again shortly.',
+      })
+    }
 
     return {
       step: 'otp',
@@ -222,7 +255,7 @@ export const actions: Actions = {
   },
 
   // Resend OTP
-  resendOtp: async ({ request }) => {
+  resendOtp: async ({ request, url }) => {
     const form = await request.formData()
     const identifier = form.get('identifier')?.toString()?.trim() ?? ''
 
@@ -258,10 +291,26 @@ export const actions: Actions = {
     const token = await createPasswordReset(account)
     const expiryMinutes = getResetTokenExpiryMinutes()
 
-    console.log(`[RESEND] Token for ${identifier}: ${token}`)
+    const { email, fullName } = decryptContact(account)
 
-    // TODO: Send email with OTP
-    // await sendResetEmail(account.user.email, token, expiryMinutes)
+    if (!email) {
+      console.error('[resendOtp] Could not decrypt email for account', account.user.id)
+      return fail(500, {
+        step: 'otp',
+        identifier,
+        error: 'Unable to resend verification code right now. Please try again shortly.',
+      })
+    }
+
+    const sendResult = await sendResetEmail(email, fullName, token, url.origin)
+    if (!sendResult.success) {
+      console.error('[resendOtp] Failed to send reset email:', sendResult.error)
+      return fail(500, {
+        step: 'otp',
+        identifier,
+        error: 'Unable to resend verification code right now. Please try again shortly.',
+      })
+    }
 
     return {
       step: 'otp',

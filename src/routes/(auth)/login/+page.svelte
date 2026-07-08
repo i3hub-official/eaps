@@ -116,7 +116,7 @@
 					inputmode="email"
 					autocapitalize="none"
 					autocomplete="username"
-					placeholder=""
+					placeholder="you@student.mouau.edu.ng"
 					required
 					autofocus
 					class="h-11 text-base"

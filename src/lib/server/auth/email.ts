@@ -4,17 +4,18 @@
 
 import nodemailer from 'nodemailer'
 import type { Transporter, SendMailOptions } from 'nodemailer'
+import { env } from '$env/dynamic/private'
 
 // ─── Environment Variables ───────────────────────────────────────────────────
 
-const SMTP_HOST = process.env.SMTP_HOST || 'smtp.gmail.com'
-const SMTP_PORT = parseInt(process.env.SMTP_PORT || '587', 10)
-const SMTP_USER = process.env.SMTP_USER || ''
-const SMTP_PASS = process.env.SMTP_PASS || ''
-const EMAIL_FROM = process.env.EMAIL_FROM || 'noreply@reaiaes.vercel.app'
-const APP_NAME = process.env.APP_NAME || 'Assessment Evaluation System'
-const APP_SHORT = process.env.APP_SHORT || 'AES'
-const APP_URL = process.env.APP_URL || 'https://localhost:1209'
+const SMTP_HOST = env.SMTP_HOST || 'smtp.gmail.com'
+const SMTP_PORT = parseInt(env.SMTP_PORT || '587', 10)
+const SMTP_USER = env.SMTP_USER || ''
+const SMTP_PASS = env.SMTP_PASS || ''
+const EMAIL_FROM = env.EMAIL_FROM || 'noreply@reaiaes.vercel.app'
+const APP_NAME = env.APP_NAME || 'Assessment Evaluation System'
+const APP_SHORT = env.APP_SHORT || 'AES'
+const APP_URL = env.APP_URL || 'https://localhost:1209'
 
 // ─── Email Provider ──────────────────────────────────────────────────────────
 

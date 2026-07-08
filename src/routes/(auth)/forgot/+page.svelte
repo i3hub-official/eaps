@@ -1,4 +1,4 @@
-<!-- src/routes/(auth)/forgot-password/+page.svelte -->
+<!-- src/routes/(auth)/forgot/+page.svelte -->
 <script lang="ts">
 	import { AuthShell } from '$lib/components/index.js';
 	import { Label } from '$lib/components/ui/label/index.js';
@@ -14,19 +14,48 @@
 
 	type Step = 'identifier' | 'otp' | 'newPassword' | 'success';
 
-	let step = $state<Step>(form?.step ?? 'identifier');
-	let identifier = $state(form?.identifier ?? '');
+	let step = $state<Step>('identifier');
+	let identifier = $state('');
 	let otp = $state('');
 	let newPassword = $state('');
 	let confirmPassword = $state('');
 	let resendCooldown = $state(0);
-	let errorMessage = $state(form?.error ?? '');
-	let successMessage = $state(form?.message ?? '');
+	let errorMessage = $state('');
+	let successMessage = $state('');
+	let submitting = $state(false);
 
 	let identifierInputEl = $state<HTMLInputElement | null>(null);
 	let passwordInputEl = $state<HTMLInputElement | null>(null);
 
 	let isEmail = $derived(identifier.includes('@'));
+
+	// Sync local UI state whenever the server action result changes.
+	// This is what actually drives step transitions — the old per-form
+	// handler functions never ran because they weren't wired into use:enhance.
+	$effect(() => {
+		if (!form) return;
+
+		errorMessage = form.error ?? '';
+		successMessage = form.message ?? '';
+
+		if (form.identifier) {
+			identifier = form.identifier;
+		}
+
+		if (form.step) {
+			step = form.step as Step;
+		}
+
+		if (form.step === 'otp' && form.success) {
+			startCooldown();
+			queueMicrotask(() => passwordInputEl?.focus());
+		}
+
+		if (form.step === 'identifier' && form.error) {
+			// failed request stays on step 1, focus back on identifier
+			queueMicrotask(() => identifierInputEl?.focus());
+		}
+	});
 
 	function maskIdentifier(value: string): string {
 		const trimmed = value.trim();
@@ -54,52 +83,6 @@
 		}, 1000);
 	}
 
-	async function handleRequestOtp(formData: FormData) {
-		// Reset messages
-		errorMessage = '';
-		successMessage = '';
-		
-		// After successful request, start cooldown
-		if (form?.step === 'otp') {
-			startCooldown();
-			step = 'otp';
-			identifier = form?.identifier ?? identifier;
-			successMessage = form?.message ?? '';
-		}
-	}
-
-	async function handleVerifyOtp(formData: FormData) {
-		errorMessage = '';
-		successMessage = '';
-		
-		if (form?.step === 'newPassword') {
-			step = 'newPassword';
-			// Store user info for password reset
-			// These will be passed as hidden fields in the next form
-			successMessage = form?.message ?? '';
-		}
-	}
-
-	async function handleSetPassword(formData: FormData) {
-		errorMessage = '';
-		successMessage = '';
-		
-		if (form?.step === 'success') {
-			step = 'success';
-			successMessage = form?.message ?? '';
-		}
-	}
-
-	async function handleResendOtp(formData: FormData) {
-		errorMessage = '';
-		successMessage = '';
-		
-		if (form?.success) {
-			startCooldown();
-			successMessage = form?.message ?? '';
-		}
-	}
-
 	function goBackTo(target: Step) {
 		step = target;
 		errorMessage = '';
@@ -112,7 +95,7 @@
 	const headings: Record<Step, { heading: string; subheading: string }> = {
 		identifier: {
 			heading: 'Reset your password',
-			subheading: 'Enter your university email or matric number'
+			subheading: 'Enter your e-Mail address'
 		},
 		otp: {
 			heading: 'Check your inbox',
@@ -162,10 +145,16 @@
 			class="flex flex-col gap-6" 
 			action="?/requestOtp" 
 			method="POST" 
-			use:enhance
+			use:enhance={() => {
+				submitting = true;
+				return async ({ update }) => {
+					await update();
+					submitting = false;
+				};
+			}}
 		>
 			<div class="flex flex-col gap-3">
-				<Label for="identifier" class="text-sm font-semibold">Email or Matric Number</Label>
+				<Label for="identifier" class="text-sm font-semibold">e-Mail Address</Label>
 				<Input
 					bind:this={identifierInputEl}
 					bind:value={identifier}
@@ -175,13 +164,15 @@
 					inputmode="email"
 					autocapitalize="none"
 					autocomplete="username"
-					placeholder="you@student.mouau.edu.ng or MOUAU/PHY/25/001002"
+					placeholder="you@student.mouau.edu.ng"
 					required
 					autofocus
 					class="h-11 text-base"
 				/>
 			</div>
-			<Button type="submit" size="lg" class="h-12 w-full text-base">Send Code</Button>
+			<Button type="submit" size="lg" class="h-12 w-full text-base" disabled={submitting}>
+				{submitting ? 'Sending…' : 'Send Code'}
+			</Button>
 		</form>
 
 		<p class="text-center text-sm text-muted-foreground">
@@ -192,9 +183,14 @@
 			class="flex flex-col gap-6" 
 			action="?/verifyOtp" 
 			method="POST" 
-			use:enhance
+			use:enhance={() => {
+				submitting = true;
+				return async ({ update }) => {
+					await update();
+					submitting = false;
+				};
+			}}
 			onsubmit={(e) => {
-				// Ensure OTP is at least 6 characters
 				if (otp.trim().length < 6) {
 					e.preventDefault();
 					errorMessage = 'Please enter the complete 6-character verification code.';
@@ -209,8 +205,8 @@
 						type="button"
 						onclick={() => goBackTo('identifier')}
 						class="inline-flex cursor-pointer items-center text-muted-foreground transition-colors hover:text-foreground"
-						aria-label="Change email or matric number"
-						title="Change email or matric number"
+						aria-label="Change e-Mail address"
+						title="Change e-Mail address"
 					>
 						<ArrowLeft class="size-3.5" />
 					</button>
@@ -238,7 +234,9 @@
 				</InputOTP.Root>
 				<p class="text-center text-xs text-muted-foreground">Enter the 6-character code from your email</p>
 			</div>
-			<Button type="submit" size="lg" class="h-12 w-full text-base">Verify Code</Button>
+			<Button type="submit" size="lg" class="h-12 w-full text-base" disabled={submitting}>
+				{submitting ? 'Verifying…' : 'Verify Code'}
+			</Button>
 		</form>
 
 		<p class="text-center text-sm text-muted-foreground">
@@ -259,7 +257,13 @@
 			class="flex flex-col gap-6" 
 			action="?/setPassword" 
 			method="POST" 
-			use:enhance
+			use:enhance={() => {
+				submitting = true;
+				return async ({ update }) => {
+					await update();
+					submitting = false;
+				};
+			}}
 		>
 			<input type="hidden" name="token" value={form?.token ?? ''} />
 			<input type="hidden" name="userId" value={form?.userId ?? ''} />
@@ -300,9 +304,9 @@
 				type="submit" 
 				size="lg" 
 				class="h-12 w-full text-base"
-				disabled={!newPassword || !confirmPassword || newPassword !== confirmPassword}
+				disabled={!newPassword || !confirmPassword || newPassword !== confirmPassword || submitting}
 			>
-				Update Password
+				{submitting ? 'Updating…' : 'Update Password'}
 			</Button>
 		</form>
 	{:else if step === 'success'}
