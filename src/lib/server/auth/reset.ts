@@ -138,19 +138,18 @@ export async function createPasswordReset(subject: ResetSubject): Promise<string
 }
 
 export async function verifyResetToken(
-  token: string,
+  code: string,
 ): Promise<{ valid: boolean; error?: string; userType?: 'staff' | 'student'; userId?: string }> {
   const prisma = await getPrismaClient()
-  const record = await prisma.passwordResetToken.findUnique({ where: { token } })
+  const tokenHash = hashOtp(code)
+  const record = await prisma.passwordResetToken.findUnique({ where: { tokenHash } })
 
   if (!record) {
     return { valid: false, error: 'Invalid or expired verification code.' }
   }
-
   if (record.consumedAt) {
     return { valid: false, error: 'This verification code has already been used. Please request a new one.' }
   }
-
   if (record.expiresAt < new Date()) {
     return { valid: false, error: 'This verification code has expired. Please request a new one.' }
   }

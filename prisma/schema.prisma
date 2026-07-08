@@ -107,7 +107,7 @@ model OtpRecord {
 
 model PasswordResetToken {
   id         String    @id @default(cuid())
-  userType   String    // "staff" | "student"
+  userType   String
   staffId    String?
   studentId  String?
   tokenHash  String    @unique
@@ -118,7 +118,6 @@ model PasswordResetToken {
   staff   Staff?   @relation(fields: [staffId], references: [id], onDelete: Cascade)
   student Student? @relation(fields: [studentId], references: [id], onDelete: Cascade)
 
-  @@index([tokenHash])
   @@index([userType, staffId, studentId])
 }
 

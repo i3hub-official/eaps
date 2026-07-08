@@ -846,7 +846,6 @@ async function handleSubmit() {
 	<div class="flex flex-col gap-6">
 		{#if receiptFetched}
 	<div class="flex flex-wrap items-center gap-2 rounded-lg border border-primary/20 bg-primary/5 px-4 py-3 text-sm text-muted-foreground">
-		<Check class="size-4 text-primary" />
 		<span>Student information has been successfully verified.</span>
 	</div>
 	
