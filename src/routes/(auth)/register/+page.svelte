@@ -900,7 +900,7 @@
 
 	<!-- Summary Card -->
 <div class="flex items-start gap-3 rounded-lg border border-primary/20 bg-primary/5 px-4 py-3.5">
-	<Check class="size-4 shrink-0 text-primary mt-0.5" />
+	<!-- <Check class="size-4 shrink-0 text-primary mt-0.5" /> -->
 	<div class="text-sm text-muted-foreground">
 		<p class="font-semibold text-foreground">✓ Student Information Verified</p>
 		<p class="text-xs">All academic details have been confirmed. Please review and proceed with your registration. If any data is incorrect, please contact the administration.</p>
