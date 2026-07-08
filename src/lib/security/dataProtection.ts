@@ -1,24 +1,19 @@
 // src/lib/security/dataProtection.ts
 //
 // High-level API over encryption.ts.
-// Consumers (DB write paths, login resolver) import from here — never from
+// Consumers (DB write paths, login resolver) import from here -- never from
 // encryption.ts directly. This keeps the tier selection in one place.
 //
-// ── Lookup pattern for searchable fields (email, phone, username, NIN, BVN) ──
+// -- Lookup pattern for searchable fields (email, phone, username, NIN, BVN) --
 //
-//   WRITE  → store both `encrypted` (for decryption on read) and
-//             `searchHash` (for DB index lookup — goes in a separate column).
+//   WRITE  -> store both `encrypted` (for decryption on read) and
+//             `searchHash` (for DB index lookup -- goes in a separate column).
 //
-//   LOOKUP → hash the incoming value with searchHashFor(), query the DB
+//   LOOKUP -> hash the incoming value with searchHashFor(), query the DB
 //             by the hash column, then decrypt the matched row for display.
-//             NEVER query by the encrypted column — two rows with identical
+//             NEVER query by the encrypted column -- two rows with identical
 //             plaintext share the same ciphertext (fixed-IV by design) but
 //             the hash is what the index is built on.
-//
-//   Example (login resolver in users.ts):
-//     const hash = await searchHashFor(email, 'email');
-//     const user = await prisma.user.findUnique({ where: { emailHash: hash } });
-//     const plainEmail = revealEmail(user.email);
 
 import {
   encryptSearchable,
@@ -28,16 +23,15 @@ import {
   encryptSecure,
   decryptSecure,
   generateSearchHash,
+  encryptBiometric,
+  decryptBiometric,
   type SearchableField,
 } from '$lib/security/encryption';
 
-// ─────────────────────────────────────────────────────────────────────────────
-// NORMALIZATION
-// ─────────────────────────────────────────────────────────────────────────────
+// -- NORMALIZATION -----------------------------------------------------------
 
 const normalize = {
-  email: (s: string): string =>
-    s.trim().toLowerCase().replace(/\s+/g, ''),
+  email: (s: string): string => s.trim().toLowerCase().replace(/\s+/g, ''),
 
   phone: (s: string): string => {
     const digits = s.replace(/[^0-9+]/g, '');
@@ -47,8 +41,7 @@ const normalize = {
     return digits;
   },
 
-  username: (s: string): string =>
-    s.trim().toLowerCase().replace(/\s+/g, ''),
+  username: (s: string): string => s.trim().toLowerCase().replace(/\s+/g, ''),
 
   name: (s: string): string =>
     s.trim().replace(/\s+/g, ' ').replace(/\w\S*/g, w =>
@@ -57,18 +50,18 @@ const normalize = {
 
   nin: (s: string): string => s.trim().replace(/[^0-9]/g, ''),
   bvn: (s: string): string => s.trim().replace(/[^0-9]/g, ''),
-  
+
   // Academic IDs
   matricNumber: (s: string): string => s.trim().toUpperCase().replace(/\s+/g, ''),
   studentNumber: (s: string): string => s.trim().toUpperCase().replace(/\s+/g, ''),
   staffNumber: (s: string): string => s.trim().toUpperCase().replace(/\s+/g, ''),
   jambRegNo: (s: string): string => s.trim().toUpperCase().replace(/\s+/g, ''),
-  
+
   // Government IDs
   passportNo: (s: string): string => s.trim().toUpperCase().replace(/\s+/g, ''),
   driverLicense: (s: string): string => s.trim().toUpperCase().replace(/\s+/g, ''),
   voterId: (s: string): string => s.trim().toUpperCase().replace(/\s+/g, ''),
-  
+
   // References
   receiptNo: (s: string): string => s.trim().toUpperCase().replace(/\s+/g, ''),
   receiptRef: (s: string): string => s.trim().toUpperCase().replace(/\s+/g, ''),
@@ -76,11 +69,8 @@ const normalize = {
   applicationRef: (s: string): string => s.trim().toUpperCase().replace(/\s+/g, ''),
 };
 
-// ─────────────────────────────────────────────────────────────────────────────
-// PROTECT — Encrypt on write
-// ─────────────────────────────────────────────────────────────────────────────
+// -- PROTECT (encrypt on write) ---------------------------------------------
 
-/** Email: deterministic ciphertext + SHA-512 search hash for login resolver */
 export async function protectEmail(raw: string) {
   const normal = normalize.email(raw);
   return {
@@ -89,7 +79,6 @@ export async function protectEmail(raw: string) {
   };
 }
 
-/** Phone: deterministic ciphertext + SHA-512 search hash */
 export async function protectPhone(raw: string) {
   const normal = normalize.phone(raw);
   return {
@@ -98,7 +87,6 @@ export async function protectPhone(raw: string) {
   };
 }
 
-/** Username: deterministic ciphertext + SHA-512 search hash */
 export async function protectUsername(raw: string) {
   const normal = normalize.username(raw);
   return {
@@ -107,7 +95,6 @@ export async function protectUsername(raw: string) {
   };
 }
 
-/** NIN: deterministic ciphertext + SHA-512 search hash */
 export async function protectNIN(raw: string) {
   const normal = normalize.nin(raw);
   return {
@@ -116,7 +103,6 @@ export async function protectNIN(raw: string) {
   };
 }
 
-/** BVN: deterministic ciphertext + SHA-512 search hash */
 export async function protectBVN(raw: string) {
   const normal = normalize.bvn(raw);
   return {
@@ -125,7 +111,6 @@ export async function protectBVN(raw: string) {
   };
 }
 
-/** Name / fullName: deterministic ciphertext + SHA-512 search hash */
 export async function protectName(raw: string) {
   const normal = normalize.name(raw);
   return {
@@ -134,7 +119,6 @@ export async function protectName(raw: string) {
   };
 }
 
-/** Matric Number: deterministic ciphertext + SHA-512 search hash */
 export async function protectMatricNumber(raw: string) {
   const normal = normalize.matricNumber(raw);
   return {
@@ -143,7 +127,6 @@ export async function protectMatricNumber(raw: string) {
   };
 }
 
-/** Student Number: deterministic ciphertext + SHA-512 search hash */
 export async function protectStudentNumber(raw: string) {
   const normal = normalize.studentNumber(raw);
   return {
@@ -152,7 +135,6 @@ export async function protectStudentNumber(raw: string) {
   };
 }
 
-/** Staff Number: deterministic ciphertext + SHA-512 search hash */
 export async function protectStaffNumber(raw: string) {
   const normal = normalize.staffNumber(raw);
   return {
@@ -161,7 +143,6 @@ export async function protectStaffNumber(raw: string) {
   };
 }
 
-/** JAMB Registration Number: deterministic ciphertext + SHA-512 search hash */
 export async function protectJambRegNo(raw: string) {
   const normal = normalize.jambRegNo(raw);
   return {
@@ -170,7 +151,6 @@ export async function protectJambRegNo(raw: string) {
   };
 }
 
-/** Passport Number: deterministic ciphertext + SHA-512 search hash */
 export async function protectPassportNo(raw: string) {
   const normal = normalize.passportNo(raw);
   return {
@@ -179,7 +159,6 @@ export async function protectPassportNo(raw: string) {
   };
 }
 
-/** Driver License: deterministic ciphertext + SHA-512 search hash */
 export async function protectDriverLicense(raw: string) {
   const normal = normalize.driverLicense(raw);
   return {
@@ -188,7 +167,6 @@ export async function protectDriverLicense(raw: string) {
   };
 }
 
-/** Voter ID: deterministic ciphertext + SHA-512 search hash */
 export async function protectVoterId(raw: string) {
   const normal = normalize.voterId(raw);
   return {
@@ -197,7 +175,6 @@ export async function protectVoterId(raw: string) {
   };
 }
 
-/** Receipt Number: deterministic ciphertext + SHA-512 search hash */
 export async function protectReceiptNo(raw: string) {
   const normal = normalize.receiptNo(raw);
   return {
@@ -206,7 +183,6 @@ export async function protectReceiptNo(raw: string) {
   };
 }
 
-/** Receipt Reference: deterministic ciphertext + SHA-512 search hash */
 export async function protectReceiptRef(raw: string) {
   const normal = normalize.receiptRef(raw);
   return {
@@ -215,7 +191,6 @@ export async function protectReceiptRef(raw: string) {
   };
 }
 
-/** Transaction Reference: deterministic ciphertext + SHA-512 search hash */
 export async function protectTransactionRef(raw: string) {
   const normal = normalize.transactionRef(raw);
   return {
@@ -224,7 +199,6 @@ export async function protectTransactionRef(raw: string) {
   };
 }
 
-/** Application Reference: deterministic ciphertext + SHA-512 search hash */
 export async function protectApplicationRef(raw: string) {
   const normal = normalize.applicationRef(raw);
   return {
@@ -243,118 +217,66 @@ export function protectKycData(raw: object): string {
   return encryptSecure(JSON.stringify(raw));
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// UNPROTECT — Decrypt on read
-// ─────────────────────────────────────────────────────────────────────────────
+/** Face descriptor (128-element Float32Array): AES-256-GCM */
+export function protectFaceDescriptor(descriptor: Float32Array): string {
+  return encryptBiometric(descriptor);
+}
 
-export function revealEmail(encrypted: string): string {
-  return decryptSearchable(encrypted, 'email');
-}
-export function revealPhone(encrypted: string): string {
-  return decryptSearchable(encrypted, 'phone');
-}
-export function revealUsername(encrypted: string): string {
-  return decryptSearchable(encrypted, 'username');
-}
-export function revealNIN(encrypted: string): string {
-  return decryptSearchable(encrypted, 'nin');
-}
-export function revealBVN(encrypted: string): string {
-  return decryptSearchable(encrypted, 'bvn');
-}
-export function revealName(encrypted: string): string {
-  return decryptSearchable(encrypted, 'name');
-}
-export function revealText(encrypted: string): string {
-  return decryptField(encrypted);
-}
-export function revealMatricNumber(encrypted: string): string {
-  return decryptSearchable(encrypted, 'matricNo');
-}
-export function revealStudentNumber(encrypted: string): string {
-  return decryptSearchable(encrypted, 'studentNo');
-}
-export function revealStaffNumber(encrypted: string): string {
-  return decryptSearchable(encrypted, 'staffNo');
-}
-export function revealJambRegNo(encrypted: string): string {
-  return decryptSearchable(encrypted, 'username');
-}
-export function revealPassportNo(encrypted: string): string {
-  return decryptSearchable(encrypted, 'passportNo');
-}
-export function revealDriverLicense(encrypted: string): string {
-  return decryptSearchable(encrypted, 'driverLicense');
-}
-export function revealVoterId(encrypted: string): string {
-  return decryptSearchable(encrypted, 'voterId');
-}
-export function revealReceiptNo(encrypted: string): string {
-  return decryptSearchable(encrypted, 'username');
-}
-export function revealReceiptRef(encrypted: string): string {
-  return decryptSearchable(encrypted, 'receiptRef');
-}
-export function revealTransactionRef(encrypted: string): string {
-  return decryptSearchable(encrypted, 'transactionRef');
-}
-export function revealApplicationRef(encrypted: string): string {
-  return decryptSearchable(encrypted, 'applicationRef');
-}
+// -- UNPROTECT (decrypt on read) ----------------------------------------------
+
+export function revealEmail(encrypted: string): string { return decryptSearchable(encrypted, 'email'); }
+export function revealPhone(encrypted: string): string { return decryptSearchable(encrypted, 'phone'); }
+export function revealUsername(encrypted: string): string { return decryptSearchable(encrypted, 'username'); }
+export function revealNIN(encrypted: string): string { return decryptSearchable(encrypted, 'nin'); }
+export function revealBVN(encrypted: string): string { return decryptSearchable(encrypted, 'bvn'); }
+export function revealName(encrypted: string): string { return decryptSearchable(encrypted, 'name'); }
+export function revealText(encrypted: string): string { return decryptField(encrypted); }
+export function revealMatricNumber(encrypted: string): string { return decryptSearchable(encrypted, 'matricNo'); }
+export function revealStudentNumber(encrypted: string): string { return decryptSearchable(encrypted, 'studentNo'); }
+export function revealStaffNumber(encrypted: string): string { return decryptSearchable(encrypted, 'staffNo'); }
+export function revealJambRegNo(encrypted: string): string { return decryptSearchable(encrypted, 'username'); }
+export function revealPassportNo(encrypted: string): string { return decryptSearchable(encrypted, 'passportNo'); }
+export function revealDriverLicense(encrypted: string): string { return decryptSearchable(encrypted, 'driverLicense'); }
+export function revealVoterId(encrypted: string): string { return decryptSearchable(encrypted, 'voterId'); }
+export function revealReceiptNo(encrypted: string): string { return decryptSearchable(encrypted, 'username'); }
+export function revealReceiptRef(encrypted: string): string { return decryptSearchable(encrypted, 'receiptRef'); }
+export function revealTransactionRef(encrypted: string): string { return decryptSearchable(encrypted, 'transactionRef'); }
+export function revealApplicationRef(encrypted: string): string { return decryptSearchable(encrypted, 'applicationRef'); }
 
 export function revealKycData<T = object>(encrypted: string): T {
   return JSON.parse(decryptSecure(encrypted)) as T;
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// SEARCH HASH — Used by login resolver and other lookup paths
-// ─────────────────────────────────────────────────────────────────────────────
-//
-// Always normalise the input before hashing — the same normalisation that
-// was applied at write time — so the hash matches.
+export function revealFaceDescriptor(encrypted: string): Float32Array {
+  return decryptBiometric(encrypted);
+}
 
-export async function searchHashFor(
-  input: string,
-  field: SearchableField,
-): Promise<string> {
+// -- SEARCH HASH (used by login resolver and other lookup paths) ---------------
+
+export async function searchHashFor(input: string, field: SearchableField): Promise<string> {
   const normalizers: Record<SearchableField, (s: string) => string> = {
-    // Identity & Contact
     email: normalize.email,
     phone: normalize.phone,
     username: normalize.username,
-    
-    // Government IDs
     nin: normalize.nin,
     bvn: normalize.bvn,
     passportNo: normalize.passportNo,
     driverLicense: normalize.driverLicense,
     voterId: normalize.voterId,
-    
-    // Academic IDs
     matricNo: normalize.matricNumber,
     staffNo: normalize.staffNumber,
     studentNo: normalize.studentNumber,
-    
-    // References
     receiptRef: normalize.receiptRef,
     transactionRef: normalize.transactionRef,
     applicationRef: normalize.applicationRef,
-    
-    // Personal
     name: normalize.name,
     maidenName: normalize.name,
   };
   return generateSearchHash(normalizers[field](input), field);
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// STUDENT REGISTRATION HELPER
-// ─────────────────────────────────────────────────────────────────────────────
+// -- BATCH HELPERS ------------------------------------------------------------
 
-/**
- * Protect all student data for registration
- * Returns encrypted fields and search hashes for all student fields
- */
 export async function protectStudentRegistration(data: {
   email: string;
   phone?: string | null;
@@ -410,14 +332,6 @@ export async function protectStudentRegistration(data: {
   };
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// STAFF REGISTRATION HELPER
-// ─────────────────────────────────────────────────────────────────────────────
-
-/**
- * Protect all staff data for registration
- * Returns encrypted fields and search hashes for all staff fields
- */
 export async function protectStaffRegistration(data: {
   email: string;
   phone?: string | null;
@@ -458,35 +372,10 @@ export async function protectStaffRegistration(data: {
   };
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// UNIFIED STUDENT DATA PROTECTION (Legacy - kept for backward compatibility)
-// ─────────────────────────────────────────────────────────────────────────────
-
-export async function protectStudentData(data: {
-  email: string;
-  phone?: string | null;
-  firstName: string;
-  lastName: string;
-  otherNames?: string | null;
-  matricNumber: string;
-  jambRegNo: string;
-  receiptNo?: string | null;
-  receiptRef?: string | null;
-}) {
+// Legacy aliases
+export async function protectStudentData(data: Parameters<typeof protectStudentRegistration>[0]) {
   return protectStudentRegistration(data);
 }
-
-// ─────────────────────────────────────────────────────────────────────────────
-// UNIFIED STAFF DATA PROTECTION (Legacy - kept for backward compatibility)
-// ─────────────────────────────────────────────────────────────────────────────
-
-export async function protectStaffData(data: {
-  email: string;
-  phone?: string | null;
-  firstName: string;
-  lastName: string;
-  otherNames?: string | null;
-  staffNumber: string;
-}) {
+export async function protectStaffData(data: Parameters<typeof protectStaffRegistration>[0]) {
   return protectStaffRegistration(data);
 }

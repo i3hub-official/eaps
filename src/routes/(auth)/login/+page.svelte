@@ -14,13 +14,10 @@
 
 	let { form } = $props();
 	let errorVisible = $state(true);
+	let submitting = $state(false);
 
 	type Step = 'identifier' | 'password';
 
-	// If the last submit failed, the server echoed `identifier` back and we
-	// land straight on the password step with the error visible — otherwise
-	// a failed login silently resets to step 1 with no explanation and the
-	// student has to retype everything from scratch.
 	let step = $state<Step>(form?.error ? 'password' : 'identifier');
 	let identifier = $state(form?.identifier ?? '');
 	let password = $state('');
@@ -28,32 +25,21 @@
 	let passwordInputEl = $state<HTMLInputElement | null>(null);
 	let showPassword = $state(false);
 
-	let isEmail = $derived(identifier.includes('@'));
-
 	function maskIdentifier(value: string): string {
 		const trimmed = value.trim();
 		if (!trimmed) return '';
 
-		if (isEmail) {
-			const [local, domain] = trimmed.split('@');
-			if (!domain) return trimmed;
-			const visible = local.slice(0, 2);
-			const masked = visible + '•'.repeat(Math.max(local.length - 2, 1));
-			return `${masked}@${domain}`;
-		}
-
-		if (trimmed.length <= 6) return trimmed;
-		const head = trimmed.slice(0, Math.min(6, trimmed.length - 2));
-		const tail = trimmed.slice(-2);
-		const maskedLen = Math.max(trimmed.length - head.length - tail.length, 2);
-		return `${head}${'•'.repeat(maskedLen)}${tail}`;
+		const [local, domain] = trimmed.split('@');
+		if (!domain) return trimmed;
+		const visible = local.slice(0, 2);
+		const masked = visible + '•'.repeat(Math.max(local.length - 2, 1));
+		return `${masked}@${domain}`;
 	}
 
 	let maskedIdentifier = $derived(maskIdentifier(identifier));
 
 	function handleInputFocus() {
 		errorVisible = false;
-		// Clear form errors when user focuses on any input
 		if (form?.error) {
 			form.error = '';
 		}
@@ -69,17 +55,30 @@
 	}
 
 	function goBack() {
-		// Clear everything when going back
 		step = 'identifier';
 		identifier = '';
 		password = '';
 		showPassword = false;
 		errorVisible = true;
-		// Clear any form errors
 		if (form?.error) {
 			form.error = '';
 		}
 		queueMicrotask(() => identifierInputEl?.focus());
+	}
+
+	function handleLoginSubmit() {
+		submitting = true;
+		return async ({ result, update }: { result: { type: string }; update: (opts?: { reset?: boolean }) => Promise<void> }) => {
+			await update({ reset: false });
+			submitting = false;
+
+			if (result.type === 'failure') {
+				password = '';
+				errorVisible = true;
+				step = 'password';
+				queueMicrotask(() => passwordInputEl?.focus());
+			}
+		};
 	}
 </script>
 
@@ -90,12 +89,10 @@
 <AuthShell
 	heading="Sign in to your account"
 	subheading={step === 'identifier'
-		? 'Enter your university email or matric number'
+		? 'Enter your university email'
 		: 'Enter your password to continue'}
 	showBack={false}
 >
-	<!-- Rendered above both steps so a failed submit is always visible,
-	     regardless of which step the error landed us on. -->
 	{#if form?.error && errorVisible}
 		<div
 			class="mb-6 flex items-start gap-3 rounded-lg border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive"
@@ -109,13 +106,13 @@
 	{#if step === 'identifier'}
 		<form class="flex flex-col gap-6" onsubmit={goToPassword}>
 			<div class="flex flex-col gap-5">
-				<Label for="identifier" class="text-sm font-semibold">Email or Matric Number</Label>
+				<Label for="identifier" class="text-sm font-semibold">Email</Label>
 				<Input
 					bind:this={identifierInputEl}
 					bind:value={identifier}
 					id="identifier"
 					name="identifier"
-					type="text"
+					type="email"
 					inputmode="email"
 					autocapitalize="none"
 					autocomplete="username"
@@ -148,7 +145,7 @@
 			Don't have an account? <a href="/register" class="text-primary hover:underline">Register</a>
 		</p>
 	{:else}
-		<form method="POST" action="?/login" class="flex flex-col gap-6" use:enhance>
+		<form method="POST" class="flex flex-col gap-6" use:enhance={handleLoginSubmit}>
 			<input type="hidden" name="identifier" value={identifier} />
 
 			<div class="flex flex-col gap-5">
@@ -158,8 +155,8 @@
 							type="button"
 							onclick={goBack}
 							class="inline-flex cursor-pointer items-center text-muted-foreground transition-colors hover:text-foreground"
-							aria-label="Change email or matric number"
-							title="Change email or matric number"
+							aria-label="Change email"
+							title="Change email"
 						>
 							<ArrowLeft class="size-3.5" />
 						</button>
@@ -177,6 +174,7 @@
 						placeholder="••••••••"
 						autocomplete="current-password"
 						required
+						autofocus
 						class="h-11 pr-12 text-base"
 						onfocus={handleInputFocus}
 					/>
@@ -194,7 +192,9 @@
 				</div>
 			</div>
 
-			<Button type="submit" size="lg" class="h-12 w-full text-base">Sign in</Button>
+			<Button type="submit" size="lg" class="h-12 w-full text-base" disabled={submitting}>
+				{submitting ? 'Signing in…' : 'Sign in'}
+			</Button>
 		</form>
 
 		<p class="flex items-center justify-center gap-2 text-center text-xs text-muted-foreground">

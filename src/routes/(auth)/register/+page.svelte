@@ -1,7 +1,7 @@
 <!-- src/routes/(auth)/register/+page.svelte -->
 <script lang="ts">
 	import { onDestroy, tick } from 'svelte';
-	import { deserialize } from '$app/forms';
+	 import { deserialize, enhance } from '$app/forms';
 	import { goto } from '$app/navigation';
 	import jsQR from 'jsqr';
 	import { AuthShell } from '$lib/components/index.js';
@@ -43,6 +43,7 @@
 	let currentStep = $state<Step>(1);
 	let isLoading = $state(false);
 	let errorMessage = $state(form?.error ?? '');
+	    let showSuccess = $state(false);
 
 	let uniMatric = $state('');
 	let refNumber = $state('');
@@ -499,55 +500,54 @@
 		currentStep = (currentStep - 1) as Step;
 	}
 
-	async function handleSubmit() {
-		errorMessage = '';
-		touchPassword(password);
-		touchConfirm(confirmPassword);
-		const pErr = validatePassword(password);
-		const cErr = validateConfirm(confirmPassword);
-		if (pErr || cErr) {
-			errorMessage = pErr ?? cErr ?? '';
-			return;
-		}
-		isLoading = true;
-		try {
-			const fd = new FormData();
-			fd.set('matricNumber', matricNumber);
-			fd.set('jambRegNo', jambRegNo);
-			fd.set('firstName', firstName);
-			fd.set('otherName', otherName);
-			fd.set('surname', surname);
-			fd.set('college', college);
-			fd.set('department', department);
-			fd.set('level', level);
-			fd.set('phone', phone);
-			fd.set('email', email);
-			fd.set('receiptNo', receiptRaw?.receiptNo ?? '');
-			fd.set('receiptRef', refNumber);
-			fd.set('session', receiptRaw?.session ?? '');
-			fd.set('password', password);
-			// Set default programme type: UNDERGRADUATE_REGULAR
-			fd.set('programmeType', 'UNDERGRADUATE');
-			const res = await fetch('?/signup', { method: 'POST', body: fd });
-			const result = deserialize(await res.text());
-			if (result.type === 'error') {
-				errorMessage = result.error?.message ?? 'Something went wrong.';
-				return;
-			}
-			// In handleSubmit, after the response
-if (result.type === 'success' && result.data?.success) {
-	// Update college with shortname from server
-	if (result.data.collegeName && result.data.collegeShortName) {
-		college = `${result.data.collegeName} (${result.data.collegeShortName})`;
-	}
-	await goto('/student');
+async function handleSubmit() {
+    console.log('handleSubmit called');  // ← add this
+    
+    errorMessage = '';
+    touchPassword(password);
+    touchConfirm(confirmPassword);
+    
+    console.log('errors3:', errors3);  // ← add this
+    
+    const pErr = validatePassword(password);
+    const cErr = validateConfirm(confirmPassword);
+    
+    console.log('pErr:', pErr, 'cErr:', cErr);  // ← add this
+    
+    if (pErr || cErr) {
+        errorMessage = pErr ?? cErr ?? '';
+        console.log('Validation failed, returning early');  // ← add this
+        return;
+    }
+    
+    isLoading = true;
+    console.log('Starting fetch...');  // ← add this
+    
+    try {
+        const fd = new FormData();
+        // ... set all fields ...
+        
+        console.log('FormData prepared, fetching...');  // ← add this
+        
+        const res = await fetch('?/signup', { method: 'POST', body: fd });
+        
+        console.log('Response status:', res.status);  // ← add this
+        console.log('Response headers:', Object.fromEntries(res.headers));  // ← add this
+        
+        const text = await res.text();
+        console.log('Response body:', text.slice(0, 500));  // ← add this
+        
+        const result = deserialize(text);
+        console.log('Deserialized result:', result);  // ← add this
+        
+        // ... rest of handling ...
+    } catch (err) {
+        console.error('Error in handleSubmit:', err);  // ← add this
+        errorMessage = err instanceof Error ? err.message : 'Network error';
+    } finally {
+        isLoading = false;
+    }
 }
-		} catch (err: unknown) {
-			errorMessage = err instanceof Error ? err.message : 'Network error';
-		} finally {
-			isLoading = false;
-		}
-	}
 
 	const STEPS = ['Verify receipt', 'Your details', 'Set password'];
 
@@ -943,85 +943,128 @@ if (result.type === 'success' && result.data?.success) {
 	</div>
 {/if}
 
-	<!-- ══ STEP 3 — password ══ -->
+{#if showSuccess}
+    <div class="flex flex-col items-center gap-4 py-12">
+        <div class="flex size-16 items-center justify-center rounded-full bg-green-500/10">
+            <Check class="size-8 text-green-500" />
+        </div>
+        <h2 class="text-2xl font-bold">Account Created!</h2>
+        <p class="text-muted-foreground">Redirecting to your dashboard...</p>
+    </div>
+{:else}
+    	<!-- ══ STEP 3 — password ══ -->
 	{#if currentStep === 3}
-		<div class="flex flex-col gap-6">
-			<div class="flex flex-col gap-2">
-				<Label for="s3pw" class="text-sm font-semibold">Password</Label>
-				<div class="relative">
-					<Input
-						id="s3pw"
-						type={showPassword ? 'text' : 'password'}
-						bind:value={password}
-						placeholder="Minimum 8 characters"
-						disabled={isLoading}
-						class="h-11 pr-12 text-base"
-						aria-invalid={touched3.password && !!errors3.password}
-						onblur={(e: FocusEvent) => touchPassword((e.currentTarget as HTMLInputElement).value)}
-						oninput={(e: Event) => {
-							if (touched3.password) touchPassword((e.currentTarget as HTMLInputElement).value);
-						}}
-					/>
-					<button
-						type="button"
-						onclick={() => (showPassword = !showPassword)}
-						class="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground transition-colors hover:text-foreground"
-					>
-						{#if showPassword}<EyeOff class="size-4.5" />{:else}<Eye class="size-4.5" />{/if}
-					</button>
-				</div>
-				{#if touched3.password && errors3.password}
-					<p class="text-sm text-destructive">{errors3.password}</p>
-				{/if}
-				<p class="text-sm text-muted-foreground">Minimum 8 characters</p>
-			</div>
+    <form
+        method="POST"
+        action="?/signup"
+        use:enhance={({ formElement, formData, action, cancel }) => {
+            // Pre-submit validation
+            touchPassword(password);
+            touchConfirm(confirmPassword);
+            const pErr = validatePassword(password);
+            const cErr = validateConfirm(confirmPassword);
+            if (pErr || cErr) {
+                errorMessage = pErr ?? cErr ?? '';
+                cancel();
+                return;
+            }
 
-			<div class="flex flex-col gap-2">
-				<Label for="s3pw2" class="text-sm font-semibold">Confirm Password</Label>
-				<div class="relative">
-					<Input
-						id="s3pw2"
-						type={showConfirmPassword ? 'text' : 'password'}
-						bind:value={confirmPassword}
-						placeholder="Repeat your password"
-						disabled={isLoading}
-						class="h-11 pr-12 text-base"
-						aria-invalid={touched3.confirm && !!errors3.confirm}
-						onblur={(e: FocusEvent) => touchConfirm((e.currentTarget as HTMLInputElement).value)}
-						oninput={(e: Event) => {
-							if (touched3.confirm) touchConfirm((e.currentTarget as HTMLInputElement).value);
-						}}
-					/>
-					<button
-						type="button"
-						onclick={() => (showConfirmPassword = !showConfirmPassword)}
-						class="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground transition-colors hover:text-foreground"
-					>
-						{#if showConfirmPassword}<EyeOff class="size-4.5" />{:else}<Eye class="size-4.5" />{/if}
-					</button>
-				</div>
-				{#if touched3.confirm && errors3.confirm}
-					<p class="text-sm text-destructive">{errors3.confirm}</p>
-				{/if}
-			</div>
+            isLoading = true;
+            errorMessage = '';
 
-			<div class="flex items-start gap-3 rounded-lg border border-border bg-muted/40 px-4 py-3.5 text-sm text-muted-foreground">
-				<ShieldCheck class="size-4 shrink-0 mt-0.5" />
-				<p>This is a secure platform. All activities are monitored and logged.</p>
-			</div>
+           // Inside use:enhance return callback:
+return async ({ result, update }) => {
+    isLoading = false;
 
-			<Button type="button" size="lg" class="h-12 w-full text-base" onclick={handleSubmit} disabled={isLoading}>
-				{#if isLoading}
-					<span class="size-4 animate-spin rounded-full border-2 border-primary-foreground/30 border-t-primary-foreground"></span>
-					Creating account…
-				{:else}
-					<UserPlus class="size-4.5" />
-					Create Account
-				{/if}
-			</Button>
-			<p class="text-center text-sm text-muted-foreground">
-				Already have an account? <a href="/login" class="text-primary hover:underline">Sign in</a>
-			</p>
-		</div>
-	{/if}
+		if (result.type === 'failure') {
+		// Coerce potential non-string error payloads to string to satisfy TS
+		errorMessage = String(result.data?.error ?? 'Something went wrong.');
+		return;
+	}
+
+    if (result.type === 'error') {
+        errorMessage = result.error?.message ?? 'Server error.';
+        return;
+    }
+
+    if (result.type === 'success' && result.data?.success) {
+        showSuccess = true;
+        // Wait 2 seconds, then navigate
+        await new Promise(r => setTimeout(r, 2000));
+        await goto('/student', { invalidateAll: true });
+        return;
+    }
+
+    await update();
+};
+        }}
+        class="flex flex-col gap-6"
+    >
+        <!-- Hidden fields -->
+        <input type="hidden" name="matricNumber" value={matricNumber} />
+        <input type="hidden" name="jambRegNo" value={jambRegNo} />
+        <input type="hidden" name="firstName" value={firstName} />
+        <input type="hidden" name="otherName" value={otherName} />
+        <input type="hidden" name="surname" value={surname} />
+        <input type="hidden" name="college" value={college} />
+        <input type="hidden" name="department" value={department} />
+        <input type="hidden" name="level" value={level} />
+        <input type="hidden" name="phone" value={phone} />
+        <input type="hidden" name="email" value={email} />
+        <input type="hidden" name="receiptNo" value={receiptRaw?.receiptNo ?? ''} />
+        <input type="hidden" name="receiptRef" value={refNumber} />
+        <input type="hidden" name="session" value={receiptRaw?.session ?? ''} />
+        <input type="hidden" name="programmeType" value="UNDERGRADUATE" />
+
+        <!-- Password fields -->
+        <div class="flex flex-col gap-2">
+            <Label for="s3pw" class="text-sm font-semibold">Password</Label>
+            <div class="relative">
+                <Input
+                    id="s3pw"
+                    name="password"
+                    type={showPassword ? 'text' : 'password'}
+                    bind:value={password}
+                    placeholder="Minimum 8 characters"
+                    class="h-11 pr-12 text-base"
+                />
+                <button type="button" onclick={() => (showPassword = !showPassword)} class="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground">
+                    {#if showPassword}<EyeOff class="size-5" />{:else}<Eye class="size-5" />{/if}
+                </button>
+            </div>
+        </div>
+
+        <div class="flex flex-col gap-2">
+            <Label for="s3pw2" class="text-sm font-semibold">Confirm Password</Label>
+            <div class="relative">
+                <Input
+                    id="s3pw2"
+                    name="confirmPassword"
+                    type={showConfirmPassword ? 'text' : 'password'}
+                    bind:value={confirmPassword}
+                    placeholder="Repeat your password"
+                    class="h-11 pr-12 text-base"
+                />
+                <button type="button" onclick={() => (showConfirmPassword = !showConfirmPassword)} class="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground">
+                    {#if showConfirmPassword}<EyeOff class="size-5" />{:else}<Eye class="size-5" />{/if}
+                </button>
+            </div>
+        </div>
+
+        <Button type="submit" size="lg" class="h-12 w-full text-base" disabled={isLoading}>
+            {#if isLoading}
+                <span class="size-4 animate-spin rounded-full border-2 border-primary-foreground/30 border-t-primary-foreground"></span>
+                Creating account…
+            {:else}
+                <UserPlus class="size-5" />
+                Create Account
+            {/if}
+        </Button>
+    </form>
+{/if}
+
+{/if}
+
+
+
 </AuthShell>
