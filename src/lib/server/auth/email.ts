@@ -123,24 +123,23 @@ export async function sendMail(msg: MailMessage): Promise<{ success: boolean; er
 
 export function buildResetEmail(
   fullName: string,
-  token: string,
+  linkToken: string,
   origin: string = APP_URL,
+  expiryMinutes: number = 30,
 ): { html: string; text: string } {
-  const resetLink = `${origin}/reset-password?token=${encodeURIComponent(token)}`
-  const expiryMinutes = 30
+  const revealLink = `${origin}/forgot/reveal?token=${encodeURIComponent(linkToken)}`
 
   const text = `
 Hi ${fullName},
 
 We received a request to reset your password for ${APP_NAME} (${APP_SHORT}).
 
-Your verification code is: ${token}
+Click the link below to view your verification code:
+${revealLink}
 
-This code will expire in ${expiryMinutes} minutes.
+This link will expire in ${expiryMinutes} minutes.
 
 If you didn't request this, please ignore this email or contact support.
-
-For security, never share this code with anyone.
 
 ---
 ${APP_NAME} (${APP_SHORT}) - Assessment Evaluation System
@@ -158,7 +157,6 @@ ${APP_URL}
     .header { border-bottom: 2px solid #1a56db; padding-bottom: 16px; margin-bottom: 24px; }
     .logo { font-size: 24px; font-weight: bold; color: #1a56db; }
     .subtitle { font-size: 14px; color: #6b7280; font-weight: normal; }
-    .code { background: #f3f4f6; padding: 12px 24px; border-radius: 8px; font-size: 28px; font-weight: bold; letter-spacing: 4px; text-align: center; margin: 20px 0; font-family: monospace; color: #1a56db; }
     .button { display: inline-block; background: #1a56db; color: white; padding: 12px 24px; border-radius: 6px; text-decoration: none; font-weight: 600; margin: 16px 0; }
     .footer { border-top: 1px solid #e5e7eb; padding-top: 16px; margin-top: 32px; font-size: 14px; color: #6b7280; }
     .security { background: #fef3c7; border: 1px solid #f59e0b; border-radius: 6px; padding: 12px; margin: 16px 0; font-size: 14px; color: #92400e; }
@@ -170,31 +168,25 @@ ${APP_URL}
   </div>
 
   <h1>Password Reset Request</h1>
-  
+
   <p>Hi ${fullName},</p>
-  
+
   <p>We received a request to reset your password for your ${APP_NAME} account.</p>
-  
-  <p>Your verification code is:</p>
-  
-  <div class="code">${token}</div>
-  
-  <p>This code will expire in <strong>${expiryMinutes} minutes</strong>.</p>
-  
-  <p>Or click the button below to reset your password:</p>
-  
+
+  <p>Click the button below to view your verification code. Keep the tab where you started your reset open — you'll need to type the code back in there.</p>
+
   <p style="text-align: center;">
-    <a href="${resetLink}" class="button">Reset Password</a>
+    <a href="${revealLink}" class="button">View my verification code</a>
   </p>
-  
+
+  <p>This link will expire in <strong>${expiryMinutes} minutes</strong>.</p>
+
   <div class="security">
     <strong>⚠️ Security Notice</strong><br>
     If you didn't request this password reset, please ignore this email or contact support immediately.
     Never share this code with anyone.
   </div>
-  
-  <p>For security reasons, this link will expire in ${expiryMinutes} minutes.</p>
-  
+
   <div class="footer">
     <p>
       ${APP_NAME} (${APP_SHORT}) - Assessment Evaluation System<br>
@@ -358,11 +350,12 @@ ${APP_URL}
 export async function sendResetEmail(
   email: string,
   fullName: string,
-  token: string,
+  linkToken: string,
   origin?: string,
+  expiryMinutes?: number,
 ): Promise<{ success: boolean; error?: string; id?: string }> {
-  const { html, text } = buildResetEmail(fullName, token, origin)
-  
+  const { html, text } = buildResetEmail(fullName, linkToken, origin, expiryMinutes)
+
   return sendMail({
     to: email,
     subject: `Reset Your ${APP_SHORT} Password`,

@@ -5,6 +5,7 @@ import { randomInt } from 'crypto'
 import { getPrismaClient } from '$lib/server/db/index.js'
 import { searchHashFor } from '$lib/security/dataProtection'
 import type { Staff, Student } from '@prisma/client'
+import { hashOtp } from '$lib/security/dataProtection'
 
 const RESET_TOKEN_TTL_MINUTES = 30
 const OTP_LENGTH = 6
@@ -110,10 +111,10 @@ export async function canRequestReset(email: string): Promise<{
 
 export async function createPasswordReset(subject: ResetSubject): Promise<string> {
   const prisma = await getPrismaClient()
-  const token = generateOtp()
+  const code = generateOtp()
+  const tokenHash = hashOtp(code)
   const expiresAt = new Date(Date.now() + RESET_TOKEN_TTL_MINUTES * 60 * 1000)
 
-  // Clean up any existing unused tokens for this user first
   await prisma.passwordResetToken.deleteMany({
     where: {
       userType: subject.type,
@@ -125,7 +126,7 @@ export async function createPasswordReset(subject: ResetSubject): Promise<string
 
   await prisma.passwordResetToken.create({
     data: {
-      token,
+      tokenHash,          // renamed column, see note below
       userType: subject.type,
       staffId: subject.type === 'staff' ? subject.user.id : undefined,
       studentId: subject.type === 'student' ? subject.user.id : undefined,
@@ -133,7 +134,7 @@ export async function createPasswordReset(subject: ResetSubject): Promise<string
     },
   })
 
-  return token
+  return code // the plaintext code is only ever returned here, to be emailed
 }
 
 export async function verifyResetToken(
@@ -162,10 +163,12 @@ export async function verifyResetToken(
   return { valid: true, userType: record.userType as 'staff' | 'student', userId }
 }
 
-export async function consumeResetToken(token: string): Promise<void> {
+
+export async function consumeResetToken(code: string): Promise<void> {
   const prisma = await getPrismaClient()
+  const tokenHash = hashOtp(code)
   await prisma.passwordResetToken.update({
-    where: { token },
+    where: { tokenHash },
     data: { consumedAt: new Date() },
   })
 }

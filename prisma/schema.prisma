@@ -110,7 +110,7 @@ model PasswordResetToken {
   userType   String    // "staff" | "student"
   staffId    String?
   studentId  String?
-  token      String    @unique
+  tokenHash  String    @unique
   expiresAt  DateTime
   consumedAt DateTime?
   createdAt  DateTime  @default(now())
@@ -118,7 +118,7 @@ model PasswordResetToken {
   staff   Staff?   @relation(fields: [staffId], references: [id], onDelete: Cascade)
   student Student? @relation(fields: [studentId], references: [id], onDelete: Cascade)
 
-  @@index([token])
+  @@index([tokenHash])
   @@index([userType, staffId, studentId])
 }
 

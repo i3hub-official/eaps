@@ -27,6 +27,10 @@ import {
   decryptBiometric,
   type SearchableField,
 } from '$lib/security/encryption';
+import { createHmac } from 'crypto'
+import { env } from '$env/dynamic/private'
+
+const OTP_HASH_SECRET = env.OTP_HASH_SECRET
 
 // -- NORMALIZATION -----------------------------------------------------------
 
@@ -378,4 +382,14 @@ export async function protectStudentData(data: Parameters<typeof protectStudentR
 }
 export async function protectStaffData(data: Parameters<typeof protectStaffRegistration>[0]) {
   return protectStaffRegistration(data);
+}
+
+if (!OTP_HASH_SECRET && process.env.NODE_ENV === 'production') {
+  throw new Error('OTP_HASH_SECRET environment variable is not set')
+}
+
+export function hashOtp(code: string): string {
+  return createHmac('sha256', OTP_HASH_SECRET || 'dev-only-insecure-secret-change-me')
+    .update(code)
+    .digest('hex')
 }

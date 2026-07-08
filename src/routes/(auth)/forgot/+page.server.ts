@@ -14,6 +14,8 @@ import { getPrismaClient } from '$lib/server/db/index.js'
 import { revealEmail, revealName } from '$lib/security/dataProtection'
 import { sendResetEmail } from '$lib/server/auth/email'
 import type { ResetSubject } from '$lib/server/auth/reset'
+import { signResetLink } from '$lib/server/auth/resetLinkToken'
+
 
 export const load: PageServerLoad = async () => {
   return {}
@@ -77,7 +79,7 @@ export const actions: Actions = {
         error: 'This account is not active. Please contact support for assistance.' 
       })
     }
-
+  
     // Create reset token
     const token = await createPasswordReset(account)
     const expiryMinutes = getResetTokenExpiryMinutes()
@@ -94,7 +96,13 @@ export const actions: Actions = {
       })
     }
 
-    const sendResult = await sendResetEmail(email, fullName, token, url.origin)
+   const linkToken = signResetLink(
+      { userId: account.user.id, userType: account.type, code: token },
+      expiryMinutes,
+    )
+
+    const sendResult = await sendResetEmail(email, fullName, linkToken, url.origin, expiryMinutes)
+    
     if (!sendResult.success) {
       console.error('[requestOtp] Failed to send reset email:', sendResult.error)
       return fail(500, {
