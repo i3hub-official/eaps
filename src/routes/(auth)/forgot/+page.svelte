@@ -104,7 +104,14 @@
 	<title>Reset password — MOUAU e-Test</title>
 </svelte:head>
 
-<AuthShell heading={headings[step].heading} subheading={headings[step].subheading}>
+<AuthShell heading={headings[step].heading} 
+subheading={headings[step].subheading}
+onBack={
+		step === 'otp' ? () => goBackTo('identifier') :
+		step === 'newPassword' ? () => (step = 'otp') :
+		undefined
+	}
+	showBack={step === 'otp' || step === 'newPassword'}>
 	{#if step === 'identifier'}
 		<form class="flex flex-col gap-4" onsubmit={requestOtp}>
 			<div class="flex flex-col gap-1.5">

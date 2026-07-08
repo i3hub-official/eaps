@@ -70,6 +70,8 @@
 	subheading={step === 'identifier'
 		? 'Enter your university email or matric number'
 		: 'Enter your password to continue'}
+			showBack={false}
+
 >
 	{#if step === 'identifier'}
 		<form class="flex flex-col gap-4" onsubmit={goToPassword}>

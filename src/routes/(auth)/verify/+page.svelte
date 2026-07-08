@@ -12,7 +12,7 @@
 	<title>Verify code — MOUAU e-Test</title>
 </svelte:head>
 
-<AuthShell heading="Verify your account" subheading="Verifying your account — enter the 8-digit code we emailed you">
+<AuthShell heading="Verify your account" subheading="Verifying your account — enter the 8-digit code we emailed you" showBack={false}>
 	<form method="POST" class="flex flex-col gap-5">
 		<input type="hidden" name="code" {value} />
 		<InputOTP.Root maxlength={8} bind:value class="justify-center">
