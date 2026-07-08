@@ -63,6 +63,7 @@ enum SemesterType {
 enum ProgrammeType {
   UNDERGRADUATE
   POSTGRADUATE_DIPLOMA
+  CEC
   MASTERS
   PHD
   CERTIFICATE
@@ -215,6 +216,8 @@ model Department {
   name      String
   shortName String
   code      String   @unique
+  email     String?
+  phone     String?
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -392,6 +395,7 @@ model Staff {
   lastName           String
   otherNames         String?
   phone              String?
+  phoneHash          String?     @unique
   gender             Gender?
   avatar             String?
   primaryRole        StaffRole // their main role in the system
@@ -455,7 +459,9 @@ model Student {
   matricNumber       String        @unique
   jambRegNo           String  @unique
   receiptNo           String?
+  receiptNoHash       String?       @unique
   receiptRef          String?
+  receiptRefHash      String?       @unique
   receiptSource       String?
   registrationSession String?
   email              String        @unique
@@ -465,6 +471,7 @@ model Student {
   lastName           String
   otherNames         String?
   phone              String?
+  phoneHash          String?       @unique
   gender             Gender?
   avatar             String?
   dateOfBirth        DateTime?

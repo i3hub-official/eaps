@@ -87,7 +87,7 @@
 			receiptRaw = null;
 			receiptPreview = null;
 			receiptFetched = false;
-			surname = firstName = otherName = jambRegNo = college = department = '';
+			surname = firstName = otherName = jambRegNo = college = department = level = '';
 		}
 	}
 
@@ -105,12 +105,27 @@
 	let firstName = $state(form?.values?.firstName ?? '');
 	let otherName = $state(form?.values?.otherName ?? '');
 	let matricNumber = $state(form?.values?.matricNumber ?? '');
-	let jambRegNo = $state(form?.values?.jambRegNo ?? '');
-	let college = $state(form?.values?.college ?? '');
+	let jambRegNo = $state('');
+	let college = $state('');
+	let collegeShortName = $state('');
 	let department = $state(form?.values?.department ?? '');
 	let level = $state(form?.values?.level ?? '');
 	let phone = $state(form?.values?.phone ?? '');
 	let email = $state(form?.values?.email ?? '');
+
+	function getCollegeDisplayName(collegeName: string, shortName: string): string {
+		if (!collegeName) return '—';
+		// Check if it already has shortname in parentheses
+		const match = collegeName.match(/^(.*?)\s*\(([A-Z]+)\)$/);
+		if (match) {
+			return collegeName; // Already has shortname, return as-is
+		}
+		// If we have a shortname from DB, append it
+		if (shortName) {
+			return `${collegeName} (${shortName})`;
+		}
+		return collegeName;
+	}
 
 	type Step2Field = 'surname' | 'firstName' | 'matricNumber' | 'department' | 'email';
 	let touched2 = $state<Partial<Record<Step2Field, boolean>>>({});
@@ -180,7 +195,8 @@
 		receiptRaw = null;
 		receiptPreview = null;
 		receiptFetched = false;
-		surname = firstName = otherName = jambRegNo = matricNumber = college = department = '';
+		surname = firstName = otherName = jambRegNo = matricNumber = college = department = level = '';
+		collegeShortName = '';
 		refError = '';
 		refTouched = false;
 	}
@@ -241,7 +257,7 @@
 			}
 			if (d.matricNo) matricNumber = d.matricNo;
 			if (d.jambregNo) jambRegNo = d.jambregNo;
-			if (d.college) college = d.college;
+			if (d.college) { college = d.college; }
 			if (d.department) department = d.department;
 			if (d.level) level = d.level;
 
@@ -510,17 +526,22 @@
 			fd.set('receiptRef', refNumber);
 			fd.set('session', receiptRaw?.session ?? '');
 			fd.set('password', password);
+			// Set default programme type: UNDERGRADUATE_REGULAR
+			fd.set('programmeType', 'UNDERGRADUATE');
 			const res = await fetch('?/signup', { method: 'POST', body: fd });
 			const result = deserialize(await res.text());
 			if (result.type === 'error') {
 				errorMessage = result.error?.message ?? 'Something went wrong.';
 				return;
 			}
-			if (result.type !== 'success' || !result.data?.success) {
-				errorMessage = (result.data?.error as string) ?? 'Unable to create account.';
-				return;
-			}
-			await goto('/student');
+			// In handleSubmit, after the response
+if (result.type === 'success' && result.data?.success) {
+	// Update college with shortname from server
+	if (result.data.collegeName && result.data.collegeShortName) {
+		college = `${result.data.collegeName} (${result.data.collegeShortName})`;
+	}
+	await goto('/student');
+}
 		} catch (err: unknown) {
 			errorMessage = err instanceof Error ? err.message : 'Network error';
 		} finally {
@@ -770,10 +791,12 @@
 				<span class="text-base font-medium text-foreground">{jambRegNo || '—'}</span>
 			</div>
 			
-			<!-- College/Faculty -->
+			<!-- College/Faculty with Short Name -->
 			<div class="flex flex-col gap-0.5">
 				<span class="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">College / Faculty</span>
-				<span class="text-base font-medium text-foreground">{college || '—'}</span>
+				<span class="text-base font-medium text-foreground">
+					{college ? getCollegeDisplayName(college, collegeShortName) : '—'}
+				</span>
 			</div>
 			
 			<!-- Department -->
@@ -786,6 +809,12 @@
 			<div class="flex flex-col gap-0.5">
 				<span class="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">Level</span>
 				<span class="text-base font-medium text-foreground">{level || '—'}</span>
+			</div>
+			
+			<!-- Programme -->
+			<div class="flex flex-col gap-0.5">
+				<span class="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">Programme</span>
+				<span class="text-base font-medium text-foreground">UNDERGRADUATE (Regular)</span>
 			</div>
 			
 			<!-- Session -->
@@ -838,6 +867,7 @@
 				matricNumber = '';
 				jambRegNo = '';
 				college = '';
+				collegeShortName = '';
 				department = '';
 				level = '';
 				uniMatric = '';
@@ -900,9 +930,9 @@
 
 	<!-- Summary Card -->
 <div class="flex items-start gap-3 rounded-lg border border-primary/20 bg-primary/5 px-4 py-3.5">
-	<!-- <Check class="size-4 shrink-0 text-primary mt-0.5" /> -->
+	<Check class="size-4 shrink-0 text-primary mt-0.5" />
 	<div class="text-sm text-muted-foreground">
-		<p class="font-semibold text-foreground">✓ Student Information Verified</p>
+		<p class="font-semibold text-foreground">Student Information Verified</p>
 		<p class="text-xs">All academic details have been confirmed. Please review and proceed with your registration. If any data is incorrect, please contact the administration.</p>
 	</div>
 </div>

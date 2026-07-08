@@ -30,7 +30,7 @@
 </script>
 
 <svelte:head>
-	<title>ASSESS — MOUAU Assessment & Evaluation System</title>
+	<title>AES — MOUAU Assessment & Evaluation System</title>
 </svelte:head>
 
 <div class="min-h-svh bg-background text-foreground">
@@ -39,10 +39,10 @@
 		<div class="flex items-center justify-between px-6 py-4 md:px-12 lg:px-20">
 			<div class="flex items-center gap-2.5">
 				<div class="flex size-8 items-center justify-center rounded-md bg-primary text-xs font-bold text-primary-foreground">
-					M
+					A
 				</div>
 				<span class="text-sm font-semibold tracking-tight">
-					ASSESS <span class="font-normal text-muted-foreground">· MOUAU</span>
+					AES <span class="font-normal text-muted-foreground">· MOUAU</span>
 				</span>
 			</div>
 			<div class="flex items-center gap-3">
@@ -66,16 +66,16 @@
 					One platform, three stages of readiness.
 				</h1>
 				<p class="mt-5 max-w-md text-[15px] leading-relaxed text-muted-foreground lg:text-base">
-					ASSESS carries a student from practice questions to timed self-tests to
+					AES carries a student from practice questions to timed self-tests to
 					invigilated examinations — the same courses, the same question bank, increasing
 					stakes.
 				</p>
 				<div class="mt-8 flex flex-wrap items-center gap-3">
-					<Button href="/login" size="lg">
+					<Button href="/login" size="lg" class="h-12 w-full text-base md:w-auto">
 						Sign in to continue
 						<ArrowRight class="size-4" />
 					</Button>
-					<Button href="/register" variant="outline" size="lg">
+					<Button href="/register" variant="outline" size="lg" class="h-12 w-full text-base md:w-auto">
 						Register
 					</Button>
 				</div>
@@ -109,7 +109,7 @@
 						</div>
 					</dl>
 					<p class="mt-5 border-t border-border pt-3 text-[10px] leading-relaxed text-muted-foreground">
-						Every session on ASSESS is bound to a verified identity and a fixed time
+						Every session on AES is bound to a verified identity and a fixed time
 						window, whether practice, test, or examination.
 					</p>
 				</div>
@@ -159,13 +159,34 @@
 	</section>
 
 	<!-- Footer -->
-	<footer class="border-t border-border">
-		<div class="flex flex-col gap-2 px-6 py-8 text-xs text-muted-foreground md:flex-row md:items-center md:justify-between md:px-12 lg:px-20">
-			<span>ASSESS — Assessment & Evaluation System, Michael Okpara University of Agriculture, Umudike</span>
-			<div class="flex gap-4">
-				<a href="/login" class="hover:text-primary">Sign in</a>
-				<a href="/register" class="hover:text-primary">Register</a>
+<footer class="border-t border-border bg-card/50">
+	<div class="px-6 py-10 md:px-12 lg:px-20">
+		<div class="flex flex-col items-center gap-6 md:flex-row md:justify-between">
+			<!-- Left: Brand & Description -->
+			<div class="flex flex-col items-center gap-1 text-center md:items-start md:text-left">
+				<div class="flex items-center gap-2">
+					<div class="flex size-6 items-center justify-center rounded bg-primary/10 text-[10px] font-bold text-primary">
+						AES
+					</div>
+					<span class="text-xs font-semibold text-foreground">Assessment & Evaluation System</span>
+				</div>
+				<p class="text-[11px] text-muted-foreground/70">
+					Michael Okpara University of Agriculture, Umudike
+				</p>
+			</div>
+
+			<!-- Center: Built by REAi -->
+			<div class="flex items-center gap-2 text-xs text-muted-foreground">
+				<span class="h-px w-6 bg-border"></span>
+				<span><span class="font-medium text-foreground">REAi</span></span>
+				<span class="h-px w-6 bg-border"></span>
 			</div>
 		</div>
-	</footer>
+
+		<!-- Bottom: Copyright -->
+		<div class="mt-6 border-t border-border/50 pt-4 text-center text-[10px] text-muted-foreground/60 md:text-left">
+			&copy; {new Date().getFullYear()} AES — All rights reserved. MOUAU Assessment & Evaluation System
+		</div>
+	</div>
+</footer>
 </div>

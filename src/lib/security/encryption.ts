@@ -53,12 +53,31 @@ const ENCRYPTION_KEY = mustHexEnv('ENCRYPTION_KEY', env.ENCRYPTION_KEY, 32);
 // NEVER use these IVs for Tier-2 (encryptField) or Tier-3 (encryptSecure).
 
 const FIXED_IV = {
-  email:    mustHexEnv('FIXED_IV_EMAIL',    env.FIXED_IV_EMAIL,    16),
-  phone:    mustHexEnv('FIXED_IV_PHONE',    env.FIXED_IV_PHONE,    16),
-  username: mustHexEnv('FIXED_IV_USERNAME', env.FIXED_IV_USERNAME, 16),
-  nin:      mustHexEnv('FIXED_IV_NIN',      env.FIXED_IV_NIN,      16),
-  bvn:      mustHexEnv('FIXED_IV_BVN',      env.FIXED_IV_BVN,      16),
-  name:     mustHexEnv('FIXED_IV_NAME',     env.FIXED_IV_NAME,     16),
+  // Identity & Contact
+  email:        mustHexEnv('FIXED_IV_EMAIL',        env.FIXED_IV_EMAIL,        16),
+  phone:        mustHexEnv('FIXED_IV_PHONE',        env.FIXED_IV_PHONE,        16),
+  username:     mustHexEnv('FIXED_IV_USERNAME',     env.FIXED_IV_USERNAME,     16),
+  
+  // Government IDs
+  nin:          mustHexEnv('FIXED_IV_NIN',          env.FIXED_IV_NIN,          16),
+  bvn:          mustHexEnv('FIXED_IV_BVN',          env.FIXED_IV_BVN,          16),
+  passportNo:   mustHexEnv('FIXED_IV_PASSPORT',     env.FIXED_IV_PASSPORT,     16),
+  driverLicense: mustHexEnv('FIXED_IV_DRIVER_LICENSE', env.FIXED_IV_DRIVER_LICENSE, 16),
+  voterId:      mustHexEnv('FIXED_IV_VOTER_ID',     env.FIXED_IV_VOTER_ID,     16),
+  
+  // Academic IDs
+  matricNo:     mustHexEnv('FIXED_IV_MATRIC',       env.FIXED_IV_MATRIC,       16),
+  staffNo:      mustHexEnv('FIXED_IV_STAFF',        env.FIXED_IV_STAFF,        16),
+  studentNo:    mustHexEnv('FIXED_IV_STUDENT',      env.FIXED_IV_STUDENT,      16),
+  
+  // Reference Numbers
+  receiptRef:   mustHexEnv('FIXED_IV_RECEIPT_REF',  env.FIXED_IV_RECEIPT_REF,  16),
+  transactionRef: mustHexEnv('FIXED_IV_TRANSACTION_REF', env.FIXED_IV_TRANSACTION_REF, 16),
+  applicationRef: mustHexEnv('FIXED_IV_APPLICATION_REF', env.FIXED_IV_APPLICATION_REF, 16),
+  
+  // Personal Identifiers
+  name:         mustHexEnv('FIXED_IV_NAME',         env.FIXED_IV_NAME,         16),
+  maidenName:   mustHexEnv('FIXED_IV_MAIDEN_NAME',  env.FIXED_IV_MAIDEN_NAME,  16),
 };
 
 const SEARCH_HASH_PEPPER = (() => {
@@ -93,10 +112,21 @@ function assertValidHex(str: string, field: string): void {
 // intentional. The SEARCH_HASH (below) is what goes in the DB index for login
 // resolution — the ciphertext is stored for decryption on read only.
 
-export type SearchableField = 'email' | 'phone' | 'username' | 'nin' | 'bvn' | 'name';
+export type SearchableField = 
+  // Identity & Contact
+  | 'email' | 'phone' | 'username'
+  // Government IDs
+  | 'nin' | 'bvn' | 'passportNo' | 'driverLicense' | 'voterId'
+  // Academic IDs
+  | 'matricNo' | 'staffNo' | 'studentNo'
+  // Reference Numbers
+  | 'receiptRef' | 'transactionRef' | 'applicationRef'
+  // Personal Identifiers
+  | 'name' | 'maidenName';
 
 export function encryptSearchable(data: string, field: SearchableField): string {
   if (!data) throw new Error(`Cannot encrypt empty ${field}`);
+  if (!FIXED_IV[field]) throw new Error(`No FIXED_IV defined for field: ${field}`);
 
   const cipher    = crypto.createCipheriv('aes-256-cbc', ENCRYPTION_KEY, FIXED_IV[field]);
   const encrypted = Buffer.concat([
@@ -109,6 +139,7 @@ export function encryptSearchable(data: string, field: SearchableField): string 
 
 export function decryptSearchable(encryptedData: string, field: SearchableField): string {
   assertValidHex(encryptedData, field);
+  if (!FIXED_IV[field]) throw new Error(`No FIXED_IV defined for field: ${field}`);
 
   const decipher = crypto.createDecipheriv('aes-256-cbc', ENCRYPTION_KEY, FIXED_IV[field]);
 
@@ -209,6 +240,116 @@ export function decryptSecure(encryptedData: string): string {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// TIER 4: Context-Aware Data Protection (HIGH-LEVEL API)
+// ─────────────────────────────────────────────────────────────────────────────
+//
+// This is the recommended API for the rest of the application.
+// It automatically selects the right encryption tier based on the data type
+// and provides consistent interfaces for encryption + search hash generation.
+
+export type DataCategory = 
+  // PII - Personally Identifiable Information
+  | 'email' | 'phone' | 'fullName' | 'firstName' | 'lastName' | 'maidenName'
+  // Government IDs
+  | 'nin' | 'bvn' | 'passportNo' | 'driverLicense' | 'voterId'
+  // Academic IDs
+  | 'matricNo' | 'staffNo' | 'studentNo' | 'jambRegNo'
+  // References
+  | 'receiptRef' | 'transactionRef' | 'applicationRef'
+  // Address & Location
+  | 'address' | 'city' | 'state' | 'country' | 'postalCode'
+  // Financial
+  | 'bankAccount' | 'bankCode' | 'accountNumber'
+  // Authentication
+  | 'username' | 'password' | 'securityQuestion' | 'securityAnswer'
+  // Other
+  | 'biometric' | 'faceDescriptor' | 'signature';
+
+export interface ProtectedData {
+  encrypted: string;      // Encrypted value (stored in DB)
+  searchHash: string;     // Searchable hash (stored in DB index)
+  searchable: boolean;    // Whether this field supports search
+}
+
+/**
+ * Protect data with automatic tier selection based on category
+ */
+export async function protectData(
+  data: string,
+  category: DataCategory
+): Promise<ProtectedData> {
+  if (!data) {
+    return {
+      encrypted: '',
+      searchHash: '',
+      searchable: false
+    };
+  }
+
+  // Determine if field should be searchable
+  const searchableFields: DataCategory[] = [
+    'email', 'phone', 'username', 'nin', 'bvn', 
+    'matricNo', 'staffNo', 'studentNo', 'jambRegNo',
+    'receiptRef', 'transactionRef', 'applicationRef',
+    'passportNo', 'driverLicense', 'voterId',
+    'firstName', 'lastName', 'fullName', 'maidenName'
+  ];
+
+  const isSearchable = searchableFields.includes(category);
+
+  let encrypted: string;
+  let searchHash: string = '';
+
+  // Select encryption tier
+  if (isSearchable) {
+    // Tier 1: Searchable deterministic encryption
+    const field = category as SearchableField;
+    encrypted = encryptSearchable(data, field);
+    searchHash = await generateSearchHash(data, field);
+  } else if (category === 'biometric' || category === 'faceDescriptor' || category === 'signature') {
+    // Tier 3: Authenticated encryption for biometrics
+    encrypted = encryptSecure(data);
+  } else {
+    // Tier 2: Random IV encryption for everything else
+    encrypted = encryptField(data);
+  }
+
+  return {
+    encrypted,
+    searchHash,
+    searchable: isSearchable
+  };
+}
+
+/**
+ * Decrypt protected data
+ */
+export function decryptProtectedData(
+  encryptedData: string,
+  category: DataCategory
+): string {
+  if (!encryptedData) return '';
+
+  // Check if it's encrypted with Tier 1 (searchable) - hex only
+  if (/^[0-9a-fA-F]+$/.test(encryptedData) && !encryptedData.includes(':')) {
+    const field = category as SearchableField;
+    return decryptSearchable(encryptedData, field);
+  }
+
+  // Check if it's Tier 2 (random IV with colon)
+  if (encryptedData.includes(':') && encryptedData.split(':').length === 2) {
+    return decryptField(encryptedData);
+  }
+
+  // Check if it's Tier 3 (GCM with two colons)
+  if (encryptedData.split(':').length === 3) {
+    return decryptSecure(encryptedData);
+  }
+
+  throw new Error(`Unable to determine encryption tier for data: ${encryptedData.slice(0, 50)}...`);
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // SEARCH HASH (SHA-512 + pepper)
 // ─────────────────────────────────────────────────────────────────────────────
 //
@@ -236,4 +377,64 @@ export async function generateSearchHash(
   return Array.from(new Uint8Array(hashBuffer))
     .map(b => b.toString(16).padStart(2, '0'))
     .join('');
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// CONVENIENCE WRAPPERS
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Protect email (alias for protectData with email category)
+ */
+export async function protectEmail(email: string): Promise<ProtectedData> {
+  return protectData(email, 'email');
+}
+
+/**
+ * Protect phone number (alias for protectData with phone category)
+ */
+export async function protectPhone(phone: string): Promise<ProtectedData> {
+  return protectData(phone, 'phone');
+}
+
+/**
+ * Protect NIN (alias for protectData with nin category)
+ */
+export async function protectNIN(nin: string): Promise<ProtectedData> {
+  return protectData(nin, 'nin');
+}
+
+/**
+ * Protect BVN (alias for protectData with bvn category)
+ */
+export async function protectBVN(bvn: string): Promise<ProtectedData> {
+  return protectData(bvn, 'bvn');
+}
+
+/**
+ * Protect matric number (alias for protectData with matricNo category)
+ */
+export async function protectMatricNo(matricNo: string): Promise<ProtectedData> {
+  return protectData(matricNo, 'matricNo');
+}
+
+/**
+ * Protect receipt reference (alias for protectData with receiptRef category)
+ */
+export async function protectReceiptRef(receiptRef: string): Promise<ProtectedData> {
+  return protectData(receiptRef, 'receiptRef');
+}
+
+/**
+ * Protect transaction reference (alias for protectData with transactionRef category)
+ */
+export async function protectTransactionRef(transactionRef: string): Promise<ProtectedData> {
+  return protectData(transactionRef, 'transactionRef');
+}
+
+/**
+ * Protect JAMB registration number (alias for protectData with jambRegNo category)
+ */
+export async function protectJambRegNo(jambRegNo: string): Promise<ProtectedData> {
+  return protectData(jambRegNo, 'jambRegNo');
 }
