@@ -9,7 +9,8 @@
 //   Server → client: { type: 'violation', sessionId, violation: {...} }
 
 import { WebSocketServer, type WebSocket } from 'ws'
-import { getPrismaClient } from '$lib/server/db/index.js';import { getStaffByToken } from '$lib/components'
+import { getPrismaClient } from '$lib/server/db/index.js';
+import { getStaffByToken } from '$lib/server/auth/index.js'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
