@@ -7,17 +7,21 @@
 	import * as InputOTP from '$lib/components/ui/input-otp/index.js';
 	import ArrowLeft from '@lucide/svelte/icons/arrow-left';
 	import CheckCircle2 from '@lucide/svelte/icons/check-circle-2';
+	import AlertCircle from '@lucide/svelte/icons/alert-circle';
+	import { enhance } from '$app/forms';
 
 	let { form } = $props();
 
 	type Step = 'identifier' | 'otp' | 'newPassword' | 'success';
 
-	let step = $state<Step>('identifier');
-	let identifier = $state('');
+	let step = $state<Step>(form?.step ?? 'identifier');
+	let identifier = $state(form?.identifier ?? '');
 	let otp = $state('');
 	let newPassword = $state('');
 	let confirmPassword = $state('');
 	let resendCooldown = $state(0);
+	let errorMessage = $state(form?.error ?? '');
+	let successMessage = $state(form?.message ?? '');
 
 	let identifierInputEl = $state<HTMLInputElement | null>(null);
 	let passwordInputEl = $state<HTMLInputElement | null>(null);
@@ -50,31 +54,56 @@
 		}, 1000);
 	}
 
-	async function requestOtp(e: Event) {
-		e.preventDefault();
-		if (!identifier.trim()) return;
-		// TODO: call server action to send OTP to identifier
-		step = 'otp';
-		startCooldown();
+	async function handleRequestOtp(formData: FormData) {
+		// Reset messages
+		errorMessage = '';
+		successMessage = '';
+		
+		// After successful request, start cooldown
+		if (form?.step === 'otp') {
+			startCooldown();
+			step = 'otp';
+			identifier = form?.identifier ?? identifier;
+			successMessage = form?.message ?? '';
+		}
 	}
 
-	async function verifyOtp(e: Event) {
-		e.preventDefault();
-		if (otp.trim().length < 8) return;
-		// TODO: call server action to verify OTP
-		step = 'newPassword';
-		queueMicrotask(() => passwordInputEl?.focus());
+	async function handleVerifyOtp(formData: FormData) {
+		errorMessage = '';
+		successMessage = '';
+		
+		if (form?.step === 'newPassword') {
+			step = 'newPassword';
+			// Store user info for password reset
+			// These will be passed as hidden fields in the next form
+			successMessage = form?.message ?? '';
+		}
 	}
 
-	async function submitNewPassword(e: Event) {
-		e.preventDefault();
-		if (!newPassword || newPassword !== confirmPassword) return;
-		// TODO: call server action to set new password
-		step = 'success';
+	async function handleSetPassword(formData: FormData) {
+		errorMessage = '';
+		successMessage = '';
+		
+		if (form?.step === 'success') {
+			step = 'success';
+			successMessage = form?.message ?? '';
+		}
+	}
+
+	async function handleResendOtp(formData: FormData) {
+		errorMessage = '';
+		successMessage = '';
+		
+		if (form?.success) {
+			startCooldown();
+			successMessage = form?.message ?? '';
+		}
 	}
 
 	function goBackTo(target: Step) {
 		step = target;
+		errorMessage = '';
+		successMessage = '';
 		queueMicrotask(() => {
 			if (target === 'identifier') identifierInputEl?.focus();
 		});
@@ -87,7 +116,7 @@
 		},
 		otp: {
 			heading: 'Check your inbox',
-			subheading: 'Enter the 8-digit code we sent you'
+			subheading: 'Enter the 6-character code we sent you'
 		},
 		newPassword: {
 			heading: 'Set a new password',
@@ -104,18 +133,39 @@
 	<title>Reset password — MOUAU e-Test</title>
 </svelte:head>
 
-<AuthShell heading={headings[step].heading} 
-subheading={headings[step].subheading}
-onBack={
+<AuthShell 
+	heading={headings[step].heading} 
+	subheading={headings[step].subheading}
+	onBack={
 		step === 'otp' ? () => goBackTo('identifier') :
-		step === 'newPassword' ? () => (step = 'otp') :
+		step === 'newPassword' ? () => goBackTo('otp') :
 		undefined
 	}
-	showBack={step === 'otp' || step === 'newPassword'}>
+	showBack={step === 'otp' || step === 'newPassword'}
+>
+	{#if errorMessage}
+		<div class="mb-4 flex items-start gap-3 rounded-lg border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive" role="alert">
+			<AlertCircle class="mt-0.5 size-4 shrink-0" />
+			<span>{errorMessage}</span>
+		</div>
+	{/if}
+
+	{#if successMessage}
+		<div class="mb-4 flex items-start gap-3 rounded-lg border border-primary/30 bg-primary/10 px-4 py-3 text-sm text-primary" role="alert">
+			<CheckCircle2 class="mt-0.5 size-4 shrink-0" />
+			<span>{successMessage}</span>
+		</div>
+	{/if}
+
 	{#if step === 'identifier'}
-		<form class="flex flex-col gap-4" onsubmit={requestOtp}>
-			<div class="flex flex-col gap-1.5">
-				<Label for="identifier">Email or Matric Number</Label>
+		<form 
+			class="flex flex-col gap-6" 
+			action="?/requestOtp" 
+			method="POST" 
+			use:enhance
+		>
+			<div class="flex flex-col gap-3">
+				<Label for="identifier" class="text-sm font-semibold">Email or Matric Number</Label>
 				<Input
 					bind:this={identifierInputEl}
 					bind:value={identifier}
@@ -125,22 +175,35 @@ onBack={
 					inputmode="email"
 					autocapitalize="none"
 					autocomplete="username"
+					placeholder="you@student.mouau.edu.ng or MOUAU/PHY/25/001002"
 					required
 					autofocus
+					class="h-11 text-base"
 				/>
 			</div>
-			{#if form?.error}
-				<p class="text-sm text-destructive">{form.error}</p>
-			{/if}
-			<Button type="submit" size="lg" class="mt-1 w-full">Send code</Button>
+			<Button type="submit" size="lg" class="h-12 w-full text-base">Send Code</Button>
 		</form>
 
-		<p class="text-center text-xs text-muted-foreground">
+		<p class="text-center text-sm text-muted-foreground">
 			Remembered your password? <a href="/login" class="text-primary hover:underline">Sign in</a>
 		</p>
 	{:else if step === 'otp'}
-		<form class="flex flex-col gap-5" onsubmit={verifyOtp}>
-			<div class="flex flex-col gap-2">
+		<form 
+			class="flex flex-col gap-6" 
+			action="?/verifyOtp" 
+			method="POST" 
+			use:enhance
+			onsubmit={(e) => {
+				// Ensure OTP is at least 6 characters
+				if (otp.trim().length < 6) {
+					e.preventDefault();
+					errorMessage = 'Please enter the complete 6-character verification code.';
+				}
+			}}
+		>
+			<input type="hidden" name="identifier" value={identifier} />
+			
+			<div class="flex flex-col gap-3">
 				<div class="flex items-center justify-center gap-1.5">
 					<button
 						type="button"
@@ -153,42 +216,57 @@ onBack={
 					</button>
 					<span class="font-mono text-xs text-muted-foreground">Code sent to {maskedIdentifier}</span>
 				</div>
-				<InputOTP.Root maxlength={8} bind:value={otp} class="justify-center">
+				<InputOTP.Root 
+					maxlength={6} 
+					bind:value={otp} 
+					name="otp"
+					class="justify-center"
+				>
 					{#snippet children({ cells }: { cells: Array<Record<string, unknown>> })}
 						<InputOTP.Group>
-							{#each cells.slice(0, 4) as cell (cell)}
-								<InputOTP.Slot {cell} />
+							{#each cells.slice(0, 3) as cell (cell)}
+								<InputOTP.Slot {cell} class="h-14 w-14 text-lg" />
 							{/each}
 						</InputOTP.Group>
 						<InputOTP.Separator />
 						<InputOTP.Group>
-							{#each cells.slice(4, 8) as cell (cell)}
-								<InputOTP.Slot {cell} />
+							{#each cells.slice(3, 6) as cell (cell)}
+								<InputOTP.Slot {cell} class="h-14 w-14 text-lg" />
 							{/each}
 						</InputOTP.Group>
 					{/snippet}
 				</InputOTP.Root>
+				<p class="text-center text-xs text-muted-foreground">Enter the 6-character code from your email</p>
 			</div>
-			{#if form?.error}
-				<p class="text-center text-sm text-destructive">{form.error}</p>
-			{/if}
-			<Button type="submit" size="lg" class="mt-1 w-full">Verify code</Button>
+			<Button type="submit" size="lg" class="h-12 w-full text-base">Verify Code</Button>
 		</form>
 
-		<p class="text-center text-xs text-muted-foreground">
+		<p class="text-center text-sm text-muted-foreground">
 			{#if resendCooldown > 0}
 				Resend code in {resendCooldown}s
 			{:else}
 				Didn't get a code?
-				<button type="button" onclick={requestOtp} class="text-primary hover:underline">
-					Resend
-				</button>
+				<form action="?/resendOtp" method="POST" class="inline" use:enhance>
+					<input type="hidden" name="identifier" value={identifier} />
+					<button type="submit" class="text-primary hover:underline">
+						Resend
+					</button>
+				</form>
 			{/if}
 		</p>
 	{:else if step === 'newPassword'}
-		<form class="flex flex-col gap-4" onsubmit={submitNewPassword}>
-			<div class="flex flex-col gap-1.5">
-				<Label for="newPassword">New password</Label>
+		<form 
+			class="flex flex-col gap-6" 
+			action="?/setPassword" 
+			method="POST" 
+			use:enhance
+		>
+			<input type="hidden" name="token" value={form?.token ?? ''} />
+			<input type="hidden" name="userId" value={form?.userId ?? ''} />
+			<input type="hidden" name="userType" value={form?.userType ?? ''} />
+			
+			<div class="flex flex-col gap-3">
+				<Label for="newPassword" class="text-sm font-semibold">New Password</Label>
 				<Input
 					bind:this={passwordInputEl}
 					bind:value={newPassword}
@@ -198,10 +276,12 @@ onBack={
 					placeholder="••••••••"
 					autocomplete="new-password"
 					required
+					class="h-11 text-base"
 				/>
+				<p class="text-xs text-muted-foreground">Minimum 8 characters with uppercase, lowercase, number, and special character</p>
 			</div>
-			<div class="flex flex-col gap-1.5">
-				<Label for="confirmPassword">Confirm new password</Label>
+			<div class="flex flex-col gap-3">
+				<Label for="confirmPassword" class="text-sm font-semibold">Confirm New Password</Label>
 				<Input
 					bind:value={confirmPassword}
 					id="confirmPassword"
@@ -210,23 +290,32 @@ onBack={
 					placeholder="••••••••"
 					autocomplete="new-password"
 					required
+					class="h-11 text-base"
 				/>
+				{#if newPassword && confirmPassword && newPassword !== confirmPassword}
+					<p class="text-sm text-destructive">Passwords do not match.</p>
+				{/if}
 			</div>
-			{#if newPassword && confirmPassword && newPassword !== confirmPassword}
-				<p class="text-sm text-destructive">Passwords do not match.</p>
-			{/if}
-			{#if form?.error}
-				<p class="text-sm text-destructive">{form.error}</p>
-			{/if}
-			<Button type="submit" size="lg" class="mt-1 w-full">Update password</Button>
+			<Button 
+				type="submit" 
+				size="lg" 
+				class="h-12 w-full text-base"
+				disabled={!newPassword || !confirmPassword || newPassword !== confirmPassword}
+			>
+				Update Password
+			</Button>
 		</form>
 	{:else if step === 'success'}
-		<div class="flex flex-col items-center gap-4 py-2 text-center">
-			<CheckCircle2 class="size-10 text-primary" />
-			<p class="text-sm text-muted-foreground">
-				Your password has been changed. Use it the next time you sign in.
-			</p>
-			<Button href="/login" size="lg" class="w-full">Back to sign in</Button>
+		<div class="flex flex-col items-center gap-6 py-4 text-center">
+			<CheckCircle2 class="size-12 text-primary" />
+			<div>
+				<h3 class="text-lg font-semibold text-foreground">Password Updated!</h3>
+				<p class="text-sm text-muted-foreground">
+					Your password has been successfully changed. 
+					You can now sign in with your new password.
+				</p>
+			</div>
+			<Button href="/login" size="lg" class="h-12 w-full text-base">Back to Sign In</Button>
 		</div>
 	{/if}
 </AuthShell>

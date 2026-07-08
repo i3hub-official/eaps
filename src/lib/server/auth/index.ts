@@ -4,6 +4,8 @@
 import bcrypt from 'bcryptjs'
 import { randomBytes } from 'crypto'
 import { getPrismaClient } from '$lib/server/db/index.js'
+import { searchHashFor } from '$lib/security/dataProtection'
+
 
 // ─── Constants ───────────────────────────────────────────────────────────────
 
@@ -111,14 +113,6 @@ export async function getStaffByToken(token: string) {
   return { staff: session.staff, session, permissions }
 }
 
-// src/lib/server/auth/index.ts — only the two refresh functions change
-
-/**
- * Exchange a refresh token for a new short-lived session token (rotates
- * both tokens). Returns null if the refresh token is unknown, expired, has
- * no expiry stamped (treated as invalid, not "never expires"), or if the
- * staff member is no longer active.
- */
 export async function refreshStaffSession(refreshToken: string) {
   const prisma = await getPrismaClient()
   const session = await prisma.staffSession.findUnique({
@@ -210,11 +204,6 @@ export async function getStudentByToken(token: string) {
   return { student: session.student, session }
 }
 
-/**
- * Exchange a refresh token for a new short-lived session token (rotates
- * both tokens). Returns null if the refresh token is unknown/expired, or if
- * the student is no longer active.
- */
 export async function refreshStudentSession(refreshToken: string) {
   const prisma = await getPrismaClient()
   const session = await prisma.studentSession.findUnique({
@@ -222,8 +211,8 @@ export async function refreshStudentSession(refreshToken: string) {
     include: { student: true },
   })
 
-    if (!session) return null
-  if (!session || session.refreshTokenExpiresAt < new Date()) return null
+  if (!session) return null
+  if (!session.refreshTokenExpiresAt || session.refreshTokenExpiresAt < new Date()) return null
   if (session.student.status !== 'ACTIVE') return null
 
   const newToken = generateToken()
@@ -265,4 +254,16 @@ export const cookieOptions = {
   sameSite: 'strict' as const,
   path: '/',
   maxAge: COOKIE_MAX_AGE,
+}
+
+export async function findStaffByEmail(email: string) {
+  const prisma = await getPrismaClient()
+  const emailHash = await searchHashFor(email, 'email')
+  return prisma.staff.findUnique({ where: { emailHash } })
+}
+
+export async function findStudentByEmail(email: string) {
+  const prisma = await getPrismaClient()
+  const emailHash = await searchHashFor(email, 'email')
+  return prisma.student.findUnique({ where: { emailHash } })
 }

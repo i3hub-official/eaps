@@ -1,23 +1,23 @@
 // src/routes/(auth)/register/+page.server.ts
-// MOUAU eTEST — student self-registration
+// MOUAU eTEST — student self-registration (students only; staff accounts
+// are provisioned separately, not via self-service signup)
 //
 // Flow: student enters matric → scans/pastes receipt ref → server fetches
 // MOUAU printable-receipt API → returns parsed data + masked preview →
 // student confirms on step 2 → creates account on step 3.
-//
-// NOTE: `signup` is stubbed out for now — only `fetchReceipt` is wired to
-// the live MOUAU API. See the commented block below for the full
-// implementation, ready to re-enable once DB/session wiring is confirmed.
 
 import type { Actions, PageServerLoad } from './$types';
 import { parseReceiptHtml, maskValue, extractRefFromUrl } from '$lib/universities/receipt';
 import { getUniConfig } from '$lib/universities/registry';
-// import { hashPassword }             from '$lib/server/auth/password';
-// import { createSession, setSessionCookie } from '$lib/server/auth/session';
-// import { createUser, emailExists, matricExists } from '$lib/server/db/users';
-// import { getPrismaClient }                   from '$lib/server/db/index';
-
-// const prisma = await getPrismaClient();
+import { getPrismaClient } from '$lib/server/db/index.js';
+import {
+	hashPassword,
+	validatePasswordStrength,
+	createStudentSession,
+	STUDENT_COOKIE,
+	cookieOptions,
+} from '$lib/server/auth';
+import { protectEmail } from '$lib/security/dataProtection';
 
 // ─── MOUAU config (resolved once — both optional fields get typed defaults) ──
 const MOUAU = getUniConfig('MOUAU')!;
@@ -32,7 +32,6 @@ async function fetchHtml(url: string): Promise<string> {
 		signal: AbortSignal.timeout(10_000)
 	});
 	const html = await res.text();
-	// MOUAU API returns a JSON error body on bad refs e.g. {"message":"Invalid ref"}
 	if (html.trimStart().startsWith('{')) {
 		const json = JSON.parse(html) as { message?: string };
 		throw new Error(json.message ?? 'Invalid reference number');
@@ -45,25 +44,9 @@ export const load: PageServerLoad = async () => ({});
 
 // ─── Actions ──────────────────────────────────────────────────────────────────
 export const actions: Actions = {
-	// ── fetchReceipt ──────────────────────────────────────────────────────────
-	//
-	// Called by the frontend when the student pastes or scans their MOUAU
-	// school-fee receipt ref. Returns:
-	//   data   — raw fields for client-side prefill (names, matric, college …)
-	//   preview — masked version shown in the receipt card before the student
-	//             proceeds to step 2
-	//
-	// The client posts the field under REF_FIELD_NAME ('ref' for MOUAU) after
-	// running extractRefFromUrl on whatever the QR encoded. The server runs
-	// extractRefFromUrl again as a safety net in case the client sent a raw URL.
 	fetchReceipt: async ({ request }) => {
 		const form = await request.formData();
 
-		// extractRefFromUrl handles all four cases:
-		//   1. full URL with ?transaction_ref=xxx
-		//   2. path segment /transaction_ref/xxx
-		//   3. bare query string transaction_ref=xxx
-		//   4. raw value (most common — student pastes the number directly)
 		const raw = form.get(REF_FIELD_NAME)?.toString().trim() ?? '';
 		const ref = extractRefFromUrl(raw, REF_EXTRACT_PARAM);
 
@@ -79,7 +62,6 @@ export const actions: Actions = {
 			const map = parseReceiptHtml(html);
 			const get = (k: string) => map[k.toLowerCase()] ?? '';
 
-			// Both name and matric absent → the page parsed but held no receipt data
 			if (!get('name') && !get('matric no')) {
 				return {
 					success: false,
@@ -99,8 +81,6 @@ export const actions: Actions = {
 				rrrCode: get('rrr code')
 			};
 
-			// Build the masked preview from the registry field list — stays in sync
-			// automatically when fields are added to the MOUAU registry entry.
 			const preview: Record<string, string> = {};
 			for (const field of RECEIPT_CFG.fields) {
 				const value = (data[field.key] ?? '').trim();
@@ -118,134 +98,142 @@ export const actions: Actions = {
 		}
 	},
 
-	// ── signup ─────────────────────────────────────────────────────────────────
-	// Disabled for now. Returns a clear error so the client's existing
-	// error-handling path (errorMessage assignment in handleSubmit) surfaces
-	// something sensible instead of a silent failure or unhandled exception.
-	signup: async () => {
-		return {
-			success: false,
-			error: 'Account creation is not available yet. Please check back soon.'
-		};
-	}
+	signup: async ({ request, cookies, getClientAddress }) => {
+		const form = await request.formData();
+		const g = (k: string) => form.get(k)?.toString().trim() ?? '';
 
-	// ── Full signup implementation — commented out, not deleted ────────────────
-	// Re-enable by uncommenting this block and the imports above once DB/session
-	// wiring (createUser, createSession, hashPassword, prisma) is confirmed ready.
-	//
-	// signup: async ({ request, cookies, getClientAddress }) => {
-	//   const form = await request.formData();
-	//   const g    = (k: string) => form.get(k)?.toString().trim() ?? '';
-	//
-	//   const firstName     = g('firstName');
-	//   const otherName     = g('otherName');
-	//   const surname       = g('surname');
-	//   const email         = g('email').toLowerCase();
-	//   const phone         = g('phone')        || null;
-	//   const password      = g('password');
-	//   const matricNumber  = g('matricNumber') || null;
-	//   const jambRegNo     = g('jambRegNo')    || null;
-	//   const collegeStr    = g('college')      || null;
-	//   const departmentStr = g('department')   || null;
-	//   const levelStr      = g('level')        || null;
-	//   const session       = g('session')      || null;
-	//   const receiptNo     = g('receiptNo')    || null;
-	//   const receiptRef    = g('receiptRef')   || null;
-	//
-	//   const fullName = [surname, firstName, otherName]
-	//     .map(s => s.toUpperCase().trim())
-	//     .filter(Boolean)
-	//     .join(' ');
-	//
-	//   const values = { firstName, otherName, surname, email, phone,
-	//                    matricNumber, college: collegeStr, department: departmentStr, level: levelStr };
-	//
-	//   if (!email)         return { success: false, error: 'Email is required.',         values };
-	//   if (!firstName)     return { success: false, error: 'First name is required.',    values };
-	//   if (!surname)       return { success: false, error: 'Surname is required.',       values };
-	//   if (!matricNumber)  return { success: false, error: 'Matric number is required.', values };
-	//   if (!departmentStr) return { success: false, error: 'Department is required.',    values };
-	//   if (!password || password.length < 8) {
-	//     return { success: false, error: 'Password must be at least 8 characters.', values };
-	//   }
-	//   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
-	//     return { success: false, error: 'Enter a valid email address.', values };
-	//   }
-	//
-	//   try {
-	//     const [dupEmail, dupMatric] = await Promise.all([
-	//       emailExists(email),
-	//       matricExists(matricNumber),
-	//     ]);
-	//     if (dupEmail)  return { success: false, error: 'An account with this email already exists.',        values };
-	//     if (dupMatric) return { success: false, error: 'An account with this matric number already exists.', values };
-	//
-	//     let collegeId: number | undefined;
-	//     if (collegeStr) {
-	//       const col = await prisma.college.findFirst({
-	//         where: { name: { contains: collegeStr, mode: 'insensitive' } },
-	//         select: { id: true },
-	//       });
-	//       if (col) collegeId = col.id;
-	//     }
-	//
-	//     let departmentId: string | undefined;
-	//     if (departmentStr) {
-	//       const dept = await prisma.department.findFirst({
-	//         where: {
-	//           name: { contains: departmentStr, mode: 'insensitive' },
-	//           ...(collegeId ? { collegeId } : {}),
-	//         },
-	//         select: { id: true },
-	//       });
-	//       if (dept) departmentId = dept.id;
-	//     }
-	//
-	//     const passwordHash = await hashPassword(password);
-	//
-	//     const user = await createUser({
-	//       email,
-	//       fullName,
-	//       passwordHash,
-	//       role:         'student',
-	//       matricNumber: matricNumber ?? undefined,
-	//       departmentId: departmentId,
-	//       level:        levelStr ? parseInt(levelStr, 10) : undefined,
-	//     });
-	//
-	//     const extras: Record<string, unknown> = {};
-	//     if (jambRegNo)   extras.jambRegNo    = jambRegNo;
-	//     if (phone)       extras.phone        = phone;
-	//     if (collegeId)   extras.collegeId    = collegeId;
-	//     if (receiptNo)   extras.receiptNo    = receiptNo;
-	//     if (receiptRef)  extras.receiptRef   = receiptRef;
-	//     if (session)     extras.session      = session;
-	//     extras.receiptSource = 'MOUAU';
-	//
-	//     if (Object.keys(extras).length > 0) {
-	//       await prisma.user.update({ where: { id: user.id }, data: extras });
-	//     }
-	//
-	//     const ip        = getClientAddress();
-	//     const userAgent = request.headers.get('user-agent') ?? undefined;
-	//     const token     = await createSession(user.id, ip, userAgent);
-	//     setSessionCookie(cookies, token);
-	//
-	//     return { success: true };
-	//
-	//   } catch (err: unknown) {
-	//     const message = err instanceof Error ? err.message : String(err);
-	//     console.error('[register/signup]', message);
-	//
-	//     if (message.includes('Unique constraint') || message.includes('unique')) {
-	//       return {
-	//         success: false,
-	//         error: 'An account with this email or matric number already exists.',
-	//         values,
-	//       };
-	//     }
-	//
-	//     return { success: false, error: 'Unable to create account. Please try again.', values };
-	//   }
-	// },
+		const firstName = g('firstName');
+		const otherName = g('otherName');
+		const surname = g('surname');
+		const email = g('email').toLowerCase();
+		const phone = g('phone') || null;
+		const password = g('password');
+		const matricNumber = g('matricNumber');
+		const jambRegNo = g('jambRegNo');
+		const departmentStr = g('department');
+		const levelStr = g('level');
+		const session = g('session') || null;
+		const receiptNo = g('receiptNo') || null;
+		const receiptRef = g('receiptRef') || null;
+
+		const values = { firstName, otherName, surname, email, phone, matricNumber, department: departmentStr, level: levelStr };
+
+		if (!email) return { success: false, error: 'Email is required.', values };
+		if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+			return { success: false, error: 'Enter a valid email address.', values };
+		}
+		if (!firstName) return { success: false, error: 'First name is required.', values };
+		if (!surname) return { success: false, error: 'Surname is required.', values };
+		if (!matricNumber) return { success: false, error: 'Matric number is required.', values };
+		if (!jambRegNo) return { success: false, error: 'JAMB registration number is required.', values };
+		if (!departmentStr) return { success: false, error: 'Department is required.', values };
+		if (!levelStr) return { success: false, error: 'Level is required.', values };
+
+		const pwErr = validatePasswordStrength(password);
+		if (pwErr) return { success: false, error: pwErr, values };
+
+		const prisma = await getPrismaClient();
+
+		try {
+			const dept = await prisma.department.findFirst({
+				where: { name: { contains: departmentStr, mode: 'insensitive' } },
+			});
+			if (!dept) {
+				return {
+					success: false,
+					error: `Could not match department "${departmentStr}" to a known department. Contact the registrar.`,
+					values,
+				};
+			}
+
+			const programmes = await prisma.programme.findMany({
+				where: { departmentId: dept.id, isActive: true },
+			});
+			if (programmes.length === 0) {
+				return {
+					success: false,
+					error: `No active programme is configured for ${dept.name}. Contact the registrar.`,
+					values,
+				};
+			}
+			if (programmes.length > 1) {
+				return {
+					success: false,
+					error: `${dept.name} offers multiple programmes — automatic registration can't determine which one applies to you yet. Contact the registrar to complete signup.`,
+					values,
+				};
+			}
+			const programme = programmes[0];
+
+			const levelNum = parseInt(levelStr, 10);
+			if (Number.isNaN(levelNum)) {
+				return { success: false, error: `Could not read level "${levelStr}".`, values };
+			}
+			const level = await prisma.level.findUnique({ where: { name: levelNum } });
+			if (!level) {
+				return {
+					success: false,
+					error: `Level ${levelNum} is not configured in the system. Contact the registrar.`,
+					values,
+				};
+			}
+
+			const { encrypted: encryptedEmail, searchHash: emailHash } = await protectEmail(email);
+
+			const [dupEmail, dupMatric, dupJamb] = await Promise.all([
+				prisma.student.findUnique({ where: { emailHash } }),
+				prisma.student.findUnique({ where: { matricNumber } }),
+				prisma.student.findUnique({ where: { jambRegNo } }),
+			]);
+			if (dupEmail) return { success: false, error: 'An account with this email already exists.', values };
+			if (dupMatric) return { success: false, error: 'An account with this matric number already exists.', values };
+			if (dupJamb) return { success: false, error: 'An account with this JAMB registration number already exists.', values };
+
+			const passwordHash = await hashPassword(password);
+
+			const entryYear =
+				session && /^\d{4}/.test(session) ? parseInt(session.slice(0, 4), 10) : new Date().getFullYear();
+
+			const student = await prisma.student.create({
+				data: {
+					matricNumber,
+					jambRegNo,
+					receiptNo,
+					receiptRef,
+					receiptSource: 'MOUAU',
+					registrationSession: session,
+					email: encryptedEmail,
+					emailHash,
+					passwordHash,
+					firstName,
+					lastName: surname,
+					otherNames: otherName || null,
+					phone,
+					departmentId: dept.id,
+					programmeId: programme.id,
+					currentLevelId: level.id,
+					entryYear,
+				},
+			});
+
+			const ip = getClientAddress();
+			const userAgent = request.headers.get('user-agent') ?? undefined;
+			const { token } = await createStudentSession(student.id, { ipAddress: ip, userAgent });
+			cookies.set(STUDENT_COOKIE, token, cookieOptions);
+
+			return { success: true };
+		} catch (err: unknown) {
+			const message = err instanceof Error ? err.message : String(err);
+			console.error('[register/signup]', message);
+
+			if (message.toLowerCase().includes('unique constraint')) {
+				return {
+					success: false,
+					error: 'An account with this email, matric number, or JAMB number already exists.',
+					values,
+				};
+			}
+			return { success: false, error: 'Unable to create account. Please try again.', values };
+		}
+	},
 };

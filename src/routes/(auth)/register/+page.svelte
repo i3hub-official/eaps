@@ -744,64 +744,64 @@
 		{/if}
 
 		<!-- Receipt Preview -->
-		{#if receiptFetched}
-			<div class="rounded-xl border border-primary/25 bg-primary/5 p-5">
-				<p class="mb-3 flex items-center gap-2 text-xs font-bold uppercase tracking-wide text-primary">
-					<Check class="size-4" /> Verified — Student Details
-				</p>
-				<div class="flex flex-col gap-2">
-					<!-- Full Name -->
-					<div class="flex justify-between gap-4 border-b border-primary/10 pb-2">
-						<span class="text-sm text-muted-foreground">Full Name</span>
-						<span class="text-right font-medium text-sm">
-							{[surname, firstName, otherName].filter(Boolean).join(' ') || '—'}
-						</span>
-					</div>
-					
-					<!-- Matric Number -->
-					<div class="flex justify-between gap-4 border-b border-primary/10 pb-2">
-						<span class="text-sm text-muted-foreground">Matric Number</span>
-						<span class="text-right font-medium text-sm">{matricNumber || '—'}</span>
-					</div>
-					
-					<!-- JAMB Registration -->
-					<div class="flex justify-between gap-4 border-b border-primary/10 pb-2">
-						<span class="text-sm text-muted-foreground">JAMB Registration</span>
-						<span class="text-right font-medium text-sm">{jambRegNo || '—'}</span>
-					</div>
-					
-					<!-- College/Faculty -->
-					<div class="flex justify-between gap-4 border-b border-primary/10 pb-2">
-						<span class="text-sm text-muted-foreground">College / Faculty</span>
-						<span class="text-right font-medium text-sm">{college || '—'}</span>
-					</div>
-					
-					<!-- Department -->
-					<div class="flex justify-between gap-4 border-b border-primary/10 pb-2">
-						<span class="text-sm text-muted-foreground">Department</span>
-						<span class="text-right font-medium text-sm">{department || '—'}</span>
-					</div>
-					
-					<!-- Level -->
-					<div class="flex justify-between gap-4 border-b border-primary/10 pb-2">
-						<span class="text-sm text-muted-foreground">Level</span>
-						<span class="text-right font-medium text-sm">{level || '—'}</span>
-					</div>
-					
-					<!-- Session -->
-					<div class="flex justify-between gap-4 border-b border-primary/10 pb-2">
-						<span class="text-sm text-muted-foreground">Session</span>
-						<span class="text-right font-medium text-sm">{receiptRaw?.session || '—'}</span>
-					</div>
-					
-					<!-- Receipt Number -->
-					<div class="flex justify-between gap-4 border-b border-primary/10 pb-2 last:border-0 last:pb-0">
-						<span class="text-sm text-muted-foreground">Receipt Number</span>
-						<span class="text-right font-medium text-sm">{receiptRaw?.receiptNo || '—'}</span>
-					</div>
-				</div>
+{#if receiptFetched}
+	<div class="rounded-xl border border-primary/25 bg-primary/5 p-5">
+		<p class="mb-4 flex items-center gap-2 text-xs font-bold uppercase tracking-wide text-primary">
+			<Check class="size-4" /> Verified — Student Details
+		</p>
+		<div class="flex flex-col gap-4">
+			<!-- Full Name -->
+			<div class="flex flex-col gap-0.5">
+				<span class="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">Full Name</span>
+				<span class="text-base font-medium text-foreground">
+					{[surname, firstName, otherName].filter(Boolean).join(' ') || '—'}
+				</span>
 			</div>
-		{/if}
+			
+			<!-- Matric Number -->
+			<div class="flex flex-col gap-0.5">
+				<span class="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">Matric Number</span>
+				<span class="text-base font-medium text-foreground">{matricNumber || '—'}</span>
+			</div>
+			
+			<!-- JAMB Registration -->
+			<div class="flex flex-col gap-0.5">
+				<span class="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">JAMB Registration</span>
+				<span class="text-base font-medium text-foreground">{jambRegNo || '—'}</span>
+			</div>
+			
+			<!-- College/Faculty -->
+			<div class="flex flex-col gap-0.5">
+				<span class="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">College / Faculty</span>
+				<span class="text-base font-medium text-foreground">{college || '—'}</span>
+			</div>
+			
+			<!-- Department -->
+			<div class="flex flex-col gap-0.5">
+				<span class="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">Department</span>
+				<span class="text-base font-medium text-foreground">{department || '—'}</span>
+			</div>
+			
+			<!-- Level -->
+			<div class="flex flex-col gap-0.5">
+				<span class="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">Level</span>
+				<span class="text-base font-medium text-foreground">{level || '—'}</span>
+			</div>
+			
+			<!-- Session -->
+			<div class="flex flex-col gap-0.5">
+				<span class="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">Session</span>
+				<span class="text-base font-medium text-foreground">{receiptRaw?.session || '—'}</span>
+			</div>
+			
+			<!-- Receipt Number -->
+			<div class="flex flex-col gap-0.5">
+				<span class="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">Receipt Number</span>
+				<span class="text-base font-medium text-foreground">{receiptRaw?.receiptNo || '—'}</span>
+			</div>
+		</div>
+	</div>
+{/if}
 
 		<Button type="button" size="lg" class="h-12 w-full text-base" onclick={nextStep} disabled={!receiptFetched}>
 			{#if !receiptFetched}Verify Receipt First{:else}Continue →{/if}
@@ -816,25 +816,48 @@
 {#if currentStep === 2}
 	<div class="flex flex-col gap-6">
 		{#if receiptFetched}
-			<div class="flex flex-wrap items-center gap-2 rounded-lg border border-primary/20 bg-primary/5 px-4 py-3 text-sm text-muted-foreground">
-				<Check class="size-4 text-primary" />
-				<span>
-					Student details verified from receipt.
-					<button
-						type="button"
-						onclick={() => {
-							receiptFetched = false;
-							receiptRaw = null;
-							receiptPreview = null;
-							currentStep = 1;
-						}}
-						class="ml-1 inline-flex cursor-pointer items-center gap-1.5 font-semibold text-primary hover:underline"
-					>
-						<RefreshCw class="size-3.5" /> Re-scan
-					</button>
-				</span>
-			</div>
-		{/if}
+	<div class="flex flex-wrap items-center gap-2 rounded-lg border border-primary/20 bg-primary/5 px-4 py-3 text-sm text-muted-foreground">
+		<Check class="size-4 text-primary" />
+		<span>Student information has been successfully verified.</span>
+	</div>
+	
+	<!-- Re-scan button below -->
+	<div class="flex justify-end">
+		<button
+			type="button"
+			onclick={() => {
+				// Clear all receipt data
+				receiptFetched = false;
+				receiptRaw = null;
+				receiptPreview = null;
+				
+				// Clear all form fields
+				surname = '';
+				firstName = '';
+				otherName = '';
+				matricNumber = '';
+				jambRegNo = '';
+				college = '';
+				department = '';
+				level = '';
+				uniMatric = '';
+				refNumber = '';
+				refMasked = false;
+				refError = '';
+				refTouched = false;
+				matricError = '';
+				matricTouched = false;
+				errorMessage = '';
+				
+				// Reset to step 1
+				currentStep = 1;
+			}}
+			class="inline-flex cursor-pointer items-center gap-1.5 text-sm font-semibold text-white transition-colors hover:text-primary/80"
+		>
+			<RefreshCw class="size-3.5" /> Re-verify Information
+		</button>
+	</div>
+{/if}
 
 		<!-- Contact Information -->
 		<div class="flex flex-col gap-4">
@@ -875,14 +898,14 @@
 			</div>
 		</div>
 
-		<!-- Summary Card -->
-		<div class="flex items-start gap-3 rounded-lg border border-primary/20 bg-primary/5 px-4 py-3.5">
-			<Check class="size-4 shrink-0 text-primary mt-0.5" />
-			<div class="text-sm text-muted-foreground">
-				<p class="font-semibold text-foreground">All information verified</p>
-				<p class="text-xs">Your academic details have been auto-filled from your receipt. Please confirm before continuing.</p>
-			</div>
-		</div>
+	<!-- Summary Card -->
+<div class="flex items-start gap-3 rounded-lg border border-primary/20 bg-primary/5 px-4 py-3.5">
+	<Check class="size-4 shrink-0 text-primary mt-0.5" />
+	<div class="text-sm text-muted-foreground">
+		<p class="font-semibold text-foreground">✓ Student Information Verified</p>
+		<p class="text-xs">All academic details have been confirmed. Please review and proceed with your registration. If any data is incorrect, please contact the administration.</p>
+	</div>
+</div>
 
 		<Button type="button" size="lg" class="h-12 w-full text-base" onclick={nextStep}>
 			Continue →

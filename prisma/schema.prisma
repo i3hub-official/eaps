@@ -387,7 +387,8 @@ model CourseRegistration {
 model Staff {
   id                 String      @id @default(cuid())
   staffNumber        String      @unique
-  email              String      @unique
+  email              String      
+  emailHash          String      @unique
   passwordHash       String
   firstName          String
   lastName           String
@@ -425,8 +426,9 @@ model Staff {
   releasedResults    AssessmentResult[]      @relation("ResultReleaser")
   resultRevisions    ResultRevision[]
 
-  @@index([email])
+  @@index([emailHash])
   @@index([staffNumber])
+  @@index([collegeId, departmentId, primaryRole, status, lastLoginAt])
 }
 
 model StaffSession {
@@ -459,6 +461,7 @@ model Student {
   receiptSource       String?
   registrationSession String?
   email              String        @unique
+  emailHash          String        @unique
   passwordHash       String
   firstName          String
   lastName           String
@@ -496,7 +499,9 @@ model Student {
   passwordResets PasswordResetToken[]
 
   @@index([matricNumber])
-  @@index([email])
+  @@index([emailHash])
+  @@index([jambRegNo])
+  @@index([departmentId, programmeId, entryYear, currentLevelId, phone, status])
 }
 
 model StudentSession {
