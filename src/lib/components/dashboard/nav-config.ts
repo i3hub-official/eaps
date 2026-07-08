@@ -1,3 +1,5 @@
+// This file contains the navigation configuration for the dashboard, including the navigation items and sections for different user roles. It defines the structure of the navigation menu based on the user's role, providing a clear and organized way to access various features and pages within the application.
+// src/lib/components/dashboard/nav-config.ts
 import type { Component } from 'svelte';
 import LayoutDashboard from '@lucide/svelte/icons/layout-dashboard';
 import BookOpen from '@lucide/svelte/icons/book-open';
@@ -26,6 +28,7 @@ import Layers from '@lucide/svelte/icons/layers';
 import ScrollText from '@lucide/svelte/icons/scroll-text';
 import Settings from '@lucide/svelte/icons/settings';
 import ScanFace from '@lucide/svelte/icons/scan-face';
+import LogOut from '@lucide/svelte/icons/log-out';
 
 export type NavItem = { label: string; href: string; icon: Component<any> };
 export type NavSection = { label?: string; items: NavItem[] };
@@ -142,4 +145,13 @@ export const navByRole: Record<Role, NavSection[]> = {
 			]
 		}
 	]
+};
+
+// Logout is not a plain navigable route — it's a POST form action — so it's kept
+// separate from navByRole and rendered as a <form> in app-sidebar.svelte, not an <a>.
+// Sharing the label/icon here still keeps all nav-adjacent config in one place.
+export const logoutNavItem: { label: string; action: string; icon: Component<any> } = {
+	label: 'Sign out',
+	action: '/logout',
+	icon: LogOut
 };

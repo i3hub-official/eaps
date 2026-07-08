@@ -3,18 +3,32 @@
 	import * as DropdownMenu from '$lib/components/ui/dropdown-menu/index.js';
 	import { Separator } from '$lib/components/ui/separator/index.js';
 	import { Button } from '$lib/components/ui/button/index.js';
+	import { page } from '$app/state';
 	import SessionClock from './session-clock.svelte';
 	import Bell from '@lucide/svelte/icons/bell';
 	import Search from '@lucide/svelte/icons/search';
 	import LogOut from '@lucide/svelte/icons/log-out';
 	import Settings from '@lucide/svelte/icons/settings';
+	import type { Snippet } from 'svelte';
 
 	let {
 		title,
 		description,
-		userName = 'Chidi Okafor',
-		userInitials = 'CO'
-	}: { title: string; description?: string; userName?: string; userInitials?: string } = $props();
+		userName,
+		userInitials,
+		actions
+	}: {
+		title: string;
+		description?: string;
+		userName?: string;
+		userInitials?: string;
+		actions?: Snippet;
+	} = $props();
+
+	// Falls back to session data from the nearest +layout.server.ts (via $page.data.user)
+	// when no explicit override is passed as a prop.
+	let resolvedName = $derived(userName ?? page.data.user?.name ?? 'Guest');
+	let resolvedInitials = $derived(userInitials ?? page.data.user?.initials ?? '?');
 </script>
 
 <header
@@ -32,6 +46,11 @@
 	</div>
 
 	<div class="flex items-center gap-3">
+		{#if actions}
+			{@render actions()}
+			<Separator orientation="vertical" class="h-5!" />
+		{/if}
+
 		<SessionClock class="hidden sm:flex" />
 
 		<Button variant="outline" size="sm" class="hidden gap-2 text-muted-foreground md:flex">
@@ -55,9 +74,9 @@
 						<div
 							class="flex size-8 shrink-0 items-center justify-center rounded-full bg-primary font-mono text-xs font-semibold text-primary-foreground"
 						>
-							{userInitials}
+							{resolvedInitials}
 						</div>
-						<span class="hidden text-sm font-medium lg:inline">{userName}</span>
+						<span class="hidden text-sm font-medium lg:inline">{resolvedName}</span>
 					</button>
 				{/snippet}
 			</DropdownMenu.Trigger>
