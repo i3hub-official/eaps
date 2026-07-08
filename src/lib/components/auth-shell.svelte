@@ -36,7 +36,7 @@
 	}
 </script>
 
-<div class="relative flex min-h-svh flex-col items-center justify-center bg-muted/30 px-4 py-16 md:py-20">
+<div class="relative flex h-svh flex-col items-center justify-center overflow-y-auto bg-muted/30 px-4 py-6 sm:py-10">
 
 	{#if showBack}
 		<button
@@ -54,25 +54,25 @@
 		<ThemeToggle />
 	</div>
 
-	<div class="w-full max-w-md">
+	<div class="w-full max-w-md py-2">
 
-		<div class="mb-10 flex flex-col items-center gap-4 text-center">
-			<div class="flex size-16 items-center justify-center rounded-2xl border border-border bg-background shadow-sm">
+		<div class="mb-3 flex flex-col items-center gap-2 text-center">
+			<div class="flex size-14 items-center justify-center rounded-2xl border border-border bg-background shadow-sm">
 				<img
 					src="/mouau_logo.png"
 					alt="MOUAU logo"
-					class="size-10 object-contain"
+					class="size-9 object-contain"
 					onerror={handleLogoError}
 				/>
 				<span
-					class="hidden size-10 items-center justify-center text-sm font-bold text-primary"
+					class="hidden size-9 items-center justify-center text-sm font-bold text-primary"
 					aria-hidden="true"
 				>
 					M
 				</span>
 			</div>
 
-			<div class="flex flex-col gap-6">
+			<div class="flex flex-col gap-2">
 				<p class="text-xs font-semibold uppercase tracking-widest text-muted-foreground">
 					Michael Okpara University of Agriculture
 				</p>
@@ -85,7 +85,7 @@
 			</div>
 		</div>
 
-		<div class="flex flex-col gap-6 rounded-2xl border border-border bg-card px-8 py-9 shadow-sm">
+		<div class="flex flex-col gap-4 rounded-2xl border border-border bg-card px-8 py-9 shadow-sm">
 			{@render children()}
 		</div>
 
