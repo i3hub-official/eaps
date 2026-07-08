@@ -8,6 +8,7 @@
 	import { Label } from '$lib/components/ui/label/index.js';
 	import { Input } from '$lib/components/ui/input/index.js';
 	import { Button } from '$lib/components/ui/button/index.js';
+	import { Skeleton } from '$lib/components/ui/skeleton/index.js';
 	import { extractRefFromUrl } from '$lib/universities/receipt';
 	import { getUniConfig } from '$lib/universities/registry';
 
@@ -94,8 +95,11 @@
 	let videoEl = $state<HTMLVideoElement | null>(null);
 	let camStream = $state<MediaStream | null>(null);
 	let scanInterval = $state<ReturnType<typeof setInterval> | null>(null);
+	let scanTimeout = $state<ReturnType<typeof setTimeout> | null>(null);
 	let camError = $state('');
 	let scanCanvas: HTMLCanvasElement;
+	let scanAttempts = $state(0);
+	const MAX_SCAN_ATTEMPTS = 50; // ~15 seconds at 300ms intervals
 
 	let surname = $state(form?.values?.surname ?? '');
 	let firstName = $state(form?.values?.firstName ?? '');
@@ -256,6 +260,7 @@
 	async function handleQrUpload(e: Event) {
 		const file = (e.target as HTMLInputElement).files?.[0];
 		if (!file) return;
+		
 		const matricErr = validateMatricNumber(uniMatric);
 		if (matricErr) {
 			errorMessage = 'Please enter a valid matric number before scanning.';
@@ -265,6 +270,7 @@
 		}
 		errorMessage = '';
 		(e.target as HTMLInputElement).value = '';
+		
 		try {
 			const bitmap = await createImageBitmap(file);
 			const canvas = document.createElement('canvas');
@@ -273,7 +279,32 @@
 			const ctx = canvas.getContext('2d')!;
 			ctx.drawImage(bitmap, 0, 0);
 			const imgData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-			const code = jsQR(imgData.data, imgData.width, imgData.height);
+			
+			// Try multiple detection methods
+			let code = jsQR(imgData.data, imgData.width, imgData.height);
+			
+			// Try inverted
+			if (!code) {
+				const invertedData = new Uint8ClampedArray(imgData.data);
+				for (let i = 0; i < invertedData.length; i++) {
+					invertedData[i] = 255 - invertedData[i];
+				}
+				code = jsQR(invertedData, imgData.width, imgData.height);
+			}
+			
+			// Try contrast enhanced
+			if (!code) {
+				const enhancedData = new Uint8ClampedArray(imgData.data);
+				for (let i = 0; i < enhancedData.length; i += 4) {
+					const gray = (enhancedData[i] + enhancedData[i+1] + enhancedData[i+2]) / 3;
+					const enhanced = gray > 128 ? 255 : 0;
+					enhancedData[i] = enhanced;
+					enhancedData[i+1] = enhanced;
+					enhancedData[i+2] = enhanced;
+				}
+				code = jsQR(enhancedData, imgData.width, imgData.height);
+			}
+			
 			if (code?.data) {
 				settingFromScan = true;
 				refNumber = extractRefFromUrl(code.data, REF_EXTRACT_PARAM);
@@ -283,10 +314,10 @@
 				settingFromScan = false;
 				await fetchReceipt(true);
 			} else {
-				errorMessage = 'Could not read QR code. Please enter the ref manually.';
+				errorMessage = 'Could not read QR code. Please ensure the QR code is clear and try again.';
 			}
 		} catch {
-			errorMessage = 'Failed to process image.';
+			errorMessage = 'Failed to process image. Please try with a clearer image.';
 		}
 	}
 
@@ -300,8 +331,16 @@
 		}
 		camError = '';
 		errorMessage = '';
+		scanAttempts = 0;
+		
 		try {
-			camStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
+			camStream = await navigator.mediaDevices.getUserMedia({ 
+				video: { 
+					facingMode: 'environment',
+					width: { ideal: 1280 },
+					height: { ideal: 720 }
+				} 
+			});
 			showWebcam = true;
 			await new Promise((r) => setTimeout(r, 100));
 			if (videoEl) {
@@ -316,32 +355,98 @@
 
 	function startScanLoop() {
 		scanCanvas = document.createElement('canvas');
+		scanAttempts = 0;
+		
+		// Clear any existing interval
+		if (scanInterval) clearInterval(scanInterval);
+		
 		scanInterval = setInterval(async () => {
-			if (!videoEl || videoEl.readyState !== 4) return;
-			scanCanvas.width = videoEl.videoWidth;
-			scanCanvas.height = videoEl.videoHeight;
-			const ctx = scanCanvas.getContext('2d')!;
-			ctx.drawImage(videoEl, 0, 0);
-			const imgData = ctx.getImageData(0, 0, scanCanvas.width, scanCanvas.height);
-			const code = jsQR(imgData.data, imgData.width, imgData.height);
-			if (code?.data) {
-				stopWebcam();
-				settingFromScan = true;
-				refNumber = extractRefFromUrl(code.data, REF_EXTRACT_PARAM);
-				refTouched = true;
-				refError = validateRefNumber(refNumber) || '';
-				await tick();
-				settingFromScan = false;
-				fetchReceipt(true);
+			if (!videoEl || videoEl.readyState !== 4) {
+				scanAttempts++;
+				if (scanAttempts > MAX_SCAN_ATTEMPTS) {
+					stopWebcam();
+					camError = 'QR scan timed out. Please try uploading an image instead.';
+				}
+				return;
+			}
+			
+			try {
+				scanCanvas.width = videoEl.videoWidth;
+				scanCanvas.height = videoEl.videoHeight;
+				const ctx = scanCanvas.getContext('2d')!;
+				
+				// Draw the video frame
+				ctx.drawImage(videoEl, 0, 0);
+				
+				// Get image data
+				const imgData = ctx.getImageData(0, 0, scanCanvas.width, scanCanvas.height);
+				
+				// Try to detect QR code with multiple attempts
+				let code = jsQR(imgData.data, imgData.width, imgData.height);
+				
+				// If not found, try with inverted colors (some QR codes are inverted)
+				if (!code) {
+					// Try with inverted image data
+					const invertedData = new Uint8ClampedArray(imgData.data);
+					for (let i = 0; i < invertedData.length; i++) {
+						invertedData[i] = 255 - invertedData[i];
+					}
+					code = jsQR(invertedData, imgData.width, imgData.height);
+				}
+				
+				// If still not found, try with grayscale contrast enhancement
+				if (!code) {
+					const enhancedData = new Uint8ClampedArray(imgData.data);
+					for (let i = 0; i < enhancedData.length; i += 4) {
+						// Simple contrast enhancement
+						const gray = (enhancedData[i] + enhancedData[i+1] + enhancedData[i+2]) / 3;
+						const enhanced = gray > 128 ? 255 : 0;
+						enhancedData[i] = enhanced;
+						enhancedData[i+1] = enhanced;
+						enhancedData[i+2] = enhanced;
+					}
+					code = jsQR(enhancedData, imgData.width, imgData.height);
+				}
+				
+				if (code?.data) {
+					// Found QR code - process it
+					stopWebcam();
+					settingFromScan = true;
+					refNumber = extractRefFromUrl(code.data, REF_EXTRACT_PARAM);
+					refTouched = true;
+					refError = validateRefNumber(refNumber) || '';
+					await tick();
+					settingFromScan = false;
+					fetchReceipt(true);
+					return;
+				}
+				
+				scanAttempts++;
+				if (scanAttempts > MAX_SCAN_ATTEMPTS) {
+					stopWebcam();
+					camError = 'QR scan timed out. Please try uploading an image instead.';
+				}
+			} catch (err) {
+				console.error('Scan error:', err);
 			}
 		}, 300);
 	}
 
 	function stopWebcam() {
-		if (scanInterval) clearInterval(scanInterval);
-		if (camStream) camStream.getTracks().forEach((t) => t.stop());
-		camStream = null;
+		if (scanInterval) {
+			clearInterval(scanInterval);
+			scanInterval = null;
+		}
+		if (scanTimeout) {
+			clearTimeout(scanTimeout);
+			scanTimeout = null;
+		}
+		if (camStream) {
+			camStream.getTracks().forEach((t) => t.stop());
+			camStream = null;
+		}
 		showWebcam = false;
+		scanAttempts = 0;
 	}
 
 	onDestroy(() => stopWebcam());
@@ -476,162 +581,236 @@
 	{/if}
 
 	<!-- ══ STEP 1 — verify receipt ══ -->
-	{#if currentStep === 1}
-		<div class="flex flex-col gap-8">
-			<!-- Matric Number -->
-			<div class="flex flex-col gap-2">
-				<Label for="s1matric" class="text-sm font-semibold">Matric Number</Label>
-				<div class="relative">
-					<Briefcase class="pointer-events-none absolute left-3.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
-					<Input
-						id="s1matric"
-						bind:value={uniMatric}
-						oninput={onMatricInput}
-						placeholder="MOUAU/PHY/25/001002"
-						class="h-11 pl-10 text-base"
-						aria-invalid={!!matricError}
-					/>
-				</div>
-				{#if matricError}
-					<p class="flex items-center gap-1.5 text-sm text-destructive">
-						<AlertCircle class="size-3.5" /> {matricError}
-					</p>
-				{/if}
-			</div>
-
-			<!-- QR Scan Section -->
-			<div class="rounded-xl border border-border bg-muted/40 p-6 {matricError ? 'pointer-events-none opacity-50' : ''}">
-				<p class="mb-4 flex items-center gap-2 text-sm font-semibold text-muted-foreground">
-					<QrCode class="size-4" /> Scan School Fee QR Code
-					{#if matricError}<span class="font-normal text-xs">— fix matric number first</span>{/if}
-				</p>
-				<div class="flex flex-wrap gap-4">
-					<button
-						type="button"
-						onclick={startWebcam}
-						disabled={!!matricError}
-						class="inline-flex cursor-pointer items-center gap-2 rounded-lg border border-border bg-background px-5 py-2.5 text-sm font-semibold text-muted-foreground transition-colors hover:border-primary hover:text-primary disabled:pointer-events-none disabled:opacity-45"
-					>
-						<Camera class="size-4" /> Live Camera
-					</button>
-					<label class="inline-flex cursor-pointer items-center gap-2 rounded-lg border border-border bg-background px-5 py-2.5 text-sm font-semibold text-muted-foreground transition-colors hover:border-primary hover:text-primary {matricError ? 'pointer-events-none opacity-45' : ''}">
-						<Upload class="size-4" /> Upload Image
-						<input type="file" accept="image/*" class="sr-only" disabled={!!matricError} onchange={handleQrUpload} />
-					</label>
-				</div>
-			</div>
-
-			{#if camError}
-				<p class="flex items-center gap-1.5 text-sm text-destructive">
-					<AlertCircle class="size-3.5" /> {camError}
-				</p>
-			{/if}
-
-			{#if showWebcam}
-				<div class="flex flex-col items-center gap-4">
-					<div class="relative aspect-[4/3] w-full max-w-md overflow-hidden rounded-xl bg-black">
-						<!-- svelte-ignore a11y-media-has-caption -->
-						<video bind:this={videoEl} playsinline autoplay class="size-full object-cover"></video>
-						<div class="pointer-events-none absolute left-1/2 top-1/2 size-[150px] -translate-x-1/2 -translate-y-1/2 rounded-xl border-2 border-primary shadow-[0_0_0_9999px_rgba(0,0,0,0.5)]"></div>
-					</div>
-					<p class="text-sm text-muted-foreground">Point at the QR code on your receipt</p>
-					<button
-						type="button"
-						onclick={stopWebcam}
-						class="flex cursor-pointer items-center gap-2 rounded-lg border border-destructive/30 bg-destructive/10 px-4 py-2 text-sm font-semibold text-destructive"
-					>
-						<X class="size-4" /> Cancel Camera
-					</button>
-				</div>
-			{/if}
-
-			<!-- Transaction Ref -->
-			<div class="flex flex-col gap-2">
-				<Label class="text-sm font-semibold">
-					Transaction Reference <span class="font-normal text-muted-foreground">(or paste from QR)</span>
-				</Label>
-				<div class="relative">
-					<QrCode class="pointer-events-none absolute left-3.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
-					<input
-						type={refMasked ? 'password' : 'text'}
-						value={refMasked ? '••••••••••••' : refNumber}
-						oninput={(e) => {
-							refNumber = (e.target as HTMLInputElement).value;
-							onRefInput();
-						}}
-						placeholder="Remita RRR Code"
-						disabled={!!matricError || receiptLoading}
-						readonly={refMasked}
-						aria-invalid={!!refError && !receiptFetched}
-						class="h-11 w-full rounded-md border border-input bg-transparent px-3 py-1 pl-10 pr-28 text-base shadow-sm transition-colors placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50 aria-[invalid=true]:border-destructive"
-					/>
-					{#if receiptLoading}
-						<div class="absolute right-3 top-1/2 flex -translate-y-1/2 items-center gap-2 text-sm font-semibold text-primary">
-							<span class="size-3 animate-spin rounded-full border-2 border-primary/30 border-t-primary"></span> Verifying…
-						</div>
-					{:else if !refMasked}
-						<button
-							type="button"
-							onclick={() => fetchReceipt(false)}
-							disabled={!refNumber.trim() || !!matricError}
-							class="absolute right-1.5 top-1/2 -translate-y-1/2 rounded-md bg-primary px-4 py-1.5 text-sm font-semibold text-primary-foreground transition-opacity disabled:opacity-45"
-						>
-							Fetch
-						</button>
-					{:else}
-						<button
-							type="button"
-							onclick={() => {
-								refNumber = '';
-								refMasked = false;
-								receiptRaw = null;
-								receiptPreview = null;
-								receiptFetched = false;
-								surname = firstName = otherName = jambRegNo = college = department = '';
-								refError = '';
-								refTouched = false;
-							}}
-							title="Clear"
-							class="absolute right-2 top-1/2 -translate-y-1/2 rounded p-1.5 text-muted-foreground transition-colors hover:text-destructive"
-						>
-							<X class="size-4" />
-						</button>
-					{/if}
-				</div>
-				{#if refError && !receiptFetched}
-					<p class="flex items-center gap-1.5 text-sm text-destructive">
-						<AlertCircle class="size-3.5" /> {refError}
-					</p>
-				{/if}
-				<p class="text-sm text-muted-foreground">Found on your MOUAU portal or school fee receipt</p>
-			</div>
-
-			{#if receiptPreview}
-	<div class="rounded-xl border border-primary/25 bg-primary/5 p-5">
-		<p class="mb-3 flex items-center gap-2 text-xs font-bold uppercase tracking-wide text-primary">
-			<Check class="size-4" /> Verified — Details auto-filled below
-		</p>
+{#if currentStep === 1}
+	<div class="flex flex-col gap-8">
+		<!-- Matric Number -->
 		<div class="flex flex-col gap-2">
-			{#each Object.entries(receiptPreview) as [k, v] (k)}
-				{#if v}
-					<div class="flex justify-between gap-4 border-b border-primary/10 pb-2 last:border-0 last:pb-0">
-						<span class="capitalize text-muted-foreground text-sm">{k}</span>
-						<span class="text-right font-medium text-sm">{v}</span>
-					</div>
-				{/if}
-			{/each}
+			<Label for="s1matric" class="text-sm font-semibold">Matric Number</Label>
+			<div class="relative">
+				<Briefcase class="pointer-events-none absolute left-3.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+				<Input
+					id="s1matric"
+					bind:value={uniMatric}
+					oninput={onMatricInput}
+					placeholder="MOUAU/PHY/25/001002"
+					class="h-11 pl-10 text-base"
+					aria-invalid={!!matricError}
+				/>
+			</div>
+			{#if matricError}
+				<p class="flex items-center gap-1.5 text-sm text-destructive">
+					<AlertCircle class="size-3.5" /> {matricError}
+				</p>
+			{/if}
 		</div>
+
+		<!-- QR Scan Section -->
+		<div class="rounded-xl border border-border bg-muted/40 p-6 {matricError ? 'pointer-events-none opacity-50' : ''}">
+			<p class="mb-4 flex items-center gap-2 text-sm font-semibold text-muted-foreground">
+				<QrCode class="size-4" /> Scan School Fee QR Code
+				{#if matricError}<span class="font-normal text-xs">— fix matric number first</span>{/if}
+			</p>
+			<div class="flex flex-wrap gap-4">
+				<button
+					type="button"
+					onclick={startWebcam}
+					disabled={!!matricError}
+					class="inline-flex cursor-pointer items-center gap-2 rounded-lg border border-border bg-background px-5 py-2.5 text-sm font-semibold text-muted-foreground transition-colors hover:border-primary hover:text-primary disabled:pointer-events-none disabled:opacity-45"
+				>
+					<Camera class="size-4" /> Live Camera
+				</button>
+				<label class="inline-flex cursor-pointer items-center gap-2 rounded-lg border border-border bg-background px-5 py-2.5 text-sm font-semibold text-muted-foreground transition-colors hover:border-primary hover:text-primary {matricError ? 'pointer-events-none opacity-45' : ''}">
+					<Upload class="size-4" /> Upload Image
+					<input type="file" accept="image/*" class="sr-only" disabled={!!matricError} onchange={handleQrUpload} />
+				</label>
+			</div>
+		</div>
+
+		{#if camError}
+			<p class="flex items-center gap-1.5 text-sm text-destructive">
+				<AlertCircle class="size-3.5" /> {camError}
+			</p>
+		{/if}
+
+		{#if showWebcam}
+			<div class="flex flex-col items-center gap-4">
+				<div class="relative aspect-[4/3] w-full max-w-md overflow-hidden rounded-xl bg-black">
+					<!-- svelte-ignore a11y-media-has-caption -->
+					<video bind:this={videoEl} playsinline autoplay class="size-full object-cover"></video>
+					<div class="pointer-events-none absolute left-1/2 top-1/2 size-[150px] -translate-x-1/2 -translate-y-1/2 rounded-xl border-2 border-primary shadow-[0_0_0_9999px_rgba(0,0,0,0.5)]"></div>
+				</div>
+				<p class="text-sm text-muted-foreground">Point at the QR code on your receipt</p>
+				<button
+					type="button"
+					onclick={stopWebcam}
+					class="flex cursor-pointer items-center gap-2 rounded-lg border border-destructive/30 bg-destructive/10 px-4 py-2 text-sm font-semibold text-destructive"
+				>
+					<X class="size-4" /> Cancel Camera
+				</button>
+			</div>
+		{/if}
+
+		<!-- Transaction Ref -->
+		<div class="flex flex-col gap-2">
+			<Label class="text-sm font-semibold">
+				Transaction Reference <span class="font-normal text-muted-foreground">(or paste from QR)</span>
+			</Label>
+			<div class="relative">
+				<QrCode class="pointer-events-none absolute left-3.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+				<input
+					type={refMasked ? 'password' : 'text'}
+					value={refMasked ? '••••••••••••' : refNumber}
+					oninput={(e) => {
+						refNumber = (e.target as HTMLInputElement).value;
+						onRefInput();
+					}}
+					placeholder="Remita RRR Code"
+					disabled={!!matricError || receiptLoading}
+					readonly={refMasked}
+					aria-invalid={!!refError && !receiptFetched}
+					class="h-11 w-full rounded-md border border-input bg-transparent px-3 py-1 pl-10 pr-28 text-base shadow-sm transition-colors placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50 aria-[invalid=true]:border-destructive"
+				/>
+				{#if receiptLoading}
+					<div class="absolute right-3 top-1/2 flex -translate-y-1/2 items-center gap-2 text-sm font-semibold text-primary">
+						<span class="size-3 animate-spin rounded-full border-2 border-primary/30 border-t-primary"></span> Verifying…
+					</div>
+				{:else if !refMasked}
+					<button
+						type="button"
+						onclick={() => fetchReceipt(false)}
+						disabled={!refNumber.trim() || !!matricError}
+						class="absolute right-1.5 top-1/2 -translate-y-1/2 rounded-md bg-primary px-4 py-1.5 text-sm font-semibold text-primary-foreground transition-opacity disabled:opacity-45"
+					>
+						Fetch
+					</button>
+				{:else}
+					<button
+						type="button"
+						onclick={() => {
+							refNumber = '';
+							refMasked = false;
+							receiptRaw = null;
+							receiptPreview = null;
+							receiptFetched = false;
+							surname = firstName = otherName = jambRegNo = matricNumber = college = department = '';
+							refError = '';
+							refTouched = false;
+						}}
+						title="Clear"
+						class="absolute right-2 top-1/2 -translate-y-1/2 rounded p-1.5 text-muted-foreground transition-colors hover:text-destructive"
+					>
+						<X class="size-4" />
+					</button>
+				{/if}
+			</div>
+			{#if refError && !receiptFetched}
+				<p class="flex items-center gap-1.5 text-sm text-destructive">
+					<AlertCircle class="size-3.5" /> {refError}
+				</p>
+			{/if}
+			<p class="text-sm text-muted-foreground">Found on your MOUAU portal or school fee receipt</p>
+		</div>
+
+		<!-- Skeleton Loading for Receipt -->
+		{#if receiptLoading}
+			<div class="rounded-xl border border-border bg-card p-5 shadow-sm">
+				<div class="mb-3 flex items-center gap-2">
+					<Skeleton class="size-4" />
+					<Skeleton class="h-3 w-40" />
+				</div>
+				<div class="flex flex-col gap-3">
+					<div class="flex justify-between">
+						<Skeleton class="h-4 w-24" />
+						<Skeleton class="h-4 w-32" />
+					</div>
+					<div class="flex justify-between">
+						<Skeleton class="h-4 w-28" />
+						<Skeleton class="h-4 w-36" />
+					</div>
+					<div class="flex justify-between">
+						<Skeleton class="h-4 w-20" />
+						<Skeleton class="h-4 w-28" />
+					</div>
+					<div class="flex justify-between">
+						<Skeleton class="h-4 w-24" />
+						<Skeleton class="h-4 w-32" />
+					</div>
+					<div class="flex justify-between">
+						<Skeleton class="h-4 w-20" />
+						<Skeleton class="h-4 w-28" />
+					</div>
+				</div>
+			</div>
+		{/if}
+
+		<!-- Receipt Preview -->
+		{#if receiptFetched}
+			<div class="rounded-xl border border-primary/25 bg-primary/5 p-5">
+				<p class="mb-3 flex items-center gap-2 text-xs font-bold uppercase tracking-wide text-primary">
+					<Check class="size-4" /> Verified — Student Details
+				</p>
+				<div class="flex flex-col gap-2">
+					<!-- Full Name -->
+					<div class="flex justify-between gap-4 border-b border-primary/10 pb-2">
+						<span class="text-sm text-muted-foreground">Full Name</span>
+						<span class="text-right font-medium text-sm">
+							{[surname, firstName, otherName].filter(Boolean).join(' ') || '—'}
+						</span>
+					</div>
+					
+					<!-- Matric Number -->
+					<div class="flex justify-between gap-4 border-b border-primary/10 pb-2">
+						<span class="text-sm text-muted-foreground">Matric Number</span>
+						<span class="text-right font-medium text-sm">{matricNumber || '—'}</span>
+					</div>
+					
+					<!-- JAMB Registration -->
+					<div class="flex justify-between gap-4 border-b border-primary/10 pb-2">
+						<span class="text-sm text-muted-foreground">JAMB Registration</span>
+						<span class="text-right font-medium text-sm">{jambRegNo || '—'}</span>
+					</div>
+					
+					<!-- College/Faculty -->
+					<div class="flex justify-between gap-4 border-b border-primary/10 pb-2">
+						<span class="text-sm text-muted-foreground">College / Faculty</span>
+						<span class="text-right font-medium text-sm">{college || '—'}</span>
+					</div>
+					
+					<!-- Department -->
+					<div class="flex justify-between gap-4 border-b border-primary/10 pb-2">
+						<span class="text-sm text-muted-foreground">Department</span>
+						<span class="text-right font-medium text-sm">{department || '—'}</span>
+					</div>
+					
+					<!-- Level -->
+					<div class="flex justify-between gap-4 border-b border-primary/10 pb-2">
+						<span class="text-sm text-muted-foreground">Level</span>
+						<span class="text-right font-medium text-sm">{level || '—'}</span>
+					</div>
+					
+					<!-- Session -->
+					<div class="flex justify-between gap-4 border-b border-primary/10 pb-2">
+						<span class="text-sm text-muted-foreground">Session</span>
+						<span class="text-right font-medium text-sm">{receiptRaw?.session || '—'}</span>
+					</div>
+					
+					<!-- Receipt Number -->
+					<div class="flex justify-between gap-4 border-b border-primary/10 pb-2 last:border-0 last:pb-0">
+						<span class="text-sm text-muted-foreground">Receipt Number</span>
+						<span class="text-right font-medium text-sm">{receiptRaw?.receiptNo || '—'}</span>
+					</div>
+				</div>
+			</div>
+		{/if}
+
+		<Button type="button" size="lg" class="h-12 w-full text-base" onclick={nextStep} disabled={!receiptFetched}>
+			{#if !receiptFetched}Verify Receipt First{:else}Continue →{/if}
+		</Button>
+		<p class="text-center text-sm text-muted-foreground">
+			Already have an account? <a href="/login" class="text-primary hover:underline">Sign in</a>
+		</p>
 	</div>
 {/if}
-
-			<Button type="button" size="lg" class="h-12 w-full text-base" onclick={nextStep} disabled={!receiptFetched}>
-				{#if !receiptFetched}Verify Receipt First{:else}Continue →{/if}
-			</Button>
-			<p class="text-center text-sm text-muted-foreground">
-				Already have an account? <a href="/login" class="text-primary hover:underline">Sign in</a>
-			</p>
-		</div>
-	{/if}
 
 <!-- ══ STEP 2 — details ══ -->
 {#if currentStep === 2}
