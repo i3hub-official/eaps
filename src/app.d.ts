@@ -1,13 +1,19 @@
 // src/app.d.ts
+import type { User, Session } from '$lib/server/auth/types';
+
 declare global {
   namespace App {
-    interface Locals {}
-    interface PageData {}
     interface Error {
       message: string;
-      retryAfter?: number;
+      code?: string;
     }
-    interface Platform {}
+    interface Locals {
+      user: User | null;
+      session: Session | null;
+    }
+    // interface PageData {}
+    // interface PageState {}
+    // interface Platform {}
   }
 }
 

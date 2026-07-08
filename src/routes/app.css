@@ -1,349 +1,136 @@
 /* src/app.css */
 
 @import 'tailwindcss';
+
+@import "tw-animate-css";
+
+@import "shadcn-svelte/tailwind.css";
+
+@import "@fontsource-variable/inter";
+
+@custom-variant dark (&:is(.dark *));
 @plugin '@tailwindcss/forms';
 @plugin '@tailwindcss/typography';
 
-/* ── Design tokens ─────────────────────────────────────────────────────────── */
 :root {
-  /* GREEN BRAND — primary shifted to emerald */
-  --color-primary: #059669;
-  --color-primary-hover: #047857;
-  --color-primary-subtle: #ecfdf5;
-  --color-focus: #10b981;
-  --color-primary-light: #34d399;
-  --color-primary-glow: rgba(16, 185, 129, 0.15);
-  --blue-soft: rgba(59, 130, 246, 0.1);
-  --blue-accent: #3b82f6;
-  --green-soft: rgba(34, 197, 94, 0.1);
-  --green-accent: #22c55e;
-  --purple-soft: rgba(168, 85, 247, 0.1);
-  --purple-accent: #a855f7;
-  --orange-soft: rgba(251, 146, 60, 0.1);
-  --orange-accent: #fb923c;
-  --pink-soft: rgba(236, 72, 153, 0.1);
-  --pink-accent: #ec4899;
-  --red-soft: rgba(239, 68, 68, 0.1);
-  --red-accent: #ef4444;
-  --yellow-soft: rgba(234, 179, 8, 0.1);
-  --yellow-accent: #eab308;
-  --gray-soft: rgba(107, 114, 128, 0.1);
-  --gray-accent: #6b7280;
-
-/* Indigo scale — used by admin portal */
-  --ad50:  #eef2ff;
-  --ad100: #e0e7ff;
-  --ad500: #6366f1;
-  --ad600: #4f46e5;
-  --ad700: #4338ca;
-  --ad-soft: rgba(99, 102, 241, 0.1);
-  --ad-accent: #6366f1;
-
-  /* Sky scale — used by dean portal */
-  --dn50:  #f0f9ff;
-  --dn100: #e0f2fe;
-  --dn500: #0ea5e9;
-  --dn600: #0284c7;
-  --dn700: #0369a1;
-  --dn-soft: rgba(14, 165, 233, 0.1);
-  --dn-accent: #0ea5e9;
-
-  /* Amber/orange scale — used by exam officer portal */
-  --eo50:  #fff7ed;
-  --eo100: #ffedd5;
-  --eo500: #f97316;
-  --eo600: #ea580c;
-  --eo700: #c2410c;
-  --eo-soft: rgba(249, 115, 22, 0.1);
-  --eo-accent: #f97316;
-
-  /* Rose scale — used by VC/DVC portal */
-  --vc50:  #fff1f2;
-  --vc100: #ffe4e6;
-  --vc500: #e11d48;
-  --vc600: #be123c;
-  --vc700: #9f1239;
-  --vc-soft: rgba(225, 29, 72, 0.1);
-  --vc-accent: #e11d48;
-
-  /* Fixed "ink" tokens for permanent dark UI bands — nav/footer/hero band
-     on the public landing page. Unlike --g900 etc, these do NOT invert
-     in dark mode: a dark brand band should stay dark either way. */
-  --ink-900: #0b1e3d;
-  --ink-800: #14203a;
-  --ink-400: #94a3b8;
-  --ink-300: #cbd5e1;
-
-  /* Surfaces */
-  --color-bg: #f8fafc;
-  --color-surface: #ffffff;
-  --color-surface-hover: #f1f5f9;
-  --color-border: #e2e8f0;
-  --color-text: #0f172a;
-  --color-muted: #64748b;
-
-  /* Aliases used by kiosk + components */
-  --bg-base: var(--color-bg);
-  --bg-surface: var(--color-surface);
-  --bg-muted: #f1f5f9;
-
-  /* Status colours */
-  --color-danger: #ef4444;
-  --color-danger-hover: #dc2626;
-  --color-warning: #f59e0b;
-  --color-success: #22c55e;
-  --color-info: #3b82f6;
-
-  /* Green scale — used by student portal + kiosk */
-  --g50:  #f0fdf4;
-  --g100: #dcfce7;
-  --g200: #bbf7d0;
-  --g300: #86efac;
-  --g400: #4ade80;
-  --g500: #22c55e;
-  --g600: #16a34a;
-  --g700: #15803d;
-  --g800: #166534;
-  --g900: #14532d;
-
-  /* Purple scale — used by lecturer portal */
-  --lc50:  #faf5ff;
-  --lc100: #f3e8ff;
-  --lc200: #e9d5ff;
-  --lc300: #d8b4fe;
-  --lc400: #c084fc;
-  --lc500: #a855f7;
-  --lc600: #9333ea;
-  --lc700: #7e22ce;
-  --lc800: #6b21a8;
-  --lc-soft: rgba(139, 92, 246, 0.1);
-  --lc-accent: #8b5cf6;
-  --lecturer-accent: #8b5cf6;
-
-  /* Blue scale — used by invigilator portal */
-  --iv50:  #eff6ff;
-  --iv100: #dbeafe;
-  --iv500: #3b82f6;
-  --iv600: #2563eb;
-  --iv700: #1d4ed8;
-  --iv-soft: rgba(59, 130, 246, 0.1);
-  --iv-accent: #3b82f6;
-
-  /* Legacy aliases */
-  --green-soft: rgba(16, 185, 129, 0.1);
-  --green-700: #047857;
+	--background: oklch(1 0 0);
+	--foreground: oklch(0.145 0 0);
+	--card: oklch(1 0 0);
+	--card-foreground: oklch(0.145 0 0);
+	--popover: oklch(1 0 0);
+	--popover-foreground: oklch(0.145 0 0);
+	--primary: oklch(0.205 0 0);
+	--primary-foreground: oklch(0.985 0 0);
+	--secondary: oklch(0.97 0 0);
+	--secondary-foreground: oklch(0.205 0 0);
+	--muted: oklch(0.97 0 0);
+	--muted-foreground: oklch(0.556 0 0);
+	--accent: oklch(0.97 0 0);
+	--accent-foreground: oklch(0.205 0 0);
+	--destructive: oklch(0.577 0.245 27.325);
+	--border: oklch(0.922 0 0);
+	--input: oklch(0.922 0 0);
+	--ring: oklch(0.708 0 0);
+	--chart-1: oklch(0.87 0 0);
+	--chart-2: oklch(0.556 0 0);
+	--chart-3: oklch(0.439 0 0);
+	--chart-4: oklch(0.371 0 0);
+	--chart-5: oklch(0.269 0 0);
+	--radius: 0.625rem;
+	--sidebar: oklch(0.985 0 0);
+	--sidebar-foreground: oklch(0.145 0 0);
+	--sidebar-primary: oklch(0.205 0 0);
+	--sidebar-primary-foreground: oklch(0.985 0 0);
+	--sidebar-accent: oklch(0.97 0 0);
+	--sidebar-accent-foreground: oklch(0.205 0 0);
+	--sidebar-border: oklch(0.922 0 0);
+	--sidebar-ring: oklch(0.708 0 0);
 }
 
-[data-theme="dark"] {
-  --color-primary: #10b981;
-  --color-primary-hover: #059669;
-  --color-primary-subtle: #064e3b;
-  --color-focus: #34d399;
-  --color-primary-light: #6ee7b7;
-  --color-primary-glow: rgba(16, 185, 129, 0.2);
-
-  --color-bg: #0f172a;
-  --color-surface: #1e293b;
-  --color-surface-hover: #293548;
-  --color-border: #334155;
-  --color-text: #f1f5f9;
-  --color-muted: #94a3b8;
-
-  --bg-base: var(--color-bg);
-  --bg-surface: var(--color-surface);
-  --bg-muted: #1e293b;
-
-  --color-danger: #f87171;
-  --color-danger-hover: #ef4444;
-  --color-warning: #fbbf24;
-  --color-success: #4ade80;
-  --color-info: #60a5fa;
-
-  --blue-soft: rgba(59, 130, 246, 0.1);
-  --blue-accent: #3b82f6;
-  --green-soft: rgba(34, 197, 94, 0.1);
-  --green-accent: #22c55e;
-  --purple-soft: rgba(168, 85, 247, 0.1);
-  --purple-accent: #a855f7;
-  --orange-soft: rgba(251, 146, 60, 0.1);
-  --orange-accent: #fb923c;
-  --pink-soft: rgba(236, 72, 153, 0.1);
-  --pink-accent: #ec4899;
-  --red-soft: rgba(239, 68, 68, 0.1);
-  --red-accent: #ef4444;
-  --yellow-soft: rgba(234, 179, 8, 0.1);
-  --yellow-accent: #eab308;
-  --gray-soft: rgba(107, 114, 128, 0.1);
-  --gray-accent: #6b7280;
-
-  /* Green scale dark */
-  --g50:  #052e16;
-  --g100: #14532d;
-  --g200: #166534;
-  --g300: #15803d;
-  --g400: #16a34a;
-  --g500: #22c55e;
-  --g600: #4ade80;
-  --g700: #86efac;
-  --g800: #bbf7d0;
-  --g900: #dcfce7;
-  --ad-accent: #818cf8;
-  --dn-accent: #38bdf8;
-  --eo-accent: #fb923c;
-  --vc-accent: #fb7185;
-
-  /* Purple scale dark */
-  --lc50:  #2e1065;
-  --lc100: #3b0764;
-  --lc200: #4c1d95;
-  --lc300: #5b21b6;
-  --lc400: #6d28d9;
-  --lc500: #7c3aed;
-  --lc600: #8b5cf6;
-  --lc700: #a78bfa;
-  --lc800: #c4b5fd;
-  --lc-soft: rgba(139, 92, 246, 0.15);
-  --lc-accent: #a78bfa;
-  --lecturer-accent: #a78bfa;
-
-  /* Blue scale dark */
-  --iv50:  #1e3a5f;
-  --iv100: #1e40af;
-  --iv500: #60a5fa;
-  --iv600: #93c5fd;
-  --iv700: #bfdbfe;
-  --iv-soft: rgba(59, 130, 246, 0.15);
-  --iv-accent: #60a5fa;
-
-  --green-soft: rgba(16, 185, 129, 0.15);
-  --green-700: #34d399;
+.dark {
+	--background: oklch(0.145 0 0);
+	--foreground: oklch(0.985 0 0);
+	--card: oklch(0.205 0 0);
+	--card-foreground: oklch(0.985 0 0);
+	--popover: oklch(0.205 0 0);
+	--popover-foreground: oklch(0.985 0 0);
+	--primary: oklch(0.922 0 0);
+	--primary-foreground: oklch(0.205 0 0);
+	--secondary: oklch(0.269 0 0);
+	--secondary-foreground: oklch(0.985 0 0);
+	--muted: oklch(0.269 0 0);
+	--muted-foreground: oklch(0.708 0 0);
+	--accent: oklch(0.269 0 0);
+	--accent-foreground: oklch(0.985 0 0);
+	--destructive: oklch(0.704 0.191 22.216);
+	--border: oklch(1 0 0 / 10%);
+	--input: oklch(1 0 0 / 15%);
+	--ring: oklch(0.556 0 0);
+	--chart-1: oklch(0.87 0 0);
+	--chart-2: oklch(0.556 0 0);
+	--chart-3: oklch(0.439 0 0);
+	--chart-4: oklch(0.371 0 0);
+	--chart-5: oklch(0.269 0 0);
+	--sidebar: oklch(0.205 0 0);
+	--sidebar-foreground: oklch(0.985 0 0);
+	--sidebar-primary: oklch(0.488 0.243 264.376);
+	--sidebar-primary-foreground: oklch(0.985 0 0);
+	--sidebar-accent: oklch(0.269 0 0);
+	--sidebar-accent-foreground: oklch(0.985 0 0);
+	--sidebar-border: oklch(1 0 0 / 10%);
+	--sidebar-ring: oklch(0.556 0 0);
 }
 
-/* ── Reset ─────────────────────────────────────────────────────────────────── */
-*,
-*::before,
-*::after {
-  box-sizing: border-box;
+@theme inline {
+	--font-sans: 'Inter Variable', sans-serif;
+	--color-sidebar-ring: var(--sidebar-ring);
+	--color-sidebar-border: var(--sidebar-border);
+	--color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+	--color-sidebar-accent: var(--sidebar-accent);
+	--color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+	--color-sidebar-primary: var(--sidebar-primary);
+	--color-sidebar-foreground: var(--sidebar-foreground);
+	--color-sidebar: var(--sidebar);
+	--color-chart-5: var(--chart-5);
+	--color-chart-4: var(--chart-4);
+	--color-chart-3: var(--chart-3);
+	--color-chart-2: var(--chart-2);
+	--color-chart-1: var(--chart-1);
+	--color-ring: var(--ring);
+	--color-input: var(--input);
+	--color-border: var(--border);
+	--color-destructive: var(--destructive);
+	--color-accent-foreground: var(--accent-foreground);
+	--color-accent: var(--accent);
+	--color-muted-foreground: var(--muted-foreground);
+	--color-muted: var(--muted);
+	--color-secondary-foreground: var(--secondary-foreground);
+	--color-secondary: var(--secondary);
+	--color-primary-foreground: var(--primary-foreground);
+	--color-primary: var(--primary);
+	--color-popover-foreground: var(--popover-foreground);
+	--color-popover: var(--popover);
+	--color-card-foreground: var(--card-foreground);
+	--color-card: var(--card);
+	--color-foreground: var(--foreground);
+	--color-background: var(--background);
+	--radius-sm: calc(var(--radius) * 0.6);
+	--radius-md: calc(var(--radius) * 0.8);
+	--radius-lg: var(--radius);
+	--radius-xl: calc(var(--radius) * 1.4);
+	--radius-2xl: calc(var(--radius) * 1.8);
+	--radius-3xl: calc(var(--radius) * 2.2);
+	--radius-4xl: calc(var(--radius) * 2.6);
 }
 
-html {
-  font-size: 16px;
-  -webkit-text-size-adjust: 100%;
-}
-
-body {
-  margin: 0;
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto,
-    'Helvetica Neue', Arial, sans-serif;
-  background: var(--color-bg);
-  color: var(--color-text);
-  line-height: 1.5;
-  min-height: 100vh;
-}
-
-h1, h2, h3, h4 {
-  line-height: 1.25;
-}
-
-a {
-  color: inherit;
-  text-decoration: none;
-}
-
-button, input, select, textarea {
-  font-family: inherit;
-  font-size: inherit;
-}
-
-img {
-  max-width: 100%;
-  display: block;
-}
-
-/* ── Scrollbar ─────────────────────────────────────────────────────────────── */
-::-webkit-scrollbar {
-  width: 6px;
-  height: 6px;
-}
-
-::-webkit-scrollbar-track {
-  background: transparent;
-}
-
-::-webkit-scrollbar-thumb {
-  background: var(--color-border);
-  border-radius: 999px;
-}
-
-/* ── Focus ring ────────────────────────────────────────────────────────────── */
-:focus-visible {
-  outline: 2px solid var(--color-focus, #10b981);
-  outline-offset: 2px;
-}
-
-/* ── Utility ───────────────────────────────────────────────────────────────── */
-.sr-only {
-  position: absolute;
-  width: 1px;
-  height: 1px;
-  padding: 0;
-  margin: -1px;
-  overflow: hidden;
-  clip: rect(0, 0, 0, 0);
-  border: 0;
-}
-
-/* ── Badge variants ────────────────────────────────────────────────────────── */
-.badge-indigo { background: var(--ad100); color: var(--ad700); }
-.badge-sky    { background: var(--dn100); color: var(--dn700); }
-.badge-orange { background: var(--eo100); color: var(--eo700); }
-.badge-rose   { background: var(--vc100); color: var(--vc700); }
-.badge-red    { background: #fee2e2; color: #b91c1c; }
-.badge-yellow { background: #fef9c3; color: #92400e; }
-.badge-blue   { background: #dbeafe; color: #1e40af; }
-.badge-green  { background: var(--g100); color: var(--g700); }
-.badge-purple { background: var(--lc100); color: var(--lc700); }
-.badge-gray   { background: var(--color-surface-hover); color: var(--color-muted); }
-
-
-[data-theme="dark"] .badge-indigo { background: var(--ad50); color: var(--ad500); }
-[data-theme="dark"] .badge-sky    { background: var(--dn50); color: var(--dn500); }
-[data-theme="dark"] .badge-orange { background: var(--eo50); color: var(--eo500); }
-[data-theme="dark"] .badge-rose   { background: var(--vc50); color: var(--vc500); }
-[data-theme="dark"] .badge-red    { background: #7f1d1d; color: #fca5a5; }
-[data-theme="dark"] .badge-yellow { background: #78350f; color: #fbbf24; }
-[data-theme="dark"] .badge-blue   { background: #1e3a5f; color: #93c5fd; }
-[data-theme="dark"] .badge-green  { background: var(--g100); color: var(--g700); }
-[data-theme="dark"] .badge-purple { background: var(--lc50); color: var(--lc700); }
-[data-theme="dark"] .badge-gray   { background: var(--color-surface-hover); color: var(--color-muted); }
-
-/* ── Tailwind Theme Extensions ─────────────────────────────────────────────── */
-@theme {
-  --color-primary: var(--color-primary);
-  --color-primary-hover: var(--color-primary-hover);
-  --color-primary-subtle: var(--color-primary-subtle);
-  --color-primary-light: var(--color-primary-light);
-
-  --color-bg: var(--color-bg);
-  --color-surface: var(--color-surface);
-  --color-surface-hover: var(--color-surface-hover);
-  --color-border: var(--color-border);
-  --color-text: var(--color-text);
-  --color-muted: var(--color-muted);
-
-  --font-sans: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto,
-    'Helvetica Neue', Arial, sans-serif;
-
-  --animate-float: float 3s ease-in-out infinite;
-  --animate-float-delayed: float 3s ease-in-out infinite 1.5s;
-
-  @keyframes float {
-    0%, 100% { transform: translateY(0px); }
-    50%       { transform: translateY(-10px); }
-  }
-
-  @keyframes pulse-soft {
-    0%, 100% { opacity: 1; }
-    50%       { opacity: 0.5; }
-  }
+@layer base {
+	* {
+		@apply border-border outline-ring/50;
+	}
+	body {
+		@apply bg-background text-foreground;
+	}
+	html {
+		@apply font-sans;
+	}
 }
