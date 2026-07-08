@@ -106,7 +106,7 @@
 	{#if step === 'identifier'}
 		<form class="flex flex-col gap-6" onsubmit={goToPassword}>
 			<div class="flex flex-col gap-5">
-				<Label for="identifier" class="text-sm font-semibold">Email</Label>
+				<Label for="identifier" class="text-sm font-semibold">e-Mail Address</Label>
 				<Input
 					bind:this={identifierInputEl}
 					bind:value={identifier}

@@ -291,6 +291,5 @@ signup: async ({ request, cookies, getClientAddress }) => {
 
     // throw redirect(303, '/student');
 	return { success: true };
-
 },
 };
