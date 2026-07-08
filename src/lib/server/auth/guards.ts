@@ -13,7 +13,7 @@ import {
   getStudentByToken,
   STAFF_COOKIE,
   STUDENT_COOKIE,
-} from './index'
+} from '../../components/index'
 import type { StaffRole } from '@prisma/client'
 
 // ─── Student guard ───────────────────────────────────────────────────────────

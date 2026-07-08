@@ -21,9 +21,9 @@ declare global {
 
 export const handle: Handle = async ({ event, resolve }) => {
   // No more landing page — send root straight to login
-  if (event.url.pathname === '/') {
-    redirect(307, '/login')
-  }
+  // if (event.url.pathname === '/') {
+  //   redirect(307, '/login')
+  // }
 
   // Attach WS upgrade handler to the Node server on first request
   if (!globalThis.__wsAttached) {
