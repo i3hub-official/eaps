@@ -54,7 +54,7 @@
 	<main class="flex flex-1 flex-col items-center justify-center gap-12 px-6 py-16 sm:px-10">
 		<div class="flex max-w-xl flex-col items-center gap-3 text-center">
 			<h1 class="text-3xl font-semibold tracking-tight sm:text-4xl">
-				Michael Okpara University — e-Test
+				Michael Okpara University <br /> e-Test
 			</h1>
 			<p class="text-muted-foreground">
 				Secure computer-based testing, invigilation, and results management for the university

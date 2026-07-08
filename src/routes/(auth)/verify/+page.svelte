@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { AuthShell } from '$lib/components/auth';
+	import { AuthShell } from '$lib/components/index.js';
 	import * as InputOTP from '$lib/components/ui/input-otp/index.js';
 	import { Button } from '$lib/components/ui/button/index.js';
 

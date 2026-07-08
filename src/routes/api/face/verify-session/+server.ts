@@ -1,67 +1,65 @@
+// ─────────────────────────────────────────────────────────────────────────────
 // src/routes/api/face/verify-session/+server.ts
-// POST — records a successful face verification against the student's
-// assessment session (stamps AssessmentSession.faceVerifiedAt/faceScore).
-//
-// ASSUMPTION: the client calls this with `examId` (really assessmentId) and
-// no sessionId, matching the current +page.svelte. It looks up the most
-// recent PENDING/IN_PROGRESS session for that student+assessment. If you'd
-// rather have the client send sessionId directly (more precise, avoids the
-// lookup), tell me and I'll swap the priority.
+// POST — records the face verification result on the active assessment session.
+// Called by the verify page after a successful client-side match.
 
-import { json, error } from '@sveltejs/kit';
-import type { RequestHandler } from './$types';
-import { requireStudent } from '$lib/server/auth/guards.js';
-import { getPrismaClient } from '$lib/server/db/index.js';
+import { json as j2, error as e2 } from '@sveltejs/kit'
+import type { RequestHandler as RH2 } from './$types'
+import { requireStudent as rs2 } from '$lib/server/auth/guards.js'
+import { getPrismaClient as gpc2 } from '$lib/server/db/index.js'
+import { audit } from '$lib/server/audit.js'
 
-export const POST: RequestHandler = async (event) => {
-  const { student } = await requireStudent(event);
-  const body = await event.request.json();
-  const { verified, similarityScore, examId, sessionId } = body;
+export const POST: RH2 = async (event) => {
+  const { student } = await rs2(event)
+  const body = await event.request.json()
+
+  const {
+    verified,
+    similarityScore,
+    antispoofScore,
+    livenessScore,
+    examId,
+  } = body as {
+    verified:        boolean
+    similarityScore: number
+    antispoofScore:  number
+    livenessScore:   number
+    examId:          string | null
+  }
 
   if (!verified) {
-    return json({ recorded: false, reason: 'not verified' });
-  }
-  if (typeof similarityScore !== 'number' || similarityScore < 0 || similarityScore > 100) {
-    error(400, 'Invalid similarityScore');
+    return j2({ recorded: false })
   }
 
-  const prisma = await getPrismaClient();
+  const prisma = await gpc2()
 
-  let session = null;
-  if (sessionId) {
-    session = await prisma.assessmentSession.findUnique({ where: { id: sessionId } });
-    if (!session || session.studentId !== student.id) error(403, 'Forbidden');
-  } else if (examId) {
-    session = await prisma.assessmentSession.findFirst({
-      where: {
-        assessmentId: examId,
-        studentId: student.id,
-        status: { in: ['PENDING', 'IN_PROGRESS'] },
+  // Find the active session for this student + exam
+  const session = examId
+    ? await prisma.assessmentSession.findFirst({
+        where: {
+          assessmentId: examId,
+          studentId:    student.id,
+          status:       { in: ['PENDING', 'IN_PROGRESS', 'PAUSED'] },
+        },
+        orderBy: { createdAt: 'desc' },
+      })
+    : null
+
+  if (session) {
+    await prisma.assessmentSession.update({
+      where: { id: session.id },
+      data: {
+        faceVerifiedAt: new Date(),
+        faceScore:      similarityScore / 100, // store as 0–1
       },
-      orderBy: { createdAt: 'desc' },
-    });
-  } else {
-    error(400, 'examId or sessionId required');
+    })
   }
 
-  if (!session) {
-    // No session exists yet to attach this to — can happen if verification
-    // runs before session creation. Nothing to persist server-side in that
-    // case; flagging as a known gap rather than silently no-op-ing forever.
-    return json({ recorded: false, reason: 'no matching session found' });
-  }
+  await audit.student(student.id, 'FACE_VERIFIED', 'FaceDescriptor', {
+    entityId:  student.id,
+    afterData: { similarityScore, antispoofScore, livenessScore, examId },
+    ipAddress: event.getClientAddress(),
+  })
 
-  if (['SUBMITTED', 'TIMED_OUT', 'DISQUALIFIED'].includes(session.status)) {
-    return json({ recorded: false, reason: 'session already closed' });
-  }
-
-  const updated = await prisma.assessmentSession.update({
-    where: { id: session.id },
-    data: {
-      faceVerifiedAt: new Date(),
-      faceScore: similarityScore / 100,
-    },
-  });
-
-  return json({ recorded: true, sessionId: updated.id, faceScore: updated.faceScore });
-};
+  return j2({ recorded: true, sessionId: session?.id ?? null })
+}
