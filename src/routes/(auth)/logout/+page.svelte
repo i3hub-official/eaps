@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { Button } from '$lib/components/ui/button/index.js';
+	import { ThemeToggle } from '$lib/components/ui/theme-toggle/index.js';
 	import ShieldCheck from '@lucide/svelte/icons/shield-check';
 </script>
 
@@ -7,7 +8,11 @@
 	<title>Signing out — MOUAU e-Test</title>
 </svelte:head>
 
-<main class="flex min-h-screen flex-col items-center justify-center gap-6 bg-background px-6 text-center">
+<main class="relative flex min-h-screen flex-col items-center justify-center gap-6 bg-background px-6 text-center">
+	<div class="absolute right-5 top-5">
+		<ThemeToggle />
+	</div>
+
 	<div class="flex size-12 items-center justify-center rounded-md bg-primary">
 		<ShieldCheck class="size-6 text-primary-foreground" />
 	</div>

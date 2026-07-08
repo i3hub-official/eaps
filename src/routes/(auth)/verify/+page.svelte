@@ -1,3 +1,4 @@
+<!-- src/routes/(auth)/verify/+page.svelte -->
 <script lang="ts">
 	import { AuthShell } from '$lib/components/index.js';
 	import * as InputOTP from '$lib/components/ui/input-otp/index.js';
@@ -11,13 +12,19 @@
 	<title>Verify code — MOUAU e-Test</title>
 </svelte:head>
 
-<AuthShell heading="Verify your account" subheading="Verifying your account — enter the 6-digit code we emailed you">
+<AuthShell heading="Verify your account" subheading="Verifying your account — enter the 8-digit code we emailed you">
 	<form method="POST" class="flex flex-col gap-5">
 		<input type="hidden" name="code" {value} />
-		<InputOTP.Root maxlength={6} bind:value class="justify-center">
+		<InputOTP.Root maxlength={8} bind:value class="justify-center">
 			{#snippet children({ cells }: { cells: Array<Record<string, unknown>> })}
 				<InputOTP.Group>
-					{#each cells as cell (cell)}
+					{#each cells.slice(0, 4) as cell (cell)}
+						<InputOTP.Slot {cell} />
+					{/each}
+				</InputOTP.Group>
+				<InputOTP.Separator />
+				<InputOTP.Group>
+					{#each cells.slice(4, 8) as cell (cell)}
 						<InputOTP.Slot {cell} />
 					{/each}
 				</InputOTP.Group>
