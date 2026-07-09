@@ -1,5 +1,6 @@
 <script lang="ts">
 	import * as Sidebar from '$lib/components/ui/sidebar/index.js';
+		import { ThemeToggle } from '$lib/components/ui/theme-toggle/index.js';
 	import * as DropdownMenu from '$lib/components/ui/dropdown-menu/index.js';
 	import { Separator } from '$lib/components/ui/separator/index.js';
 	import { Button } from '$lib/components/ui/button/index.js';
@@ -53,11 +54,13 @@
 
 		<SessionClock class="hidden sm:flex" />
 
-		<Button variant="outline" size="sm" class="hidden gap-2 text-muted-foreground md:flex">
+		<!-- <Button variant="outline" size="sm" class="hidden gap-2 text-muted-foreground md:flex">
 			<Search class="size-3.5" />
 			Search
 			<kbd class="rounded border bg-muted px-1 font-mono text-[10px]">⌘K</kbd>
-		</Button>
+		</Button> -->
+
+		<ThemeToggle />
 
 		<Button variant="ghost" size="icon" class="relative" aria-label="Notifications">
 			<Bell class="size-4.5" />
@@ -97,4 +100,5 @@
 			</DropdownMenu.Content>
 		</DropdownMenu.Root>
 	</div>
+	
 </header>

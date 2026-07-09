@@ -1,7 +1,6 @@
 <!-- src/routes/student/+page.svelte -->
 <script lang="ts">
 	import { Topbar } from '$lib/components/dashboard';
-	import { ThemeToggle } from '$lib/components/ui/theme-toggle/index.js';
 	import { Button } from '$lib/components/ui/button/index.js';
 	import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '$lib/components/ui/card/index.js';
 	import { Badge } from '$lib/components/ui/badge/index.js';
@@ -141,7 +140,6 @@
 			{/if}
 			Refresh
 		</Button>
-		<ThemeToggle />
 	{/snippet}
 </Topbar>
 
