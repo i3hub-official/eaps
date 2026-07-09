@@ -141,6 +141,7 @@ export const navByRole: Record<Role, NavSection[]> = {
 				{ label: 'Analytics', href: '/admin/analytics', icon: BarChart3 },
 				{ label: 'Reports', href: '/admin/reports', icon: FileText },
 				{ label: 'Audit logs', href: '/admin/audit-logs', icon: ScrollText },
+				{ label: 'Face duplicates', href: '/admin/face-duplicates', icon: ScanFace },
 				{ label: 'Settings', href: '/admin/settings', icon: Settings }
 			]
 		}

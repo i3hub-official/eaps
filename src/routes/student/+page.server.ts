@@ -11,7 +11,7 @@ export const load: PageServerLoad = async ({ locals }) => {
 
 	// ─── Fetch Dashboard Data ──────────────────────────────────────────────
 
-	const [recentAssessments, upcomingAssessments, courseRegistrations, notifications, fullStudent] = await Promise.all([
+	const [recentAssessments, upcomingAssessments, courseRegistrations, notifications, fullStudent, faceDescriptor] = await Promise.all([
 		// Recent assessments (last 30 days)
 		prisma.assessmentSession.findMany({
 			where: {
@@ -68,6 +68,18 @@ export const load: PageServerLoad = async ({ locals }) => {
 			where: { id: student.id },
 			include: { department: true, programme: true, currentLevel: true },
 		}),
+
+		// The actual source of truth for "is this student enrolled" — 
+		// faceEnrolledAt is just a timestamp set once at enrollment time and
+		// never cleared if the descriptor row is later deleted (e.g. an
+		// admin removing a fraudulent duplicate enrollment). A dangling
+		// faceEnrolledAt with no matching FaceDescriptor would otherwise
+		// make the dashboard claim the student is enrolled when they
+		// actually have no descriptor on file to verify against.
+		prisma.faceDescriptor.findUnique({
+			where: { studentId: student.id },
+			select: { id: true },
+		}),
 	]);
 
 	// ─── Calculate Dashboard Metrics ──────────────────────────────────────
@@ -91,6 +103,9 @@ export const load: PageServerLoad = async ({ locals }) => {
 		entryYear: fullStudent?.entryYear ?? null,
 		createdAt: fullStudent?.createdAt ?? null,
 		faceEnrolledAt: fullStudent?.faceEnrolledAt ?? null,
+		// Actual enrollment state — a FaceDescriptor row must exist, not
+		// just a non-null faceEnrolledAt timestamp.
+		faceEnrolled: !!faceDescriptor,
 		department: fullStudent?.department ?? null,
 		programme: fullStudent?.programme ?? null,
 		currentLevel: fullStudent?.currentLevel ?? null,
