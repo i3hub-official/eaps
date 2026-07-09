@@ -86,6 +86,7 @@ async function loadSessionFromCookies(
         matricNumber: student.matricNumber,
         email: safeDecrypt(() => revealEmail(student.email), ''),
         firstName: safeDecrypt(() => revealName(student.firstName), ''),
+        otherNames: safeDecrypt(() => revealName(student.otherNames), ''),
         lastName: safeDecrypt(() => revealName(student.lastName), ''),
         departmentId: student.departmentId,
         programmeId: student.programmeId,

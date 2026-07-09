@@ -8,7 +8,7 @@
 //   const staff   = await requireExamOfficer(locals.user)
 //   const staff   = await requirePermission(locals.user, 'exam:create')
 
-import { error } from '@sveltejs/kit'
+import { error, redirect } from '@sveltejs/kit'
 import type { User, AuthenticatedStaff, AuthenticatedStudent } from './types'
 import type { StaffRole } from '@prisma/client'
 
@@ -16,14 +16,14 @@ import type { StaffRole } from '@prisma/client'
 
 export async function requireStudent(user: User | null): Promise<AuthenticatedStudent> {
   if (!user || user.type !== 'student') {
-    throw error(401, 'Not authenticated')
+    throw redirect(303, '/login')
   }
   return user
 }
 
 export async function requireStaff(user: User | null): Promise<AuthenticatedStaff> {
   if (!user || user.type !== 'staff') {
-    throw error(401, 'Not authenticated')
+    throw redirect(303, '/login')
   }
   return user
 }
@@ -32,7 +32,7 @@ export async function requireStaff(user: User | null): Promise<AuthenticatedStaf
 
 function requireStaffRole(user: User | null, allowed: StaffRole[]): AuthenticatedStaff {
   if (!user || user.type !== 'staff') {
-    throw error(401, 'Not authenticated')
+    throw redirect(303, '/login')
   }
   if (!allowed.includes(user.primaryRole as StaffRole)) {
     throw error(403, 'Access denied')

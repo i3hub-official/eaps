@@ -49,14 +49,10 @@
 
 	// ─── Computed ────────────────────────────────────────────────────────────
 	let fullName = $derived(
-		student ? `${student.firstName} ${student.lastName}` : ''
+		student ? `${student.lastName} ${student.firstName} ${student.otherNames}` : ''
 	);
 
-	let formattedDate = $derived(
-		student?.createdAt ? format(new Date(student.createdAt), 'PPP') : ''
-	);
-
-	let completedCount = $derived(
+		let completedCount = $derived(
 		recentAssessments.filter((a: any) => a.status === 'SUBMITTED').length
 	);
 

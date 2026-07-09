@@ -12,6 +12,7 @@ export interface AuthenticatedStudent {
   matricNumber: string
   email: string
   firstName: string
+  otherNames: string
   lastName: string
   departmentId: string
   programmeId: string

@@ -96,7 +96,8 @@ export const load: PageServerLoad = async ({ locals }) => {
 	const studentView = {
 		id: student.id,
 		firstName: student.firstName,
-		lastName: student.lastName,
+		otherNames: student.otherNames,
+		lastName: student.lastName, 	 	
 		email: student.email,
 		matricNumber: student.matricNumber,
 		status: fullStudent?.status ?? student.status,

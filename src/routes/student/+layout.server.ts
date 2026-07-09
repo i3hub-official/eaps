@@ -6,12 +6,13 @@ export const load: LayoutServerLoad = async ({ locals }) => {
 	const student = await requireStudent(locals.user)
 
 	const firstName = student.firstName
+	const otherName = student.otherNames
 	const lastName = student.lastName
 
 	return {
 		user: {
-			name: `${firstName} ${lastName}`.trim(),
-			initials: `${firstName?.[0] ?? ''}${lastName?.[0] ?? ''}`.toUpperCase() || '?',
+			name: `${lastName} ${firstName}`.trim(),
+			initials: `${lastName?.[0] ?? ''}${firstName?.[0] ?? ''}`.toUpperCase() || '?',
 		},
 	};
 };
