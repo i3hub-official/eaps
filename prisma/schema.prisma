@@ -242,6 +242,8 @@ model Department {
   students    Student[]
   courses     Course[]
   eligibility AssessmentEligibility[]
+ conversations Conversation[]
+
 
   @@unique([collegeId, shortName])
 }
@@ -496,6 +498,8 @@ model Staff {
 
   createdAttendanceSessions AttendanceSession[] @relation("AttendanceCreator")
 markedAttendanceRecords   AttendanceRecord[]  @relation("AttendanceMarker")
+ assignedConversations Conversation[] @relation("AssignedConversations")
+ sentMessages          Message[]      @relation("SentMessages")
 
   @@index([emailHash])
   @@index([staffNumber])
@@ -575,7 +579,8 @@ model Student {
   verificationTokens   VerificationToken[]
   attendanceRecords AttendanceRecord[]
 
-
+conversations Conversation[]
+   sentMessages  Message[]      @relation("SentMessages")
   @@index([matricNumber])
   @@index([emailHash])
   @@index([jambRegNo])
@@ -1157,4 +1162,50 @@ model TranscriptEntry {
   @@index([studentId, sessionId])
 }
 
+// ============================================================
+// MESSAGING — Student <-> Staff support conversations
+// ============================================================
 
+enum ConversationStatus {
+  OPEN
+  RESOLVED
+  CLOSED
+}
+
+model Conversation {
+  id            String             @id @default(cuid())
+  studentId     String
+  departmentId  String?
+  assignedToId  String?
+  subject       String
+  status        ConversationStatus @default(OPEN)
+  lastMessageAt DateTime           @default(now())
+  createdAt     DateTime           @default(now())
+  updatedAt     DateTime           @updatedAt
+
+  student    Student     @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  department Department? @relation(fields: [departmentId], references: [id])
+  assignedTo Staff?      @relation("AssignedConversations", fields: [assignedToId], references: [id])
+  messages   Message[]
+
+  @@index([studentId, status])
+  @@index([departmentId, status])
+  @@index([assignedToId, status])
+}
+
+model Message {
+  id              String    @id @default(cuid())
+  conversationId  String
+  senderType      String // "staff" | "student"
+  senderStaffId   String?
+  senderStudentId String?
+  body            String
+  readAt          DateTime?
+  createdAt       DateTime  @default(now())
+
+  conversation  Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  senderStaff   Staff?       @relation("SentMessages", fields: [senderStaffId], references: [id])
+  senderStudent Student?     @relation("SentMessages", fields: [senderStudentId], references: [id])
+
+  @@index([conversationId, createdAt])
+}
