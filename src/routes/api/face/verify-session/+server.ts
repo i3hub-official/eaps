@@ -1,17 +1,15 @@
-// ─────────────────────────────────────────────────────────────────────────────
 // src/routes/api/face/verify-session/+server.ts
 // POST — records the face verification result on the active assessment session.
-// Called by the verify page after a successful client-side match.
 
-import { json as j2, error as e2 } from '@sveltejs/kit'
-import type { RequestHandler as RH2 } from './$types'
-import { requireStudent as rs2 } from '$lib/server/auth/guards.js'
-import { getPrismaClient as gpc2 } from '$lib/server/db/index.js'
+import { json } from '@sveltejs/kit'
+import type { RequestHandler } from './$types'
+import { requireStudent } from '$lib/server/auth/guards.js'
+import { getPrismaClient } from '$lib/server/db/index.js'
 import { audit } from '$lib/server/audit.js'
 
-export const POST: RH2 = async (event) => {
-  const { student } = await rs2(event)
-  const body = await event.request.json()
+export const POST: RequestHandler = async ({ request, locals, getClientAddress }) => {
+  const student = await requireStudent(locals.user)
+  const body = await request.json()
 
   const {
     verified,
@@ -20,26 +18,25 @@ export const POST: RH2 = async (event) => {
     livenessScore,
     examId,
   } = body as {
-    verified:        boolean
+    verified: boolean
     similarityScore: number
-    antispoofScore:  number
-    livenessScore:   number
-    examId:          string | null
+    antispoofScore?: number
+    livenessScore?: number
+    examId: string | null
   }
 
   if (!verified) {
-    return j2({ recorded: false })
+    return json({ recorded: false })
   }
 
-  const prisma = await gpc2()
+  const prisma = await getPrismaClient()
 
-  // Find the active session for this student + exam
   const session = examId
     ? await prisma.assessmentSession.findFirst({
         where: {
           assessmentId: examId,
-          studentId:    student.id,
-          status:       { in: ['PENDING', 'IN_PROGRESS', 'PAUSED'] },
+          studentId: student.id,
+          status: { in: ['PENDING', 'IN_PROGRESS', 'PAUSED'] },
         },
         orderBy: { createdAt: 'desc' },
       })
@@ -50,16 +47,16 @@ export const POST: RH2 = async (event) => {
       where: { id: session.id },
       data: {
         faceVerifiedAt: new Date(),
-        faceScore:      similarityScore / 100, // store as 0–1
+        faceScore: similarityScore / 100,
       },
     })
   }
 
   await audit.student(student.id, 'FACE_VERIFIED', 'FaceDescriptor', {
-    entityId:  student.id,
+    entityId: student.id,
     afterData: { similarityScore, antispoofScore, livenessScore, examId },
-    ipAddress: event.getClientAddress(),
+    ipAddress: getClientAddress(),
   })
 
-  return j2({ recorded: true, sessionId: session?.id ?? null })
+  return json({ recorded: true, sessionId: session?.id ?? null })
 }

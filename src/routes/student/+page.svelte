@@ -6,6 +6,8 @@
 	import { Badge } from '$lib/components/ui/badge/index.js';
 	import { Skeleton } from '$lib/components/ui/skeleton/index.js';
 	import { Tabs, TabsContent, TabsList, TabsTrigger } from '$lib/components/ui/tabs/index.js';
+	import FaceEnrollPrompt from '$lib/components/dashboard/face-enroll-prompt.svelte';
+	import FaceVerifyPrompt from '$lib/components/dashboard/face-verify-prompt.svelte';
 	import {
 		BookOpen,
 		Clock,
@@ -60,6 +62,15 @@
 
 	let pendingCount = $derived(
 		recentAssessments.filter((a: any) => a.status === 'PENDING' || a.status === 'IN_PROGRESS').length
+	);
+
+	// Enroll banner shows while there's no face data at all. Verify banner
+	// only makes sense once enrolled AND something upcoming actually
+	// requires it — the two are mutually exclusive by construction.
+	let nextVerifiableAssessment = $derived(
+		student?.faceEnrolledAt
+			? (upcomingAssessments.find((a: any) => a.requireFaceVerify) ?? null)
+			: null
 	);
 
 	// ─── Handlers ────────────────────────────────────────────────────────────
@@ -145,8 +156,12 @@
 
 <!-- ─── Main Content ──────────────────────────────────────────────────────── -->
 <div class="p-6">
+	<div class="mb-6 flex flex-col gap-4">
+		<FaceEnrollPrompt enrolled={Boolean(student?.faceEnrolledAt)} />
+		<FaceVerifyPrompt assessment={nextVerifiableAssessment} />
+	</div>
+
 	{#if data?.loading}
-		<!-- ─── Loading State ────────────────────────────────────────────── -->
 		<!-- ─── Loading State ────────────────────────────────────────────── -->
 		<div class="grid gap-6 md:grid-cols-2 lg:grid-cols-4">
 			{#each [1, 2, 3, 4] as item (item)}

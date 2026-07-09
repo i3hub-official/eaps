@@ -1,57 +1,54 @@
-
-
-// ─────────────────────────────────────────────────────────────────────────────
 // src/routes/api/face/enroll/+server.ts
-// POST — receives averaged + normalised descriptor, encrypts, stores.
-
-import { json as j3, error as e3 } from '@sveltejs/kit'
-import type { RequestHandler as RH3 } from './$types'
-import { requireStudent as rs3 } from '$lib/server/auth/guards.js'
-import { getPrismaClient as gpc3 } from '$lib/server/db/index.js'
+import { json, error } from '@sveltejs/kit'
+import type { RequestHandler } from './$types'
+import { requireStudent } from '$lib/server/auth/guards.js'
+import { getPrismaClient } from '$lib/server/db/index.js'
 import { encryptDescriptor, findDuplicateEnrollment } from '$lib/server/face/crypto.js'
-import { audit as audit3 } from '$lib/server/audit.js'
+import { audit } from '$lib/server/audit.js'
 
-export const POST: RH3 = async (event) => {
-  const { student } = await rs3(event)
-  const body = await event.request.json()
+// Sanity floor, not an exact match — actual embedding length depends on the
+// client's Human model config (description model), so we validate shape
+// rather than a fixed dimension.
+const MIN_DESCRIPTOR_LENGTH = 64
+
+export const POST: RequestHandler = async ({ request, locals, getClientAddress }) => {
+  const student = await requireStudent(locals.user)
+
+  const body = await request.json()
   const descriptor = body.descriptor as number[]
 
-  if (!Array.isArray(descriptor) || descriptor.length < 128) {
-    throw e3(400, 'Invalid face descriptor — must be a float array of at least 128 values.')
+  const isValid =
+    Array.isArray(descriptor) &&
+    descriptor.length >= MIN_DESCRIPTOR_LENGTH &&
+    descriptor.every((n) => typeof n === 'number' && Number.isFinite(n))
+
+  if (!isValid) {
+    throw error(400, 'Invalid face descriptor.')
   }
 
-  // Cross-student duplicate check
+  // Cross-student duplicate check — prevent one person enrolling under
+  // multiple student accounts.
   const duplicate = await findDuplicateEnrollment(descriptor, student.id)
   if (duplicate) {
-    throw e3(409, 'This face is already registered to another student account.')
+    throw error(409, 'This face is already registered to another student account.')
   }
 
   const { encryptedData, iv } = await encryptDescriptor(descriptor)
-  const prisma = await gpc3()
+  const prisma = await getPrismaClient()
+  const ip = getClientAddress()
 
   await prisma.faceDescriptor.upsert({
     where: { studentId: student.id },
-    create: {
-      studentId:         student.id,
-      encryptedData,
-      iv,
-      enrolledIpAddress: event.getClientAddress(),
-    },
-    update: {
-      encryptedData,
-      iv,
-      enrolledAt: new Date(),
-    },
+    create: { studentId: student.id, encryptedData, iv, enrolledIpAddress: ip },
+    update: { encryptedData, iv, enrolledAt: new Date(), enrolledIpAddress: ip },
   })
 
   await prisma.student.update({
     where: { id: student.id },
-    data:  { faceEnrolledAt: new Date() },
+    data: { faceEnrolledAt: new Date() },
   })
 
-  await audit3.student(student.id, 'FACE_ENROLLED', 'FaceDescriptor', {
-    ipAddress: event.getClientAddress(),
-  })
+  await audit.student(student.id, 'FACE_ENROLLED', 'FaceDescriptor', { ipAddress: ip })
 
-  return j3({ enrolled: true })
+  return json({ enrolled: true })
 }

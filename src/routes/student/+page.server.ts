@@ -63,7 +63,7 @@ export const load: PageServerLoad = async ({ locals }) => {
 		}),
 
 		// Extra fields not on the session-derived `student` object
-		// (entryYear, createdAt, full relation objects)
+		// (entryYear, createdAt, faceEnrolledAt, full relation objects)
 		prisma.student.findUnique({
 			where: { id: student.id },
 			include: { department: true, programme: true, currentLevel: true },
@@ -90,6 +90,7 @@ export const load: PageServerLoad = async ({ locals }) => {
 		status: fullStudent?.status ?? student.status,
 		entryYear: fullStudent?.entryYear ?? null,
 		createdAt: fullStudent?.createdAt ?? null,
+		faceEnrolledAt: fullStudent?.faceEnrolledAt ?? null,
 		department: fullStudent?.department ?? null,
 		programme: fullStudent?.programme ?? null,
 		currentLevel: fullStudent?.currentLevel ?? null,
@@ -121,6 +122,7 @@ export const load: PageServerLoad = async ({ locals }) => {
 			type: a.type,
 			startTime: a.startTime,
 			status: a.status,
+			requireFaceVerify: a.requireFaceVerify,
 			course: a.course ? {
 				code: a.course.code,
 				title: a.course.title,

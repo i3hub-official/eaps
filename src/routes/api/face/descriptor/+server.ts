@@ -8,8 +8,8 @@ import { requireStudent } from '$lib/server/auth/guards.js'
 import { getPrismaClient } from '$lib/server/db/index.js'
 import { decryptDescriptor } from '$lib/server/face/crypto.js'
 
-export const GET: RequestHandler = async (event) => {
-  const { student } = await requireStudent(event)
+export const GET: RequestHandler = async ({ locals }) => {
+  const student = await requireStudent(locals.user)
 
   const prisma = await getPrismaClient()
   const record = await prisma.faceDescriptor.findUnique({
@@ -22,6 +22,5 @@ export const GET: RequestHandler = async (event) => {
 
   const descriptor = await decryptDescriptor(record.encryptedData, record.iv)
 
-  // Return as plain number array — similarity computed client-side
   return json({ descriptor })
 }
