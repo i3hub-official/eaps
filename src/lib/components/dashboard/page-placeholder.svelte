@@ -1,3 +1,5 @@
+<!-- Page Placeholder Component -->
+ <!-- src/lib/components/dashboard/page-placeholder.svelte -->
 <script lang="ts">
 	import { Card } from '$lib/components/ui/card/index.js';
 	import Construction from '@lucide/svelte/icons/construction';

@@ -1,32 +1,12 @@
+// src/routes/student/+layout.server.ts
 import type { LayoutServerLoad } from './$types';
-import { STUDENT_COOKIE, getStudentByToken, cookieOptions } from '$lib/server/auth';
-import { redirect } from '@sveltejs/kit';
-import { revealName } from '$lib/security/dataProtection';
+import { requireStudent } from '$lib/server/auth/guards'
 
-function safeDecrypt<T>(decryptFn: () => T, fallback: T): T {
-	try {
-		return decryptFn();
-	} catch {
-		return fallback;
-	}
-}
+export const load: LayoutServerLoad = async ({ locals }) => {
+	const student = await requireStudent(locals.user)
 
-export const load: LayoutServerLoad = async ({ cookies }) => {
-	const token = cookies.get(STUDENT_COOKIE);
-	if (!token) {
-		throw redirect(303, '/login');
-	}
-
-	const result = await getStudentByToken(token);
-	if (!result) {
-		cookies.delete(STUDENT_COOKIE, cookieOptions);
-		throw redirect(303, '/login');
-	}
-
-	const { student } = result;
-
-	const firstName = safeDecrypt(() => revealName(student.firstName), student.firstName);
-	const lastName = safeDecrypt(() => revealName(student.lastName), student.lastName);
+	const firstName = student.firstName
+	const lastName = student.lastName
 
 	return {
 		user: {

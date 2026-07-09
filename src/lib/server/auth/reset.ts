@@ -12,7 +12,7 @@ const OTP_LENGTH = 6
 const RESET_COOLDOWN_MINUTES = 15
 const MAX_RESETS_PER_DAY = 3
 
-function generateOtp(): string {
+export function generateOtp(): string {
   // 6-char alphanumeric, uppercase, no ambiguous chars (0/O, 1/I)
   const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'
   let out = ''

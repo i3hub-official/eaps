@@ -2,9 +2,8 @@
 // Run: pnpm prisma db seed
 
 import 'dotenv/config'
-import { PrismaClient, StaffRole, SemesterType, AcademicSessionStatus, ProgrammeType } from '@prisma/client'
+import { PrismaClient, StaffRole, SemesterType, AcademicSessionStatus, ProgrammeType, CourseType, CourseStatus } from '@prisma/client'
 import { PrismaPg } from '@prisma/adapter-pg'
-import bcrypt from 'bcryptjs'
 
 const adapter = new PrismaPg({ connectionString: process.env.DATABASE_URL })
 const prisma = new PrismaClient({ adapter })
@@ -114,6 +113,85 @@ const DEPARTMENTS = [
   { name: 'Peace and Conflict', shortName: 'Peace', code: 'PEC', collegeCode: 'SGS' },
 ]
 
+// ─── Sample Courses ──────────────────────────────────────────────────────────
+
+// ─── Sample Courses (100 & 200 Levels Only) ──────────────────────────────
+
+const COURSES = [
+  // Computer Science Department (CSC)
+  // 100 Level - First Semester (second digit = 1)
+  { code: 'CSC112', title: 'Introduction to Computer Science', creditUnits: 3, level: 100, deptCode: 'CSC', type: CourseType.COMPULSORY },
+  { code: 'CSC114', title: 'Programming Fundamentals', creditUnits: 3, level: 100, deptCode: 'CSC', type: CourseType.COMPULSORY },
+  { code: 'CSC117', title: 'Discrete Mathematics', creditUnits: 2, level: 100, deptCode: 'CSC', type: CourseType.COMPULSORY },
+  // 100 Level - Second Semester (second digit = 2)
+  { code: 'CSC125', title: 'Introduction to Web Technologies', creditUnits: 3, level: 100, deptCode: 'CSC', type: CourseType.COMPULSORY },
+  { code: 'CSC128', title: 'Computer Applications', creditUnits: 2, level: 100, deptCode: 'CSC', type: CourseType.COMPULSORY },
+  
+  // 200 Level - First Semester (second digit = 1)
+  { code: 'CSC211', title: 'Data Structures and Algorithms', creditUnits: 3, level: 200, deptCode: 'CSC', type: CourseType.COMPULSORY },
+  { code: 'CSC216', title: 'Database Management Systems', creditUnits: 3, level: 200, deptCode: 'CSC', type: CourseType.COMPULSORY },
+  { code: 'CSC218', title: 'Object-Oriented Programming', creditUnits: 3, level: 200, deptCode: 'CSC', type: CourseType.COMPULSORY },
+  // 200 Level - Second Semester (second digit = 2)
+  { code: 'CSC224', title: 'Computer Architecture', creditUnits: 2, level: 200, deptCode: 'CSC', type: CourseType.COMPULSORY },
+  { code: 'CSC227', title: 'Operating Systems', creditUnits: 3, level: 200, deptCode: 'CSC', type: CourseType.COMPULSORY },
+
+  // Mathematics Department (MTH)
+  // 100 Level - First Semester
+  { code: 'MTH111', title: 'Algebra and Trigonometry', creditUnits: 3, level: 100, deptCode: 'MTH', type: CourseType.COMPULSORY },
+  { code: 'MTH115', title: 'Calculus I', creditUnits: 3, level: 100, deptCode: 'MTH', type: CourseType.COMPULSORY },
+  { code: 'MTH118', title: 'Analytical Geometry', creditUnits: 2, level: 100, deptCode: 'MTH', type: CourseType.COMPULSORY },
+  // 100 Level - Second Semester
+  { code: 'MTH124', title: 'Calculus II', creditUnits: 3, level: 100, deptCode: 'MTH', type: CourseType.COMPULSORY },
+  { code: 'MTH127', title: 'Introduction to Statistics', creditUnits: 2, level: 100, deptCode: 'MTH', type: CourseType.COMPULSORY },
+  
+  // 200 Level - First Semester
+  { code: 'MTH212', title: 'Linear Algebra I', creditUnits: 3, level: 200, deptCode: 'MTH', type: CourseType.COMPULSORY },
+  { code: 'MTH216', title: 'Differential Equations', creditUnits: 3, level: 200, deptCode: 'MTH', type: CourseType.COMPULSORY },
+  // 200 Level - Second Semester
+  { code: 'MTH223', title: 'Linear Algebra II', creditUnits: 3, level: 200, deptCode: 'MTH', type: CourseType.COMPULSORY },
+  { code: 'MTH226', title: 'Numerical Analysis', creditUnits: 3, level: 200, deptCode: 'MTH', type: CourseType.COMPULSORY },
+
+  // Physics Department (PHY)
+  // 100 Level - First Semester
+  { code: 'PHY113', title: 'General Physics I', creditUnits: 3, level: 100, deptCode: 'PHY', type: CourseType.COMPULSORY },
+  { code: 'PHY116', title: 'Practical Physics I', creditUnits: 2, level: 100, deptCode: 'PHY', type: CourseType.COMPULSORY },
+  // 100 Level - Second Semester
+  { code: 'PHY124', title: 'General Physics II', creditUnits: 3, level: 100, deptCode: 'PHY', type: CourseType.COMPULSORY },
+  { code: 'PHY126', title: 'Practical Physics II', creditUnits: 2, level: 100, deptCode: 'PHY', type: CourseType.COMPULSORY },
+  
+  // 200 Level - First Semester
+  { code: 'PHY211', title: 'Mechanics and Thermodynamics', creditUnits: 3, level: 200, deptCode: 'PHY', type: CourseType.COMPULSORY },
+  { code: 'PHY215', title: 'Electromagnetism', creditUnits: 3, level: 200, deptCode: 'PHY', type: CourseType.COMPULSORY },
+  // 200 Level - Second Semester
+  { code: 'PHY224', title: 'Optics and Waves', creditUnits: 3, level: 200, deptCode: 'PHY', type: CourseType.COMPULSORY },
+  { code: 'PHY228', title: 'Modern Physics', creditUnits: 3, level: 200, deptCode: 'PHY', type: CourseType.COMPULSORY },
+
+  // Agriculture Department (AGR - Agronomy)
+  // 100 Level - First Semester
+  { code: 'AGR112', title: 'Principles of Crop Production', creditUnits: 3, level: 100, deptCode: 'AGR', type: CourseType.COMPULSORY },
+  { code: 'AGR115', title: 'Introduction to Agriculture', creditUnits: 2, level: 100, deptCode: 'AGR', type: CourseType.COMPULSORY },
+  // 100 Level - Second Semester
+  { code: 'AGR124', title: 'Soil Science Fundamentals', creditUnits: 3, level: 100, deptCode: 'AGR', type: CourseType.COMPULSORY },
+  
+  // 200 Level - First Semester
+  { code: 'AGR213', title: 'Soil Science', creditUnits: 3, level: 200, deptCode: 'AGR', type: CourseType.COMPULSORY },
+  { code: 'AGR216', title: 'Crop Physiology', creditUnits: 3, level: 200, deptCode: 'AGR', type: CourseType.COMPULSORY },
+  // 200 Level - Second Semester
+  { code: 'AGR225', title: 'Agroecology', creditUnits: 3, level: 200, deptCode: 'AGR', type: CourseType.COMPULSORY },
+  { code: 'AGR228', title: 'Agricultural Economics', creditUnits: 3, level: 200, deptCode: 'AGR', type: CourseType.COMPULSORY },
+
+  // General Studies (SGS)
+  // 100 Level - First Semester
+  { code: 'GSE111', title: 'Use of English I', creditUnits: 2, level: 100, deptCode: 'ENG', type: CourseType.GENERAL_STUDIES },
+  // 100 Level - Second Semester
+  { code: 'GSE122', title: 'Use of English II', creditUnits: 2, level: 100, deptCode: 'ENG', type: CourseType.GENERAL_STUDIES },
+  
+  // 200 Level - First Semester
+  { code: 'GSE213', title: 'Communication Skills', creditUnits: 2, level: 200, deptCode: 'ENG', type: CourseType.GENERAL_STUDIES },
+  // 200 Level - Second Semester
+  { code: 'GSE224', title: 'Research Methodology', creditUnits: 2, level: 200, deptCode: 'ENG', type: CourseType.GENERAL_STUDIES },
+]
+
 // ─── Helper Functions ───────────────────────────────────────────────────────
 
 function getAcademicSession(now: Date) {
@@ -158,6 +236,14 @@ function getSemesterWindows(startYear: number, endYear: number, now: Date) {
     { ...first, isCurrent: currentType === SemesterType.FIRST },
     { ...second, isCurrent: currentType === SemesterType.SECOND },
   ]
+}
+
+async function getOrCreateLevel(name: number, label: string) {
+  return prisma.level.upsert({
+    where: { name },
+    create: { name, label },
+    update: {},
+  })
 }
 
 // ─── Seed ────────────────────────────────────────────────────────────────────
@@ -240,17 +326,23 @@ async function main() {
   // 4. Levels
   console.log('\n  → Academic levels...')
   const levelMap = new Map()
-  for (const lvl of [100, 200]) {
-    const created = await prisma.level.upsert({
-      where: { name: lvl },
-      create: { name: lvl, label: `${lvl} Level` },
-      update: {},
-    })
-    levelMap.set(lvl, created)
-    console.log(`     ✓ ${lvl} Level`)
+  const LEVELS = [
+    { name: 100, label: '100 Level' },
+    { name: 200, label: '200 Level' },
+    { name: 300, label: '300 Level' },
+    { name: 400, label: '400 Level' },
+    { name: 500, label: '500 Level' },
+    { name: 600, label: '600 Level' },
+    { name: 700, label: '700 Level' },
+  ]
+  
+  for (const lvl of LEVELS) {
+    const created = await getOrCreateLevel(lvl.name, lvl.label)
+    levelMap.set(lvl.name, created)
+    console.log(`     ✓ ${lvl.label}`)
   }
 
-  // 5. Programmes for each department (Regular, CEC, PG)
+  // 5. Programmes for each department
   console.log('\n  → Programmes...')
   const programmeTypes = [
     { type: ProgrammeType.UNDERGRADUATE, shortName: 'UND-REG', duration: 4 },
@@ -289,7 +381,7 @@ async function main() {
       programmeCount++
     }
   }
-  console.log(`     ✓ ${programmeCount} programmes created (Regular, CEC, PG for each department)`)
+  console.log(`     ✓ ${programmeCount} programmes created`)
 
   // 6. Academic session
   console.log('\n  → Academic session...')
@@ -310,9 +402,10 @@ async function main() {
 
   const startYear = sessionStart.getFullYear()
   const endYear = sessionEnd.getFullYear()
+  const semesters = []
 
   for (const sem of getSemesterWindows(startYear, endYear, now)) {
-    await prisma.semester.upsert({
+    const created = await prisma.semester.upsert({
       where: { sessionId_type: { sessionId: session.id, type: sem.type } },
       create: {
         sessionId: session.id,
@@ -325,163 +418,79 @@ async function main() {
       },
       update: { isCurrent: sem.isCurrent },
     })
+    semesters.push(created)
     console.log(`     ✓ ${sem.type} Semester`)
   }
   console.log(`     ✓ Session: ${session.name}`)
 
-  // 7. Admin accounts
-  console.log('\n  → Admin accounts...')
-  const admins = [
-    {
-      email: 'admin@mouau.edu.ng',
-      staffNumber: 'MOUAU/ADMIN/001',
-      firstName: 'System',
-      lastName: 'Administrator',
-      primaryRole: StaffRole.SUPER_ADMIN,
-      role: 'SUPER_ADMIN',
-    },
-    {
-      email: 'registrar@mouau.edu.ng',
-      staffNumber: 'MOUAU/REG/001',
-      firstName: 'University',
-      lastName: 'Registrar',
-      primaryRole: StaffRole.REGISTRAR,
-      role: 'REGISTRAR',
-    },
-    {
-      email: 'exam@mouau.edu.ng',
-      staffNumber: 'MOUAU/EXAM/001',
-      firstName: 'University',
-      lastName: 'Examination Officer',
-      primaryRole: StaffRole.UNIVERSITY_EXAM_OFFICER,
-      role: 'UNIVERSITY_EXAM_OFFICER',
-    },
-  ]
+  // 7. Courses
+  console.log('\n  → Courses...')
+  let courseCount = 0
+  const courseMap = new Map()
 
-  for (const adminData of admins) {
-    const passwordHash = await bcrypt.hash('Admin@1234', 12)
-    
-    const admin = await prisma.staff.upsert({
-      where: { emailHash: adminData.email },
+  for (const courseData of COURSES) {
+    const dept = deptMap.get(courseData.deptCode)
+    if (!dept) {
+      console.warn(`     ⚠️ Department ${courseData.deptCode} not found for course ${courseData.code}`)
+      continue
+    }
+
+    const level = levelMap.get(courseData.level)
+    if (!level) {
+      console.warn(`     ⚠️ Level ${courseData.level} not found for course ${courseData.code}`)
+      continue
+    }
+
+    const created = await prisma.course.upsert({
+      where: { code: courseData.code },
       create: {
-        staffNumber: adminData.staffNumber,
-        email: adminData.email,
-        emailHash: adminData.email,
-        passwordHash,
-        firstName: adminData.firstName,
-        lastName: adminData.lastName,
-        primaryRole: adminData.primaryRole,
-        status: 'ACTIVE',
-        mustChangePassword: true,
+        code: courseData.code,
+        title: courseData.title,
+        creditUnits: courseData.creditUnits,
+        type: courseData.type,
+        status: CourseStatus.ACTIVE,
+        departmentId: dept.id,
+        levelId: level.id,
+        description: `${courseData.title} - ${courseData.creditUnits} credit unit(s)`,
+      },
+      update: {
+        title: courseData.title,
+        creditUnits: courseData.creditUnits,
+        type: courseData.type,
+        status: CourseStatus.ACTIVE,
+        description: `${courseData.title} - ${courseData.creditUnits} credit unit(s)`,
+      },
+    })
+    courseMap.set(courseData.code, created)
+    courseCount++
+    console.log(`     ✓ ${courseData.code} - ${courseData.title} (${courseData.creditUnits} credits)`)
+  }
+  console.log(`     ✓ ${courseCount} courses created`)
+
+  // 8. Course Offerings (without lecturers - just create offerings)
+  console.log('\n  → Course offerings...')
+  
+  const currentSemester = semesters.find(s => s.isCurrent) || semesters[0]
+  let offeringCount = 0
+
+  for (const [code, course] of courseMap) {
+    await prisma.courseOffering.upsert({
+      where: {
+        courseId_semesterId: {
+          courseId: course.id,
+          semesterId: currentSemester.id,
+        }
+      },
+      create: {
+        courseId: course.id,
+        semesterId: currentSemester.id,
+        // lecturerId is optional - set to null
       },
       update: {},
     })
-
-    const role = await prisma.role.findUnique({
-      where: { name: adminData.role },
-    })
-
-    if (role) {
-      await prisma.staffRoleAssignment.upsert({
-        where: { staffId_roleId: { staffId: admin.id, roleId: role.id } },
-        create: { staffId: admin.id, roleId: role.id, isActive: true },
-        update: {},
-      })
-    }
-
-    console.log(`     ✓ ${adminData.email} / Admin@1234 (${adminData.primaryRole})`)
+    offeringCount++
   }
-
-  // 8. Examiners
-  console.log('\n  → Examiners & Examination Officers...')
-  const examiners = [
-    {
-      email: 'dr.adebayo@mouau.edu.ng',
-      staffNumber: 'MOUAU/EXAM/002',
-      firstName: 'Adebayo',
-      lastName: 'Ogunleye',
-      primaryRole: StaffRole.DEPARTMENT_EXAM_OFFICER,
-      role: 'DEPARTMENT_EXAM_OFFICER',
-      department: 'CSC',
-    },
-    {
-      email: 'dr.okechukwu@mouau.edu.ng',
-      staffNumber: 'MOUAU/EXAM/003',
-      firstName: 'Okechukwu',
-      lastName: 'Nwosu',
-      primaryRole: StaffRole.DEPARTMENT_EXAM_OFFICER,
-      role: 'DEPARTMENT_EXAM_OFFICER',
-      department: 'MTH',
-    },
-    {
-      email: 'dr.chioma@mouau.edu.ng',
-      staffNumber: 'MOUAU/EXAM/004',
-      firstName: 'Chioma',
-      lastName: 'Eze',
-      primaryRole: StaffRole.DEPARTMENT_EXAM_OFFICER,
-      role: 'DEPARTMENT_EXAM_OFFICER',
-      department: 'PHY',
-    },
-    {
-      email: 'dr.ibrahim@mouau.edu.ng',
-      staffNumber: 'MOUAU/EXAM/005',
-      firstName: 'Ibrahim',
-      lastName: 'Bello',
-      primaryRole: StaffRole.COLLEGE_EXAM_OFFICER,
-      role: 'COLLEGE_EXAM_OFFICER',
-      department: 'CSC',
-    },
-    {
-      email: 'dr.fatima@mouau.edu.ng',
-      staffNumber: 'MOUAU/EXAM/006',
-      firstName: 'Fatima',
-      lastName: 'Mohammed',
-      primaryRole: StaffRole.LECTURER,
-      role: 'LECTURER',
-      department: 'CSC',
-    },
-  ]
-
-  for (const examiner of examiners) {
-    const passwordHash = await bcrypt.hash('Examiner@1234', 12)
-    
-    let departmentId = null
-    if (examiner.department) {
-      const dept = deptMap.get(examiner.department)
-      if (dept) departmentId = dept.id
-    }
-
-    const staff = await prisma.staff.upsert({
-      where: { emailHash: examiner.email },
-      create: {
-        staffNumber: examiner.staffNumber,
-        email: examiner.email,
-        emailHash: examiner.email,
-        passwordHash,
-        firstName: examiner.firstName,
-        lastName: examiner.lastName,
-        primaryRole: examiner.primaryRole,
-        departmentId: departmentId,
-        status: 'ACTIVE',
-        mustChangePassword: true,
-      },
-      update: {},
-    })
-
-    const role = await prisma.role.findUnique({
-      where: { name: examiner.role },
-    })
-
-    if (role) {
-      await prisma.staffRoleAssignment.upsert({
-        where: { staffId_roleId: { staffId: staff.id, roleId: role.id } },
-        create: { staffId: staff.id, roleId: role.id, isActive: true },
-        update: {},
-      })
-    }
-
-    console.log(`     ✓ ${examiner.email} / Examiner@1234 (${examiner.primaryRole})`)
-  }
+  console.log(`     ✓ ${offeringCount} course offerings created for ${currentSemester.type} semester`)
 
   // 9. Grade scale
   console.log('\n  → Grade scale...')
@@ -503,26 +512,54 @@ async function main() {
   }
   console.log(`     ✓ ${GRADE_SCALE.length} grade scales seeded`)
 
+  // 10. Roles (system roles)
+  console.log('\n  → System roles...')
+  const ROLES = [
+    { name: 'SUPER_ADMIN', displayName: 'Super Administrator', description: 'Full system access' },
+    { name: 'VC', displayName: 'Vice Chancellor', description: 'University leadership' },
+    { name: 'DVC', displayName: 'Deputy Vice Chancellor', description: 'University leadership' },
+    { name: 'REGISTRAR', displayName: 'Registrar', description: 'University registrar' },
+    { name: 'UNIVERSITY_EXAM_OFFICER', displayName: 'University Examination Officer', description: 'University-level exam oversight' },
+    { name: 'UNIVERSITY_COURSE_COORDINATOR', displayName: 'University Course Coordinator', description: 'University-level course coordination' },
+    { name: 'DEAN', displayName: 'Dean', description: 'College dean' },
+    { name: 'HOD', displayName: 'Head of Department', description: 'Department head' },
+    { name: 'COLLEGE_EXAM_OFFICER', displayName: 'College Examination Officer', description: 'College-level exam oversight' },
+    { name: 'COLLEGE_COORDINATOR', displayName: 'College Coordinator', description: 'College-level coordination' },
+    { name: 'DEPARTMENT_EXAM_OFFICER', displayName: 'Department Examination Officer', description: 'Department-level exam oversight' },
+    { name: 'DEPARTMENT_COORDINATOR', displayName: 'Department Coordinator', description: 'Department-level coordination' },
+    { name: 'LECTURER', displayName: 'Lecturer', description: 'Teaching staff' },
+    { name: 'INVIGILATOR', displayName: 'Invigilator', description: 'Exam invigilator' },
+  ]
+
+  for (const roleData of ROLES) {
+    await prisma.role.upsert({
+      where: { name: roleData.name },
+      create: {
+        name: roleData.name,
+        displayName: roleData.displayName,
+        description: roleData.description,
+        isSystem: true,
+      },
+      update: {
+        displayName: roleData.displayName,
+        description: roleData.description,
+      },
+    })
+  }
+  console.log(`     ✓ ${ROLES.length} system roles created`)
+
   console.log('\n✅ Seed complete!\n')
   console.log(`   🏫 ${COLLEGES.length} Colleges`)
   console.log(`   📚 ${DEPARTMENTS.length} Departments`)
-  console.log(`   📖 Levels: 100-700`)
-  console.log(`   📚 ${programmeCount} Programmes (Regular, CEC, PG for each department)`)
-  console.log(`   📅 Session: ${sessionName}\n`)
+  console.log(`   📖 ${LEVELS.length} Levels`)
+  console.log(`   📚 ${programmeCount} Programmes`)
+  console.log(`   📅 Session: ${sessionName}`)
+  console.log(`   📖 ${courseCount} Courses`)
+  console.log(`   📖 ${offeringCount} Course Offerings`)
+  console.log(`   👤 ${ROLES.length} System Roles\n`)
   
-  console.log('   ─── Admin Accounts ───')
-  console.log('   📧 admin@mouau.edu.ng      → Super Administrator')
-  console.log('   📧 registrar@mouau.edu.ng  → Registrar')
-  console.log('   📧 exam@mouau.edu.ng       → University Examination Officer')
-  console.log('   🔑 Password: Admin@1234 (CHANGE ON FIRST LOGIN)\n')
-  
-  console.log('   ─── Examiners ───')
-  console.log('   📧 dr.adebayo@mouau.edu.ng   → Department Examination Officer (CSC)')
-  console.log('   📧 dr.okechukwu@mouau.edu.ng → Department Examination Officer (MTH)')
-  console.log('   📧 dr.chioma@mouau.edu.ng    → Department Examination Officer (PHY)')
-  console.log('   📧 dr.ibrahim@mouau.edu.ng   → College Examination Officer')
-  console.log('   📧 dr.fatima@mouau.edu.ng    → Lecturer (CSC)')
-  console.log('   🔑 Password: Examiner@1234 (CHANGE ON FIRST LOGIN)\n')
+  console.log('   ─── No user accounts created ───')
+  console.log('   To create admin accounts, use the admin panel or run a separate script.\n')
 }
 
 main()

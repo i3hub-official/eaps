@@ -1,0 +1,267 @@
+// src/routes/student/courses/+page.server.ts
+import { fail } from '@sveltejs/kit'
+import type { Actions, PageServerLoad } from './$types'
+import { getPrismaClient } from '$lib/server/db/index.js'
+import { requireStudent } from '$lib/server/auth/guards'
+
+const MAX_EDITS = 3
+
+type SemesterWindow = {
+  regOpenAt: Date | null
+  regCloseAt: Date | null
+  registrationEnabled: boolean
+}
+
+type WindowState = {
+  open: boolean
+  reason: 'OPEN' | 'DISABLED' | 'NOT_YET_OPEN' | 'CLOSED'
+}
+
+function getRegistrationWindowState(semester: SemesterWindow): WindowState {
+  if (!semester.registrationEnabled) {
+    return { open: false, reason: 'DISABLED' }
+  }
+
+  const now = new Date()
+
+  if (semester.regOpenAt && now < semester.regOpenAt) {
+    return { open: false, reason: 'NOT_YET_OPEN' }
+  }
+  if (semester.regCloseAt && now > semester.regCloseAt) {
+    return { open: false, reason: 'CLOSED' }
+  }
+
+  return { open: true, reason: 'OPEN' }
+}
+
+export const load: PageServerLoad = async ({ locals }) => {
+  const student = await requireStudent(locals.user)
+
+  const prisma = await getPrismaClient()
+
+  const session = await prisma.academicSession.findFirst({ where: { isCurrent: true } })
+  const semester = session
+    ? await prisma.semester.findFirst({ where: { sessionId: session.id, isCurrent: true } })
+    : null
+
+  if (!session || !semester) {
+    return {
+      noActiveSession: true as const,
+      session: null,
+      semester: null,
+      registrationWindowOpen: false,
+      registrationWindowReason: 'CLOSED' as const,
+      registrations: [],
+      availableCourses: [],
+      totalCreditUnits: 0,
+    }
+  }
+
+  const windowState = getRegistrationWindowState(semester)
+
+  const [registrations, availableCourses] = await Promise.all([
+    prisma.courseRegistration.findMany({
+      where: {
+        studentId: student.id,
+        sessionId: session.id,
+        semesterId: semester.id,
+        status: { not: 'CANCELLED' },
+      },
+      include: { course: true },
+      orderBy: { createdAt: 'asc' },
+    }),
+    // Only bother fetching available courses if the window is open —
+    // no point building an "Add Courses" list the student can't act on.
+    windowState.open
+      ? prisma.course.findMany({
+          where: {
+            departmentId: student.departmentId,
+            levelId: student.currentLevelId,
+            status: 'ACTIVE',
+            offerings: { some: { semesterId: semester.id } },
+          },
+          orderBy: { code: 'asc' },
+        })
+      : Promise.resolve([]),
+  ])
+
+  const registeredCourseIds = new Set(registrations.map((r) => r.courseId))
+  const registerableCourses = availableCourses.filter((c) => !registeredCourseIds.has(c.id))
+
+  const totalCreditUnits = registrations.reduce((sum, r) => sum + r.course.creditUnits, 0)
+
+  return {
+    noActiveSession: false as const,
+    session: { id: session.id, name: session.name },
+    semester: {
+      id: semester.id,
+      type: semester.type,
+      regOpenAt: semester.regOpenAt,
+      regCloseAt: semester.regCloseAt,
+    },
+    registrationWindowOpen: windowState.open,
+    registrationWindowReason: windowState.reason,
+    registrations: registrations.map((r) => ({
+      id: r.id,
+      status: r.status,
+      type: r.type,
+      editCount: r.editCount,
+      course: {
+        id: r.course.id,
+        code: r.course.code,
+        title: r.course.title,
+        creditUnits: r.course.creditUnits,
+        type: r.course.type,
+      },
+    })),
+    availableCourses: registerableCourses.map((c) => ({
+      id: c.id,
+      code: c.code,
+      title: c.title,
+      creditUnits: c.creditUnits,
+      type: c.type,
+    })),
+    totalCreditUnits,
+  }
+}
+
+export const actions: Actions = {
+  register: async ({ request, locals }) => {
+    const student = await requireStudent(locals.user)
+
+    const form = await request.formData()
+    const courseIds = form.getAll('courseIds').map(String).filter(Boolean)
+
+    if (courseIds.length === 0) {
+      return fail(400, { registerError: 'Select at least one course to register.' })
+    }
+
+    const prisma = await getPrismaClient()
+
+    const session = await prisma.academicSession.findFirst({ where: { isCurrent: true } })
+    const semester = session
+      ? await prisma.semester.findFirst({ where: { sessionId: session.id, isCurrent: true } })
+      : null
+
+    if (!session || !semester) {
+      return fail(400, { registerError: 'There is no active registration period right now.' })
+    }
+
+    // Same window check as `load` — server-side, never trust that the
+    // dialog only rendered because the window looked open on page load.
+    const windowState = getRegistrationWindowState(semester)
+    if (!windowState.open) {
+      const message =
+        windowState.reason === 'DISABLED'
+          ? 'Registration has been temporarily closed by the exam office. Please check back later.'
+          : windowState.reason === 'NOT_YET_OPEN'
+            ? 'Course registration has not opened yet.'
+            : 'Course registration has closed for this semester.'
+      return fail(400, { registerError: message })
+    }
+
+    // Never trust the client-submitted course list blindly — re-verify each
+    // course actually belongs to this student's department + level and is
+    // offered this semester before creating any registration rows.
+    const eligibleCourses = await prisma.course.findMany({
+      where: {
+        id: { in: courseIds },
+        departmentId: student.departmentId,
+        levelId: student.currentLevelId,
+        status: 'ACTIVE',
+        offerings: { some: { semesterId: semester.id } },
+      },
+    })
+
+    if (eligibleCourses.length === 0) {
+      return fail(400, { registerError: 'None of the selected courses are available for registration.' })
+    }
+
+    const results = await Promise.allSettled(
+      eligibleCourses.map((course) =>
+        prisma.courseRegistration.create({
+          data: {
+            studentId: student.id,
+            courseId: course.id,
+            sessionId: session.id,
+            semesterId: semester.id,
+            levelId: student.currentLevelId,
+            type: 'NORMAL',
+            status: 'PENDING',
+          },
+        }),
+      ),
+    )
+
+    const failedCount = results.filter((r) => r.status === 'rejected').length
+    const succeededCount = results.length - failedCount
+
+    if (succeededCount === 0) {
+      return fail(400, { registerError: 'Those courses are already registered.' })
+    }
+
+    return {
+      registerSuccess: true,
+      registerMessage:
+        failedCount > 0
+          ? `Registered ${succeededCount} course${succeededCount > 1 ? 's' : ''}. ${failedCount} could not be added (already registered).`
+          : `Registered ${succeededCount} course${succeededCount > 1 ? 's' : ''} successfully. Awaiting approval.`,
+    }
+  },
+
+  drop: async ({ request, locals }) => {
+    const student = await requireStudent(locals.user)
+
+    const form = await request.formData()
+    const registrationId = form.get('registrationId')?.toString() ?? ''
+
+    if (!registrationId) {
+      return fail(400, { dropError: 'Missing registration id.' })
+    }
+
+    const prisma = await getPrismaClient()
+
+    const registration = await prisma.courseRegistration.findUnique({
+      where: { id: registrationId },
+      include: { semester: true },
+    })
+
+    if (!registration || registration.studentId !== student.id) {
+      return fail(404, { dropError: 'Registration not found.' })
+    }
+
+    if (registration.status === 'CANCELLED') {
+      return fail(400, { dropError: 'This course has already been dropped.' })
+    }
+
+    const windowState = getRegistrationWindowState(registration.semester)
+    if (!windowState.open) {
+      const message =
+        windowState.reason === 'DISABLED'
+          ? 'Registration has been temporarily closed by the exam office. Contact them to drop this course.'
+          : 'The registration window for this semester has closed.'
+      return fail(400, { dropError: message })
+    }
+
+    if (registration.editCount >= MAX_EDITS) {
+      return fail(400, {
+        dropError: `This course has reached the maximum of ${MAX_EDITS} edits. Contact your exam officer to drop it.`,
+      })
+    }
+
+    if (registration.status === 'PENDING') {
+      // Not yet approved — safe to remove outright, no audit trail needed.
+      await prisma.courseRegistration.delete({ where: { id: registrationId } })
+    } else {
+      // Already approved — soft-cancel and record the edit rather than
+      // deleting, since exam officers need to see it was dropped, not that
+      // it never existed.
+      await prisma.courseRegistration.update({
+        where: { id: registrationId },
+        data: { status: 'CANCELLED', editCount: { increment: 1 } },
+      })
+    }
+
+    return { dropSuccess: true, dropMessage: 'Course dropped successfully.' }
+  },
+}

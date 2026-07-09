@@ -1,3 +1,4 @@
+<!-- src/routes/student/messages/+page.svelte -->
 <script lang="ts">
 	import { Topbar, PagePlaceholder } from '$lib/components/dashboard';
 </script>

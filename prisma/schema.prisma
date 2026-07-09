@@ -121,6 +121,22 @@ model PasswordResetToken {
   @@index([userType, staffId, studentId])
 }
 
+model VerificationToken {
+  id         String    @id @default(cuid())
+  userType   String    // "staff" | "student"
+  staffId    String?
+  studentId  String?
+  tokenHash  String    @unique
+  expiresAt  DateTime
+  consumedAt DateTime?
+  createdAt  DateTime  @default(now())
+
+  staff   Staff?   @relation(fields: [staffId], references: [id], onDelete: Cascade)
+  student Student? @relation(fields: [studentId], references: [id], onDelete: Cascade)
+
+  @@index([userType, staffId, studentId])
+}
+
 model Permission {
   id          String   @id @default(cuid())
   name        String   @unique // e.g. "exam:create", "result:release"
@@ -281,6 +297,7 @@ model Semester {
   type       SemesterType
   startDate  DateTime
   endDate    DateTime
+  registrationEnabled Boolean @default(true)
   regOpenAt  DateTime? // when registration opens
   regCloseAt DateTime? // when registration closes
   isCurrent  Boolean      @default(false)
@@ -333,6 +350,9 @@ model CourseOffering {
   semester Semester @relation(fields: [semesterId], references: [id])
   lecturer Staff?   @relation("CourseOfferings", fields: [lecturerId], references: [id])
 
+attendanceSessions AttendanceSession[]
+
+
   @@unique([courseId, semesterId])
 }
 
@@ -381,6 +401,50 @@ model CourseRegistration {
 }
 
 // ============================================================
+// ATTENDANCE
+// ============================================================
+
+enum AttendanceStatus {
+  PRESENT
+  ABSENT
+  EXCUSED
+  LATE
+}
+
+model AttendanceSession {
+  id               String   @id @default(cuid())
+  courseOfferingId String
+  title            String?  // e.g. "Week 3 Lecture", optional label
+  date             DateTime
+  createdById      String   // lecturer who opened this attendance session
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  courseOffering CourseOffering     @relation(fields: [courseOfferingId], references: [id])
+  createdBy      Staff              @relation("AttendanceCreator", fields: [createdById], references: [id])
+  records        AttendanceRecord[]
+
+  @@index([courseOfferingId, date])
+}
+
+model AttendanceRecord {
+  id                  String           @id @default(cuid())
+  attendanceSessionId String
+  studentId           String
+  status              AttendanceStatus @default(ABSENT)
+  markedById          String?          // staff who marked it (null if a future self check-in feature marks it)
+  note                String?
+  markedAt            DateTime         @default(now())
+
+  attendanceSession AttendanceSession @relation(fields: [attendanceSessionId], references: [id], onDelete: Cascade)
+  student           Student           @relation(fields: [studentId], references: [id])
+  markedBy          Staff?            @relation("AttendanceMarker", fields: [markedById], references: [id])
+
+  @@unique([attendanceSessionId, studentId])
+  @@index([studentId])
+}
+
+// ============================================================
 // STAFF
 // ============================================================
 
@@ -426,6 +490,12 @@ model Staff {
   gradedAnswers      StudentAnswer[]         @relation("AnswerGrader")
   releasedResults    AssessmentResult[]      @relation("ResultReleaser")
   resultRevisions    ResultRevision[]
+
+  emailVerifiedAt      DateTime?
+  verificationTokens   VerificationToken[]
+
+  createdAttendanceSessions AttendanceSession[] @relation("AttendanceCreator")
+markedAttendanceRecords   AttendanceRecord[]  @relation("AttendanceMarker")
 
   @@index([emailHash])
   @@index([staffNumber])
@@ -501,6 +571,10 @@ model Student {
   results            AssessmentResult[]
   transcriptEntries  TranscriptEntry[]
   passwordResets PasswordResetToken[]
+  emailVerifiedAt      DateTime?
+  verificationTokens   VerificationToken[]
+  attendanceRecords AttendanceRecord[]
+
 
   @@index([matricNumber])
   @@index([emailHash])

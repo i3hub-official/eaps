@@ -14,6 +14,8 @@
 	import { enhance } from '$app/forms';
 	import ShieldCheck from '@lucide/svelte/icons/shield-check';
 	import { onMount } from 'svelte';
+	import { fade, fly, scale } from 'svelte/transition';
+	import { quintOut, backOut } from 'svelte/easing';
 
 	let isSigningOut = $state(true);
 	let signoutForm = $state<HTMLFormElement | null>(null);
@@ -55,18 +57,29 @@
 	</div>
 
 	{#if isSigningOut}
-		<div class="flex flex-col items-center gap-4">
+		<div
+			class="flex flex-col items-center gap-4"
+			out:fade={{ duration: 400 }}
+		>
 			<div class="size-8 animate-spin rounded-full border-2 border-primary/30 border-t-primary"></div>
 			<p class="text-sm text-muted-foreground">Signing you out securely...</p>
 		</div>
 	{:else}
-		<div class="flex size-12 items-center justify-center rounded-md bg-primary">
+		<div
+			class="flex size-12 items-center justify-center rounded-md bg-primary"
+			in:scale={{ duration: 900, delay: 200, start: 0.4, easing: backOut }}
+		>
 			<ShieldCheck class="size-6 text-primary-foreground" />
 		</div>
-		<div class="flex flex-col gap-1.5">
+		<div
+			class="flex flex-col gap-1.5"
+			in:fly={{ y: 12, duration: 800, delay: 700, easing: quintOut }}
+		>
 			<h1 class="text-xl font-semibold">You've been signed out</h1>
 			<p class="text-sm text-muted-foreground">Your session has ended securely.</p>
 		</div>
-		<Button href="/login" size="lg">Back to sign in</Button>
+		<div in:fly={{ y: 12, duration: 800, delay: 1100, easing: quintOut }}>
+			<Button href="/login" size="lg">Back to sign in</Button>
+		</div>
 	{/if}
 </main>

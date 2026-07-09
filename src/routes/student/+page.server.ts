@@ -1,49 +1,17 @@
 // src/routes/student/+page.server.ts
 import type { PageServerLoad, Actions } from './$types';
 import { getPrismaClient } from '$lib/server/db/index.js';
-import { 
-	STUDENT_COOKIE, 
-	getStudentByToken,
-	cookieOptions 
-} from '$lib/server/auth';
-import { redirect, fail } from '@sveltejs/kit';
-import {
-	revealName,
-	revealEmail,
-	revealMatricNumber,
-} from '$lib/security/dataProtection';
-
-// ─── Helper: Safely decrypt data ────────────────────────────────────────────
-function safeDecrypt<T>(decryptFn: () => T, fallback: T): T {
-	try {
-		return decryptFn();
-	} catch {
-		return fallback;
-	}
-}
+import { requireStudent } from '$lib/server/auth/guards'
+import { fail } from '@sveltejs/kit';
 
 // ─── Load ─────────────────────────────────────────────────────────────────────
-export const load: PageServerLoad = async ({ cookies }) => {
-	// Get student session from cookie
-	const token = cookies.get(STUDENT_COOKIE);
-	if (!token) {
-		throw redirect(303, '/login');
-	}
-
-	// Verify student session using getStudentByToken
-	const result = await getStudentByToken(token);
-	if (!result) {
-		cookies.delete(STUDENT_COOKIE, cookieOptions);
-		throw redirect(303, '/login');
-	}
-
-	const { student } = result;
+export const load: PageServerLoad = async ({ locals }) => {
+	const student = await requireStudent(locals.user)
 	const prisma = await getPrismaClient();
 
 	// ─── Fetch Dashboard Data ──────────────────────────────────────────────
 
-	// Get assessments (recent and upcoming)
-	const [recentAssessments, upcomingAssessments, courseRegistrations, notifications] = await Promise.all([
+	const [recentAssessments, upcomingAssessments, courseRegistrations, notifications, fullStudent] = await Promise.all([
 		// Recent assessments (last 30 days)
 		prisma.assessmentSession.findMany({
 			where: {
@@ -53,11 +21,7 @@ export const load: PageServerLoad = async ({ cookies }) => {
 				},
 			},
 			include: {
-				assessment: {
-					include: {
-						course: true,
-					},
-				},
+				assessment: { include: { course: true } },
 				result: true,
 			},
 			orderBy: { createdAt: 'desc' },
@@ -67,9 +31,7 @@ export const load: PageServerLoad = async ({ cookies }) => {
 		// Upcoming assessments
 		prisma.assessment.findMany({
 			where: {
-				startTime: {
-					gte: new Date(),
-				},
+				startTime: { gte: new Date() },
 				status: 'PUBLISHED',
 				eligibility: {
 					some: {
@@ -81,37 +43,30 @@ export const load: PageServerLoad = async ({ cookies }) => {
 					},
 				},
 			},
-			include: {
-				course: true,
-			},
+			include: { course: true },
 			orderBy: { startTime: 'asc' },
 			take: 5,
 		}),
 
 		// Course registrations
 		prisma.courseRegistration.findMany({
-			where: {
-				studentId: student.id,
-				status: 'APPROVED',
-			},
-			include: {
-				course: {
-					include: {
-						level: true,
-						department: true,
-					},
-				},
-			},
+			where: { studentId: student.id, status: 'APPROVED' },
+			include: { course: { include: { level: true, department: true } } },
 			orderBy: { createdAt: 'desc' },
 		}),
 
 		// Notifications
 		prisma.notification.findMany({
-			where: {
-				studentId: student.id,
-			},
+			where: { studentId: student.id },
 			orderBy: { createdAt: 'desc' },
 			take: 10,
+		}),
+
+		// Extra fields not on the session-derived `student` object
+		// (entryYear, createdAt, full relation objects)
+		prisma.student.findUnique({
+			where: { id: student.id },
+			include: { department: true, programme: true, currentLevel: true },
 		}),
 	]);
 
@@ -122,41 +77,26 @@ export const load: PageServerLoad = async ({ cookies }) => {
 		0
 	);
 
-	// ─── Get Full Student with Relations ──────────────────────────────────
-	const fullStudent = await prisma.student.findUnique({
-		where: { id: student.id },
-		include: {
-			department: true,
-			programme: true,
-			currentLevel: true,
-		},
-	});
-
-	if (!fullStudent) {
-		cookies.delete(STUDENT_COOKIE, cookieOptions);
-		throw redirect(303, '/login');
-	}
-
-	// ─── Only decrypt what's needed for the dashboard ─────────────────────
-	const decryptedStudent = {
-		id: fullStudent.id,
-		// Only decrypt fields shown in the UI
-		firstName: safeDecrypt(() => revealName(fullStudent.firstName), fullStudent.firstName),
-		lastName: safeDecrypt(() => revealName(fullStudent.lastName), fullStudent.lastName),
-		email: safeDecrypt(() => revealEmail(fullStudent.email), fullStudent.email),
-		matricNumber: safeDecrypt(() => revealMatricNumber(fullStudent.matricNumber), fullStudent.matricNumber),
-		// These don't need decryption - they're not encrypted in the schema
-		status: fullStudent.status,
-		entryYear: fullStudent.entryYear,
-		createdAt: fullStudent.createdAt,
-		// Relations (not encrypted)
-		department: fullStudent.department,
-		programme: fullStudent.programme,
-		currentLevel: fullStudent.currentLevel,
+	// `student` from requireStudent already has decrypted firstName/lastName/
+	// email/matricNumber (decrypted once in hooks.server.ts) — no need to
+	// re-decrypt. `fullStudent` just supplies the extra fields/relations
+	// that aren't part of the session-derived user shape.
+	const studentView = {
+		id: student.id,
+		firstName: student.firstName,
+		lastName: student.lastName,
+		email: student.email,
+		matricNumber: student.matricNumber,
+		status: fullStudent?.status ?? student.status,
+		entryYear: fullStudent?.entryYear ?? null,
+		createdAt: fullStudent?.createdAt ?? null,
+		department: fullStudent?.department ?? null,
+		programme: fullStudent?.programme ?? null,
+		currentLevel: fullStudent?.currentLevel ?? null,
 	};
 
 	return {
-		student: decryptedStudent,
+		student: studentView,
 		dashboard: {
 			totalAssessments: recentAssessments.length,
 			totalCreditUnits: totalCredits,
@@ -211,7 +151,9 @@ export const load: PageServerLoad = async ({ cookies }) => {
 // ─── Actions ──────────────────────────────────────────────────────────────────
 export const actions: Actions = {
 	// ─── Mark Notification as Read ─────────────────────────────────────────
-	markNotificationRead: async ({ request, cookies }) => {
+	markNotificationRead: async ({ request, locals }) => {
+		const student = await requireStudent(locals.user)
+
 		const form = await request.formData();
 		const notificationId = form.get('notificationId')?.toString();
 
@@ -219,21 +161,11 @@ export const actions: Actions = {
 			return fail(400, { error: 'Notification ID required' });
 		}
 
-		const token = cookies.get(STUDENT_COOKIE);
-		if (!token) {
-			return fail(401, { error: 'Unauthorized' });
-		}
-
-		const result = await getStudentByToken(token);
-		if (!result) {
-			return fail(401, { error: 'Unauthorized' });
-		}
-
 		const prisma = await getPrismaClient();
 		await prisma.notification.update({
 			where: {
 				id: notificationId,
-				studentId: result.student.id,
+				studentId: student.id,
 			},
 			data: {
 				isRead: true,
@@ -245,21 +177,13 @@ export const actions: Actions = {
 	},
 
 	// ─── Mark All Notifications as Read ──────────────────────────────────
-	markAllNotificationsRead: async ({ cookies }) => {
-		const token = cookies.get(STUDENT_COOKIE);
-		if (!token) {
-			return fail(401, { error: 'Unauthorized' });
-		}
-
-		const result = await getStudentByToken(token);
-		if (!result) {
-			return fail(401, { error: 'Unauthorized' });
-		}
+	markAllNotificationsRead: async ({ locals }) => {
+		const student = await requireStudent(locals.user)
 
 		const prisma = await getPrismaClient();
 		await prisma.notification.updateMany({
 			where: {
-				studentId: result.student.id,
+				studentId: student.id,
 				isRead: false,
 			},
 			data: {
