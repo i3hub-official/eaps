@@ -1,5 +1,8 @@
 // src/lib/client/face/human.ts
 // Lazily-loaded, singleton @vladmandic/human instance for browser use only.
+// Models are self-hosted under /static/models/human — no CDN dependency,
+// so this keeps working even if the exam venue has no internet access
+// beyond the app server itself.
 import type Human from '@vladmandic/human'
 
 let humanInstance: Human | null = null
@@ -14,10 +17,9 @@ export async function getHuman(): Promise<Human> {
 
     const human = new HumanClass({
       backend: 'webgl',
-      modelBasePath: 'https://cdn.jsdelivr.net/npm/@vladmandic/human/models/',
-      // To avoid depending on a CDN during exams, copy
-      // node_modules/@vladmandic/human/models into /static/models and
-      // point modelBasePath at '/models/' instead.
+      modelBasePath: '/models/human/',
+    //modelBasePath: 'https://cdn.jsdelivr.net/npm/@vladmandic/human/models/',
+
       face: {
         enabled: true,
         detector: { rotation: true, maxDetected: 3 },
