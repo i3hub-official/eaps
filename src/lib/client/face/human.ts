@@ -24,15 +24,15 @@ export async function getHuman(): Promise<Human> {
         enabled: true,
         detector: { rotation: true, maxDetected: 3 },
         mesh: { enabled: true },
-        iris: { enabled: false },
+        iris: { enabled: true },
         description: { enabled: true }, // produces the embedding vector
-        emotion: { enabled: false },
+        emotion: { enabled: true },
         antispoof: { enabled: true },
         liveness: { enabled: true },
-      },
+            },
       body: { enabled: false },
       hand: { enabled: false },
-      gesture: { enabled: false },
+      gesture: { enabled: true },
       filter: { enabled: false },
     })
 

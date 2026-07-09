@@ -65,13 +65,48 @@
 			statusText = 'Multiple faces detected — make sure you are alone';
 		} else if ((face.faceScore ?? 0) < 0.7) {
 			statusText = 'Move closer and look directly at the camera';
-		} else if (face.embedding) {
-			const now = Date.now();
-			if (now - lastCaptureAt > CAPTURE_INTERVAL_MS) {
-				lastCaptureAt = now;
-				capturedDescriptors.push(face.embedding);
-				capturedCount = capturedDescriptors.length;
-				statusText = `Captured ${capturedCount} of ${REQUIRED_CAPTURES} — hold steady`;
+		} else {
+			// Check for facial expressions and head pose
+			const expression = face.expression || {};
+			const emotions = face.emotion || {};
+			const headPose = face.headPose || {};
+			
+			// Check for smiling (happy emotion > 0.5 or expression)
+			const isSmiling = (emotions.happy || 0) > 0.5 || (expression.smile || 0) > 0.5;
+			
+			// Check head pose (angles in radians)
+			const isLookingStraight = 
+				Math.abs(headPose.yaw || 0) < 0.3 &&     // not turning left/right
+				Math.abs(headPose.pitch || 0) < 0.3 &&   // not tilting up/down
+				Math.abs(headPose.roll || 0) < 0.3;      // not tilting head
+
+			if (!isSmiling) {
+				statusText = 'Please smile for the camera 😊';
+				loopHandle = requestAnimationFrame(runDetectionLoop);
+				return;
+			}
+			
+			if (!isLookingStraight) {
+				if (Math.abs(headPose.yaw || 0) > 0.3) {
+					statusText = 'Please look straight at the camera';
+				} else if (Math.abs(headPose.pitch || 0) > 0.3) {
+					statusText = 'Please tilt your head to look straight';
+				} else {
+					statusText = 'Please keep your head straight';
+				}
+				loopHandle = requestAnimationFrame(runDetectionLoop);
+				return;
+			}
+
+			// All checks passed - capture face descriptor
+			if (face.embedding) {
+				const now = Date.now();
+				if (now - lastCaptureAt > CAPTURE_INTERVAL_MS) {
+					lastCaptureAt = now;
+					capturedDescriptors.push(face.embedding);
+					capturedCount = capturedDescriptors.length;
+					statusText = `✅ Perfect! Captured ${capturedCount} of ${REQUIRED_CAPTURES} — hold steady`;
+				}
 			}
 		}
 
