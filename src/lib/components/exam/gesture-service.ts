@@ -18,25 +18,17 @@ export const ALL_GESTURES: GestureDefinition[] = [
 ];
 
 // ── Tuning ──────────────────────────────────────────────────────────────────
-const CONFIRM_FRAMES = 5;      // frames needed for hold gestures
-const HIT_RATIO      = 0.70;   // 70% of frames must be hits (3.5/5)
+const CONFIRM_FRAMES = 5;
+const HIT_RATIO      = 0.70;
 const DECAY_RATE     = 0.10;
-const RISE_RATE      = 1 / CONFIRM_FRAMES;
 
-// FIX: Thresholds are in degrees. Human's rotation.angle.yaw/pitch are in
-// degrees. If your fallback path returns a float (-1..1), getYaw/getPitch
-// will convert radians → degrees so these stay correct.
-const YAW_LEFT_THRESH   = -0.20;  // was -12 — yaw is a float (-1..1), not degrees
+// Face detection thresholds
+const YAW_LEFT_THRESH   = -0.20;
 const YAW_RIGHT_THRESH  =  0.20;
 const PITCH_UP_THRESH   = -0.12;
 const PITCH_DOWN_THRESH =  0.12;
-
-// FIX: Raised from 0.19 → 0.25. Resting open-eye EAR in these logs is
-// consistently 0.20–0.33. A real blink dips to ~0.05–0.15. The old threshold
-// of 0.19 was unreachable during a normal blink within the 5-frame window.
-const EAR_CLOSED_MAX  = 0.25;
-
-const MOUTH_OPEN_RATIO = 0.045;
+const EAR_CLOSED_MAX    = 0.25;
+const MOUTH_OPEN_RATIO  = 0.045;
 
 // ── Mesh indices ───────────────────────────────────────────────────────────
 const LEFT_EYE_IDX  = [33,  160, 158, 133, 153, 144];
@@ -65,28 +57,19 @@ function meanEar(mesh: number[][]): number {
 }
 
 // ── Robust angle extraction ──────────────────────────────────────────────────
-// FIX: Human v3 stores degrees at face.rotation.angle.{yaw,pitch}.
-// Some builds fall through to face.rotation.yaw which can be a quaternion
-// component or radian value. We convert radians → degrees in the fallback
-// so that YAW_LEFT_THRESH / PITCH_UP_THRESH thresholds always work correctly.
-
 function getYaw(face: any): number {
   const deg = face?.rotation?.angle?.yaw;
-  if (deg != null) return deg; // ✅ already degrees
-
+  if (deg != null) return deg;
   const rad = face?.angle?.yaw ?? face?.rotation?.yaw;
-  if (rad != null) return rad * (180 / Math.PI); // convert radians → degrees
-
+  if (rad != null) return rad * (180 / Math.PI);
   return 0;
 }
 
 function getPitch(face: any): number {
   const deg = face?.rotation?.angle?.pitch;
   if (deg != null) return deg;
-
   const rad = face?.angle?.pitch ?? face?.rotation?.pitch;
   if (rad != null) return rad * (180 / Math.PI);
-
   return 0;
 }
 
@@ -94,12 +77,6 @@ function getPitch(face: any): number {
 
 function detectTurnLeft(face: any): number {
   const yaw = getYaw(face);
-   console.log('[detectTurnLeft] raw rotation dump:', JSON.stringify({
-    angle: face?.rotation?.angle,
-    rotYaw: face?.rotation?.yaw,
-    angleYaw: face?.angle?.yaw,
-  }));
-
   if (yaw < YAW_LEFT_THRESH - 5) return 1.0;
   if (yaw < YAW_LEFT_THRESH)     return 0.85;
   if (yaw < 0)                return 0.30;
@@ -117,9 +94,8 @@ function detectTurnRight(face: any): number {
 function detectBlink(face: any): number {
   if (!face.mesh || face.mesh.length < 400) return 0;
   const avgEar = meanEar(face.mesh as number[][]);
-  // FIX: thresholds raised to match real resting EAR observed in logs
-  if (avgEar < EAR_CLOSED_MAX - 0.08) return 1.0;  // very closed  (<0.17)
-  if (avgEar < EAR_CLOSED_MAX)        return 0.85; // clearly closed (<0.25)
+  if (avgEar < EAR_CLOSED_MAX - 0.08) return 1.0;
+  if (avgEar < EAR_CLOSED_MAX)        return 0.85;
   return 0;
 }
 
@@ -187,22 +163,16 @@ export function gestureConfidence(
       boost = humanGestureContains(humanGestures, 'facing right') ? 0.15 : 0;
       break;
     case 'blink': {
-      // FIX: Human emits "blink left eye" AND "blink right eye" as separate
-      // gesture strings. Require both for a strong boost (prevents one-eye
-      // squints from triggering). Boost raised to 0.40 so that when human's
-      // own blink detector fires, confidence crosses 0.50 even without EAR.
       const blinkLeft  = humanGestureContains(humanGestures, 'blink left eye');
       const blinkRight = humanGestureContains(humanGestures, 'blink right eye');
       if (blinkLeft && blinkRight) boost = 0.40;
-      else if (blinkLeft || blinkRight) boost = 0.15; // partial credit
+      else if (blinkLeft || blinkRight) boost = 0.15;
       break;
     }
     case 'nod_up':
-      // FIX: Human emits "head up" not just "up"
       boost = humanGestureContains(humanGestures, 'head up')   ? 0.15 : 0;
       break;
     case 'nod_down':
-      // FIX: Human emits "head down" not just "down"
       boost = humanGestureContains(humanGestures, 'head down') ? 0.15 : 0;
       break;
     case 'open_mouth':
@@ -210,22 +180,10 @@ export function gestureConfidence(
       break;
   }
 
-  const final = Math.min(1, raw + boost);
-
-  console.log(
-    `[gestureConfidence] id=${id}, raw=${raw.toFixed(2)}, boost=${boost}, final=${final.toFixed(2)}`
-  );
-
-  return final;
+  return Math.min(1, raw + boost);
 }
 
 // ── GestureTracker ───────────────────────────────────────────────────────────
-// FIX: Now accepts per-instance confirmFrames and hitRatio so that blink
-// (a momentary dip) and hold gestures (turn, nod) can use different windows.
-//
-// Usage:
-//   Hold gestures → new GestureTracker()                        (defaults: 5 frames, 70% ratio)
-//   Blink         → new GestureTracker({ confirmFrames: 2, hitRatio: 1.0 })
 
 export interface GestureTrackerOptions {
   confirmFrames?: number;
@@ -262,21 +220,12 @@ export class GestureTracker {
     }
 
     if (this.window.length < this.confirmFrames) {
-      console.log(
-        `[GestureTracker] window=${this.window.length}/${this.confirmFrames}, ` +
-        `progress=${this.holdProgress.toFixed(2)}, hit=${hit}`
-      );
       return false;
     }
 
     const hits     = this.window.filter(c => c >= 0.50).length;
     const ratio    = hits / this.confirmFrames;
     const confirmed = ratio >= this.hitRatio && this.holdProgress >= 0.90;
-
-    console.log(
-      `[GestureTracker] hits=${hits}/${this.confirmFrames} ratio=${ratio.toFixed(2)} ` +
-      `progress=${this.holdProgress.toFixed(2)} confirmed=${confirmed}`
-    );
 
     return confirmed;
   }
@@ -286,10 +235,8 @@ export class GestureTracker {
 
 export function createTrackerForGesture(id: GestureId): GestureTracker {
   if (id === 'blink') {
-    // Blink is momentary (~2 frames). Short window, strict ratio.
     return new GestureTracker({ confirmFrames: 2, hitRatio: 1.0 });
   }
-  // All other gestures are sustained holds.
   return new GestureTracker();
 }
 

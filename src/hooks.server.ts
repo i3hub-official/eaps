@@ -14,7 +14,7 @@ import {
   getStaffByToken,
   getStudentByToken,
 } from '$lib/server/auth'
-import { revealEmail, revealName } from '$lib/security/dataProtection'
+import { revealEmail, revealMatricNumber, revealName } from '$lib/security/dataProtection'
 import type { User, Session } from '$lib/server/auth/types'
 
 let wss: any = null
@@ -83,7 +83,7 @@ async function loadSessionFromCookies(
       const user: User = {
         type: 'student',
         id: student.id,
-        matricNumber: student.matricNumber,
+        matricNumber: safeDecrypt(() => revealMatricNumber(student.matricNumber),''),
         email: safeDecrypt(() => revealEmail(student.email), ''),
         firstName: safeDecrypt(() => revealName(student.firstName), ''),
         otherNames: safeDecrypt(() => revealName(student.otherNames), ''),
