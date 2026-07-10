@@ -6,6 +6,26 @@ import { getPrismaClient } from '$lib/server/db/index.js'
 export const load: PageServerLoad = async ({ locals }) => {
 	const user = await requireLecturer(locals.user)
 
+	// If no department ID, return error state
+	if (!user.departmentId) {
+		return {
+			user: {
+				id: user.id,
+				firstName: user.firstName,
+				lastName: user.lastName,
+			},
+			conversations: [],
+			students: [],
+			stats: {
+				total: 0,
+				open: 0,
+				resolved: 0,
+				closed: 0,
+			},
+			error: 'No department assigned. Contact your HOD.'
+		}
+	}
+
 	const prisma = await getPrismaClient()
 
 	// Get conversations for this lecturer

@@ -20,7 +20,8 @@
 		TableRow,
 	} from '$lib/components/ui/table/index.js'
 	import { Tabs, TabsContent, TabsList, TabsTrigger } from '$lib/components/ui/tabs/index.js'
-	import { invalidateAll } from '$app/navigation';
+	import { Alert, AlertDescription, AlertTitle } from '$lib/components/ui/alert/index.js'
+	import OnboardingPrompt from '$lib/components/dashboard/onboarding-prompt.svelte'
 
 	import BookOpen from '@lucide/svelte/icons/book-open'
 	import Users from '@lucide/svelte/icons/users'
@@ -32,12 +33,22 @@
 	import TrendingUp from '@lucide/svelte/icons/trending-up'
 	import ChevronRight from '@lucide/svelte/icons/chevron-right'
 	import Play from '@lucide/svelte/icons/play'
-	import RefreshCw from '@lucide/svelte/icons/refresh-cw'
-	import LoaderCircle from '@lucide/svelte/icons/loader'
+	import Rocket from '@lucide/svelte/icons/rocket'
+	import XCircle from '@lucide/svelte/icons/x-circle'
+	import Building2 from '@lucide/svelte/icons/building-2'
 
 	let { data } = $props()
 
-		let isRefreshing = $state(false);
+	// ─── State ────────────────────────────────────────────────────────────────
+	let showOnboarding = $state(false)
+	let onboardingData = $state(null)
+
+	// ─── Effects ──────────────────────────────────────────────────────────────
+	$effect(() => {
+		if (data?.onboarding) {
+			onboardingData = data.onboarding
+		}
+	})
 
 	const formatDate = (date: Date | string) => {
 		if (!date) return ''
@@ -74,33 +85,39 @@
 		return colors[type] || 'bg-gray-100 text-gray-800 dark:bg-gray-800/30 dark:text-gray-400'
 	}
 
-	// ─── Handlers ────────────────────────────────────────────────────────────
-	async function handleRefresh() {
-		if (isRefreshing) return;
-		isRefreshing = true;
-		await invalidateAll();
-		isRefreshing = false;
+	// ─── Onboarding Status ──────────────────────────────────────────────────
+	const needsOnboarding = $derived(
+		onboardingData && !onboardingData.isComplete
+	)
+
+	const getOnboardingMessage = () => {
+		if (!needsOnboarding) return null
+		
+		const missing = []
+		if (!onboardingData.hasCollege) missing.push('College')
+		if (!onboardingData.hasDepartment) missing.push('Department')
+		if (!onboardingData.hasCourse) missing.push('Courses')
+		
+		if (missing.length === 3) return 'You need to set up your College, Department, and Courses'
+		if (missing.length === 2) return `You need to set up your ${missing.join(' and ')}`
+		return `You need to set up your ${missing[0]}`
 	}
 </script>
 
-<Topbar title="Dashboard" description="Welcome back, {data?.user?.firstName || 'Lecturer'}">
-	{#snippet actions()}
-		<Button
-			variant="outline"
-			size="sm"
-			onclick={handleRefresh}
-			disabled={isRefreshing}
-		>
-			{#if isRefreshing}
-				<LoaderCircle class="size-4 animate-spin" />
-			{:else}
-				<RefreshCw class="size-4" />
-			{/if}
-			Refresh
-		</Button>
-	{/snippet}
-</Topbar>
+<svelte:head>
+	<title>Dashboard — MOUAU e-Test</title>
+</svelte:head>
 
+<Topbar title="Dashboard" />
+
+<!-- Onboarding Modal -->
+<OnboardingPrompt 
+	data={onboardingData} 
+	open={showOnboarding} 
+	onOpenChange={(open) => {
+		showOnboarding = open
+	}}
+/>
 
 <div class="flex flex-1 flex-col gap-8 p-8">
 	<!-- Welcome Banner -->
@@ -128,6 +145,26 @@
 			</Button>
 		</div>
 	</div>
+
+	<!-- Onboarding Alert - Conditional -->
+	{#if needsOnboarding}
+		<Alert class="border-blue-500/50 bg-blue-500/10 text-blue-700 dark:text-blue-400">
+			<Rocket class="size-5" />
+			<AlertTitle class="font-semibold">Complete Your Onboarding</AlertTitle>
+			<AlertDescription class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+				<span>{getOnboardingMessage()}</span>
+				<Button 
+					variant="default" 
+					size="sm" 
+					onclick={() => showOnboarding = true}
+					class="shrink-0"
+				>
+					<Rocket class="mr-2 size-4" />
+					Set Up Now
+				</Button>
+			</AlertDescription>
+		</Alert>
+	{/if}
 
 	<!-- Stats Grid with Descriptions -->
 	<div class="grid gap-6 sm:grid-cols-2 lg:grid-cols-4">

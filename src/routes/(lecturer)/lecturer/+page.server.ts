@@ -1,5 +1,6 @@
 // src/routes/(lecturer)/lecturer/+page.server.ts
 import type { PageServerLoad } from './$types'
+import { redirect } from '@sveltejs/kit'
 import { getPrismaClient } from '$lib/server/db/index.js'
 import { requireLecturer } from '$lib/server/auth/guards.js'
 
@@ -7,32 +8,102 @@ export const load: PageServerLoad = async ({ locals }) => {
 	// Use the guard to ensure user is authenticated as lecturer
 	const user = await requireLecturer(locals.user)
 	
-	// Now user is guaranteed to be a lecturer
 	const prisma = await getPrismaClient()
 	const staffId = user.id
 	const departmentId = user.departmentId
 	const now = new Date()
 
-	// If no department ID, return empty state
+	// Default empty state
+	const emptyState = {
+		user: {
+			id: user.id,
+			firstName: user.firstName || 'Lecturer',
+			lastName: user.lastName || '',
+			email: user.email || '',
+			primaryRole: user.primaryRole || 'LECTURER',
+		},
+		stats: { 
+			courses: 0, 
+			students: 0, 
+			assessments: 0, 
+			pendingGrades: 0, 
+			questions: 0, 
+			published: 0,
+			activeSessions: 0,
+			totalSessions: 0
+		},
+		upcomingAssessments: [],
+		pendingSubmissions: [],
+		recentActivity: [],
+		coursePerformance: [],
+		assessmentStats: [],
+		pendingGrades: [],
+		onboarding: {
+			isComplete: false,
+			hasCollege: false,
+			hasDepartment: false,
+			hasCourse: false,
+			colleges: [],
+			departments: [],
+			levels: [],
+			courses: [],
+			permissions: {
+				canCreateCollege: false,
+				canCreateDepartment: false,
+				canCreateCourse: false,
+			},
+			user
+		}
+	}
+
+	// ─── Check Onboarding Status ──────────────────────────────────────────
+	
+	const colleges = await prisma.college.findMany({
+		orderBy: { name: 'asc' }
+	})
+	const departments = await prisma.department.findMany({
+		orderBy: { name: 'asc' }
+	})
+	const levels = await prisma.level.findMany({
+		orderBy: { name: 'asc' }
+	})
+	
+	const hasCollege = !!user.collegeId && colleges.length > 0
+	const hasDepartment = !!user.departmentId && departments.length > 0
+	
+	let hasCourse = false
+	if (user.departmentId) {
+		const courseCount = await prisma.course.count({
+			where: { departmentId: user.departmentId }
+		})
+		hasCourse = courseCount > 0
+	}
+	
+	// Determine permissions based on role
+	const canCreateCollege = ['SUPER_ADMIN', 'REGISTRAR', 'VC', 'DVC'].includes(user.primaryRole)
+	const canCreateDepartment = ['SUPER_ADMIN', 'REGISTRAR', 'DEAN', 'HOD'].includes(user.primaryRole)
+	const canCreateCourse = ['SUPER_ADMIN', 'REGISTRAR', 'HOD', 'DEPARTMENT_COORDINATOR', 'LECTURER'].includes(user.primaryRole)
+	
+	// If no department ID, return empty state with onboarding
 	if (!departmentId) {
 		return {
-			user: { id: user.id, firstName: user.firstName, lastName: user.lastName },
-			stats: { 
-				courses: 0, 
-				students: 0, 
-				assessments: 0, 
-				pendingGrades: 0, 
-				questions: 0, 
-				published: 0,
-				activeSessions: 0,
-				totalSessions: 0
-			},
-			upcomingAssessments: [],
-			pendingSubmissions: [],
-			recentActivity: [],
-			coursePerformance: [],
-			assessmentStats: [],
-			pendingGrades: [],
+			...emptyState,
+			onboarding: {
+				isComplete: false,
+				hasCollege,
+				hasDepartment,
+				hasCourse,
+				colleges,
+				departments,
+				levels,
+				courses: [],
+				permissions: {
+					canCreateCollege,
+					canCreateDepartment,
+					canCreateCourse,
+				},
+				user
+			}
 		}
 	}
 
@@ -248,11 +319,20 @@ export const load: PageServerLoad = async ({ locals }) => {
 		take: 10,
 	})
 
+	// ─── Get courses for onboarding ──────────────────────────────────────
+	
+	const userCourses = await prisma.course.findMany({
+		where: { departmentId: user.departmentId || undefined },
+		orderBy: { code: 'asc' }
+	})
+
 	return {
 		user: {
 			id: user.id,
-			firstName: user.firstName,
-			lastName: user.lastName,
+			firstName: user.firstName || 'Lecturer',
+			lastName: user.lastName || '',
+			email: user.email || '',
+			primaryRole: user.primaryRole || 'LECTURER',
 		},
 		stats: {
 			courses: courseCount,
@@ -297,5 +377,21 @@ export const load: PageServerLoad = async ({ locals }) => {
 			entity: log.entity,
 			createdAt: log.createdAt,
 		})),
+		onboarding: {
+			isComplete: hasCollege && hasDepartment && hasCourse,
+			hasCollege,
+			hasDepartment,
+			hasCourse,
+			colleges,
+			departments,
+			levels,
+			courses: userCourses,
+			permissions: {
+				canCreateCollege,
+				canCreateDepartment,
+				canCreateCourse,
+			},
+			user
+		}
 	}
 }
