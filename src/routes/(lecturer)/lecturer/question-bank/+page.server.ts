@@ -1,10 +1,30 @@
-// src/routes/(lecturer)/lecturer/question-bank/+page.server.ts (UPDATED)
+// src/routes/(lecturer)/lecturer/question-bank/+page.server.ts
 import type { PageServerLoad } from './$types'
 import { requireLecturer } from '$lib/server/auth/guards.js'
 import { getPrismaClient } from '$lib/server/db/index.js'
 
 export const load: PageServerLoad = async ({ locals, url }) => {
 	const user = await requireLecturer(locals.user)
+
+	// If no department ID, return error state
+	if (!user.departmentId) {
+		return {
+			user: {
+				id: user.id,
+				firstName: user.firstName,
+				lastName: user.lastName,
+			},
+			questions: [],
+			courses: [],
+			filters: {
+				course: null,
+				type: null,
+				difficulty: null,
+				search: null,
+			},
+			error: 'No department assigned. Contact your HOD.'
+		}
+	}
 
 	const prisma = await getPrismaClient()
 

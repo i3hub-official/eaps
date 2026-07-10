@@ -2,15 +2,38 @@
 import type { PageServerLoad } from './$types'
 import { redirect } from '@sveltejs/kit'
 import { getPrismaClient } from '$lib/server/db/index.js'
+import { requireLecturer } from '$lib/server/auth/guards.js'
 
 export const load: PageServerLoad = async ({ locals, url }) => {
-	// Protect route
-	if (!locals.staff || locals.staff.primaryRole !== 'LECTURER') {
-		throw redirect(303, '/login')
+	// Use the guard to ensure user is authenticated as lecturer
+	const user = await requireLecturer(locals.user)
+
+	// If no department ID, return error state
+	if (!user.departmentId) {
+		return {
+			user: {
+				id: user.id,
+				firstName: user.firstName,
+				lastName: user.lastName,
+			},
+			submissions: [],
+			courses: [{ id: 'all', label: 'All courses' }],
+			filters: {
+				course: null,
+				status: 'pending',
+				search: null,
+			},
+			stats: {
+				pending: 0,
+				graded: 0,
+				total: 0,
+			},
+			error: 'No department assigned. Contact your HOD.'
+		}
 	}
 
 	const prisma = await getPrismaClient()
-	const staffId = locals.staff.id
+	const staffId = user.id
 
 	// ─── Filters ──────────────────────────────────────────────────────────────
 
@@ -21,7 +44,7 @@ export const load: PageServerLoad = async ({ locals, url }) => {
 	// ─── Get lecturer's courses ───────────────────────────────────────────────
 
 	const courses = await prisma.course.findMany({
-		where: { departmentId: locals.staff.departmentId },
+		where: { departmentId: user.departmentId },
 		select: { id: true, code: true, title: true },
 		orderBy: { code: 'asc' },
 	})
@@ -90,10 +113,10 @@ export const load: PageServerLoad = async ({ locals, url }) => {
 	}
 
 	return {
-		staff: {
-			id: locals.staff.id,
-			firstName: locals.staff.firstName,
-			lastName: locals.staff.lastName,
+		user: {
+			id: user.id,
+			firstName: user.firstName,
+			lastName: user.lastName,
 		},
 		submissions: filtered.map((s) => ({
 			id: s.id,

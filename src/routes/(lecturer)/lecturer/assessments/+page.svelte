@@ -20,6 +20,12 @@
 		SelectItem,
 		SelectTrigger,
 	} from '$lib/components/ui/select/index.js';
+	import {
+		DropdownMenu,
+		DropdownMenuContent,
+		DropdownMenuItem,
+		DropdownMenuTrigger,
+	} from '$lib/components/ui/dropdown-menu/index.js';
 	import { Alert, AlertDescription } from '$lib/components/ui/alert/index.js';
 	import { Tabs, TabsContent, TabsList, TabsTrigger } from '$lib/components/ui/tabs/index.js';
 	import { Progress } from '$lib/components/ui/progress/index.js';
@@ -42,6 +48,7 @@
 		FileCheck,
 		ClipboardList,
 		GraduationCap,
+		ChevronDown,
 	} from '@lucide/svelte/icons';
 	import { invalidateAll } from '$app/navigation';
 	import { format } from '$lib/utils/date';
@@ -137,10 +144,58 @@
 			{/if}
 			Refresh
 		</Button>
-		<Button href="/lecturer/assessments/create/exam" size="sm">
-			<Plus class="mr-2 size-4" />
-			New Assessment
-		</Button>
+		
+		<DropdownMenu>
+			<DropdownMenuTrigger asChild>
+				<Button size="sm">
+					<Plus class="mr-2 size-4" />
+					New Assessment
+					<ChevronDown class="ml-2 size-4" />
+				</Button>
+			</DropdownMenuTrigger>
+			<DropdownMenuContent align="end" class="w-56">
+				<DropdownMenuItem 
+					onclick={() => window.location.href = '/lecturer/assessments/create/exam'}
+					class="gap-3 cursor-pointer"
+				>
+					<FileCheck class="size-4 text-destructive" />
+					<div class="flex-1">
+						<p class="font-medium">Exam</p>
+						<p class="text-xs text-muted-foreground">Full examination (70 marks)</p>
+					</div>
+				</DropdownMenuItem>
+				<DropdownMenuItem 
+					onclick={() => window.location.href = '/lecturer/assessments/create/test'}
+					class="gap-3 cursor-pointer"
+				>
+					<ClipboardList class="size-4 text-yellow-600" />
+					<div class="flex-1">
+						<p class="font-medium">Test</p>
+						<p class="text-xs text-muted-foreground">Short test (30 marks)</p>
+					</div>
+				</DropdownMenuItem>
+				<DropdownMenuItem 
+					onclick={() => window.location.href = '/lecturer/assessments/create/assignment'}
+					class="gap-3 cursor-pointer"
+				>
+					<FileText class="size-4 text-blue-600" />
+					<div class="flex-1">
+						<p class="font-medium">Assignment</p>
+						<p class="text-xs text-muted-foreground">Open-ended submission</p>
+					</div>
+				</DropdownMenuItem>
+				<DropdownMenuItem 
+					onclick={() => window.location.href = '/lecturer/assessments/create/practice'}
+					class="gap-3 cursor-pointer"
+				>
+					<GraduationCap class="size-4 text-green-600" />
+					<div class="flex-1">
+						<p class="font-medium">Practice</p>
+						<p class="text-xs text-muted-foreground">Unlimited practice questions</p>
+					</div>
+				</DropdownMenuItem>
+			</DropdownMenuContent>
+		</DropdownMenu>
 	{/snippet}
 </Topbar>
 
@@ -247,9 +302,9 @@
 		<Tabs bind:value={activeTab} class="mt-8">
 			<TabsList class="mb-6">
 				<TabsTrigger value="overview">Overview</TabsTrigger>
-				<TabsTrigger value="exams">Exams</TabsTrigger>
-				<TabsTrigger value="tests">Tests</TabsTrigger>
-				<TabsTrigger value="assignments">Assignments</TabsTrigger>
+				<TabsTrigger value="examination">Exams</TabsTrigger>
+				<TabsTrigger value="test">Tests</TabsTrigger>
+				<TabsTrigger value="assignment">Assignments</TabsTrigger>
 				<TabsTrigger value="practice">Practice</TabsTrigger>
 			</TabsList>
 
@@ -502,36 +557,5 @@
 				</TabsContent>
 			{/each}
 		</Tabs>
-
-		<!-- ─── Quick Actions ────────────────────────────────────────────────── -->
-		<Card class="mt-6 bg-muted/30 border-border">
-			<CardHeader class="pb-3">
-				<CardTitle class="flex items-center gap-2">
-					<Plus class="size-5" />
-					Quick Create
-				</CardTitle>
-				<CardDescription>Create a new assessment</CardDescription>
-			</CardHeader>
-			<CardContent>
-				<div class="grid gap-3 sm:grid-cols-4">
-					<Button href="/lecturer/assessments/create/exam" variant="outline" size="default" class="justify-center">
-						<FileCheck class="mr-2 size-4" />
-						Exam
-					</Button>
-					<Button href="/lecturer/assessments/create/test" variant="outline" size="default" class="justify-center">
-						<ClipboardList class="mr-2 size-4" />
-						Test
-					</Button>
-					<Button href="/lecturer/assessments/create/assignment" variant="outline" size="default" class="justify-center">
-						<FileText class="mr-2 size-4" />
-						Assignment
-					</Button>
-					<Button href="/lecturer/assessments/create/practice" variant="outline" size="default" class="justify-center">
-						<GraduationCap class="mr-2 size-4" />
-						Practice
-					</Button>
-				</div>
-			</CardContent>
-		</Card>
 	{/if}
 </div>
