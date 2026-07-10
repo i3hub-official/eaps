@@ -1,27 +1,40 @@
-// src/routes/(lecturer)/lecturer/+page.server.ts (UPDATED)
+// src/routes/(lecturer)/lecturer/+page.server.ts
 import type { PageServerLoad } from './$types'
-import { requireLecturer } from '$lib/server/auth/guards.js'
 import { getPrismaClient } from '$lib/server/db/index.js'
+import { requireLecturer } from '$lib/server/auth/guards.js'
 
 export const load: PageServerLoad = async ({ locals }) => {
+	// Use the guard to ensure user is authenticated as lecturer
 	const user = await requireLecturer(locals.user)
+	
+	// Now user is guaranteed to be a lecturer
+	const prisma = await getPrismaClient()
+	const staffId = user.id
+	const departmentId = user.departmentId
+	const now = new Date()
 
-	if (!user.departmentId) {
+	// If no department ID, return empty state
+	if (!departmentId) {
 		return {
 			user: { id: user.id, firstName: user.firstName, lastName: user.lastName },
-			stats: { courses: 0, students: 0, assessments: 0, pendingGrades: 0, questions: 0, published: 0 },
+			stats: { 
+				courses: 0, 
+				students: 0, 
+				assessments: 0, 
+				pendingGrades: 0, 
+				questions: 0, 
+				published: 0,
+				activeSessions: 0,
+				totalSessions: 0
+			},
 			upcomingAssessments: [],
 			pendingSubmissions: [],
 			recentActivity: [],
 			coursePerformance: [],
 			assessmentStats: [],
+			pendingGrades: [],
 		}
 	}
-
-	const prisma = await getPrismaClient()
-	const staffId = user.id
-	const departmentId = user.departmentId
-	const now = new Date()
 
 	// ─── Get all courses in department ─────────────────────────────────────
 
@@ -220,7 +233,7 @@ export const load: PageServerLoad = async ({ locals }) => {
 
 	const auditLogs = await prisma.auditLog.findMany({
 		where: {
-			staffId: user.id,
+			staffId,
 			action: {
 				in: [
 					'ASSESSMENT_CREATED',

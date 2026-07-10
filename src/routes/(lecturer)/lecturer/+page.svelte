@@ -20,7 +20,7 @@
 		TableRow,
 	} from '$lib/components/ui/table/index.js'
 	import { Tabs, TabsContent, TabsList, TabsTrigger } from '$lib/components/ui/tabs/index.js'
-	import StatCard from '$lib/components/dashboard/stat-card.svelte'
+	import { invalidateAll } from '$app/navigation';
 
 	import BookOpen from '@lucide/svelte/icons/book-open'
 	import Users from '@lucide/svelte/icons/users'
@@ -32,10 +32,15 @@
 	import TrendingUp from '@lucide/svelte/icons/trending-up'
 	import ChevronRight from '@lucide/svelte/icons/chevron-right'
 	import Play from '@lucide/svelte/icons/play'
+	import RefreshCw from '@lucide/svelte/icons/refresh-cw'
+	import LoaderCircle from '@lucide/svelte/icons/loader'
 
 	let { data } = $props()
 
+		let isRefreshing = $state(false);
+
 	const formatDate = (date: Date | string) => {
+		if (!date) return ''
 		const d = new Date(date)
 		const now = new Date()
 		const diff = d.getTime() - now.getTime()
@@ -50,43 +55,67 @@
 
 	const getStatusColor = (status: string) => {
 		const colors: Record<string, string> = {
-			ACTIVE: 'bg-green-100 text-green-800',
-			SCHEDULED: 'bg-blue-100 text-blue-800',
-			DRAFT: 'bg-gray-100 text-gray-800',
-			ENDED: 'bg-purple-100 text-purple-800',
-			CANCELLED: 'bg-red-100 text-red-800',
+			ACTIVE: 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400',
+			SCHEDULED: 'bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-400',
+			DRAFT: 'bg-gray-100 text-gray-800 dark:bg-gray-800/30 dark:text-gray-400',
+			ENDED: 'bg-purple-100 text-purple-800 dark:bg-purple-900/30 dark:text-purple-400',
+			CANCELLED: 'bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400',
 		}
-		return colors[status] || 'bg-gray-100 text-gray-800'
+		return colors[status] || 'bg-gray-100 text-gray-800 dark:bg-gray-800/30 dark:text-gray-400'
 	}
 
 	const getTypeColor = (type: string) => {
 		const colors: Record<string, string> = {
-			EXAMINATION: 'bg-red-100 text-red-800',
-			TEST: 'bg-orange-100 text-orange-800',
-			ASSIGNMENT: 'bg-blue-100 text-blue-800',
-			PRACTICE: 'bg-green-100 text-green-800',
+			EXAMINATION: 'bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400',
+			TEST: 'bg-orange-100 text-orange-800 dark:bg-orange-900/30 dark:text-orange-400',
+			ASSIGNMENT: 'bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-400',
+			PRACTICE: 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400',
 		}
-		return colors[type] || 'bg-gray-100 text-gray-800'
+		return colors[type] || 'bg-gray-100 text-gray-800 dark:bg-gray-800/30 dark:text-gray-400'
+	}
+
+	// ─── Handlers ────────────────────────────────────────────────────────────
+	async function handleRefresh() {
+		if (isRefreshing) return;
+		isRefreshing = true;
+		await invalidateAll();
+		isRefreshing = false;
 	}
 </script>
 
-<Topbar title="My Dashboard" description="Your personal dashboard" />
+<Topbar title="Dashboard" description="Welcome back, {data?.user?.firstName || 'Lecturer'}">
+	{#snippet actions()}
+		<Button
+			variant="outline"
+			size="sm"
+			onclick={handleRefresh}
+			disabled={isRefreshing}
+		>
+			{#if isRefreshing}
+				<LoaderCircle class="size-4 animate-spin" />
+			{:else}
+				<RefreshCw class="size-4" />
+			{/if}
+			Refresh
+		</Button>
+	{/snippet}
+</Topbar>
 
 
 <div class="flex flex-1 flex-col gap-8 p-8">
 	<!-- Welcome Banner -->
 	<div class="flex flex-col gap-6 md:flex-row md:items-center md:justify-between">
 		<div>
-			<h1 class="text-3xl font-bold tracking-tight">Welcome back, {data.user.firstName}</h1>
+			<h1 class="text-3xl font-bold tracking-tight">Welcome back, {data?.user?.firstName || 'Lecturer'}</h1>
 			<p class="text-muted-foreground mt-1">
-				{data.stats.activeSessions > 0
+				{data?.stats?.activeSessions > 0
 					? `${data.stats.activeSessions} exam(s) in progress`
 					: 'No active exams right now'}
 			</p>
 		</div>
 		<div class="flex gap-3">
-			<Button href="/lecturer/grade" variant={data.stats.pendingGrades > 0 ? 'default' : 'outline'} size="default">
-				{#if data.stats.pendingGrades > 0}
+			<Button href="/lecturer/grade" variant={data?.stats?.pendingGrades > 0 ? 'default' : 'outline'} size="default">
+				{#if data?.stats?.pendingGrades > 0}
 					<AlertCircle class="mr-2 size-4" />
 					Grade ({data.stats.pendingGrades})
 				{:else}
@@ -100,33 +129,57 @@
 		</div>
 	</div>
 
-	<!-- Stats Grid -->
+	<!-- Stats Grid with Descriptions -->
 	<div class="grid gap-6 sm:grid-cols-2 lg:grid-cols-4">
-		<StatCard
-			title="My Courses"
-			value={data.stats.courses}
-			icon={BookOpen}
-			trend="{data.stats.students} total students"
-		/>
-		<StatCard
-			title="Questions"
-			value={data.stats.questions}
-			icon={FileText}
-			trend="in question bank"
-		/>
-		<StatCard
-			title="Assessments"
-			value={data.stats.published}
-			icon={Calendar}
-			trend="published / {data.stats.assessments} total"
-		/>
-		<StatCard
-			title="Pending Grades"
-			value={data.stats.pendingGrades}
-			icon={AlertCircle}
-			trend="waiting to be graded"
-			trendClass={data.stats.pendingGrades > 0 ? 'text-red-500' : ''}
-		/>
+		<Card>
+			<CardHeader class="flex flex-row items-center justify-between space-y-0 pb-2">
+				<CardTitle class="text-sm font-medium">My Courses</CardTitle>
+				<BookOpen class="size-4 text-muted-foreground" />
+			</CardHeader>
+			<CardContent>
+				<div class="text-2xl font-bold">{data?.stats?.courses || 0}</div>
+				<p class="text-xs text-muted-foreground">
+					{data?.stats?.students || 0} total students
+				</p>
+			</CardContent>
+		</Card>
+
+		<Card>
+			<CardHeader class="flex flex-row items-center justify-between space-y-0 pb-2">
+				<CardTitle class="text-sm font-medium">Questions</CardTitle>
+				<FileText class="size-4 text-muted-foreground" />
+			</CardHeader>
+			<CardContent>
+				<div class="text-2xl font-bold">{data?.stats?.questions || 0}</div>
+				<p class="text-xs text-muted-foreground">in question bank</p>
+			</CardContent>
+		</Card>
+
+		<Card>
+			<CardHeader class="flex flex-row items-center justify-between space-y-0 pb-2">
+				<CardTitle class="text-sm font-medium">Assessments</CardTitle>
+				<Calendar class="size-4 text-muted-foreground" />
+			</CardHeader>
+			<CardContent>
+				<div class="text-2xl font-bold">{data?.stats?.published || 0}</div>
+				<p class="text-xs text-muted-foreground">
+					published / {data?.stats?.assessments || 0} total
+				</p>
+			</CardContent>
+		</Card>
+
+		<Card>
+			<CardHeader class="flex flex-row items-center justify-between space-y-0 pb-2">
+				<CardTitle class="text-sm font-medium">Pending Grades</CardTitle>
+				<AlertCircle class="size-4 text-muted-foreground" />
+			</CardHeader>
+			<CardContent>
+				<div class="text-2xl font-bold">{data?.stats?.pendingGrades || 0}</div>
+				<p class="text-xs text-muted-foreground">
+					{data?.stats?.pendingGrades > 0 ? 'waiting to be graded' : 'all graded'}
+				</p>
+			</CardContent>
+		</Card>
 	</div>
 
 	<!-- Tabs -->
@@ -142,14 +195,14 @@
 		<TabsContent value="urgent" class="space-y-6">
 			<div class="grid gap-6 md:grid-cols-2">
 				<!-- Active Sessions -->
-				{#if data.stats.activeSessions > 0}
-					<Card class="border-orange-200/50 bg-orange-50/50">
+				{#if data?.stats?.activeSessions > 0}
+					<Card class="border-orange-200/50 bg-orange-50/50 dark:border-orange-800/30 dark:bg-orange-950/20">
 						<CardHeader class="pb-3">
-							<CardTitle class="flex items-center gap-2 text-orange-900">
+							<CardTitle class="flex items-center gap-2 text-orange-900 dark:text-orange-400">
 								<Play class="size-5" />
 								Active Exams Right Now
 							</CardTitle>
-							<CardDescription class="text-orange-800">
+							<CardDescription class="text-orange-800 dark:text-orange-300">
 								{data.stats.activeSessions} student(s) in progress
 							</CardDescription>
 						</CardHeader>
@@ -163,14 +216,14 @@
 				{/if}
 
 				<!-- Pending Grades Alert -->
-				{#if data.stats.pendingGrades > 0}
-					<Card class="border-red-200/50 bg-red-50/50">
+				{#if data?.stats?.pendingGrades > 0}
+					<Card class="border-red-200/50 bg-red-50/50 dark:border-red-800/30 dark:bg-red-950/20">
 						<CardHeader class="pb-3">
-							<CardTitle class="flex items-center gap-2 text-red-900">
+							<CardTitle class="flex items-center gap-2 text-red-900 dark:text-red-400">
 								<AlertCircle class="size-5" />
 								Answers Awaiting Grade
 							</CardTitle>
-							<CardDescription class="text-red-800">
+							<CardDescription class="text-red-800 dark:text-red-300">
 								{data.stats.pendingGrades} submission(s) need grading
 							</CardDescription>
 						</CardHeader>
@@ -184,18 +237,19 @@
 				{/if}
 
 				<!-- Upcoming Due Dates -->
-				{#if data.pendingSubmissions && data.pendingSubmissions.length > 0}
-					<Card class="border-yellow-200/50 bg-yellow-50/50 md:col-span-2">
+				{#if data?.pendingSubmissions && data.pendingSubmissions.length > 0}
+					<Card class="border-yellow-200/50 bg-yellow-50/50 dark:border-yellow-800/30 dark:bg-yellow-950/20 md:col-span-2">
 						<CardHeader class="pb-3">
-							<CardTitle class="flex items-center gap-2 text-yellow-900">
+							<CardTitle class="flex items-center gap-2 text-yellow-900 dark:text-yellow-400">
 								<Clock class="size-5" />
 								Upcoming Assignment Due Dates
 							</CardTitle>
+							<CardDescription>Assignments that need your attention</CardDescription>
 						</CardHeader>
 						<CardContent>
 							<div class="space-y-3">
 								{#each data.pendingSubmissions.slice(0, 3) as assignment}
-									<div class="flex items-center justify-between rounded-lg border border-yellow-200 bg-white p-4">
+									<div class="flex items-center justify-between rounded-lg border border-yellow-200 bg-white p-4 dark:border-yellow-800/30 dark:bg-yellow-950/10">
 										<div>
 											<p class="font-medium">{assignment.title}</p>
 											<p class="text-sm text-muted-foreground">{assignment.courseCode}</p>
@@ -211,7 +265,7 @@
 				{/if}
 
 				<!-- Recent Submissions to Grade -->
-				{#if data.pendingGrades && data.pendingGrades.length > 0}
+				{#if data?.pendingGrades && data.pendingGrades.length > 0}
 					<Card class="md:col-span-2">
 						<CardHeader class="pb-3">
 							<CardTitle class="flex items-center gap-2">
@@ -255,7 +309,7 @@
 					<CardDescription>Scheduled exams, tests, and assignments</CardDescription>
 				</CardHeader>
 				<CardContent>
-					{#if data.upcomingAssessments && data.upcomingAssessments.length > 0}
+					{#if data?.upcomingAssessments && data.upcomingAssessments.length > 0}
 						<div class="space-y-4">
 							{#each data.upcomingAssessments as assessment}
 								<div class="flex items-start justify-between rounded-lg border p-5 hover:bg-muted/50 transition-colors">
@@ -319,7 +373,7 @@
 						<CardDescription>Student performance across your courses</CardDescription>
 					</CardHeader>
 					<CardContent>
-						{#if data.coursePerformance && data.coursePerformance.length > 0}
+						{#if data?.coursePerformance && data.coursePerformance.length > 0}
 							<div class="space-y-6">
 								{#each data.coursePerformance as course}
 									<div class="space-y-2">
@@ -354,7 +408,7 @@
 						<CardDescription>Performance metrics from your recent assessments</CardDescription>
 					</CardHeader>
 					<CardContent>
-						{#if data.assessmentStats && data.assessmentStats.length > 0}
+						{#if data?.assessmentStats && data.assessmentStats.length > 0}
 							<Table>
 								<TableHeader>
 									<TableRow>
@@ -398,7 +452,7 @@
 					<CardDescription>Your recent actions in the system</CardDescription>
 				</CardHeader>
 				<CardContent>
-					{#if data.recentActivity && data.recentActivity.length > 0}
+					{#if data?.recentActivity && data.recentActivity.length > 0}
 						<div class="space-y-4">
 							{#each data.recentActivity as activity}
 								<div class="flex items-center justify-between border-b pb-4 last:border-0">
@@ -429,6 +483,7 @@
 				<Play class="size-5" />
 				Quick Actions
 			</CardTitle>
+			<CardDescription>Common tasks to manage your courses</CardDescription>
 		</CardHeader>
 		<CardContent>
 			<div class="grid gap-3 sm:grid-cols-4">
