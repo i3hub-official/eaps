@@ -23,7 +23,6 @@
 	import {
 		ArrowLeft,
 		AlertCircle,
-		CheckCircle,
 		HelpCircle,
 		Upload,
 		FileJson,
@@ -31,6 +30,9 @@
 	} from '@lucide/svelte/icons'
 	import { cn } from '$lib/utils.js'
 	import { tick } from 'svelte'
+	import { enhance } from '$app/forms'
+	import { goto, invalidateAll } from '$app/navigation'
+	import { toast } from 'svelte-sonner'
 
 	let { data, form } = $props()
 
@@ -38,7 +40,6 @@
 	let isSubmitting = $state(false)
 	let isImporting = $state(false)
 	let errors = $state<Record<string, string>>({})
-	let importSuccess = $state<{ imported: number; errors?: string[] } | null>(null)
 	let options = $state<string[]>(['', '', '', '']) // A, B, C, D
 	let correctOption = $state<string>('0')
 
@@ -69,29 +70,23 @@
 	)
 
 	const selectedDifficulty = $derived(
-		difficulties.find(d => d === formData.difficulty) || 'MEDIUM'
+		difficulties.find((d) => d === formData.difficulty) || 'MEDIUM'
 	)
 
 	// ─── Handlers ────────────────────────────────────────────────────────────
 	function closeAndFocusCourse() {
 		courseOpen = false
-		tick().then(() => {
-			courseTriggerRef?.focus()
-		})
+		tick().then(() => courseTriggerRef?.focus())
 	}
 
 	function closeAndFocusDifficulty() {
 		difficultyOpen = false
-		tick().then(() => {
-			difficultyTriggerRef?.focus()
-		})
+		tick().then(() => difficultyTriggerRef?.focus())
 	}
 
 	function closeAndFocusImportCourse() {
 		importCourseOpen = false
-		tick().then(() => {
-			importCourseTriggerRef?.focus()
-		})
+		tick().then(() => importCourseTriggerRef?.focus())
 	}
 
 	function updateOption(index: number, value: string) {
@@ -114,93 +109,110 @@
 		return Object.keys(errors).length === 0
 	}
 
-	async function handleSubmit(event: Event) {
-		event.preventDefault()
-		if (!validateForm()) return
+	// ─── Create: use SvelteKit's enhance() so the action envelope is
+	// deserialized correctly instead of hand-rolling fetch + .json() ───────────
+	function handleCreateSubmit() {
+		if (!validateForm()) {
+			toast.error('Please fix the errors before submitting')
+			return { cancel: true }
+		}
 
 		isSubmitting = true
+		const toastId = toast.loading('Creating question…')
 
-		try {
-			const formDataObj = new FormData()
-			formDataObj.append('courseId', formData.courseId)
-			formDataObj.append('body', formData.body.trim())
-			formDataObj.append('explanation', formData.explanation || '')
-			formDataObj.append('difficulty', formData.difficulty)
-			formDataObj.append('marks', String(formData.marks))
-			formDataObj.append('correctOption', correctOption)
-
-			// Add options (only non-empty)
-			options.forEach((opt, i) => {
-				if (opt.trim()) {
-					formDataObj.append(`option${i}`, opt.trim())
-				}
-			})
-
-			const response = await fetch('?/create', {
-				method: 'POST',
-				body: formDataObj,
-			})
-
-			const result = await response.json()
-
-			if (response.ok && result.success) {
-				window.location.href = '/lecturer/question-bank'
-			} else {
-				errors = result.error ? { error: result.error } : { error: 'Failed to create question' }
-			}
-		} catch (err) {
-			errors = { error: err instanceof Error ? err.message : 'Failed to create question' }
-		} finally {
+		return async ({ result }: { result: any }) => {
 			isSubmitting = false
+
+			if (result.type === 'success') {
+				toast.success('Question created', { id: toastId })
+				await goto('/lecturer/question-bank')
+			} else if (result.type === 'failure') {
+				const msg = result.data?.error ?? 'Failed to create question'
+				errors = { error: msg }
+				toast.error(msg, { id: toastId })
+			} else if (result.type === 'error') {
+				const msg = result.error?.message ?? 'Failed to create question'
+				errors = { error: msg }
+				toast.error(msg, { id: toastId })
+			}
 		}
 	}
 
+	// ─── Import: direct fetch to the +server.ts endpoint, wrapped in
+	// toast.promise so the user sees pending/success/error states live ─────────
 	async function handleFileUpload(event: Event) {
 		const target = event.target as HTMLInputElement
 		const file = target.files?.[0]
-		if (!file || !formData.courseId) {
-			errors = { file: formData.courseId ? 'Select a file' : 'Select a course first' }
+
+		if (!file) return
+
+		if (!formData.courseId) {
+			toast.error('Select a course first')
+			target.value = ''
 			return
 		}
 
 		const validTypes = ['.json', '.txt']
 		const fileExt = '.' + file.name.split('.').pop()?.toLowerCase()
 		if (!validTypes.includes(fileExt)) {
-			errors = { file: 'Only .json and .txt files are supported' }
+			toast.error('Only .json and .txt files are supported')
+			target.value = ''
 			return
 		}
 
 		if (file.size > 5 * 1024 * 1024) {
-			errors = { file: 'File size must be less than 5MB' }
+			toast.error('File size must be less than 5MB')
+			target.value = ''
 			return
 		}
 
+		errors = {}
 		isImporting = true
-		importSuccess = null
 
-		try {
+		const importPromise = (async () => {
 			const formDataObj = new FormData()
 			formDataObj.append('courseId', formData.courseId)
 			formDataObj.append('file', file)
 
-			const response = await fetch('?/import', {
+			const response = await fetch('/lecturer/question-bank/import', {
 				method: 'POST',
 				body: formDataObj,
 			})
 
 			const result = await response.json()
 
-			if (response.ok && result.success) {
-				importSuccess = {
-					imported: result.imported || 0,
-					errors: result.errors,
-				}
-				target.value = ''
-			} else {
-				errors = { file: result.error || 'Import failed' }
+			// The endpoint returns 200 for "at least 1 imported" (even with partial
+			// errors) and 400/403/500 for hard failures — this is what response.ok
+			// reflects, so it lines up with success/error toast branching below.
+			if (!response.ok || !result.success) {
+				throw new Error(result.error ?? 'Import failed')
 			}
-		} catch (err) {
-			errors = { file: err instanceof Error ? err.message : 'Import failed' }
+
+			return result as { imported: number; total: number; errors?: string[] }
+		})()
+
+		toast.promise(importPromise, {
+			loading: 'Importing questions…',
+			success: (result) => {
+				const base = `Imported ${result.imported} of ${result.total} question(s)`
+				return result.errors?.length
+					? `${base} — ${result.errors.length} row(s) had errors`
+					: base
+			},
+			error: (err) => (err instanceof Error ? err.message : 'Import failed'),
+		})
+
+		try {
+			const result = await importPromise
+			if (result.errors?.length) {
+				// Surface per-row errors in the UI in addition to the toast summary,
+				// since toast text alone can't show a full list comfortably.
+				errors = { file: `${result.errors.length} row(s) skipped: ${result.errors.slice(0, 3).join('; ')}${result.errors.length > 3 ? '…' : ''}` }
+			}
+			target.value = ''
+			await invalidateAll()
+		} catch {
+			// toast.promise already surfaced the error; nothing else to do here.
 		} finally {
 			isImporting = false
 		}
@@ -248,7 +260,7 @@ Marks: 1`
 
 		<!-- ─────── MANUAL TAB ─────── -->
 		<TabsContent value="manual">
-			<form onsubmit={handleSubmit} class="space-y-6">
+			<form method="POST" action="?/create" use:enhance={handleCreateSubmit} class="space-y-6">
 				{#if errors.error}
 					<Alert variant="destructive">
 						<AlertCircle class="size-4" />
@@ -266,6 +278,7 @@ Marks: 1`
 						<CardContent class="space-y-4">
 							<div class="space-y-2">
 								<Label for="courseId">Course *</Label>
+								<input type="hidden" name="courseId" value={formData.courseId} />
 								<Popover.Root bind:open={courseOpen}>
 									<Popover.Trigger bind:ref={courseTriggerRef}>
 										{#snippet child({ props })}
@@ -273,8 +286,8 @@ Marks: 1`
 												{...props}
 												variant="outline"
 												class={cn(
-													"w-full justify-between h-12 text-base font-normal",
-													errors.courseId && "border-destructive"
+													'w-full justify-between h-12 text-base font-normal',
+													errors.courseId && 'border-destructive'
 												)}
 												role="combobox"
 												aria-expanded={courseOpen}
@@ -300,8 +313,8 @@ Marks: 1`
 														>
 															<CheckIcon
 																class={cn(
-																	"mr-2 size-4",
-																	formData.courseId === course.id ? "opacity-100" : "opacity-0"
+																	'mr-2 size-4',
+																	formData.courseId === course.id ? 'opacity-100' : 'opacity-0'
 																)}
 															/>
 															{course.code} — {course.title}
@@ -321,6 +334,7 @@ Marks: 1`
 								<Label for="body">Question Text *</Label>
 								<Textarea
 									id="body"
+									name="body"
 									bind:value={formData.body}
 									placeholder="Enter your question here..."
 									rows={3}
@@ -336,6 +350,7 @@ Marks: 1`
 								<Label for="explanation">Explanation (Optional)</Label>
 								<Textarea
 									id="explanation"
+									name="explanation"
 									bind:value={formData.explanation}
 									placeholder="Provide an explanation for the correct answer..."
 									rows={2}
@@ -357,6 +372,7 @@ Marks: 1`
 						<CardContent class="space-y-4">
 							<div class="space-y-2">
 								<Label for="difficulty">Difficulty Level</Label>
+								<input type="hidden" name="difficulty" value={formData.difficulty} />
 								<Popover.Root bind:open={difficultyOpen}>
 									<Popover.Trigger bind:ref={difficultyTriggerRef}>
 										{#snippet child({ props })}
@@ -388,8 +404,8 @@ Marks: 1`
 														>
 															<CheckIcon
 																class={cn(
-																	"mr-2 size-4",
-																	formData.difficulty === difficulty ? "opacity-100" : "opacity-0"
+																	'mr-2 size-4',
+																	formData.difficulty === difficulty ? 'opacity-100' : 'opacity-0'
 																)}
 															/>
 															{difficulty}
@@ -406,6 +422,7 @@ Marks: 1`
 								<Label for="marks">Marks *</Label>
 								<Input
 									id="marks"
+									name="marks"
 									type="number"
 									bind:value={formData.marks}
 									min="0.5"
@@ -434,6 +451,7 @@ Marks: 1`
 								</Alert>
 							{/if}
 
+							<input type="hidden" name="correctOption" value={correctOption} />
 							<RadioGroup bind:value={correctOption} class="space-y-3">
 								{#each options as option, index}
 									<div class="flex items-center gap-3">
@@ -444,9 +462,11 @@ Marks: 1`
 										/>
 										<div class="flex-1">
 											<Input
+												name={`option${index}`}
 												value={option}
 												placeholder={`Option ${OPTION_LETTERS[index]}`}
-												oninput={(e: Event) => updateOption(index, (e.currentTarget as HTMLInputElement).value)}
+												oninput={(e: Event) =>
+													updateOption(index, (e.currentTarget as HTMLInputElement).value)}
 											/>
 										</div>
 										<Badge variant="outline">{OPTION_LETTERS[index]}</Badge>
@@ -480,20 +500,6 @@ Marks: 1`
 		<!-- ─────── IMPORT TAB ─────── -->
 		<TabsContent value="import">
 			<div class="space-y-6">
-				{#if importSuccess}
-					<Alert class="bg-green-50 border-green-200">
-						<CheckCircle class="size-4 text-green-600" />
-						<AlertDescription class="text-green-800">
-							Successfully imported {importSuccess.imported} question(s)
-							{#if importSuccess.errors && importSuccess.errors.length > 0}
-								<span class="block text-red-600 mt-1">
-									{importSuccess.errors.length} error(s) occurred
-								</span>
-							{/if}
-						</AlertDescription>
-					</Alert>
-				{/if}
-
 				{#if errors.file}
 					<Alert variant="destructive">
 						<AlertCircle class="size-4" />
@@ -525,13 +531,7 @@ D) Option D
 Correct: A
 Difficulty: MEDIUM
 Marks: 1`}</code></pre>
-									<Button
-										type="button"
-										variant="outline"
-										size="sm"
-										onclick={downloadTemplate}
-										class="w-full"
-									>
+									<Button type="button" variant="outline" size="sm" onclick={downloadTemplate} class="w-full">
 										Download TXT Template
 									</Button>
 								</div>
@@ -595,8 +595,8 @@ Marks: 1`}</code></pre>
 														>
 															<CheckIcon
 																class={cn(
-																	"mr-2 size-4",
-																	formData.courseId === course.id ? "opacity-100" : "opacity-0"
+																	'mr-2 size-4',
+																	formData.courseId === course.id ? 'opacity-100' : 'opacity-0'
 																)}
 															/>
 															{course.code} — {course.title}
