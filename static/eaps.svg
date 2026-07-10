@@ -1,0 +1,25 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="100%" height="100%">
+  <defs>
+    <style>
+      .bg-shield { fill: none; stroke: currentColor; stroke-width: 24; stroke-linejoin: round; }
+      .scanner-line { fill: none; stroke: #3b82f6; stroke-width: 16; stroke-linecap: round; }
+      .biometric-eye { fill: none; stroke: currentColor; stroke-width: 18; }
+      .iris { fill: #3b82f6; }
+      @media (prefers-color-scheme: dark) {
+        .bg-shield, .biometric-eye { stroke: #ffffff; }
+      }
+      @media (prefers-color-scheme: light) {
+        .bg-shield, .biometric-eye { stroke: #0f172a; }
+      }
+    </style>
+  </defs>
+
+  <path class="bg-shield" d="M256,40 C340,40 420,70 420,70 C420,190 370,340 256,440 C142,340 92,190 92,70 C92,70 172,40 256,40 Z" />
+
+  <line class="scanner-line" x1="140" y1="210" x2="372" y2="210" />
+
+  <path class="biometric-eye" d="M160,270 C200,210 312,210 352,270 C312,330 200,330 160,270 Z" />
+  
+  <circle class="iris" cx="256" cy="270" r="28" />
+  <circle fill="#ffffff" cx="266" cy="260" r="8" />
+</svg>

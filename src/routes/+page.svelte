@@ -30,7 +30,7 @@
 </script>
 
 <svelte:head>
-	<title>AES — MOUAU Assessment & Evaluation System</title>
+	<title>EAPS — MOUAU - Evaluation Assessment & Proctor System</title>
 </svelte:head>
 
 <div class="min-h-svh bg-background text-foreground">
@@ -39,10 +39,10 @@
 		<div class="flex items-center justify-between px-6 py-4 md:px-12 lg:px-20">
 			<div class="flex items-center gap-2.5">
 				<div class="flex size-8 items-center justify-center rounded-md bg-primary text-xs font-bold text-primary-foreground">
-					A
+					E
 				</div>
 				<span class="text-sm font-semibold tracking-tight">
-					AES <span class="font-normal text-muted-foreground">· MOUAU</span>
+					EAPS <span class="font-normal text-muted-foreground">· MOUAU</span>
 				</span>
 			</div>
 			<div class="flex items-center gap-3">
@@ -66,7 +66,7 @@
 					One platform, three stages of readiness.
 				</h1>
 				<p class="mt-5 max-w-md text-[15px] leading-relaxed text-muted-foreground lg:text-base">
-					AES carries a student from practice questions to timed self-tests to
+					EAPS carries a student from practice questions to timed self-tests to
 					invigilated examinations — the same courses, the same question bank, increasing
 					stakes.
 				</p>
@@ -109,7 +109,7 @@
 						</div>
 					</dl>
 					<p class="mt-5 border-t border-border pt-3 text-[10px] leading-relaxed text-muted-foreground">
-						Every session on AES is bound to a verified identity and a fixed time
+						Every session on EAPS is bound to a verified identity and a fixed time
 						window, whether practice, test, or examination.
 					</p>
 				</div>
@@ -166,9 +166,9 @@
 			<div class="flex flex-col items-center gap-1 text-center md:items-start md:text-left">
 				<div class="flex items-center gap-2">
 					<div class="flex size-6 items-center justify-center rounded bg-primary/10 text-[10px] font-bold text-primary">
-						AES
+						EAPS
 					</div>
-					<span class="text-xs font-semibold text-foreground">Assessment & Evaluation System</span>
+					<span class="text-xs font-semibold text-foreground">MOUAU - Evaluation Assessment & Proctor System</span>
 				</div>
 				<p class="text-[11px] text-muted-foreground/70">
 					Michael Okpara University of Agriculture, Umudike
@@ -185,7 +185,7 @@
 
 		<!-- Bottom: Copyright -->
 		<div class="mt-6 border-t border-border/50 pt-4 text-center text-[10px] text-muted-foreground/60 md:text-left">
-			&copy; {new Date().getFullYear()} AES — All rights reserved. MOUAU Assessment & Evaluation System
+			&copy; {new Date().getFullYear()} EAPS — All rights reserved. MOUAU - Evaluation Assessment & Proctor System
 		</div>
 	</div>
 </footer>

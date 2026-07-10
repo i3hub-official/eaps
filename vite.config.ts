@@ -2,6 +2,7 @@ import tailwindcss from '@tailwindcss/vite';
 import { sveltekit } from '@sveltejs/kit/vite';
 import { defineConfig } from 'vite';
 import basicSsl from '@vitejs/plugin-basic-ssl';
+import { SvelteKitPWA } from '@vite-pwa/sveltekit';
 
 export default defineConfig(() => {
   return {
@@ -9,6 +10,38 @@ export default defineConfig(() => {
       tailwindcss(), 
       sveltekit(), 
       basicSsl(),
+      SvelteKitPWA({
+        registerType: 'autoUpdate',
+        injectRegister: 'inline', // Let Vite inject the service worker script automatically
+        workbox: {
+          globPatterns: ['**/*.{js,css,html,ico,png,svg,woff2}'],
+          globDirectory: 'static',
+          globPatternsPatterns: ['models/human/**/*'],
+          maximumFileSizeToCacheInBytes: 60 * 1024 * 1024,
+          runtimeCaching: [
+            {
+              urlPattern: ({ url }) => url.pathname.startsWith('/api/face/descriptor'),
+              handler: 'NetworkFirst',
+              options: {
+                cacheName: 'face-descriptor-api-cache',
+                expiration: { maxEntries: 32, maxAgeSeconds: 60 * 60 * 2 }
+              }
+            }
+          ]
+        },
+        manifest: {
+          name: 'Evaluation Assessment & Proctor System',
+          short_name: 'EvalProctor',
+          start_url: '/',
+          display: 'standalone',
+          background_color: '#ffffff',
+          theme_color: '#3b82f6',
+          icons: [
+            { src: 'icons/icon-192x192.png', sizes: '192x192', type: 'image/png' },
+            { src: 'icons/icon-512x512.png', sizes: '512x512', type: 'image/png' }
+          ]
+        }
+      })
     ],
 
     server: {

@@ -9,55 +9,58 @@ let humanInstance: Human | null = null
 let loadPromise: Promise<Human> | null = null
 
 export async function getHuman(): Promise<Human> {
-  if (humanInstance) return humanInstance
-  if (loadPromise) return loadPromise
+  if (humanInstance) return humanInstance;
+  if (loadPromise) return loadPromise;
 
   loadPromise = (async () => {
-    const { default: HumanClass } = await import('@vladmandic/human')
-
-        //modelBasePath: 'https://cdn.jsdelivr.net/npm/@vladmandic/human/models/',
-
-        
-    const human = new HumanClass({
-      backend: 'webgl',
-      modelBasePath: '/models/human/',
-
-      face: {
-        enabled: true,
-        detector: { rotation: true, maxDetected: 3 },
-        mesh: { enabled: true },
-        iris: { enabled: true },
-        description: { enabled: true }, // produces the embedding vector
-        emotion: { enabled: true },
-        antispoof: { enabled: true },
-        liveness: { enabled: true },
+    try {
+      const { default: HumanClass } = await import('@vladmandic/human');
+      
+      const human = new HumanClass({
+        backend: 'webgl',
+        modelBasePath: '/models/human/',
+        face: {
+          enabled: true,
+          detector: { rotation: true, maxDetected: 3 },
+          mesh: { enabled: true },
+          iris: { enabled: true },
+          description: { enabled: true },
+          emotion: { enabled: true },
+          antispoof: { enabled: true },
+          liveness: { enabled: true },
         },
-      body: { enabled: false },
-      hand: { enabled: false },
-      gesture: { enabled: false },
-      filter: { enabled: false },
-    })
+        body: { enabled: false },
+        hand: { enabled: false },
+        gesture: { enabled: false },
+        filter: { enabled: false },
+      });
 
-    await human.load()
-    await human.warmup()
+      await human.load();
+      await human.warmup();
 
-    humanInstance = human
-    return human
-  })()
+      humanInstance = human;
+      return human;
+    } catch (err) {
+      loadPromise = null; // Reset promise to allow retries if loading fails
+      throw err;
+    }
+  })();
 
-  return loadPromise
+  return loadPromise;
 }
 
 export function cosineSimilarity(a: number[], b: number[]): number {
-  if (a.length !== b.length) return 0
-  let dot = 0
-  let normA = 0
-  let normB = 0
+  if (a.length !== b.length || a.length === 0) return 0;
+  
+  let dot = 0, magA = 0, magB = 0;
   for (let i = 0; i < a.length; i++) {
-    dot += a[i] * b[i]
-    normA += a[i] * a[i]
-    normB += b[i] * b[i]
+    const valA = a[i];
+    const valB = b[i];
+    dot += valA * valB;
+    magA += valA * valA;
+    magB += valB * valB;
   }
-  if (normA === 0 || normB === 0) return 0
-  return dot / (Math.sqrt(normA) * Math.sqrt(normB))
+  
+  if (magA === 0 || magB === 0) return 0;
+  return dot / (Math.sqrt(magA) * Math.sqrt(magB));
 }

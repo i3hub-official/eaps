@@ -46,6 +46,7 @@
 		"@types/pg": "^8.20.0",
 		"@types/ws": "^8.18.1",
 		"@types/xlsx": "^0.0.36",
+		"@vite-pwa/sveltekit": "^1.1.0",
 		"bits-ui": "^2.18.1",
 		"clsx": "^2.1.1",
 		"date-fns": "^4.4.0",
@@ -110,6 +111,7 @@
 		"node-cron": "^4.2.1",
 		"nodemailer": "^8.0.7",
 		"qrcode": "^1.5.4",
+		"sharp": "^0.35.3",
 		"uuid": "^14.0.1",
 		"ws": "^8.20.1",
 		"xlsx": "^0.18.5"

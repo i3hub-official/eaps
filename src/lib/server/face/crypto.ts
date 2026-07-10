@@ -2,6 +2,9 @@
 // AES-256-GCM encryption for face descriptors + cross-student duplicate detection
 // Key is loaded from environment — never hardcoded
 
+import { Worker } from 'worker_threads'
+import { resolve } from 'path'
+import { getPrismaClient } from '$lib/server/db/index.js'
 import { createCipheriv, createDecipheriv, randomBytes } from 'crypto'
 import { getPrismaClient } from '$lib/server/db/index.js';
 import { env }    from '$env/dynamic/private';
@@ -72,37 +75,77 @@ export async function decryptDescriptor(
   return JSON.parse(decrypted.toString('utf8')) as number[]
 }
 
-// ─── Duplicate detection ──────────────────────────────────────────────────────
-// Checks all existing enrollments for cosine similarity above threshold.
-// Returns the conflicting studentId if found, null otherwise.
+/**
+ * Offloads vector math to a worker thread to keep the main SvelteKit thread completely free.
+ */
+function runDuplicateWorker(
+  newDescriptor: number[],
+  records: { studentId: string; descriptor: number[] }[]
+): Promise<string | null> {
+  return new Promise((res, rej) => {
+    // Dynamically resolve worker path safely across build environments
+    const workerPath = resolve('src/lib/server/face/duplicate.worker.ts')
+
+    const worker = new Worker(workerPath, {
+      workerData: {
+        newDescriptor,
+        records,
+        threshold: DUPLICATE_THRESHOLD,
+      },
+      // Automatically transpiles TS files if using ts-node/tsx runtimes locally
+      execArgv: process.env.NODE_ENV === 'development' ? ['--import', 'tsx'] : [],
+    })
+
+    worker.on('message', (message: { duplicateId: string | null }) => {
+      res(message.duplicateId)
+    })
+
+    worker.on('error', (err) => {
+      rej(err)
+    })
+
+    worker.on('exit', (code) => {
+      if (code !== 0) {
+        rej(new Error(`Duplicate validation worker stopped with exit code ${code}`))
+      }
+    })
+  })
+}
 
 export async function findDuplicateEnrollment(
   newDescriptor: number[],
   excludeStudentId: string
 ): Promise<string | null> {
-  // Load all existing descriptors except the current student
-  const prisma = await getPrismaClient();
+  const prisma = await getPrismaClient()
   const records = await prisma.faceDescriptor.findMany({
     where: { studentId: { not: excludeStudentId } },
     select: { studentId: true, encryptedData: true, iv: true },
   })
 
-  for (const record of records) {
-    let existing: number[]
+  // 1. Decrypt records in parallel batches to minimize database runtime lockup
+  const decryptedRecords: { studentId: string; descriptor: number[] }[] = []
+  
+  const decryptionPromises = records.map(async (record) => {
     try {
-      existing = await decryptDescriptor(record.encryptedData, record.iv)
+      const descriptor = await decryptDescriptor(record.encryptedData, record.iv)
+      return { studentId: record.studentId, descriptor }
     } catch {
-      continue // skip corrupted records
+      return null // Ignore corrupted records gracefully
     }
+  })
 
-    const similarity = cosineSimilarity(newDescriptor, existing)
-    if (similarity >= DUPLICATE_THRESHOLD) {
-      return record.studentId
-    }
+  const results = await Promise.all(decryptionPromises)
+  for (const res of results) {
+    if (res) decryptedRecords.push(res)
   }
 
-  return null
+  if (decryptedRecords.length === 0) return null
+
+  // 2. Offload the O(N) cosine calculations to the worker thread
+  return await runDuplicateWorker(newDescriptor, decryptedRecords)
 }
+
+
 
 // Admin utility — find all students sharing faces across the database
 export async function findAllDuplicateEnrollments(): Promise<
@@ -143,11 +186,17 @@ export async function findAllDuplicateEnrollments(): Promise<
 // ─── Cosine similarity (server-side mirror of client-side check) ──────────────
 
 function cosineSimilarity(a: number[], b: number[]): number {
-  let dot = 0, magA = 0, magB = 0
+  if (a.length !== b.length || a.length === 0) return 0;
+  
+  let dot = 0, magA = 0, magB = 0;
   for (let i = 0; i < a.length; i++) {
-    dot += a[i] * b[i]
-    magA += a[i] * a[i]
-    magB += b[i] * b[i]
+    const valA = a[i];
+    const valB = b[i];
+    dot += valA * valB;
+    magA += valA * valA;
+    magB += valB * valB;
   }
-  return dot / (Math.sqrt(magA) * Math.sqrt(magB))
+  
+  if (magA === 0 || magB === 0) return 0;
+  return dot / (Math.sqrt(magA) * Math.sqrt(magB));
 }
