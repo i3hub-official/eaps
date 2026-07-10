@@ -16,7 +16,7 @@ export default defineConfig(() => {
         workbox: {
           globPatterns: ['**/*.{js,css,html,ico,png,svg,woff2}'],
           globDirectory: 'static',
-          globPatternsPatterns: ['models/human/**/*'],
+          globPatterns: ['models/human/**/*'],
           maximumFileSizeToCacheInBytes: 60 * 1024 * 1024,
           runtimeCaching: [
             {
