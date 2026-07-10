@@ -45,32 +45,59 @@ export const POST: RequestHandler = async ({ request, locals }) => {
 		phone ? protectText(phone) : null,
 	])
 
-	const department = await prisma.department.create({
-		data: {
-			collegeId,
-			name: protectedName,
-			shortName: protectedShortName,
-			code: protectedCode || protectedShortName,
-			email: protectedEmail,
-			phone: protectedPhone,
-		},
-	})
-
-	// Audit log
-	await prisma.auditLog.create({
-		data: {
-			actorType: 'staff',
-			staffId: user.id,
-			action: 'DEPARTMENT_CREATED',
-			entity: 'Department',
-			entityId: department.id,
-			afterData: {
-				name,
-				shortName,
-				code: code || shortName.toUpperCase(),
+	// Create department AND assign the lecturer to it in one transaction
+	const { department } = await prisma.$transaction(async (tx) => {
+		const department = await tx.department.create({
+			data: {
 				collegeId,
+				name: protectedName,
+				shortName: protectedShortName,
+				code: protectedCode || protectedShortName,
+				email: protectedEmail,
+				phone: protectedPhone,
 			},
-		},
+		})
+
+		// Update the lecturer's Staff record to point to this department
+		await tx.staff.update({
+			where: { id: user.id },
+			data: { departmentId: department.id },
+		})
+
+		// Audit log for department creation
+		await tx.auditLog.create({
+			data: {
+				actorType: 'staff',
+				staffId: user.id,
+				action: 'DEPARTMENT_CREATED',
+				entity: 'Department',
+				entityId: department.id,
+				afterData: {
+					name,
+					shortName,
+					code: code || shortName.toUpperCase(),
+					collegeId,
+				},
+			},
+		})
+
+		// Audit log for staff assignment
+		await tx.auditLog.create({
+			data: {
+				actorType: 'staff',
+				staffId: user.id,
+				action: 'STAFF_DEPARTMENT_ASSIGNED',
+				entity: 'Staff',
+				entityId: user.id,
+				afterData: {
+					staffId: user.id,
+					departmentId: department.id,
+					departmentName: name,
+				},
+			},
+		})
+
+		return { department }
 	})
 
 	return json({ success: true, department })

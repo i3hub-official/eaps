@@ -53,31 +53,59 @@ export const POST: RequestHandler = async ({ request, locals }) => {
 		throw error(500, 'University not found. Please seed the database first.')
 	}
 
-	const college = await prisma.college.create({
-		data: {
-			universityId: university.id,
-			name: protectedName,
-			shortName: protectedShortName,
-			code: protectedCode || protectedShortName,
-			email: protectedEmail,
-			phone: protectedPhone,
-		},
-	})
-
-	// Audit log
-	await prisma.auditLog.create({
-		data: {
-			actorType: 'staff',
-			staffId: user.id,
-			action: 'COLLEGE_CREATED',
-			entity: 'College',
-			entityId: college.id,
-			afterData: {
-				name,
-				shortName,
-				code: code || shortName.toUpperCase(),
+	// Create college AND assign the lecturer to it in one transaction
+	const { college } = await prisma.$transaction(async (tx) => {
+		const college = await tx.college.create({
+			data: {
+				universityId: university.id,
+				name: protectedName,
+				shortName: protectedShortName,
+				code: protectedCode || protectedShortName,
+				email: protectedEmail,
+				phone: protectedPhone,
 			},
-		},
+		})
+
+		// Update the lecturer's Staff record to point to this college
+		await tx.staff.update({
+			where: { id: user.id },
+			data: { collegeId: college.id },
+		})
+
+		// Audit log for college creation
+		await tx.auditLog.create({
+			data: {
+				actorType: 'staff',
+				staffId: user.id,
+				action: 'COLLEGE_CREATED',
+				entity: 'College',
+				entityId: college.id,
+				afterData: {
+					name,
+					shortName,
+					code: code || shortName.toUpperCase(),
+					assignedTo: user.id,
+				},
+			},
+		})
+
+		// Audit log for staff assignment
+		await tx.auditLog.create({
+			data: {
+				actorType: 'staff',
+				staffId: user.id,
+				action: 'STAFF_COLLEGE_ASSIGNED',
+				entity: 'Staff',
+				entityId: user.id,
+				afterData: {
+					staffId: user.id,
+					collegeId: college.id,
+					collegeName: name,
+				},
+			},
+		})
+
+		return { college }
 	})
 
 	return json({ success: true, college })

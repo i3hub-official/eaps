@@ -31,43 +31,87 @@ export const POST: RequestHandler = async ({ request, locals }) => {
 		throw error(409, 'A course with this code already exists')
 	}
 
+	// A CourseOffering needs a semester to attach to.
+	const semester =
+		(await prisma.semester.findFirst({ where: { isCurrent: true } })) ??
+		(await prisma.semester.findFirst({ orderBy: { startDate: 'desc' } }))
+
+	if (!semester) {
+		throw error(500, 'No academic semester is set up yet. Ask an admin to create one before adding courses.')
+	}
+
 	const [protectedCode, protectedTitle, protectedDescription] = await Promise.all([
 		protectText(code),
 		protectText(title),
 		description ? protectText(description) : null,
 	])
 
-	const course = await prisma.course.create({
-		data: {
-			code: protectedCode,
-			title: protectedTitle,
-			creditUnits: creditUnits || 2,
-			levelId,
-			departmentId,
-			type: type || 'COMPULSORY',
-			description: protectedDescription,
-			status: 'ACTIVE',
-		},
-	})
+	// Create the course, offering, and ensure lecturer's department is set
+	const { course, offering } = await prisma.$transaction(async (tx) => {
+		// If the lecturer doesn't have a department set, update it
+		if (!user.departmentId) {
+			await tx.staff.update({
+				where: { id: user.id },
+				data: { departmentId },
+			})
+		}
 
-	// Audit log
-	await prisma.auditLog.create({
-		data: {
-			actorType: 'staff',
-			staffId: user.id,
-			action: 'COURSE_CREATED',
-			entity: 'Course',
-			entityId: course.id,
-			afterData: {
-				code,
-				title,
+		const course = await tx.course.create({
+			data: {
+				code: protectedCode,
+				title: protectedTitle,
 				creditUnits: creditUnits || 2,
 				levelId,
 				departmentId,
 				type: type || 'COMPULSORY',
+				description: protectedDescription,
+				status: 'ACTIVE',
 			},
-		},
+		})
+
+		const offering = await tx.courseOffering.create({
+			data: {
+				courseId: course.id,
+				semesterId: semester.id,
+				lecturerId: user.id,
+			},
+		})
+
+		await tx.auditLog.create({
+			data: {
+				actorType: 'staff',
+				staffId: user.id,
+				action: 'COURSE_CREATED',
+				entity: 'Course',
+				entityId: course.id,
+				afterData: {
+					code,
+					title,
+					creditUnits: creditUnits || 2,
+					levelId,
+					departmentId,
+					type: type || 'COMPULSORY',
+				},
+			},
+		})
+
+		await tx.auditLog.create({
+			data: {
+				actorType: 'staff',
+				staffId: user.id,
+				action: 'COURSE_OFFERING_CREATED',
+				entity: 'CourseOffering',
+				entityId: offering.id,
+				afterData: {
+					courseId: course.id,
+					semesterId: semester.id,
+					lecturerId: user.id,
+				},
+			},
+		})
+
+		return { course, offering }
 	})
 
-	return json({ success: true, course })
+	return json({ success: true, course, offering })
 }

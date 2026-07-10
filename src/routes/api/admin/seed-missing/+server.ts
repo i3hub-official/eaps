@@ -26,18 +26,33 @@ import {
 const STAFF_DEFAULT_PASSWORD = 'Admin123';
 const STUDENT_DEFAULT_PASSWORD = 'Student123';
 
+// `deptCode` scopes a staff member to a department; `levels` (LECTURER only)
+// restricts which course levels they're eligible to teach — a lecturer
+// doesn't teach an entire department across every level, just their
+// assigned set. `maxCourseLoad` caps how many offerings they can be
+// assigned in a single semester.
 const STAFF_DATA = [
   { staffNumber: 'STAFF-001', email: 'super.admin@mouau.edu.ng', firstName: 'Super', lastName: 'Admin', primaryRole: 'SUPER_ADMIN' },
   { staffNumber: 'STAFF-002', email: 'registrar@mouau.edu.ng', firstName: 'University', lastName: 'Registrar', primaryRole: 'REGISTRAR' },
   { staffNumber: 'STAFF-003', email: 'university.exam@mouau.edu.ng', firstName: 'University', lastName: 'Exam Officer', primaryRole: 'UNIVERSITY_EXAM_OFFICER' },
-  { staffNumber: 'STAFF-004', email: 'college.exam@cpas.mouau.edu.ng', firstName: 'College', lastName: 'Exam Officer', primaryRole: 'COLLEGE_EXAM_OFFICER' },
-  { staffNumber: 'STAFF-005', email: 'dept.exam@csc.mouau.edu.ng', firstName: 'Department', lastName: 'Exam Officer', primaryRole: 'DEPARTMENT_EXAM_OFFICER' },
-  { staffNumber: 'STAFF-006', email: 'hod@csc.mouau.edu.ng', firstName: 'Head', lastName: 'Of Department', primaryRole: 'HOD' },
-  { staffNumber: 'STAFF-007', email: 'lecturer1@csc.mouau.edu.ng', firstName: 'John', lastName: 'Lecturer', primaryRole: 'LECTURER' },
-  { staffNumber: 'STAFF-008', email: 'lecturer2@csc.mouau.edu.ng', firstName: 'Jane', lastName: 'Instructor', primaryRole: 'LECTURER' },
-  { staffNumber: 'STAFF-009', email: 'invigilator@csc.mouau.edu.ng', firstName: 'David', lastName: 'Invigilator', primaryRole: 'INVIGILATOR' },
-  { staffNumber: 'STAFF-010', email: 'lecturer3@csc.mouau.edu.ng', firstName: 'Sarah', lastName: 'Professor', primaryRole: 'LECTURER' },
-];
+  { staffNumber: 'STAFF-004', email: 'college.exam@cpas.mouau.edu.ng', firstName: 'College', lastName: 'Exam Officer', primaryRole: 'COLLEGE_EXAM_OFFICER', collegeCode: 'COLPAS' },
+  { staffNumber: 'STAFF-005', email: 'dept.exam@csc.mouau.edu.ng', firstName: 'Department', lastName: 'Exam Officer', primaryRole: 'DEPARTMENT_EXAM_OFFICER', deptCode: 'CSC' },
+  { staffNumber: 'STAFF-006', email: 'hod@csc.mouau.edu.ng', firstName: 'Head', lastName: 'Of Department', primaryRole: 'HOD', deptCode: 'CSC' },
+  { staffNumber: 'STAFF-007', email: 'lecturer1@csc.mouau.edu.ng', firstName: 'John', lastName: 'Lecturer', primaryRole: 'LECTURER', deptCode: 'CSC', levels: [100, 200], maxCourseLoad: 3 },
+  { staffNumber: 'STAFF-008', email: 'lecturer2@csc.mouau.edu.ng', firstName: 'Jane', lastName: 'Instructor', primaryRole: 'LECTURER', deptCode: 'CSC', levels: [200, 300], maxCourseLoad: 3 },
+  { staffNumber: 'STAFF-009', email: 'invigilator@csc.mouau.edu.ng', firstName: 'David', lastName: 'Invigilator', primaryRole: 'INVIGILATOR', deptCode: 'CSC' },
+  { staffNumber: 'STAFF-010', email: 'lecturer3@csc.mouau.edu.ng', firstName: 'Sarah', lastName: 'Professor', primaryRole: 'LECTURER', deptCode: 'CSC', levels: [300, 400], maxCourseLoad: 3 },
+] satisfies Array<{
+  staffNumber: string;
+  email: string;
+  firstName: string;
+  lastName: string;
+  primaryRole: string;
+  deptCode?: string;
+  collegeCode?: string;
+  levels?: number[];
+  maxCourseLoad?: number;
+}>;
 
 const STUDENT_FIRST_NAMES = [
   // English names
@@ -129,6 +144,7 @@ interface SeedResults {
   roles: ResultBlock;
   staff: ResultBlock;
   students: ResultBlock;
+  lecturerAssignments: ResultBlock;
   credentials: CredentialRecord[];
   totalCreated: number;
   totalSkipped: number;
@@ -247,6 +263,7 @@ export const POST: RequestHandler = async () => {
       roles: { created: 0, skipped: 0, total: ROLES.length },
       staff: { created: 0, skipped: 0, total: STAFF_DATA.length },
       students: { created: 0, skipped: 0, total: TOTAL_STUDENTS_PLANNED },
+      lecturerAssignments: { created: 0, skipped: 0, total: 0 },
       credentials: [],
       totalCreated: 0,
       totalSkipped: 0,
@@ -288,59 +305,68 @@ export const POST: RequestHandler = async () => {
     }
 
     // ─── 2. Colleges ────────────────────────────────────────────────────
-const collegeMap = new Map<string, { id: string; shortName: string }>();
-for (const collegeData of COLLEGES) {
-  const existing = await prisma.college.findFirst({
-    where: { universityId: university.id, shortName: collegeData.shortName },
-  });
+    const collegeMap = new Map<string, { id: string; shortName: string }>();
+    for (const collegeData of COLLEGES) {
+      const existing = await prisma.college.findFirst({
+        where: { universityId: university.id, shortName: collegeData.shortName },
+      });
 
-  if (!existing) {
-    const created = await prisma.college.create({
-      data: {
-        universityId: university.id,
-        name: collegeData.name,
-        shortName: collegeData.shortName,
-        code: collegeData.code,
-      },
-    });
-    collegeMap.set(collegeData.code, created);
-    results.colleges.created++;
-    totalCreated++;
-  } else {
-    collegeMap.set(collegeData.code, existing);
-    results.colleges.skipped++;
-    totalSkipped++;
-  }
-}
+      if (!existing) {
+        const created = await prisma.college.create({
+          data: {
+            universityId: university.id,
+            name: collegeData.name,
+            shortName: collegeData.shortName,
+            code: collegeData.code,
+          },
+        });
+        collegeMap.set(collegeData.code, created);
+        results.colleges.created++;
+        totalCreated++;
+      } else {
+        collegeMap.set(collegeData.code, existing);
+        results.colleges.skipped++;
+        totalSkipped++;
+      }
+    }
 
-// ─── 3. Departments ─────────────────────────────────────────────────
-const deptMap = new Map<string, { id: string; shortName: string; name: string }>();
-for (const deptData of DEPARTMENTS) {
-  const college = collegeMap.get(deptData.collegeCode);
-  if (!college) continue;
+    // ─── 3. Departments ─────────────────────────────────────────────────
+    // Map value carries collegeId so staff seeding (step 12) can resolve
+    // both departmentId and collegeId from a single deptCode lookup.
+    const deptMap = new Map<string, { id: string; shortName: string; name: string; collegeId: string }>();
+    for (const deptData of DEPARTMENTS) {
+      const college = collegeMap.get(deptData.collegeCode);
+      if (!college) continue;
 
-  const existing = await prisma.department.findFirst({
-    where: { collegeId: college.id, shortName: deptData.shortName },
-  });
+      const existing = await prisma.department.findFirst({
+        where: { collegeId: college.id, shortName: deptData.shortName },
+      });
 
-  if (!existing) {
-    const created = await prisma.department.create({
-      data: {
-        collegeId: college.id,
-        name: deptData.name,
-        shortName: deptData.shortName,
-        code: deptData.code,
-      },
-    });
-    deptMap.set(deptData.code, created);
-    results.departments.created++;
-    totalCreated++;
-  } else {
-    deptMap.set(deptData.code, existing);
-    results.departments.skipped++;
-    totalSkipped++;
-  }
-}
+      if (!existing) {
+        const created = await prisma.department.create({
+          data: {
+            collegeId: college.id,
+            name: deptData.name,
+            shortName: deptData.shortName,
+            code: deptData.code,
+          },
+        });
+        deptMap.set(deptData.code, created);
+        results.departments.created++;
+        totalCreated++;
+      } else {
+        deptMap.set(deptData.code, existing);
+        results.departments.skipped++;
+        totalSkipped++;
+      }
+    }
+
+    // Reverse lookup (Department.id -> deptCode) used later to match a
+    // course's department back to a deptCode for lecturer assignment.
+    const deptIdToCode = new Map<string, string>();
+    for (const [code, dept] of deptMap) {
+      deptIdToCode.set(dept.id, code);
+    }
 
     // ─── 4. Levels ──────────────────────────────────────────────────────
     const levelMap = new Map<number, { id: string; name: number }>();
@@ -570,6 +596,19 @@ for (const deptData of DEPARTMENTS) {
     // ─── 12. Staff Users ────────────────────────────────────────────────
     const staffPasswordHash = await hashPassword(STAFF_DEFAULT_PASSWORD);
 
+    // Tracks LECTURER staffIds per deptCode, along with which levels each
+    // one is eligible to teach and their max course load — populated for
+    // both newly-created and pre-existing staff. Used in step 13 to assign
+    // lecturerId on CourseOffering rows, matched by department AND level,
+    // not department alone.
+    interface LecturerPoolEntry {
+      staffId: string;
+      levels: number[];
+      maxCourseLoad: number;
+      assignedCount: number;
+    }
+    const lecturersByDept = new Map<string, LecturerPoolEntry[]>();
+
     for (const staff of STAFF_DATA) {
       // Always surface the credential, whether newly created or already existing,
       // so the seed page can display/download the full login list every run.
@@ -580,6 +619,33 @@ for (const deptData of DEPARTMENTS) {
         email: staff.email,
         password: STAFF_DEFAULT_PASSWORD,
       });
+
+      // Resolve departmentId/collegeId from deptCode (preferred, gives both)
+      // or collegeCode (college-only roles like COLLEGE_EXAM_OFFICER).
+      let departmentId: string | null = null;
+      let collegeId: string | null = null;
+      if (staff.deptCode) {
+        const dept = deptMap.get(staff.deptCode);
+        if (dept) {
+          departmentId = dept.id;
+          collegeId = dept.collegeId;
+        }
+      } else if (staff.collegeCode) {
+        const college = collegeMap.get(staff.collegeCode);
+        if (college) collegeId = college.id;
+      }
+
+      const registerLecturer = (staffId: string) => {
+        if (staff.primaryRole !== 'LECTURER' || !staff.deptCode) return;
+        const list = lecturersByDept.get(staff.deptCode) ?? [];
+        list.push({
+          staffId,
+          levels: staff.levels ?? [],
+          maxCourseLoad: staff.maxCourseLoad ?? 3,
+          assignedCount: 0,
+        });
+        lecturersByDept.set(staff.deptCode, list);
+      };
 
       const existing = await prisma.staff.findUnique({ where: { staffNumber: staff.staffNumber } });
 
@@ -607,8 +673,8 @@ for (const deptData of DEPARTMENTS) {
               primaryRole: staff.primaryRole as any,
               status: 'ACTIVE',
               mustChangePassword: true,
-              collegeId: null,
-              departmentId: null,
+              collegeId,
+              departmentId,
               phone: null,
               phoneHash: null,
               gender: null,
@@ -625,6 +691,8 @@ for (const deptData of DEPARTMENTS) {
             });
           }
 
+          registerLecturer(createdStaff.id);
+
           results.staff.created++;
           totalCreated++;
         } catch (staffErr) {
@@ -632,12 +700,114 @@ for (const deptData of DEPARTMENTS) {
           continue;
         }
       } else {
+        // Backfill collegeId/departmentId on rows created before this field
+        // was wired up, so re-running the seed heals older data instead of
+        // leaving it permanently null.
+        if ((existing.collegeId !== collegeId || existing.departmentId !== departmentId) &&
+            (collegeId !== null || departmentId !== null)) {
+          await prisma.staff.update({
+            where: { id: existing.id },
+            data: { collegeId, departmentId },
+          });
+        }
+
+        registerLecturer(existing.id);
+
         results.staff.skipped++;
         totalSkipped++;
       }
     }
 
-    // ─── 13. Students ───────────────────────────────────────────────────
+    // ─── 13. Assign lecturers to course offerings ──────────────────────
+    // For each course offering in the current semester with no lecturerId,
+    // assign one lecturer from the course's own department who is also
+    // eligible for that course's level (per the lecturer's `levels` list)
+    // and hasn't hit their maxCourseLoad — never a department-wide or
+    // cross-level assignment. Offerings with no eligible lecturer are
+    // left unassigned and reported as skipped, rather than forced onto
+    // someone who doesn't teach that level.
+    if (currentSemester) {
+      const offeringsNeedingLecturer = await prisma.courseOffering.findMany({
+        where: { semesterId: currentSemester.id, lecturerId: null },
+        include: { course: { include: { level: true } } },
+      });
+      results.lecturerAssignments.total = offeringsNeedingLecturer.length;
+
+      for (const offering of offeringsNeedingLecturer) {
+        const deptCode = deptIdToCode.get(offering.course.departmentId);
+        const pool = deptCode ? lecturersByDept.get(deptCode) : undefined;
+        const courseLevel = offering.course.level.name;
+
+        const eligible = (pool ?? []).filter(
+          (l) => l.levels.includes(courseLevel) && l.assignedCount < l.maxCourseLoad,
+        );
+
+        if (eligible.length === 0) {
+          results.lecturerAssignments.skipped++;
+          totalSkipped++;
+          continue;
+        }
+
+        // Pick whoever among the eligible lecturers currently has the
+        // lightest load, so assignments spread evenly rather than filling
+        // one lecturer up before touching the next.
+        eligible.sort((a, b) => a.assignedCount - b.assignedCount);
+        const chosen = eligible[0];
+
+        await prisma.courseOffering.update({
+          where: { id: offering.id },
+          data: { lecturerId: chosen.staffId },
+        });
+        chosen.assignedCount++;
+
+        results.lecturerAssignments.created++;
+        totalCreated++;
+      }
+    }
+
+
+    // ─── 13. Assign lecturers to course offerings ──────────────────────
+    // For each course offering in the current semester that has no
+    // lecturerId yet, assign one lecturer from the course's own department,
+    // round-robin, so Staff.courseOfferings and CourseOffering.lecturer are
+    // both populated and consistent with departmentId.
+   if (currentSemester) {
+      const offeringsNeedingLecturer = await prisma.courseOffering.findMany({
+        where: { semesterId: currentSemester.id, lecturerId: null },
+        include: { course: { include: { level: true } } },
+      });
+      results.lecturerAssignments.total = offeringsNeedingLecturer.length;
+
+      for (const offering of offeringsNeedingLecturer) {
+        const deptCode = deptIdToCode.get(offering.course.departmentId);
+        const pool = deptCode ? lecturersByDept.get(deptCode) : undefined;
+        const courseLevel = offering.course.level.name;
+
+        const eligible = (pool ?? []).filter(
+          (l) => l.levels.includes(courseLevel) && l.assignedCount < l.maxCourseLoad,
+        );
+
+        if (eligible.length === 0) {
+          results.lecturerAssignments.skipped++;
+          totalSkipped++;
+          continue;
+        }
+
+        eligible.sort((a, b) => a.assignedCount - b.assignedCount);
+        const chosen = eligible[0];
+
+        await prisma.courseOffering.update({
+          where: { id: offering.id },
+          data: { lecturerId: chosen.staffId },
+        });
+        chosen.assignedCount++;
+
+        results.lecturerAssignments.created++;
+        totalCreated++;
+      }
+    }
+
+    // ─── 14. Students ───────────────────────────────────────────────────
     // Mirrors src/routes/(auth)/register/+page.server.ts `signup` action:
     // same protectStudentRegistration() call, same field shape, same
     // dedup checks (emailHash / matricNumber / jambRegNo / phoneHash) —
@@ -749,7 +919,7 @@ for (const deptData of DEPARTMENTS) {
       }
     }
 
-    // ─── 14. Audit Log ──────────────────────────────────────────────────
+    // ─── 15. Audit Log ──────────────────────────────────────────────────
     try {
       await prisma.auditLog.create({
         data: {

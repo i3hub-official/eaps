@@ -39,16 +39,16 @@
 
 	let { data } = $props()
 
-	// ─── State ────────────────────────────────────────────────────────────────
-	let showOnboarding = $state(false)
-	let onboardingData = $state(null)
+	// ─── Onboarding ──────────────────────────────────────────────────────────
+	// If this lecturer is fully provisioned (isComplete), neither the modal
+	// nor the setup notice render at all. If not provisioned, the notice
+	// shows a manual "Set Up Now" button — no auto-open, the lecturer decides
+	// when to deal with it. OnboardingPrompt itself just renders forms
+	// against data.onboarding and submits them; it has no opinion on whether
+	// it should be visible.
+	const needsOnboarding = $derived(data?.onboarding && !data.onboarding.isComplete)
 
-	// ─── Effects ──────────────────────────────────────────────────────────────
-	$effect(() => {
-		if (data?.onboarding) {
-			onboardingData = data.onboarding
-		}
-	})
+	let showOnboarding = $state(false)
 
 	const formatDate = (date: Date | string) => {
 		if (!date) return ''
@@ -85,19 +85,14 @@
 		return colors[type] || 'bg-gray-100 text-gray-800 dark:bg-gray-800/30 dark:text-gray-400'
 	}
 
-	// ─── Onboarding Status ──────────────────────────────────────────────────
-	const needsOnboarding = $derived(
-		onboardingData && !onboardingData.isComplete
-	)
-
 	const getOnboardingMessage = () => {
 		if (!needsOnboarding) return null
-		
+
 		const missing = []
-		if (!onboardingData.hasCollege) missing.push('College')
-		if (!onboardingData.hasDepartment) missing.push('Department')
-		if (!onboardingData.hasCourse) missing.push('Courses')
-		
+		if (!data.onboarding.hasCollege) missing.push('College')
+		if (!data.onboarding.hasDepartment) missing.push('Department')
+		if (!data.onboarding.hasCourse) missing.push('Courses')
+
 		if (missing.length === 3) return 'You need to set up your College, Department, and Courses'
 		if (missing.length === 2) return `You need to set up your ${missing.join(' and ')}`
 		return `You need to set up your ${missing[0]}`
@@ -110,10 +105,10 @@
 
 <Topbar title="Dashboard" />
 
-<!-- Onboarding Modal -->
-<OnboardingPrompt 
-	data={onboardingData} 
-	open={showOnboarding} 
+<!-- Onboarding Modal — dashboard owns open/close, component just does its job -->
+<OnboardingPrompt
+	data={data.onboarding}
+	open={showOnboarding}
 	onOpenChange={(open) => {
 		showOnboarding = open
 	}}

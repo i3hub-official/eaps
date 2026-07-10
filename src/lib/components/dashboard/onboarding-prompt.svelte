@@ -13,18 +13,33 @@
 		SelectItem,
 		SelectTrigger,
 	} from '$lib/components/ui/select/index.js';
-	import { Badge } from '$lib/components/ui/badge/index.js';
+	import {
+		Popover,
+		PopoverContent,
+		PopoverTrigger,
+	} from '$lib/components/ui/popover/index.js';
+	import {
+		Command,
+		CommandEmpty,
+		CommandGroup,
+		CommandInput,
+		CommandItem,
+		CommandList,
+	} from '$lib/components/ui/command/index.js';
 	import {
 		Building2,
 		BookOpen,
 		Users,
-		CheckCircle,
-		AlertCircle,
+		Check,
+		Circle,
+		CircleAlert,
+		History,
 		LoaderCircle,
 		Plus,
-		Rocket,
+		ChevronsUpDown,
 	} from '@lucide/svelte/icons';
 	import { invalidateAll } from '$app/navigation';
+	import { cn } from '$lib/utils.js';
 
 	let { data, open, onOpenChange } = $props();
 
@@ -33,6 +48,12 @@
 	let activeTab = $state('college');
 	let success = $state<string | null>(null);
 	let error = $state<string | null>(null);
+
+	// ─── Search States ──────────────────────────────────────────────────────
+	let collegeSearchOpen = $state(false);
+	let departmentSearchOpen = $state(false);
+	let levelSearchOpen = $state(false);
+	let typeSearchOpen = $state(false);
 
 	// ─── College Form ──────────────────────────────────────────────────────
 	let collegeForm = $state({
@@ -73,9 +94,20 @@
 	let canCreateCollege = $derived(data?.permissions?.canCreateCollege || false);
 	let canCreateDepartment = $derived(data?.permissions?.canCreateDepartment || false);
 	let canCreateCourse = $derived(data?.permissions?.canCreateCourse || false);
-	let hasCollege = $derived(colleges.length > 0);
-	let hasDepartment = $derived(departments.length > 0);
-	let hasCourse = $derived(courses.length > 0);
+	let hasCollege = $derived(data?.hasCollege ?? false);
+	let hasDepartment = $derived(data?.hasDepartment ?? false);
+	let hasCourse = $derived(data?.hasCourse ?? false);
+
+	// ─── Computed ──────────────────────────────────────────────────────────
+	let selectedCollegeName = $derived(
+		colleges.find(c => c.id === departmentForm.collegeId)?.name || 'Select a college'
+	);
+	let selectedDepartmentName = $derived(
+		departments.find(d => d.id === courseForm.departmentId)?.name || 'Select a department'
+	);
+	let selectedLevelLabel = $derived(
+		levels.find(l => l.id === courseForm.levelId)?.label || 'Select a level'
+	);
 
 	// Determine which tab to show first
 	$effect(() => {
@@ -109,7 +141,7 @@
 			const result = await response.json();
 
 			if (response.ok) {
-				success = `College "${collegeForm.name}" created successfully!`;
+				success = `College "${collegeForm.name}" created.`;
 				collegeForm = { name: '', shortName: '', code: '', email: '', phone: '' };
 				await invalidateAll();
 				window.location.reload();
@@ -143,7 +175,7 @@
 			const result = await response.json();
 
 			if (response.ok) {
-				success = `Department "${departmentForm.name}" created successfully!`;
+				success = `Department "${departmentForm.name}" created.`;
 				departmentForm = { name: '', shortName: '', code: '', collegeId: '', email: '', phone: '' };
 				await invalidateAll();
 				window.location.reload();
@@ -177,7 +209,7 @@
 			const result = await response.json();
 
 			if (response.ok) {
-				success = `Course "${courseForm.code}" created successfully!`;
+				success = `Course "${courseForm.code}" created.`;
 				courseForm = {
 					code: '',
 					title: '',
@@ -200,65 +232,81 @@
 	}
 </script>
 
-<Dialog open={open} onOpenChange={onOpenChange}>
+<Dialog {open} onOpenChange={onOpenChange}>
 	<DialogContent class="sm:max-w-2xl max-h-[90vh] overflow-y-auto">
 		<DialogHeader>
 			<DialogTitle class="flex items-center gap-2">
-				<Rocket class="size-5 text-primary" />
-				Set Up Your Academic Structure
+				<Building2 class="size-5" />
+				Set up your academic structure
 			</DialogTitle>
 			<DialogDescription>
-				Complete your onboarding by setting up your college, department, and courses.
-				<span class="block text-xs text-muted-foreground mt-1">
-					{hasCollege ? '✅ College configured' : '⏳ College needed'} • 
-					{hasDepartment ? '✅ Department configured' : '⏳ Department needed'} • 
-					{hasCourse ? '✅ Courses configured' : '⏳ Courses needed'}
-				</span>
+				Complete this one-time setup for your college, department, and courses.
 			</DialogDescription>
 		</DialogHeader>
 
+		<!-- One-time / logging notice -->
+		<Alert>
+			<History class="size-4" />
+			<AlertDescription>
+				This setup runs once. Every change you make here is recorded in the activity log
+				with your account and a timestamp.
+			</AlertDescription>
+		</Alert>
+
 		{#if success}
-			<Alert class="border-green-500/50 bg-green-500/10 text-green-700 dark:text-green-400">
-				<CheckCircle class="size-4" />
+			<Alert>
+				<Check class="size-4" />
 				<AlertDescription>{success}</AlertDescription>
 			</Alert>
 		{/if}
 
 		{#if error}
 			<Alert variant="destructive">
-				<AlertCircle class="size-4" />
+				<CircleAlert class="size-4" />
 				<AlertDescription>{error}</AlertDescription>
 			</Alert>
 		{/if}
 
 		<!-- Progress Steps -->
-		<div class="flex items-center gap-2 py-2">
-			<div class="flex items-center gap-1">
-				<div class={`h-2 w-2 rounded-full ${hasCollege ? 'bg-green-500' : 'bg-yellow-500'}`} />
-				<span class="text-xs">College</span>
+		<div class="flex items-center gap-2 py-2 text-sm text-muted-foreground">
+			<div class="flex items-center gap-1.5">
+				{#if hasCollege}
+					<Check class="size-3.5" />
+				{:else}
+					<Circle class="size-3.5" />
+				{/if}
+				<span>College</span>
 			</div>
 			<div class="flex-1 h-px bg-border" />
-			<div class="flex items-center gap-1">
-				<div class={`h-2 w-2 rounded-full ${hasDepartment ? 'bg-green-500' : 'bg-yellow-500'}`} />
-				<span class="text-xs">Department</span>
+			<div class="flex items-center gap-1.5">
+				{#if hasDepartment}
+					<Check class="size-3.5" />
+				{:else}
+					<Circle class="size-3.5" />
+				{/if}
+				<span>Department</span>
 			</div>
 			<div class="flex-1 h-px bg-border" />
-			<div class="flex items-center gap-1">
-				<div class={`h-2 w-2 rounded-full ${hasCourse ? 'bg-green-500' : 'bg-yellow-500'}`} />
-				<span class="text-xs">Courses</span>
+			<div class="flex items-center gap-1.5">
+				{#if hasCourse}
+					<Check class="size-3.5" />
+				{:else}
+					<Circle class="size-3.5" />
+				{/if}
+				<span>Courses</span>
 			</div>
 		</div>
 
 		{#if hasCollege && hasDepartment && hasCourse}
 			<div class="text-center py-8">
-				<CheckCircle class="mx-auto size-12 text-green-500 mb-3" />
-				<h3 class="text-lg font-semibold">All Set!</h3>
+				<Check class="mx-auto size-10 mb-3" />
+				<h3 class="text-lg font-semibold">Setup complete</h3>
 				<p class="text-sm text-muted-foreground">
-					You're fully onboarded. You can close this window.
+					You can close this window.
 				</p>
 			</div>
 		{:else}
-			<Tabs bind:value={activeTab} class="space-y-4">
+			<Tabs bind:value={activeTab} class="space-y-6">
 				<TabsList class="grid w-full grid-cols-3">
 					<TabsTrigger value="college" disabled={hasCollege || !canCreateCollege}>
 						<Building2 class="mr-2 size-4" />
@@ -278,14 +326,15 @@
 				<TabsContent value="college">
 					{#if hasCollege}
 						<div class="text-center py-4">
-							<CheckCircle class="mx-auto size-8 text-green-500 mb-2" />
+							<Check class="mx-auto size-6 mb-2" />
 							<p class="text-sm text-muted-foreground">College already configured</p>
 						</div>
 					{:else if canCreateCollege}
-						<div class="grid gap-4 sm:grid-cols-2">
+						<div class="grid grid-cols-1 sm:grid-cols-2 gap-5">
 							<div class="space-y-2">
 								<Label for="modalCollegeName">College Name *</Label>
 								<Input
+									class="h-12 text-base"
 									id="modalCollegeName"
 									bind:value={collegeForm.name}
 									placeholder="e.g., College of Physical & Applied Sciences"
@@ -294,6 +343,7 @@
 							<div class="space-y-2">
 								<Label for="modalCollegeShortName">Short Name *</Label>
 								<Input
+									class="h-12 text-base"
 									id="modalCollegeShortName"
 									bind:value={collegeForm.shortName}
 									placeholder="e.g., COLPAS"
@@ -302,6 +352,7 @@
 							<div class="space-y-2">
 								<Label for="modalCollegeCode">Code</Label>
 								<Input
+									class="h-12 text-base"
 									id="modalCollegeCode"
 									bind:value={collegeForm.code}
 									placeholder="e.g., CPAS"
@@ -310,6 +361,7 @@
 							<div class="space-y-2">
 								<Label for="modalCollegeEmail">Email</Label>
 								<Input
+									class="h-12 text-base"
 									id="modalCollegeEmail"
 									type="email"
 									bind:value={collegeForm.email}
@@ -319,14 +371,15 @@
 							<div class="space-y-2 sm:col-span-2">
 								<Label for="modalCollegePhone">Phone</Label>
 								<Input
+									class="h-12 text-base"
 									id="modalCollegePhone"
 									bind:value={collegeForm.phone}
 									placeholder="+2348000000000"
 								/>
 							</div>
 						</div>
-						<div class="flex justify-end">
-							<Button onclick={createCollege} disabled={isSubmitting}>
+						<div class="flex justify-end pt-2">
+							<Button onclick={createCollege} disabled={isSubmitting} class="h-12 w-full text-base">
 								{#if isSubmitting}
 									<LoaderCircle class="mr-2 size-4 animate-spin" />
 									Creating...
@@ -348,37 +401,59 @@
 				<TabsContent value="department">
 					{#if hasDepartment}
 						<div class="text-center py-4">
-							<CheckCircle class="mx-auto size-8 text-green-500 mb-2" />
+							<Check class="mx-auto size-6 mb-2" />
 							<p class="text-sm text-muted-foreground">Department already configured</p>
 						</div>
 					{:else if canCreateDepartment}
-						<div class="grid gap-4 sm:grid-cols-2">
+						<div class="grid grid-cols-1 sm:grid-cols-2 gap-5">
 							<div class="space-y-2">
-								<Label for="modalDeptCollege">College *</Label>
-								<Select>
-									<SelectTrigger id="modalDeptCollege" onchange={(e) => departmentForm.collegeId = e.currentTarget.value}>
-										<span class="truncate">
-											{departmentForm.collegeId 
-												? colleges.find(c => c.id === departmentForm.collegeId)?.name 
-												: 'Select a college'}
-										</span>
-									</SelectTrigger>
-									<SelectContent>
-										{#each colleges as college}
-											<SelectItem 
-												value={college.id}
-												selected={departmentForm.collegeId === college.id}
-												onclick={() => departmentForm.collegeId = college.id}
-											>
-												{college.name}
-											</SelectItem>
-										{/each}
-									</SelectContent>
-								</Select>
+								<Label>College *</Label>
+								<Popover open={collegeSearchOpen} onOpenChange={collegeSearchOpen}>
+									<PopoverTrigger asChild>
+										<Button
+											variant="outline"
+											role="combobox"
+											aria-expanded={collegeSearchOpen}
+											class="h-12 w-full justify-between text-base font-normal"
+										>
+											<span class="truncate">{selectedCollegeName}</span>
+											<ChevronsUpDown class="ml-2 size-4 shrink-0 opacity-50" />
+										</Button>
+									</PopoverTrigger>
+									<PopoverContent class="w-[--radix-popover-trigger-width] max-h-[300px] p-0">
+										<Command>
+											<CommandInput placeholder="Search colleges..." />
+											<CommandList>
+												<CommandEmpty>No college found.</CommandEmpty>
+												<CommandGroup>
+													{#each colleges as college}
+														<CommandItem
+															value={college.name}
+															onselect={() => {
+																departmentForm.collegeId = college.id;
+																collegeSearchOpen = false;
+															}}
+															class="cursor-pointer"
+														>
+															<Check
+																class={cn(
+																	"mr-2 size-4",
+																	departmentForm.collegeId === college.id ? "opacity-100" : "opacity-0"
+																)}
+															/>
+															{college.name}
+														</CommandItem>
+													{/each}
+												</CommandGroup>
+											</CommandList>
+										</Command>
+									</PopoverContent>
+								</Popover>
 							</div>
 							<div class="space-y-2">
 								<Label for="modalDeptName">Department Name *</Label>
 								<Input
+									class="h-12 text-base"
 									id="modalDeptName"
 									bind:value={departmentForm.name}
 									placeholder="e.g., Department of Computer Science"
@@ -387,6 +462,7 @@
 							<div class="space-y-2">
 								<Label for="modalDeptShortName">Short Name *</Label>
 								<Input
+									class="h-12 text-base"
 									id="modalDeptShortName"
 									bind:value={departmentForm.shortName}
 									placeholder="e.g., CSC"
@@ -395,6 +471,7 @@
 							<div class="space-y-2">
 								<Label for="modalDeptCode">Code</Label>
 								<Input
+									class="h-12 text-base"
 									id="modalDeptCode"
 									bind:value={departmentForm.code}
 									placeholder="e.g., CSC"
@@ -403,6 +480,7 @@
 							<div class="space-y-2">
 								<Label for="modalDeptEmail">Email</Label>
 								<Input
+									class="h-12 text-base"
 									id="modalDeptEmail"
 									type="email"
 									bind:value={departmentForm.email}
@@ -412,14 +490,15 @@
 							<div class="space-y-2">
 								<Label for="modalDeptPhone">Phone</Label>
 								<Input
+									class="h-12 text-base"
 									id="modalDeptPhone"
 									bind:value={departmentForm.phone}
 									placeholder="+2348000000000"
 								/>
 							</div>
 						</div>
-						<div class="flex justify-end">
-							<Button onclick={createDepartment} disabled={isSubmitting}>
+						<div class="flex justify-end pt-2">
+							<Button onclick={createDepartment} disabled={isSubmitting} class="h-12 w-full text-base">
 								{#if isSubmitting}
 									<LoaderCircle class="mr-2 size-4 animate-spin" />
 									Creating...
@@ -441,60 +520,103 @@
 				<TabsContent value="course">
 					{#if hasCourse}
 						<div class="text-center py-4">
-							<CheckCircle class="mx-auto size-8 text-green-500 mb-2" />
+							<Check class="mx-auto size-6 mb-2" />
 							<p class="text-sm text-muted-foreground">Courses already configured</p>
 						</div>
 					{:else if canCreateCourse}
-						<div class="grid gap-4 sm:grid-cols-2">
+						<div class="grid grid-cols-1 sm:grid-cols-2 gap-5">
 							<div class="space-y-2">
-								<Label for="modalCourseDepartment">Department *</Label>
-								<Select>
-									<SelectTrigger id="modalCourseDepartment" onchange={(e) => courseForm.departmentId = e.currentTarget.value}>
-										<span class="truncate">
-											{courseForm.departmentId 
-												? departments.find(d => d.id === courseForm.departmentId)?.name 
-												: 'Select a department'}
-										</span>
-									</SelectTrigger>
-									<SelectContent>
-										{#each departments as dept}
-											<SelectItem 
-												value={dept.id}
-												selected={courseForm.departmentId === dept.id}
-												onclick={() => courseForm.departmentId = dept.id}
-											>
-												{dept.name}
-											</SelectItem>
-										{/each}
-									</SelectContent>
-								</Select>
+								<Label>Department *</Label>
+								<Popover open={departmentSearchOpen} onOpenChange={departmentSearchOpen}>
+									<PopoverTrigger asChild>
+										<Button
+											variant="outline"
+											role="combobox"
+											aria-expanded={departmentSearchOpen}
+											class="h-12 w-full justify-between text-base font-normal"
+										>
+											<span class="truncate">{selectedDepartmentName}</span>
+											<ChevronsUpDown class="ml-2 size-4 shrink-0 opacity-50" />
+										</Button>
+									</PopoverTrigger>
+									<PopoverContent class="w-[--radix-popover-trigger-width] max-h-[300px] p-0">
+										<Command>
+											<CommandInput placeholder="Search departments..." />
+											<CommandList>
+												<CommandEmpty>No department found.</CommandEmpty>
+												<CommandGroup>
+													{#each departments as dept}
+														<CommandItem
+															value={dept.name}
+															onselect={() => {
+																courseForm.departmentId = dept.id;
+																departmentSearchOpen = false;
+															}}
+															class="cursor-pointer"
+														>
+															<Check
+																class={cn(
+																	"mr-2 size-4",
+																	courseForm.departmentId === dept.id ? "opacity-100" : "opacity-0"
+																)}
+															/>
+															{dept.name}
+														</CommandItem>
+													{/each}
+												</CommandGroup>
+											</CommandList>
+										</Command>
+									</PopoverContent>
+								</Popover>
 							</div>
 							<div class="space-y-2">
-								<Label for="modalCourseLevel">Level *</Label>
-								<Select>
-									<SelectTrigger id="modalCourseLevel" onchange={(e) => courseForm.levelId = e.currentTarget.value}>
-										<span class="truncate">
-											{courseForm.levelId 
-												? levels.find(l => l.id === courseForm.levelId)?.label 
-												: 'Select a level'}
-										</span>
-									</SelectTrigger>
-									<SelectContent>
-										{#each levels as level}
-											<SelectItem 
-												value={level.id}
-												selected={courseForm.levelId === level.id}
-												onclick={() => courseForm.levelId = level.id}
-											>
-												{level.label}
-											</SelectItem>
-										{/each}
-									</SelectContent>
-								</Select>
+								<Label>Level *</Label>
+								<Popover open={levelSearchOpen} onOpenChange={levelSearchOpen}>
+									<PopoverTrigger asChild>
+										<Button
+											variant="outline"
+											role="combobox"
+											aria-expanded={levelSearchOpen}
+											class="h-12 w-full justify-between text-base font-normal"
+										>
+											<span class="truncate">{selectedLevelLabel}</span>
+											<ChevronsUpDown class="ml-2 size-4 shrink-0 opacity-50" />
+										</Button>
+									</PopoverTrigger>
+									<PopoverContent class="w-[--radix-popover-trigger-width] max-h-[300px] p-0">
+										<Command>
+											<CommandInput placeholder="Search levels..." />
+											<CommandList>
+												<CommandEmpty>No level found.</CommandEmpty>
+												<CommandGroup>
+													{#each levels as level}
+														<CommandItem
+															value={level.label}
+															onselect={() => {
+																courseForm.levelId = level.id;
+																levelSearchOpen = false;
+															}}
+															class="cursor-pointer"
+														>
+															<Check
+																class={cn(
+																	"mr-2 size-4",
+																	courseForm.levelId === level.id ? "opacity-100" : "opacity-0"
+																)}
+															/>
+															{level.label}
+														</CommandItem>
+													{/each}
+												</CommandGroup>
+											</CommandList>
+										</Command>
+									</PopoverContent>
+								</Popover>
 							</div>
 							<div class="space-y-2">
 								<Label for="modalCourseCode">Course Code *</Label>
 								<Input
+									class="h-12 text-base"
 									id="modalCourseCode"
 									bind:value={courseForm.code}
 									placeholder="e.g., CSC301"
@@ -503,6 +625,7 @@
 							<div class="space-y-2">
 								<Label for="modalCourseTitle">Course Title *</Label>
 								<Input
+									class="h-12 text-base"
 									id="modalCourseTitle"
 									bind:value={courseForm.title}
 									placeholder="e.g., Database Management Systems"
@@ -511,6 +634,7 @@
 							<div class="space-y-2">
 								<Label for="modalCourseCredits">Credit Units</Label>
 								<Input
+									class="h-12 text-base"
 									id="modalCourseCredits"
 									type="number"
 									bind:value={courseForm.creditUnits}
@@ -519,39 +643,83 @@
 								/>
 							</div>
 							<div class="space-y-2">
-								<Label for="modalCourseType">Type</Label>
-								<Select>
-									<SelectTrigger id="modalCourseType" onchange={(e) => courseForm.type = e.currentTarget.value}>
-										<span class="truncate">{courseForm.type}</span>
-									</SelectTrigger>
-									<SelectContent>
-										<SelectItem 
-											value="COMPULSORY" 
-											selected={courseForm.type === 'COMPULSORY'}
-											onclick={() => courseForm.type = 'COMPULSORY'}
+								<Label>Type</Label>
+								<Popover open={typeSearchOpen} onOpenChange={typeSearchOpen}>
+									<PopoverTrigger asChild>
+										<Button
+											variant="outline"
+											role="combobox"
+											aria-expanded={typeSearchOpen}
+											class="h-12 w-full justify-between text-base font-normal"
 										>
-											Compulsory
-										</SelectItem>
-										<SelectItem 
-											value="ELECTIVE" 
-											selected={courseForm.type === 'ELECTIVE'}
-											onclick={() => courseForm.type = 'ELECTIVE'}
-										>
-											Elective
-										</SelectItem>
-										<SelectItem 
-											value="GENERAL_STUDIES" 
-											selected={courseForm.type === 'GENERAL_STUDIES'}
-											onclick={() => courseForm.type = 'GENERAL_STUDIES'}
-										>
-											General Studies
-										</SelectItem>
-									</SelectContent>
-								</Select>
+											<span class="truncate">{courseForm.type}</span>
+											<ChevronsUpDown class="ml-2 size-4 shrink-0 opacity-50" />
+										</Button>
+									</PopoverTrigger>
+									<PopoverContent class="w-[--radix-popover-trigger-width] max-h-[300px] p-0">
+										<Command>
+											<CommandInput placeholder="Search types..." />
+											<CommandList>
+												<CommandEmpty>No type found.</CommandEmpty>
+												<CommandGroup>
+													<CommandItem
+														value="COMPULSORY"
+														onselect={() => {
+															courseForm.type = 'COMPULSORY';
+															typeSearchOpen = false;
+														}}
+														class="cursor-pointer"
+													>
+														<Check
+															class={cn(
+																"mr-2 size-4",
+																courseForm.type === 'COMPULSORY' ? "opacity-100" : "opacity-0"
+															)}
+														/>
+														Compulsory
+													</CommandItem>
+													<CommandItem
+														value="ELECTIVE"
+														onselect={() => {
+															courseForm.type = 'ELECTIVE';
+															typeSearchOpen = false;
+														}}
+														class="cursor-pointer"
+													>
+														<Check
+															class={cn(
+																"mr-2 size-4",
+																courseForm.type === 'ELECTIVE' ? "opacity-100" : "opacity-0"
+															)}
+														/>
+														Elective
+													</CommandItem>
+													<CommandItem
+														value="GENERAL_STUDIES"
+														onselect={() => {
+															courseForm.type = 'GENERAL_STUDIES';
+															typeSearchOpen = false;
+														}}
+														class="cursor-pointer"
+													>
+														<Check
+															class={cn(
+																"mr-2 size-4",
+																courseForm.type === 'GENERAL_STUDIES' ? "opacity-100" : "opacity-0"
+															)}
+														/>
+														General Studies
+													</CommandItem>
+												</CommandGroup>
+											</CommandList>
+										</Command>
+									</PopoverContent>
+								</Popover>
 							</div>
 							<div class="space-y-2 sm:col-span-2">
 								<Label for="modalCourseDescription">Description</Label>
 								<Textarea
+									class="min-h-32 py-3 text-base"
 									id="modalCourseDescription"
 									bind:value={courseForm.description}
 									placeholder="Course description..."
@@ -559,8 +727,8 @@
 								/>
 							</div>
 						</div>
-						<div class="flex justify-end">
-							<Button onclick={createCourse} disabled={isSubmitting}>
+						<div class="flex justify-end pt-2">
+							<Button onclick={createCourse} disabled={isSubmitting} class="h-12 w-full text-base">
 								{#if isSubmitting}
 									<LoaderCircle class="mr-2 size-4 animate-spin" />
 									Creating...
@@ -581,7 +749,7 @@
 		{/if}
 
 		<DialogFooter>
-			<Button variant="outline" onclick={() => onOpenChange(false)}>
+			<Button variant="outline" onclick={() => onOpenChange(false)} class="h-12 w-full sm:w-40 text-base">
 				{#if hasCollege && hasDepartment && hasCourse}
 					Done
 				{:else}

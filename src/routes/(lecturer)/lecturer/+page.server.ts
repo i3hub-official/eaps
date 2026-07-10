@@ -1,109 +1,36 @@
 // src/routes/(lecturer)/lecturer/+page.server.ts
 import type { PageServerLoad } from './$types'
-import { redirect } from '@sveltejs/kit'
 import { getPrismaClient } from '$lib/server/db/index.js'
-import { requireLecturer } from '$lib/server/auth/guards.js'
 
-export const load: PageServerLoad = async ({ locals }) => {
-	// Use the guard to ensure user is authenticated as lecturer
-	const user = await requireLecturer(locals.user)
-	
+export const load: PageServerLoad = async ({ parent }) => {
+	const { user, onboarding } = await parent()
+
 	const prisma = await getPrismaClient()
 	const staffId = user.id
 	const departmentId = user.departmentId
 	const now = new Date()
 
-	// Default empty state
-	const emptyState = {
-		user: {
-			id: user.id,
-			firstName: user.firstName || 'Lecturer',
-			lastName: user.lastName || '',
-			email: user.email || '',
-			primaryRole: user.primaryRole || 'LECTURER',
-		},
-		stats: { 
-			courses: 0, 
-			students: 0, 
-			assessments: 0, 
-			pendingGrades: 0, 
-			questions: 0, 
-			published: 0,
-			activeSessions: 0,
-			totalSessions: 0
-		},
-		upcomingAssessments: [],
-		pendingSubmissions: [],
-		recentActivity: [],
-		coursePerformance: [],
-		assessmentStats: [],
-		pendingGrades: [],
-		onboarding: {
-			isComplete: false,
-			hasCollege: false,
-			hasDepartment: false,
-			hasCourse: false,
-			colleges: [],
-			departments: [],
-			levels: [],
-			courses: [],
-			permissions: {
-				canCreateCollege: false,
-				canCreateDepartment: false,
-				canCreateCourse: false,
-			},
-			user
-		}
+	const emptyStats = {
+		courses: 0,
+		students: 0,
+		assessments: 0,
+		pendingGrades: 0,
+		questions: 0,
+		published: 0,
+		activeSessions: 0,
+		totalSessions: 0,
 	}
 
-	// ─── Check Onboarding Status ──────────────────────────────────────────
-	
-	const colleges = await prisma.college.findMany({
-		orderBy: { name: 'asc' }
-	})
-	const departments = await prisma.department.findMany({
-		orderBy: { name: 'asc' }
-	})
-	const levels = await prisma.level.findMany({
-		orderBy: { name: 'asc' }
-	})
-	
-	const hasCollege = !!user.collegeId && colleges.length > 0
-	const hasDepartment = !!user.departmentId && departments.length > 0
-	
-	let hasCourse = false
-	if (user.departmentId) {
-		const courseCount = await prisma.course.count({
-			where: { departmentId: user.departmentId }
-		})
-		hasCourse = courseCount > 0
-	}
-	
-	// Determine permissions based on role
-	const canCreateCollege = ['SUPER_ADMIN', 'REGISTRAR', 'VC', 'DVC'].includes(user.primaryRole)
-	const canCreateDepartment = ['SUPER_ADMIN', 'REGISTRAR', 'DEAN', 'HOD'].includes(user.primaryRole)
-	const canCreateCourse = ['SUPER_ADMIN', 'REGISTRAR', 'HOD', 'DEPARTMENT_COORDINATOR', 'LECTURER'].includes(user.primaryRole)
-	
-	// If no department ID, return empty state with onboarding
+	// No department yet — onboarding modal (driven by layout data) will handle this.
 	if (!departmentId) {
 		return {
-			...emptyState,
-			onboarding: {
-				isComplete: false,
-				hasCollege,
-				hasDepartment,
-				hasCourse,
-				colleges,
-				departments,
-				levels,
-				courses: [],
-				permissions: {
-					canCreateCollege,
-					canCreateDepartment,
-					canCreateCourse,
-				},
-				user
-			}
+			stats: emptyStats,
+			upcomingAssessments: [],
+			pendingSubmissions: [],
+			recentActivity: [],
+			coursePerformance: [],
+			assessmentStats: [],
+			pendingGrades: [],
 		}
 	}
 
@@ -245,17 +172,15 @@ export const load: PageServerLoad = async ({ locals }) => {
 				select: { percentage: true, passed: true },
 			})
 
-			const avgScore = results.length > 0
-				? Math.round(
-						results.reduce((sum, r) => sum + Number(r.percentage), 0) / results.length
-					)
-				: 0
+			const avgScore =
+				results.length > 0
+					? Math.round(results.reduce((sum, r) => sum + Number(r.percentage), 0) / results.length)
+					: 0
 
-			const passRate = results.length > 0
-				? Math.round(
-						(results.filter((r) => r.passed).length / results.length) * 100
-					)
-				: 0
+			const passRate =
+				results.length > 0
+					? Math.round((results.filter((r) => r.passed).length / results.length) * 100)
+					: 0
 
 			return {
 				id: course.id,
@@ -266,7 +191,7 @@ export const load: PageServerLoad = async ({ locals }) => {
 				avgScore,
 				passRate,
 			}
-		})
+		}),
 	)
 
 	// ─── Assessment Statistics ────────────────────────────────────────────
@@ -297,7 +222,7 @@ export const load: PageServerLoad = async ({ locals }) => {
 				completions: sessions,
 				avgScore: avgScore._avg.percentage ? Math.round(Number(avgScore._avg.percentage)) : 0,
 			}
-		})
+		}),
 	)
 
 	// ─── Recent Activity ──────────────────────────────────────────────────
@@ -306,34 +231,14 @@ export const load: PageServerLoad = async ({ locals }) => {
 		where: {
 			staffId,
 			action: {
-				in: [
-					'ASSESSMENT_CREATED',
-					'ASSESSMENT_PUBLISHED',
-					'QUESTION_ADDED',
-					'ANSWER_GRADED',
-					'RESULT_RELEASED',
-				],
+				in: ['ASSESSMENT_CREATED', 'ASSESSMENT_PUBLISHED', 'QUESTION_ADDED', 'ANSWER_GRADED', 'RESULT_RELEASED'],
 			},
 		},
 		orderBy: { createdAt: 'desc' },
 		take: 10,
 	})
 
-	// ─── Get courses for onboarding ──────────────────────────────────────
-	
-	const userCourses = await prisma.course.findMany({
-		where: { departmentId: user.departmentId || undefined },
-		orderBy: { code: 'asc' }
-	})
-
 	return {
-		user: {
-			id: user.id,
-			firstName: user.firstName || 'Lecturer',
-			lastName: user.lastName || '',
-			email: user.email || '',
-			primaryRole: user.primaryRole || 'LECTURER',
-		},
 		stats: {
 			courses: courseCount,
 			students: studentCount,
@@ -377,21 +282,5 @@ export const load: PageServerLoad = async ({ locals }) => {
 			entity: log.entity,
 			createdAt: log.createdAt,
 		})),
-		onboarding: {
-			isComplete: hasCollege && hasDepartment && hasCourse,
-			hasCollege,
-			hasDepartment,
-			hasCourse,
-			colleges,
-			departments,
-			levels,
-			courses: userCourses,
-			permissions: {
-				canCreateCollege,
-				canCreateDepartment,
-				canCreateCourse,
-			},
-			user
-		}
 	}
 }
