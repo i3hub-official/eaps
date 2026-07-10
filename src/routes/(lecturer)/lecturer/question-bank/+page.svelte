@@ -10,12 +10,6 @@
 	import * as Command from '$lib/components/ui/command/index.js';
 	import * as Popover from '$lib/components/ui/popover/index.js';
 	import {
-		Select,
-		SelectContent,
-		SelectItem,
-		SelectTrigger,
-	} from '$lib/components/ui/select/index.js';
-	import {
 		DropdownMenu,
 		DropdownMenuContent,
 		DropdownMenuItem,
@@ -24,14 +18,7 @@
 	import { Alert, AlertDescription } from '$lib/components/ui/alert/index.js';
 	import {
 		type ColumnDef,
-		type ColumnFiltersState,
-		type PaginationState,
-		type SortingState,
-		type VisibilityState,
 		getCoreRowModel,
-		getFilteredRowModel,
-		getPaginationRowModel,
-		getSortedRowModel,
 	} from '@tanstack/table-core';
 	import { createRawSnippet } from 'svelte';
 	import {
@@ -44,8 +31,6 @@
 		Search,
 		Plus,
 		FileText,
-		Eye,
-		Edit,
 		AlertCircle,
 		LoaderCircle,
 		RefreshCw,
@@ -58,6 +43,7 @@
 	import CheckIcon from '@lucide/svelte/icons/check';
 	import ChevronsUpDownIcon from '@lucide/svelte/icons/chevrons-up-down';
 	import { invalidateAll } from '$app/navigation';
+	import { deserialize } from '$app/forms';
 	import { cn } from '$lib/utils.js';
 	import { tick } from 'svelte';
 
@@ -70,6 +56,13 @@
 	let filterType = $state(data?.filters?.type || 'all');
 	let filterDifficulty = $state(data?.filters?.difficulty || 'all');
 
+	// Full enum lists — kept static rather than derived from the current
+	// page's results, since with server-side pagination the current page
+	// only ever contains up to 10 questions and wouldn't reliably surface
+	// every type/difficulty in use across all of a lecturer's questions.
+	const TYPES = ['SINGLE_CHOICE', 'MULTIPLE_CHOICE', 'TRUE_FALSE', 'FILL_BLANK', 'MATCHING', 'ESSAY', 'ORDERING'];
+	const DIFFICULTIES = ['EASY', 'MEDIUM', 'HARD', 'EXPERT'];
+
 	// ─── Course Combobox State ──────────────────────────────────────────────
 	let courseOpen = $state(false);
 	let courseTriggerRef = $state<HTMLButtonElement>(null!);
@@ -78,33 +71,32 @@
 	let user = $derived(data?.user);
 	let questions = $derived(data?.questions || []);
 	let courses = $derived(data?.courses || []);
+	let pagination = $derived(data?.pagination);
 	let error = $derived(data?.error);
 
 	// ─── Computed ────────────────────────────────────────────────────────────
 	const selectedCourseLabel = $derived(
-		filterCourse === 'all' 
-			? 'All Courses' 
-			: courses.find((c) => c.id === filterCourse)?.code + ' — ' + courses.find((c) => c.id === filterCourse)?.title || 'All Courses'
+		filterCourse === 'all'
+			? 'All Courses'
+			: (courses.find((c) => c.id === filterCourse)
+					? `${courses.find((c) => c.id === filterCourse)!.code} — ${courses.find((c) => c.id === filterCourse)!.title}`
+					: 'All Courses')
 	);
 
-	let filteredQuestions = $derived(
-		questions.filter((q) => {
-			const matchesSearch = q.body.toLowerCase().includes(searchQuery.toLowerCase());
-			const matchesCourse = filterCourse === 'all' || q.course === filterCourse;
-			const matchesType = filterType === 'all' || q.type === filterType;
-			const matchesDifficulty = filterDifficulty === 'all' || q.difficulty === filterDifficulty;
-			return matchesSearch && matchesCourse && matchesType && matchesDifficulty;
-		})
-	);
-
-	let types = $derived([...new Set(questions.map((q) => q.type))]);
-	let difficulties = $derived([...new Set(questions.map((q) => q.difficulty))]);
-
-	// ─── Table State ──────────────────────────────────────────────────────────
-	let pagination = $state<PaginationState>({ pageIndex: 0, pageSize: 10 });
-	let sorting = $state<SortingState>([]);
-	let columnFilters = $state<ColumnFiltersState>([]);
-	let columnVisibility = $state<VisibilityState>({});
+	// Page numbers with ellipsis for large page counts, e.g. 1 … 4 5 [6] 7 8 … 12
+	let pageNumbers = $derived.by(() => {
+		const total = pagination?.totalPages ?? 1;
+		const current = pagination?.page ?? 1;
+		const result: (number | '...')[] = [];
+		for (let i = 1; i <= total; i++) {
+			if (i === 1 || i === total || (i >= current - 1 && i <= current + 1)) {
+				result.push(i);
+			} else if (result[result.length - 1] !== '...') {
+				result.push('...');
+			}
+		}
+		return result;
+	});
 
 	// ─── Table Columns ───────────────────────────────────────────────────────
 	const columns: ColumnDef<any>[] = [
@@ -173,9 +165,7 @@
 			cell: ({ row }) => {
 				const cellSnippet = createRawSnippet<[{ course: string }]>((getCourse) => {
 					const { course } = getCourse();
-					return {
-						render: () => `<div>${course}</div>`,
-					};
+					return { render: () => `<div>${course}</div>` };
 				});
 				return renderSnippet(cellSnippet, { course: row.original.course });
 			},
@@ -186,9 +176,7 @@
 			cell: ({ row }) => {
 				const cellSnippet = createRawSnippet<[{ optionCount: number }]>((getCount) => {
 					const { optionCount } = getCount();
-					return {
-						render: () => `<div class="text-center">${optionCount}</div>`,
-					};
+					return { render: () => `<div class="text-center">${optionCount}</div>` };
 				});
 				return renderSnippet(cellSnippet, { optionCount: row.original.optionCount });
 			},
@@ -197,13 +185,12 @@
 			accessorKey: 'tagCount',
 			header: 'Tags',
 			cell: ({ row }) => {
-				const cellSnippet = createRawSnippet<[{ tagCount: number }]>((getCount) => {
-					const { tagCount } = getCount();
-					return {
-						render: () => `<div class="text-center">${tagCount}</div>`,
-					};
+				const cellSnippet = createRawSnippet<[{ tagCount: number; tagNames: string[] }]>((getProps) => {
+					const { tagCount, tagNames } = getProps();
+					const title = tagNames.length ? tagNames.join(', ').replace(/"/g, '&quot;') : 'No tags';
+					return { render: () => `<div class="text-center" title="${title}">${tagCount}</div>` };
 				});
-				return renderSnippet(cellSnippet, { tagCount: row.original.tagCount });
+				return renderSnippet(cellSnippet, { tagCount: row.original.tagCount, tagNames: row.original.tagNames });
 			},
 		},
 		{
@@ -212,11 +199,27 @@
 			cell: ({ row }) => {
 				const cellSnippet = createRawSnippet<[{ marks: number }]>((getMarks) => {
 					const { marks } = getMarks();
-					return {
-						render: () => `<div class="text-center font-medium">${marks}</div>`,
-					};
+					return { render: () => `<div class="text-center font-medium">${marks}</div>` };
 				});
 				return renderSnippet(cellSnippet, { marks: row.original.marks });
+			},
+		},
+		{
+			accessorKey: 'isActive',
+			header: 'Status',
+			cell: ({ row }) => {
+				const cellSnippet = createRawSnippet<[{ isActive: boolean }]>((getProps) => {
+					const { isActive } = getProps();
+					const label = isActive ? 'Active' : 'Inactive';
+					const cls = isActive
+						? 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400'
+						: 'bg-gray-100 text-gray-600 dark:bg-gray-800/30 dark:text-gray-400';
+					return {
+						render: () =>
+							`<span class="inline-flex items-center rounded-md px-2.5 py-0.5 text-xs font-semibold ${cls}">${label}</span>`,
+					};
+				});
+				return renderSnippet(cellSnippet, { isActive: row.original.isActive });
 			},
 		},
 		{
@@ -224,79 +227,51 @@
 			enableHiding: false,
 			header: 'Actions',
 			cell: ({ row }) => {
-				const cellSnippet = createRawSnippet<[{ id: string }]>((getId) => {
-					const { id } = getId();
+				const q = row.original;
+				const cellSnippet = createRawSnippet<[{ id: string; isActive: boolean }]>((getProps) => {
+					const { id, isActive } = getProps();
 					return {
-						render: () =>
-							`<div class="flex justify-end gap-2">
-								<a href="/lecturer/question-bank/${id}" class="inline-flex items-center justify-center whitespace-nowrap rounded-md text-sm font-medium ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 hover:bg-accent hover:text-accent-foreground h-8 w-8 p-0">
+						render: () => `
+							<div class="flex justify-end gap-1">
+								<a href="/lecturer/question-bank/${id}" title="View" class="inline-flex items-center justify-center whitespace-nowrap rounded-md text-sm font-medium ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 hover:bg-accent hover:text-accent-foreground h-8 w-8 p-0">
 									<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7z"/><circle cx="12" cy="12" r="3"/></svg>
-									<span class="sr-only">View</span>
 								</a>
-								<a href="/lecturer/question-bank/${id}/edit" class="inline-flex items-center justify-center whitespace-nowrap rounded-md text-sm font-medium ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 hover:bg-accent hover:text-accent-foreground h-8 w-8 p-0">
+								<a href="/lecturer/question-bank/${id}/edit" title="Edit" class="inline-flex items-center justify-center whitespace-nowrap rounded-md text-sm font-medium ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 hover:bg-accent hover:text-accent-foreground h-8 w-8 p-0">
 									<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
-									<span class="sr-only">Edit</span>
 								</a>
-							</div>`,
+								<button type="button" data-action="toggle" title="${isActive ? 'Deactivate' : 'Activate'}" class="inline-flex items-center justify-center whitespace-nowrap rounded-md text-sm font-medium ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 hover:bg-accent hover:text-accent-foreground h-8 w-8 p-0">
+									<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${
+										isActive
+											? '<path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/>'
+											: '<circle cx="12" cy="12" r="10"/>'
+									}</svg>
+								</button>
+								<button type="button" data-action="delete" title="Delete" class="inline-flex items-center justify-center whitespace-nowrap rounded-md text-sm font-medium ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 hover:bg-destructive/10 hover:text-destructive h-8 w-8 p-0">
+									<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+								</button>
+							</div>
+						`,
+						setup: (node: Element) => {
+							node.querySelector('[data-action="toggle"]')?.addEventListener('click', () => handleToggleActive(id));
+							node.querySelector('[data-action="delete"]')?.addEventListener('click', () => handleDelete(id));
+						},
 					};
 				});
-				return renderSnippet(cellSnippet, { id: row.original.id });
+				return renderSnippet(cellSnippet, { id: q.id, isActive: q.isActive });
 			},
 		},
 	];
 
 	// ─── Table Instance ──────────────────────────────────────────────────────
+	// No client-side pagination/sorting/filtering models — the server has
+	// already paginated and filtered `data.questions`, so the table just
+	// renders exactly what it was given.
 	const table = createSvelteTable({
 		get data() {
-			return filteredQuestions;
+			return questions;
 		},
 		columns,
-		state: {
-			get pagination() {
-				return pagination;
-			},
-			get sorting() {
-				return sorting;
-			},
-			get columnVisibility() {
-				return columnVisibility;
-			},
-			get columnFilters() {
-				return columnFilters;
-			},
-		},
 		getCoreRowModel: getCoreRowModel(),
-		getPaginationRowModel: getPaginationRowModel(),
-		getSortedRowModel: getSortedRowModel(),
-		getFilteredRowModel: getFilteredRowModel(),
-		onPaginationChange: (updater) => {
-			if (typeof updater === 'function') {
-				pagination = updater(pagination);
-			} else {
-				pagination = updater;
-			}
-		},
-		onSortingChange: (updater) => {
-			if (typeof updater === 'function') {
-				sorting = updater(sorting);
-			} else {
-				sorting = updater;
-			}
-		},
-		onColumnFiltersChange: (updater) => {
-			if (typeof updater === 'function') {
-				columnFilters = updater(columnFilters);
-			} else {
-				columnFilters = updater;
-			}
-		},
-		onColumnVisibilityChange: (updater) => {
-			if (typeof updater === 'function') {
-				columnVisibility = updater(columnVisibility);
-			} else {
-				columnVisibility = updater;
-			}
-		},
 	});
 
 	// ─── Handlers ────────────────────────────────────────────────────────────
@@ -314,13 +289,20 @@
 		isRefreshing = false;
 	}
 
-	function applyFilters() {
+	function buildParams(extra: Record<string, string | undefined> = {}) {
 		const params = new URLSearchParams();
 		if (searchQuery) params.set('search', searchQuery);
 		if (filterCourse !== 'all') params.set('course', filterCourse);
 		if (filterType !== 'all') params.set('type', filterType);
 		if (filterDifficulty !== 'all') params.set('difficulty', filterDifficulty);
-		window.location.href = `/lecturer/question-bank?${params.toString()}`;
+		for (const [k, v] of Object.entries(extra)) {
+			if (v) params.set(k, v);
+		}
+		return params;
+	}
+
+	function applyFilters() {
+		window.location.href = `/lecturer/question-bank?${buildParams().toString()}`;
 	}
 
 	function clearFilters() {
@@ -331,27 +313,37 @@
 		window.location.href = '/lecturer/question-bank';
 	}
 
-	function getTypeBadge(type: string) {
-		const variants: Record<string, { variant: string; label: string }> = {
-			SINGLE_CHOICE: { variant: 'default', label: 'Single Choice' },
-			MULTIPLE_CHOICE: { variant: 'secondary', label: 'Multiple Choice' },
-			TRUE_FALSE: { variant: 'info', label: 'True/False' },
-			FILL_BLANK: { variant: 'warning', label: 'Fill Blank' },
-			MATCHING: { variant: 'destructive', label: 'Matching' },
-			ESSAY: { variant: 'default', label: 'Essay' },
-			ORDERING: { variant: 'secondary', label: 'Ordering' },
-		};
-		return variants[type] || { variant: 'secondary', label: type };
+	function goToPage(n: number) {
+		window.location.href = `/lecturer/question-bank?${buildParams({ page: String(n) }).toString()}`;
 	}
 
-	function getDifficultyColor(difficulty: string) {
-		const colors: Record<string, string> = {
-			EASY: 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400',
-			MEDIUM: 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-400',
-			HARD: 'bg-orange-100 text-orange-800 dark:bg-orange-900/30 dark:text-orange-400',
-			EXPERT: 'bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400',
-		};
-		return colors[difficulty] || 'bg-gray-100 text-gray-800 dark:bg-gray-800/30 dark:text-gray-400';
+	async function handleToggleActive(questionId: string) {
+		const fd = new FormData();
+		fd.set('questionId', questionId);
+		const res = await fetch('?/toggleActive', { method: 'POST', body: fd });
+		const result = deserialize(await res.text());
+		if (result.type === 'success') {
+			await invalidateAll();
+		} else if (result.type === 'failure') {
+			alert((result.data as any)?.error ?? 'Failed to update question');
+		} else if (result.type === 'error') {
+			alert(result.error?.message ?? 'Failed to update question');
+		}
+	}
+
+	async function handleDelete(questionId: string) {
+		if (!confirm('Delete this question permanently? This cannot be undone.')) return;
+		const fd = new FormData();
+		fd.set('questionId', questionId);
+		const res = await fetch('?/delete', { method: 'POST', body: fd });
+		const result = deserialize(await res.text());
+		if (result.type === 'success') {
+			await invalidateAll();
+		} else if (result.type === 'failure') {
+			alert((result.data as any)?.error ?? 'Failed to delete question');
+		} else if (result.type === 'error') {
+			alert(result.error?.message ?? 'Failed to delete question');
+		}
 	}
 </script>
 
@@ -421,13 +413,10 @@
 
 <div class="p-6">
 	{#if !data}
-		<!-- Loading State -->
 		<div class="grid gap-6 md:grid-cols-3">
 			{#each [1, 2, 3] as item (item)}
 				<Card>
-					<CardHeader>
-						<Skeleton class="h-4 w-24" />
-					</CardHeader>
+					<CardHeader><Skeleton class="h-4 w-24" /></CardHeader>
 					<CardContent>
 						<Skeleton class="h-8 w-16" />
 						<Skeleton class="mt-2 h-3 w-32" />
@@ -446,21 +435,15 @@
 			</CardContent>
 		</Card>
 	{:else if error}
-		<!-- Error State -->
 		<Alert variant="destructive" class="mb-6">
 			<AlertCircle class="size-4" />
 			<AlertDescription>{error}</AlertDescription>
 		</Alert>
-
 		<Card>
 			<CardContent class="flex flex-col items-center justify-center py-12">
 				<Building2 class="size-12 text-muted-foreground/50 mb-4" />
 				<h3 class="text-lg font-semibold">Cannot load question bank</h3>
-				<p class="text-sm text-muted-foreground mt-1">
-					{error === 'No department assigned. Contact your HOD.'
-						? 'Please contact your HOD to assign a department.'
-						: 'There was an error loading your questions.'}
-				</p>
+				<p class="text-sm text-muted-foreground mt-1">There was an error loading your questions.</p>
 				<Button variant="outline" class="mt-4" onclick={handleRefresh}>
 					<RefreshCw class="mr-2 size-4" />
 					Try Again
@@ -476,7 +459,7 @@
 					<Database class="size-4 text-muted-foreground" />
 				</CardHeader>
 				<CardContent>
-					<div class="text-2xl font-bold">{questions.length}</div>
+					<div class="text-2xl font-bold">{pagination?.totalCount ?? 0}</div>
 					<p class="text-xs text-muted-foreground">in your question bank</p>
 				</CardContent>
 			</Card>
@@ -487,8 +470,8 @@
 					<FileText class="size-4 text-muted-foreground" />
 				</CardHeader>
 				<CardContent>
-					<div class="text-2xl font-bold">{types.length}</div>
-					<p class="text-xs text-muted-foreground">different types available</p>
+					<div class="text-2xl font-bold">{TYPES.length}</div>
+					<p class="text-xs text-muted-foreground">supported types</p>
 				</CardContent>
 			</Card>
 
@@ -499,7 +482,7 @@
 				</CardHeader>
 				<CardContent>
 					<div class="text-2xl font-bold">{courses.length}</div>
-					<p class="text-xs text-muted-foreground">with questions</p>
+					<p class="text-xs text-muted-foreground">you teach</p>
 				</CardContent>
 			</Card>
 		</div>
@@ -516,17 +499,10 @@
 				/>
 			</div>
 
-			<!-- Course Combobox -->
 			<Popover.Root bind:open={courseOpen}>
 				<Popover.Trigger bind:ref={courseTriggerRef}>
 					{#snippet child({ props })}
-						<Button
-							{...props}
-							variant="outline"
-							class="w-[200px] justify-between h-10"
-							role="combobox"
-							aria-expanded={courseOpen}
-						>
+						<Button {...props} variant="outline" class="w-[200px] justify-between h-10" role="combobox" aria-expanded={courseOpen}>
 							<span class="truncate">{selectedCourseLabel}</span>
 							<ChevronsUpDownIcon class="ml-2 size-4 shrink-0 opacity-50" />
 						</Button>
@@ -538,35 +514,13 @@
 						<Command.List>
 							<Command.Empty>No course found.</Command.Empty>
 							<Command.Group>
-								<Command.Item
-									value="all"
-									onSelect={() => {
-										filterCourse = 'all';
-										closeAndFocusCourse();
-									}}
-								>
-									<CheckIcon
-										class={cn(
-											"mr-2 size-4",
-											filterCourse === 'all' ? "opacity-100" : "opacity-0"
-										)}
-									/>
+								<Command.Item value="all" onSelect={() => { filterCourse = 'all'; closeAndFocusCourse(); }}>
+									<CheckIcon class={cn('mr-2 size-4', filterCourse === 'all' ? 'opacity-100' : 'opacity-0')} />
 									All Courses
 								</Command.Item>
 								{#each courses as course}
-									<Command.Item
-										value={course.code}
-										onSelect={() => {
-											filterCourse = course.id;
-											closeAndFocusCourse();
-										}}
-									>
-										<CheckIcon
-											class={cn(
-												"mr-2 size-4",
-												filterCourse === course.id ? "opacity-100" : "opacity-0"
-											)}
-										/>
+									<Command.Item value={course.code} onSelect={() => { filterCourse = course.id; closeAndFocusCourse(); }}>
+										<CheckIcon class={cn('mr-2 size-4', filterCourse === course.id ? 'opacity-100' : 'opacity-0')} />
 										{course.code} — {course.title}
 									</Command.Item>
 								{/each}
@@ -576,9 +530,21 @@
 				</Popover.Content>
 			</Popover.Root>
 
-			<Button variant="outline" size="sm" onclick={applyFilters}>
-				Apply
-			</Button>
+			<select bind:value={filterType} class="h-10 rounded-md border border-input bg-background px-3 text-sm">
+				<option value="all">All Types</option>
+				{#each TYPES as t}
+					<option value={t}>{t.replace('_', ' ')}</option>
+				{/each}
+			</select>
+
+			<select bind:value={filterDifficulty} class="h-10 rounded-md border border-input bg-background px-3 text-sm">
+				<option value="all">All Difficulty</option>
+				{#each DIFFICULTIES as d}
+					<option value={d}>{d}</option>
+				{/each}
+			</select>
+
+			<Button variant="outline" size="sm" onclick={applyFilters}>Apply</Button>
 			<Button variant="ghost" size="sm" onclick={clearFilters}>
 				<X class="mr-1 size-4" />
 				Clear
@@ -589,35 +555,6 @@
 		<Card class="mt-6">
 			<CardContent class="p-0">
 				<div class="w-full">
-					<!-- Table Controls: Column Visibility -->
-					<div class="flex items-center justify-end p-4">
-						<DropdownMenu>
-							<DropdownMenuTrigger asChild>
-								<Button variant="outline" size="sm">
-									<Filter class="mr-2 size-4" />
-									Columns
-									<ChevronDown class="ml-2 size-4" />
-								</Button>
-							</DropdownMenuTrigger>
-							<DropdownMenuContent align="end">
-								{#each table.getAllColumns().filter((col) => col.getCanHide()) as column}
-									<DropdownMenuItem onclick={() => column.toggleVisibility(!column.getIsVisible())}>
-										<span class="flex items-center gap-2">
-											<input
-												type="checkbox"
-												checked={column.getIsVisible()}
-												onchange={(e) => column.toggleVisibility(e.currentTarget.checked)}
-												class="h-4 w-4 rounded border-gray-300"
-												onclick={(e) => e.stopPropagation()}
-											/>
-											{column.id}
-										</span>
-									</DropdownMenuItem>
-								{/each}
-							</DropdownMenuContent>
-						</DropdownMenu>
-					</div>
-
 					<div class="rounded-md border">
 						<Table.Root>
 							<Table.Header>
@@ -645,7 +582,11 @@
 								{:else}
 									<Table.Row>
 										<Table.Cell colspan={columns.length} class="h-24 text-center">
-											No results.
+											{#if questions.length === 0 && (searchQuery || filterCourse !== 'all' || filterType !== 'all' || filterDifficulty !== 'all')}
+												No questions match your filters.
+											{:else}
+												No questions in your bank yet.
+											{/if}
 										</Table.Cell>
 									</Table.Row>
 								{/each}
@@ -653,16 +594,35 @@
 						</Table.Root>
 					</div>
 
-					<!-- Pagination -->
-					<div class="flex items-center justify-between space-x-2 pt-4">
+					<!-- Pagination — real page numbers, driven by the server -->
+					<div class="flex items-center justify-between pt-4">
 						<span class="text-sm text-muted-foreground">
-							Showing {table.getRowModel().rows.length} of {filteredQuestions.length} questions
+							Page {pagination?.page ?? 1} of {pagination?.totalPages ?? 1} · {pagination?.totalCount ?? 0} total
 						</span>
-						<div class="space-x-2">
-							<Button variant="outline" size="sm" onclick={() => table.previousPage()} disabled={!table.getCanPreviousPage()}>
+						<div class="flex items-center gap-1">
+							<Button variant="outline" size="sm" onclick={() => goToPage((pagination?.page ?? 1) - 1)} disabled={(pagination?.page ?? 1) <= 1}>
 								Previous
 							</Button>
-							<Button variant="outline" size="sm" onclick={() => table.nextPage()} disabled={!table.getCanNextPage()}>
+							{#each pageNumbers as p}
+								{#if p === '...'}
+									<span class="px-2 text-sm text-muted-foreground">…</span>
+								{:else}
+									<Button
+										variant={p === pagination?.page ? 'default' : 'outline'}
+										size="sm"
+										class="w-9"
+										onclick={() => goToPage(p)}
+									>
+										{p}
+									</Button>
+								{/if}
+							{/each}
+							<Button
+								variant="outline"
+								size="sm"
+								onclick={() => goToPage((pagination?.page ?? 1) + 1)}
+								disabled={(pagination?.page ?? 1) >= (pagination?.totalPages ?? 1)}
+							>
 								Next
 							</Button>
 						</div>
@@ -670,36 +630,5 @@
 				</div>
 			</CardContent>
 		</Card>
-
-		<!-- Quick Stats -->
-		{#if filteredQuestions.length > 0}
-			<Card class="mt-6 bg-muted/30 border-border">
-				<CardContent class="py-4">
-					<div class="flex flex-wrap items-center justify-between gap-4 text-sm">
-						<span class="text-muted-foreground">
-							Showing <strong class="text-foreground">{filteredQuestions.length}</strong> of <strong class="text-foreground">{questions.length}</strong> questions
-						</span>
-						<div class="flex items-center gap-4">
-							<span class="flex items-center gap-1">
-								<span class="text-green-600">●</span>
-								{filteredQuestions.filter((q) => q.difficulty === 'EASY').length} Easy
-							</span>
-							<span class="flex items-center gap-1">
-								<span class="text-yellow-600">●</span>
-								{filteredQuestions.filter((q) => q.difficulty === 'MEDIUM').length} Medium
-							</span>
-							<span class="flex items-center gap-1">
-								<span class="text-orange-600">●</span>
-								{filteredQuestions.filter((q) => q.difficulty === 'HARD').length} Hard
-							</span>
-							<span class="flex items-center gap-1">
-								<span class="text-red-600">●</span>
-								{filteredQuestions.filter((q) => q.difficulty === 'EXPERT').length} Expert
-							</span>
-						</div>
-					</div>
-				</CardContent>
-			</Card>
-		{/if}
 	{/if}
 </div>
