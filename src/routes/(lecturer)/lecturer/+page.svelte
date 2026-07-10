@@ -1,5 +1,6 @@
 <!-- src/routes/(lecturer)/lecturer/+page.svelte -->
 <script lang="ts">
+	import { Topbar } from '$lib/components/dashboard';
 	import {
 		Card,
 		CardContent,
@@ -68,6 +69,9 @@
 		return colors[type] || 'bg-gray-100 text-gray-800'
 	}
 </script>
+
+<Topbar title="My Dashboard" description="Your personal dashboard" />
+
 
 <div class="flex flex-1 flex-col gap-8 p-8">
 	<!-- Welcome Banner -->

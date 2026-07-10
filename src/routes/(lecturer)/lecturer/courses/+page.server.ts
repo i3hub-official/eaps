@@ -1,56 +1,64 @@
-// src/routes/(lecturer)/lecturer/courses/+page.server.ts
-import type { PageServerLoad } from './$types';
-import { requireLecturer } from '$lib/server/auth/guards.js';
-import { getPrismaClient } from '$lib/server/db/index.js';
+// src/routes/(lecturer)/lecturer/courses/+page.server.ts (UPDATED)
+import type { PageServerLoad } from './$types'
+import { requireLecturer } from '$lib/server/auth/guards.js'
+import { getPrismaClient } from '$lib/server/db/index.js'
 
 export const load: PageServerLoad = async ({ locals }) => {
-	const user = await requireLecturer(locals.user);
-	const prisma = await getPrismaClient();
+	const user = await requireLecturer(locals.user)
 
+	// Lecturer must have a department
+	if (!user.departmentId) {
+		return {
+			user: {
+				id: user.id,
+				firstName: user.firstName,
+				lastName: user.lastName,
+			},
+			courses: [],
+			error: 'No department assigned. Contact your HOD.',
+		}
+	}
+
+	const prisma = await getPrismaClient()
+	const departmentId = user.departmentId
+
+	// Get all courses in lecturer's department
 	const courses = await prisma.course.findMany({
 		where: {
-			offerings: {
-				some: { lecturerId: user.id },
-			},
+			departmentId,
+			status: 'ACTIVE',
 		},
 		include: {
-			department: true,
 			level: true,
-			offerings: {
-				where: { lecturerId: user.id },
-				include: { semester: { include: { session: true } } },
-				orderBy: { createdAt: 'desc' },
-			},
 			registrations: {
 				where: { status: 'APPROVED' },
 			},
 			assessments: {
 				where: { createdById: user.id },
 			},
+			questions: {
+				where: { createdById: user.id },
+			},
 		},
-		orderBy: { code: 'asc' },
-	});
+		orderBy: [{ level: { name: 'asc' } }, { code: 'asc' }],
+	})
 
 	return {
-		user,
-		courses: courses.map((c) => {
-			const currentOffering = c.offerings.find((o) => o.semester.isCurrent) ?? c.offerings[0];
-
-			return {
-				id: c.id,
-				code: c.code,
-				title: c.title,
-				creditUnits: c.creditUnits,
-				type: c.type,
-				status: c.status,
-				department: c.department.shortName,
-				level: c.level.name,
-				studentCount: c.registrations.length,
-				assessmentCount: c.assessments.length,
-				semesterLabel: currentOffering
-					? `${currentOffering.semester.session.name} · ${currentOffering.semester.type}`
-					: 'Not offered this session',
-			};
-		}),
-	};
-};
+		user: {
+			id: user.id,
+			firstName: user.firstName,
+			lastName: user.lastName,
+		},
+		courses: courses.map((c) => ({
+			id: c.id,
+			code: c.code,
+			title: c.title,
+			creditUnits: c.creditUnits,
+			type: c.type,
+			level: c.level.name,
+			studentCount: c.registrations.length,
+			assessmentCount: c.assessments.length,
+			questionCount: c.questions.length,
+		})),
+	}
+}
