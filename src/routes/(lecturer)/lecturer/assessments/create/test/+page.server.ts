@@ -5,13 +5,6 @@ import { getPrismaClient } from '$lib/server/db/index.js';
 import { requireLecturer } from '$lib/server/auth/guards.js';
 import { Decimal } from 'decimal.js';
 
-// src/routes/(lecturer)/lecturer/assessments/create/test/+page.server.ts
-import type { PageServerLoad, Actions } from './$types';
-import { fail } from '@sveltejs/kit';
-import { getPrismaClient } from '$lib/server/db/index.js';
-import { requireLecturer } from '$lib/server/auth/guards.js';
-import { Decimal } from 'decimal.js';
-
 export const load: PageServerLoad = async ({ locals }) => {
 	const user = await requireLecturer(locals.user);
 	const prisma = await getPrismaClient();
