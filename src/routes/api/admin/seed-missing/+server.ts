@@ -7,6 +7,7 @@ import {
   protectPhone,
   protectText,
   protectStaffData,
+  protectStudentRegistration,
 } from '$lib/security/dataProtection.js';
 import { hashPassword } from '$lib/server/auth/index.js';
 import {
@@ -639,6 +640,11 @@ export const POST: RequestHandler = async () => {
     }
 
     // ─── 13. Students ───────────────────────────────────────────────────
+    // Mirrors src/routes/(auth)/register/+page.server.ts `signup` action:
+    // same protectStudentRegistration() call, same field shape, same
+    // dedup checks (emailHash / matricNumber / jambRegNo / phoneHash) —
+    // so seeded students are indistinguishable in structure from students
+    // who registered themselves.
     const studentPasswordHash = await hashPassword(STUDENT_DEFAULT_PASSWORD);
     const entryYear = new Date().getFullYear();
     const usedStudentEmails = new Set<string>();
@@ -673,26 +679,59 @@ export const POST: RequestHandler = async () => {
             password: STUDENT_DEFAULT_PASSWORD,
           });
 
-          const existing = await prisma.student.findUnique({ where: { matricNumber } });
+          // Same protection call the real signup action uses — encrypts
+          // email/phone, hashes email/phone/receipt fields, passes through
+          // matricNumber/jambRegNo/names per the schema's actual column set.
+          const protectedData = await protectStudentRegistration({
+            email,
+            phone: null,
+            firstName,
+            lastName,
+            otherNames: null,
+            matricNumber,
+            jambRegNo,
+            receiptNo: null,
+            receiptRef: null,
+          });
 
-          if (!existing) {
+          // Same dedup strategy as the real signup action — check every
+          // unique field the schema actually enforces, not just matricNumber.
+          const [dupEmail, dupMatric, dupJamb, dupPhone] = await Promise.all([
+            prisma.student.findUnique({ where: { emailHash: protectedData.emailHash } }),
+            prisma.student.findUnique({ where: { matricNumber: protectedData.matricNumber } }),
+            prisma.student.findUnique({ where: { jambRegNo: protectedData.jambRegNo } }),
+            protectedData.phoneHash
+              ? prisma.student.findUnique({ where: { phoneHash: protectedData.phoneHash } })
+              : Promise.resolve(null),
+          ]);
+
+          const alreadyExists = dupEmail || dupMatric || dupJamb || dupPhone;
+
+          if (!alreadyExists) {
             try {
-              const emailProtect = await protectEmail(email);
-
               await prisma.student.create({
                 data: {
-                  matricNumber,
-                  jambRegNo,
-                  email: emailProtect.encrypted,
-                  emailHash: emailProtect.hash,
+                  matricNumber: protectedData.matricNumber,
+                  jambRegNo: protectedData.jambRegNo,
+                  receiptNo: protectedData.receiptNo,
+                  receiptRef: protectedData.receiptRef,
+                  receiptSource: 'SEED',
+                  registrationSession: sessionName,
+                  email: protectedData.email,
+                  emailHash: protectedData.emailHash,
                   passwordHash: studentPasswordHash,
-                  firstName,
-                  lastName,
+                  firstName: protectedData.firstName,
+                  lastName: protectedData.lastName,
+                  otherNames: protectedData.otherNames,
+                  phone: protectedData.phone,
+                  phoneHash: protectedData.phoneHash,
                   departmentId: dept.id,
                   programmeId,
                   currentLevelId: level100.id,
                   entryYear,
                   status: 'ACTIVE',
+                  // Seeded accounts get a shared default password, unlike
+                  // real registrants who choose their own — force a change.
                   mustChangePassword: true,
                 },
               });
@@ -700,7 +739,8 @@ export const POST: RequestHandler = async () => {
               results.students.created++;
               totalCreated++;
             } catch (studentErr) {
-              console.error(`Failed to create student ${matricNumber}:`, studentErr);
+              const msg = studentErr instanceof Error ? studentErr.message : String(studentErr);
+              console.error(`Failed to create student ${matricNumber}:`, msg);
               continue;
             }
           } else {
