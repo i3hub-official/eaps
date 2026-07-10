@@ -6,14 +6,9 @@
 	import { Badge } from '$lib/components/ui/badge/index.js';
 	import { Skeleton } from '$lib/components/ui/skeleton/index.js';
 	import { Input } from '$lib/components/ui/input/index.js';
-	import {
-		Table,
-		TableBody,
-		TableCell,
-		TableHead,
-		TableHeader,
-		TableRow,
-	} from '$lib/components/ui/table/index.js';
+	import * as Table from '$lib/components/ui/table/index.js';
+	import * as Command from '$lib/components/ui/command/index.js';
+	import * as Popover from '$lib/components/ui/popover/index.js';
 	import {
 		Select,
 		SelectContent,
@@ -27,7 +22,23 @@
 		DropdownMenuTrigger,
 	} from '$lib/components/ui/dropdown-menu/index.js';
 	import { Alert, AlertDescription } from '$lib/components/ui/alert/index.js';
-	import { Tabs, TabsContent, TabsList, TabsTrigger } from '$lib/components/ui/tabs/index.js';
+	import {
+		type ColumnDef,
+		type ColumnFiltersState,
+		type PaginationState,
+		type SortingState,
+		type VisibilityState,
+		getCoreRowModel,
+		getFilteredRowModel,
+		getPaginationRowModel,
+		getSortedRowModel,
+	} from '@tanstack/table-core';
+	import { createRawSnippet } from 'svelte';
+	import {
+		FlexRender,
+		createSvelteTable,
+		renderSnippet,
+	} from '$lib/components/ui/data-table/index.js';
 	import {
 		Database,
 		Search,
@@ -42,9 +53,13 @@
 		Filter,
 		X,
 		Building2,
+		BarChart3,
 	} from '@lucide/svelte/icons';
+	import CheckIcon from '@lucide/svelte/icons/check';
+	import ChevronsUpDownIcon from '@lucide/svelte/icons/chevrons-up-down';
 	import { invalidateAll } from '$app/navigation';
-	import { format } from '$lib/utils/date';
+	import { cn } from '$lib/utils.js';
+	import { tick } from 'svelte';
 
 	let { data, form } = $props();
 
@@ -54,7 +69,10 @@
 	let filterCourse = $state(data?.filters?.course || 'all');
 	let filterType = $state(data?.filters?.type || 'all');
 	let filterDifficulty = $state(data?.filters?.difficulty || 'all');
-	let activeTab = $state('all');
+
+	// ─── Course Combobox State ──────────────────────────────────────────────
+	let courseOpen = $state(false);
+	let courseTriggerRef = $state<HTMLButtonElement>(null!);
 
 	// ─── Data ────────────────────────────────────────────────────────────────
 	let user = $derived(data?.user);
@@ -63,8 +81,14 @@
 	let error = $derived(data?.error);
 
 	// ─── Computed ────────────────────────────────────────────────────────────
+	const selectedCourseLabel = $derived(
+		filterCourse === 'all' 
+			? 'All Courses' 
+			: courses.find((c) => c.id === filterCourse)?.code + ' — ' + courses.find((c) => c.id === filterCourse)?.title || 'All Courses'
+	);
+
 	let filteredQuestions = $derived(
-		questions.filter(q => {
+		questions.filter((q) => {
 			const matchesSearch = q.body.toLowerCase().includes(searchQuery.toLowerCase());
 			const matchesCourse = filterCourse === 'all' || q.course === filterCourse;
 			const matchesType = filterType === 'all' || q.type === filterType;
@@ -73,10 +97,216 @@
 		})
 	);
 
-	let types = $derived([...new Set(questions.map(q => q.type))]);
-	let difficulties = $derived([...new Set(questions.map(q => q.difficulty))]);
+	let types = $derived([...new Set(questions.map((q) => q.type))]);
+	let difficulties = $derived([...new Set(questions.map((q) => q.difficulty))]);
+
+	// ─── Table State ──────────────────────────────────────────────────────────
+	let pagination = $state<PaginationState>({ pageIndex: 0, pageSize: 10 });
+	let sorting = $state<SortingState>([]);
+	let columnFilters = $state<ColumnFiltersState>([]);
+	let columnVisibility = $state<VisibilityState>({});
+
+	// ─── Table Columns ───────────────────────────────────────────────────────
+	const columns: ColumnDef<any>[] = [
+		{
+			accessorKey: 'body',
+			header: 'Question',
+			cell: ({ row }) => {
+				const cellSnippet = createRawSnippet<[{ body: string }]>((getBody) => {
+					const { body } = getBody();
+					return {
+						render: () =>
+							`<div class="max-w-xs truncate" title="${body.replace(/"/g, '&quot;')}">${body}</div>`,
+					};
+				});
+				return renderSnippet(cellSnippet, { body: row.original.body });
+			},
+		},
+		{
+			accessorKey: 'type',
+			header: 'Type',
+			cell: ({ row }) => {
+				const cellSnippet = createRawSnippet<[{ type: string }]>((getType) => {
+					const { type } = getType();
+					const labels: Record<string, string> = {
+						SINGLE_CHOICE: 'Single Choice',
+						MULTIPLE_CHOICE: 'Multiple Choice',
+						TRUE_FALSE: 'True/False',
+						FILL_BLANK: 'Fill Blank',
+						MATCHING: 'Matching',
+						ESSAY: 'Essay',
+						ORDERING: 'Ordering',
+					};
+					const label = labels[type] || type;
+					return {
+						render: () =>
+							`<span class="inline-flex items-center rounded-md border px-2.5 py-0.5 text-xs font-semibold">${label}</span>`,
+					};
+				});
+				return renderSnippet(cellSnippet, { type: row.original.type });
+			},
+		},
+		{
+			accessorKey: 'difficulty',
+			header: 'Difficulty',
+			cell: ({ row }) => {
+				const cellSnippet = createRawSnippet<[{ difficulty: string }]>((getDifficulty) => {
+					const { difficulty } = getDifficulty();
+					const colors: Record<string, string> = {
+						EASY: 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400',
+						MEDIUM: 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-400',
+						HARD: 'bg-orange-100 text-orange-800 dark:bg-orange-900/30 dark:text-orange-400',
+						EXPERT: 'bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400',
+					};
+					const color = colors[difficulty] || 'bg-gray-100 text-gray-800 dark:bg-gray-800/30 dark:text-gray-400';
+					return {
+						render: () =>
+							`<span class="inline-flex items-center rounded-md px-2.5 py-0.5 text-xs font-semibold ${color}">${difficulty}</span>`,
+					};
+				});
+				return renderSnippet(cellSnippet, { difficulty: row.original.difficulty });
+			},
+		},
+		{
+			accessorKey: 'course',
+			header: 'Course',
+			cell: ({ row }) => {
+				const cellSnippet = createRawSnippet<[{ course: string }]>((getCourse) => {
+					const { course } = getCourse();
+					return {
+						render: () => `<div>${course}</div>`,
+					};
+				});
+				return renderSnippet(cellSnippet, { course: row.original.course });
+			},
+		},
+		{
+			accessorKey: 'optionCount',
+			header: 'Options',
+			cell: ({ row }) => {
+				const cellSnippet = createRawSnippet<[{ optionCount: number }]>((getCount) => {
+					const { optionCount } = getCount();
+					return {
+						render: () => `<div class="text-center">${optionCount}</div>`,
+					};
+				});
+				return renderSnippet(cellSnippet, { optionCount: row.original.optionCount });
+			},
+		},
+		{
+			accessorKey: 'tagCount',
+			header: 'Tags',
+			cell: ({ row }) => {
+				const cellSnippet = createRawSnippet<[{ tagCount: number }]>((getCount) => {
+					const { tagCount } = getCount();
+					return {
+						render: () => `<div class="text-center">${tagCount}</div>`,
+					};
+				});
+				return renderSnippet(cellSnippet, { tagCount: row.original.tagCount });
+			},
+		},
+		{
+			accessorKey: 'marks',
+			header: 'Marks',
+			cell: ({ row }) => {
+				const cellSnippet = createRawSnippet<[{ marks: number }]>((getMarks) => {
+					const { marks } = getMarks();
+					return {
+						render: () => `<div class="text-center font-medium">${marks}</div>`,
+					};
+				});
+				return renderSnippet(cellSnippet, { marks: row.original.marks });
+			},
+		},
+		{
+			id: 'actions',
+			enableHiding: false,
+			header: 'Actions',
+			cell: ({ row }) => {
+				const cellSnippet = createRawSnippet<[{ id: string }]>((getId) => {
+					const { id } = getId();
+					return {
+						render: () =>
+							`<div class="flex justify-end gap-2">
+								<a href="/lecturer/question-bank/${id}" class="inline-flex items-center justify-center whitespace-nowrap rounded-md text-sm font-medium ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 hover:bg-accent hover:text-accent-foreground h-8 w-8 p-0">
+									<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7z"/><circle cx="12" cy="12" r="3"/></svg>
+									<span class="sr-only">View</span>
+								</a>
+								<a href="/lecturer/question-bank/${id}/edit" class="inline-flex items-center justify-center whitespace-nowrap rounded-md text-sm font-medium ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 hover:bg-accent hover:text-accent-foreground h-8 w-8 p-0">
+									<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
+									<span class="sr-only">Edit</span>
+								</a>
+							</div>`,
+					};
+				});
+				return renderSnippet(cellSnippet, { id: row.original.id });
+			},
+		},
+	];
+
+	// ─── Table Instance ──────────────────────────────────────────────────────
+	const table = createSvelteTable({
+		get data() {
+			return filteredQuestions;
+		},
+		columns,
+		state: {
+			get pagination() {
+				return pagination;
+			},
+			get sorting() {
+				return sorting;
+			},
+			get columnVisibility() {
+				return columnVisibility;
+			},
+			get columnFilters() {
+				return columnFilters;
+			},
+		},
+		getCoreRowModel: getCoreRowModel(),
+		getPaginationRowModel: getPaginationRowModel(),
+		getSortedRowModel: getSortedRowModel(),
+		getFilteredRowModel: getFilteredRowModel(),
+		onPaginationChange: (updater) => {
+			if (typeof updater === 'function') {
+				pagination = updater(pagination);
+			} else {
+				pagination = updater;
+			}
+		},
+		onSortingChange: (updater) => {
+			if (typeof updater === 'function') {
+				sorting = updater(sorting);
+			} else {
+				sorting = updater;
+			}
+		},
+		onColumnFiltersChange: (updater) => {
+			if (typeof updater === 'function') {
+				columnFilters = updater(columnFilters);
+			} else {
+				columnFilters = updater;
+			}
+		},
+		onColumnVisibilityChange: (updater) => {
+			if (typeof updater === 'function') {
+				columnVisibility = updater(columnVisibility);
+			} else {
+				columnVisibility = updater;
+			}
+		},
+	});
 
 	// ─── Handlers ────────────────────────────────────────────────────────────
+	function closeAndFocusCourse() {
+		courseOpen = false;
+		tick().then(() => {
+			courseTriggerRef?.focus();
+		});
+	}
+
 	async function handleRefresh() {
 		if (isRefreshing) return;
 		isRefreshing = true;
@@ -131,12 +361,7 @@
 
 <Topbar title="Question Bank" description="Manage and organize your question repository">
 	{#snippet actions()}
-		<Button
-			variant="outline"
-			size="sm"
-			onclick={handleRefresh}
-			disabled={isRefreshing}
-		>
+		<Button variant="outline" size="sm" onclick={handleRefresh} disabled={isRefreshing}>
 			{#if isRefreshing}
 				<LoaderCircle class="size-4 animate-spin" />
 			{:else}
@@ -144,7 +369,12 @@
 			{/if}
 			Refresh
 		</Button>
-		
+
+		<Button href="/lecturer/question-bank/analytics" size="sm" variant="outline">
+			<BarChart3 class="mr-2 size-4" />
+			Analytics
+		</Button>
+
 		<DropdownMenu>
 			<DropdownMenuTrigger asChild>
 				<Button size="sm">
@@ -154,46 +384,31 @@
 				</Button>
 			</DropdownMenuTrigger>
 			<DropdownMenuContent align="end" class="w-56">
-				<DropdownMenuItem 
-					onclick={() => window.location.href = '/lecturer/question-bank/create/single-choice'}
-					class="gap-3 cursor-pointer"
-				>
+				<DropdownMenuItem onclick={() => (window.location.href = '/lecturer/question-bank/create/single-choice')} class="gap-3 cursor-pointer">
 					<div>
 						<p class="font-medium">Single Choice</p>
 						<p class="text-xs text-muted-foreground">One correct answer</p>
 					</div>
 				</DropdownMenuItem>
-				<DropdownMenuItem 
-					onclick={() => window.location.href = '/lecturer/question-bank/create/multiple-choice'}
-					class="gap-3 cursor-pointer"
-				>
+				<DropdownMenuItem onclick={() => (window.location.href = '/lecturer/question-bank/create/multiple-choice')} class="gap-3 cursor-pointer">
 					<div>
 						<p class="font-medium">Multiple Choice</p>
 						<p class="text-xs text-muted-foreground">Multiple correct answers</p>
 					</div>
 				</DropdownMenuItem>
-				<DropdownMenuItem 
-					onclick={() => window.location.href = '/lecturer/question-bank/create/true-false'}
-					class="gap-3 cursor-pointer"
-				>
+				<DropdownMenuItem onclick={() => (window.location.href = '/lecturer/question-bank/create/true-false')} class="gap-3 cursor-pointer">
 					<div>
 						<p class="font-medium">True/False</p>
 						<p class="text-xs text-muted-foreground">Boolean questions</p>
 					</div>
 				</DropdownMenuItem>
-				<DropdownMenuItem 
-					onclick={() => window.location.href = '/lecturer/question-bank/create/fill-blank'}
-					class="gap-3 cursor-pointer"
-				>
+				<DropdownMenuItem onclick={() => (window.location.href = '/lecturer/question-bank/create/fill-blank')} class="gap-3 cursor-pointer">
 					<div>
 						<p class="font-medium">Fill Blank</p>
 						<p class="text-xs text-muted-foreground">Text entry questions</p>
 					</div>
 				</DropdownMenuItem>
-				<DropdownMenuItem 
-					onclick={() => window.location.href = '/lecturer/question-bank/create/essay'}
-					class="gap-3 cursor-pointer"
-				>
+				<DropdownMenuItem onclick={() => (window.location.href = '/lecturer/question-bank/create/essay')} class="gap-3 cursor-pointer">
 					<div>
 						<p class="font-medium">Essay</p>
 						<p class="text-xs text-muted-foreground">Open-ended responses</p>
@@ -204,10 +419,9 @@
 	{/snippet}
 </Topbar>
 
-<!-- ─── Main Content ──────────────────────────────────────────────────────── -->
 <div class="p-6">
 	{#if !data}
-		<!-- ─── Loading State ────────────────────────────────────────────── -->
+		<!-- Loading State -->
 		<div class="grid gap-6 md:grid-cols-3">
 			{#each [1, 2, 3] as item (item)}
 				<Card>
@@ -232,7 +446,7 @@
 			</CardContent>
 		</Card>
 	{:else if error}
-		<!-- ─── Error State ──────────────────────────────────────────────── -->
+		<!-- Error State -->
 		<Alert variant="destructive" class="mb-6">
 			<AlertCircle class="size-4" />
 			<AlertDescription>{error}</AlertDescription>
@@ -243,8 +457,8 @@
 				<Building2 class="size-12 text-muted-foreground/50 mb-4" />
 				<h3 class="text-lg font-semibold">Cannot load question bank</h3>
 				<p class="text-sm text-muted-foreground mt-1">
-					{error === 'No department assigned. Contact your HOD.' 
-						? 'Please contact your HOD to assign a department.' 
+					{error === 'No department assigned. Contact your HOD.'
+						? 'Please contact your HOD to assign a department.'
 						: 'There was an error loading your questions.'}
 				</p>
 				<Button variant="outline" class="mt-4" onclick={handleRefresh}>
@@ -254,7 +468,7 @@
 			</CardContent>
 		</Card>
 	{:else}
-		<!-- ─── Statistics Cards ──────────────────────────────────────────── -->
+		<!-- Statistics Cards -->
 		<div class="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
 			<Card>
 				<CardHeader class="flex flex-row items-center justify-between space-y-0 pb-2">
@@ -290,112 +504,166 @@
 			</Card>
 		</div>
 
-		<!-- ─── Filters ────────────────────────────────────────────────────── -->
+		<!-- Quick Filters -->
+		<div class="mt-6 flex flex-wrap items-center gap-4">
+			<div class="relative flex-1 min-w-[200px] max-w-sm">
+				<Search class="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+				<Input
+					bind:value={searchQuery}
+					placeholder="Search questions..."
+					class="pl-9"
+					onkeydown={(e) => e.key === 'Enter' && applyFilters()}
+				/>
+			</div>
+
+			<!-- Course Combobox -->
+			<Popover.Root bind:open={courseOpen}>
+				<Popover.Trigger bind:ref={courseTriggerRef}>
+					{#snippet child({ props })}
+						<Button
+							{...props}
+							variant="outline"
+							class="w-[200px] justify-between h-10"
+							role="combobox"
+							aria-expanded={courseOpen}
+						>
+							<span class="truncate">{selectedCourseLabel}</span>
+							<ChevronsUpDownIcon class="ml-2 size-4 shrink-0 opacity-50" />
+						</Button>
+					{/snippet}
+				</Popover.Trigger>
+				<Popover.Content class="w-[200px] p-0">
+					<Command.Root>
+						<Command.Input placeholder="Search courses..." />
+						<Command.List>
+							<Command.Empty>No course found.</Command.Empty>
+							<Command.Group>
+								<Command.Item
+									value="all"
+									onSelect={() => {
+										filterCourse = 'all';
+										closeAndFocusCourse();
+									}}
+								>
+									<CheckIcon
+										class={cn(
+											"mr-2 size-4",
+											filterCourse === 'all' ? "opacity-100" : "opacity-0"
+										)}
+									/>
+									All Courses
+								</Command.Item>
+								{#each courses as course}
+									<Command.Item
+										value={course.code}
+										onSelect={() => {
+											filterCourse = course.id;
+											closeAndFocusCourse();
+										}}
+									>
+										<CheckIcon
+											class={cn(
+												"mr-2 size-4",
+												filterCourse === course.id ? "opacity-100" : "opacity-0"
+											)}
+										/>
+										{course.code} — {course.title}
+									</Command.Item>
+								{/each}
+							</Command.Group>
+						</Command.List>
+					</Command.Root>
+				</Popover.Content>
+			</Popover.Root>
+
+			<Button variant="outline" size="sm" onclick={applyFilters}>
+				Apply
+			</Button>
+			<Button variant="ghost" size="sm" onclick={clearFilters}>
+				<X class="mr-1 size-4" />
+				Clear
+			</Button>
+		</div>
+
+		<!-- DataTable -->
 		<Card class="mt-6">
-			<CardContent class="pt-6">
-				<div class="flex flex-col gap-4">
-					<div class="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-						<div class="relative flex-1">
-							<Search class="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
-							<Input
-								bind:value={searchQuery}
-								placeholder="Search questions by content..."
-								class="pl-9"
-								onkeydown={(e) => e.key === 'Enter' && applyFilters()}
-							/>
-						</div>
-						<div class="flex gap-2">
-							<Select>
-								<SelectTrigger class="w-[150px]" onchange={(e) => filterCourse = e.currentTarget.value}>
-									<span class="truncate">
-										{filterCourse === 'all' ? 'All Courses' : courses.find(c => c.id === filterCourse)?.label || 'Select'}
-									</span>
-								</SelectTrigger>
-								<SelectContent>
-									<SelectItem 
-										value="all" 
-										selected={filterCourse === 'all'}
-										onclick={() => filterCourse = 'all'}
-									>
-										All Courses
-									</SelectItem>
-									{#each courses as course}
-										<SelectItem 
-											value={course.id}
-											selected={filterCourse === course.id}
-											onclick={() => filterCourse = course.id}
-										>
-											{course.label}
-										</SelectItem>
-									{/each}
-								</SelectContent>
-							</Select>
-
-							<Select>
-								<SelectTrigger class="w-[140px]" onchange={(e) => filterType = e.currentTarget.value}>
-									<span class="truncate">
-										{filterType === 'all' ? 'All Types' : getTypeBadge(filterType).label}
-									</span>
-								</SelectTrigger>
-								<SelectContent>
-									<SelectItem 
-										value="all" 
-										selected={filterType === 'all'}
-										onclick={() => filterType = 'all'}
-									>
-										All Types
-									</SelectItem>
-									{#each types as type}
-										<SelectItem 
-											value={type}
-											selected={filterType === type}
-											onclick={() => filterType = type}
-										>
-											{getTypeBadge(type).label}
-										</SelectItem>
-									{/each}
-								</SelectContent>
-							</Select>
-
-							<Select>
-								<SelectTrigger class="w-[140px]" onchange={(e) => filterDifficulty = e.currentTarget.value}>
-									<span class="truncate">
-										{filterDifficulty === 'all' ? 'All Difficulty' : filterDifficulty}
-									</span>
-								</SelectTrigger>
-								<SelectContent>
-									<SelectItem 
-										value="all" 
-										selected={filterDifficulty === 'all'}
-										onclick={() => filterDifficulty = 'all'}
-									>
-										All Difficulty
-									</SelectItem>
-									{#each difficulties as difficulty}
-										<SelectItem 
-											value={difficulty}
-											selected={filterDifficulty === difficulty}
-											onclick={() => filterDifficulty = difficulty}
-										>
-											{difficulty}
-										</SelectItem>
-									{/each}
-								</SelectContent>
-							</Select>
-						</div>
+			<CardContent class="p-0">
+				<div class="w-full">
+					<!-- Table Controls: Column Visibility -->
+					<div class="flex items-center justify-end p-4">
+						<DropdownMenu>
+							<DropdownMenuTrigger asChild>
+								<Button variant="outline" size="sm">
+									<Filter class="mr-2 size-4" />
+									Columns
+									<ChevronDown class="ml-2 size-4" />
+								</Button>
+							</DropdownMenuTrigger>
+							<DropdownMenuContent align="end">
+								{#each table.getAllColumns().filter((col) => col.getCanHide()) as column}
+									<DropdownMenuItem onclick={() => column.toggleVisibility(!column.getIsVisible())}>
+										<span class="flex items-center gap-2">
+											<input
+												type="checkbox"
+												checked={column.getIsVisible()}
+												onchange={(e) => column.toggleVisibility(e.currentTarget.checked)}
+												class="h-4 w-4 rounded border-gray-300"
+												onclick={(e) => e.stopPropagation()}
+											/>
+											{column.id}
+										</span>
+									</DropdownMenuItem>
+								{/each}
+							</DropdownMenuContent>
+						</DropdownMenu>
 					</div>
-					
-					<div class="flex items-center justify-between">
-						<p class="text-sm text-muted-foreground">
-							Showing {filteredQuestions.length} of {questions.length} questions
-						</p>
-						<div class="flex gap-2">
-							<Button variant="outline" size="sm" onclick={applyFilters}>
-								Apply Filters
+
+					<div class="rounded-md border">
+						<Table.Root>
+							<Table.Header>
+								{#each table.getHeaderGroups() as headerGroup (headerGroup.id)}
+									<Table.Row>
+										{#each headerGroup.headers as header (header.id)}
+											<Table.Head>
+												{#if !header.isPlaceholder}
+													<FlexRender content={header.column.columnDef.header} context={header.getContext()} />
+												{/if}
+											</Table.Head>
+										{/each}
+									</Table.Row>
+								{/each}
+							</Table.Header>
+							<Table.Body>
+								{#each table.getRowModel().rows as row (row.id)}
+									<Table.Row>
+										{#each row.getVisibleCells() as cell (cell.id)}
+											<Table.Cell>
+												<FlexRender content={cell.column.columnDef.cell} context={cell.getContext()} />
+											</Table.Cell>
+										{/each}
+									</Table.Row>
+								{:else}
+									<Table.Row>
+										<Table.Cell colspan={columns.length} class="h-24 text-center">
+											No results.
+										</Table.Cell>
+									</Table.Row>
+								{/each}
+							</Table.Body>
+						</Table.Root>
+					</div>
+
+					<!-- Pagination -->
+					<div class="flex items-center justify-between space-x-2 pt-4">
+						<span class="text-sm text-muted-foreground">
+							Showing {table.getRowModel().rows.length} of {filteredQuestions.length} questions
+						</span>
+						<div class="space-x-2">
+							<Button variant="outline" size="sm" onclick={() => table.previousPage()} disabled={!table.getCanPreviousPage()}>
+								Previous
 							</Button>
-							<Button variant="ghost" size="sm" onclick={clearFilters}>
-								<X class="mr-1 size-4" />
-								Clear
+							<Button variant="outline" size="sm" onclick={() => table.nextPage()} disabled={!table.getCanNextPage()}>
+								Next
 							</Button>
 						</div>
 					</div>
@@ -403,85 +671,7 @@
 			</CardContent>
 		</Card>
 
-		<!-- ─── Questions Table ────────────────────────────────────────────── -->
-		<Card class="mt-6">
-			<CardContent class="p-0">
-				<Table>
-					<TableHeader>
-						<TableRow>
-							<TableHead>Question</TableHead>
-							<TableHead>Type</TableHead>
-							<TableHead>Difficulty</TableHead>
-							<TableHead>Course</TableHead>
-							<TableHead class="text-center">Options</TableHead>
-							<TableHead class="text-center">Tags</TableHead>
-							<TableHead class="text-center">Marks</TableHead>
-							<TableHead class="text-right">Actions</TableHead>
-						</TableRow>
-					</TableHeader>
-					<TableBody>
-						{#if filteredQuestions.length === 0}
-							<TableRow>
-								<TableCell colspan="8" class="text-center text-muted-foreground py-8">
-									{#if searchQuery || filterCourse !== 'all' || filterType !== 'all' || filterDifficulty !== 'all'}
-										<Search class="mx-auto size-8 text-muted-foreground/50 mb-2" />
-										<p>No questions match your filters</p>
-										<Button variant="outline" size="sm" class="mt-2" onclick={clearFilters}>
-											Clear Filters
-										</Button>
-									{:else}
-										<Database class="mx-auto size-8 text-muted-foreground/50 mb-2" />
-										<p>No questions in your bank yet</p>
-										<Button href="/lecturer/question-bank/create/single-choice" size="sm" class="mt-2">
-											<Plus class="mr-2 size-4" />
-											Create First Question
-										</Button>
-									{/if}
-								</TableCell>
-							</TableRow>
-						{:else}
-							{#each filteredQuestions as question}
-								<TableRow>
-									<TableCell class="max-w-xs">
-										<div class="truncate" title={question.body}>
-											{question.body}
-										</div>
-									</TableCell>
-									<TableCell>
-										<Badge variant={getTypeBadge(question.type).variant}>
-											{getTypeBadge(question.type).label}
-										</Badge>
-									</TableCell>
-									<TableCell>
-										<Badge class={getDifficultyColor(question.difficulty)}>
-											{question.difficulty}
-										</Badge>
-									</TableCell>
-									<TableCell>{question.course}</TableCell>
-									<TableCell class="text-center">{question.optionCount}</TableCell>
-									<TableCell class="text-center">{question.tagCount}</TableCell>
-									<TableCell class="text-center">{question.marks}</TableCell>
-									<TableCell class="text-right">
-										<div class="flex justify-end gap-2">
-											<Button variant="ghost" size="sm" href={`/lecturer/question-bank/${question.id}`} class="h-8 w-8 p-0">
-												<Eye class="size-4" />
-												<span class="sr-only">View</span>
-											</Button>
-											<Button variant="ghost" size="sm" href={`/lecturer/question-bank/${question.id}/edit`} class="h-8 w-8 p-0">
-												<Edit class="size-4" />
-												<span class="sr-only">Edit</span>
-											</Button>
-										</div>
-									</TableCell>
-								</TableRow>
-							{/each}
-						{/if}
-					</TableBody>
-				</Table>
-			</CardContent>
-		</Card>
-
-		<!-- ─── Quick Stats ────────────────────────────────────────────────── -->
+		<!-- Quick Stats -->
 		{#if filteredQuestions.length > 0}
 			<Card class="mt-6 bg-muted/30 border-border">
 				<CardContent class="py-4">
@@ -492,19 +682,19 @@
 						<div class="flex items-center gap-4">
 							<span class="flex items-center gap-1">
 								<span class="text-green-600">●</span>
-								{filteredQuestions.filter(q => q.difficulty === 'EASY').length} Easy
+								{filteredQuestions.filter((q) => q.difficulty === 'EASY').length} Easy
 							</span>
 							<span class="flex items-center gap-1">
 								<span class="text-yellow-600">●</span>
-								{filteredQuestions.filter(q => q.difficulty === 'MEDIUM').length} Medium
+								{filteredQuestions.filter((q) => q.difficulty === 'MEDIUM').length} Medium
 							</span>
 							<span class="flex items-center gap-1">
 								<span class="text-orange-600">●</span>
-								{filteredQuestions.filter(q => q.difficulty === 'HARD').length} Hard
+								{filteredQuestions.filter((q) => q.difficulty === 'HARD').length} Hard
 							</span>
 							<span class="flex items-center gap-1">
 								<span class="text-red-600">●</span>
-								{filteredQuestions.filter(q => q.difficulty === 'EXPERT').length} Expert
+								{filteredQuestions.filter((q) => q.difficulty === 'EXPERT').length} Expert
 							</span>
 						</div>
 					</div>

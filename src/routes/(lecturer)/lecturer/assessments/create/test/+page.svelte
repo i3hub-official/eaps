@@ -1,5 +1,6 @@
 <!-- src/routes/(lecturer)/lecturer/assessments/create/test/+page.svelte -->
 <script lang="ts">
+import { invalidateAll } from '$app/navigation';
 	import { Topbar } from '$lib/components/dashboard';
 	import { Button } from '$lib/components/ui/button/index.js';
 	import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '$lib/components/ui/card/index.js';
@@ -7,15 +8,18 @@
 	import { Label } from '$lib/components/ui/label/index.js';
 	import { Textarea } from '$lib/components/ui/textarea/index.js';
 	import { Switch } from '$lib/components/ui/switch/index.js';
-	import {
-		Select,
-		SelectContent,
-		SelectItem,
-		SelectTrigger,
-	} from '$lib/components/ui/select/index.js';
+	import { Checkbox } from '$lib/components/ui/checkbox/index.js';
+	import * as Command from '$lib/components/ui/command/index.js';
+	import * as Popover from '$lib/components/ui/popover/index.js';
 	import { Alert, AlertDescription } from '$lib/components/ui/alert/index.js';
 	import { Badge } from '$lib/components/ui/badge/index.js';
-	import { ArrowLeft, AlertCircle, HelpCircle, Calendar, Shield, Building2 } from '@lucide/svelte/icons';
+	import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from '$lib/components/ui/dialog/index.js';
+	import { Tabs, TabsContent, TabsList, TabsTrigger } from '$lib/components/ui/tabs/index.js';
+	import CheckIcon from '@lucide/svelte/icons/check';
+	import ChevronsUpDownIcon from '@lucide/svelte/icons/chevrons-up-down';
+	import { ArrowLeft, AlertCircle, HelpCircle, Calendar, Shield, Building2, Plus, Search, X, Upload, FileText, Database } from '@lucide/svelte/icons';
+	import { cn } from '$lib/utils.js';
+	import { tick } from 'svelte';
 
 	let { data, form } = $props();
 
@@ -25,20 +29,173 @@
 		instructions: '',
 		totalMarks: 30,
 		passMark: 18,
-		durationMinutes: 60,
-		questionCount: 8,
+		durationMinutes: 30,
+		questionCount: 15,
 		shuffleQuestions: true,
 		shuffleOptions: true,
 		requireFaceVerify: true,
 		fullscreenRequired: true,
 		startDate: '',
 		endDate: '',
+		selectedQuestions: [] as string[],
 	});
 
 	let errors = $state<Record<string, string>>({});
 	let isSubmitting = $state(false);
+	let isUploading = $state(false);
+	let uploadSuccess = $state<{ imported: number; errors?: string[] } | null>(null);
+
+	// ─── Question Bank Dialog ──────────────────────────────────────────────
+	// Note: the bank's questions come entirely from `data.bankQuestions`,
+	// loaded server-side in +page.server.ts's load() (scoped to this
+	// lecturer's own active questions across their assigned courses).
+	// There is no separate client-side fetch — the dialog just filters
+	// that already-loaded list.
+	let questionBankOpen = $state(false);
+	let bankSearchQuery = $state('');
+	let bankFilterType = $state('all');
+	let bankFilterDifficulty = $state('all');
 
 	const error = data?.error;
+
+	// ─── Dropdown States ──────────────────────────────────────────────────────
+	let courseOpen = $state(false);
+	let courseTriggerRef = $state<HTMLButtonElement>(null!);
+
+	// ─── Computed ────────────────────────────────────────────────────────────
+	const selectedCourse = $derived(
+		data?.courses?.find((c: any) => c.id === formData.courseId)
+	);
+	const selectedCourseLabel = $derived(
+		selectedCourse ? `${selectedCourse.code} — ${selectedCourse.title}` : 'Select a course'
+	);
+
+	// Filters by the currently selected course FIRST — previously this
+	// showed every question across all of the lecturer's courses regardless
+	// of which course was chosen for the test, which meant it was possible
+	// to accidentally attach e.g. MTH212 questions to a CSC301 test.
+	const bankFilteredQuestions = $derived(
+		(data?.bankQuestions || []).filter((q: any) => {
+			const matchesCourse = !formData.courseId || q.courseId === formData.courseId;
+			const matchesSearch = q.body.toLowerCase().includes(bankSearchQuery.toLowerCase());
+			const matchesType = bankFilterType === 'all' || q.type === bankFilterType;
+			const matchesDifficulty = bankFilterDifficulty === 'all' || q.difficulty === bankFilterDifficulty;
+			return matchesCourse && matchesSearch && matchesType && matchesDifficulty;
+		})
+	);
+
+	// Clears any previously selected bank questions whenever the course
+	// changes, since a question selected under one course would otherwise
+	// silently fail the server-side ownership/course check at submit time
+	// with no visible explanation in the UI. Remove this $effect if you'd
+	// rather questions persist across a course change (they'll still be
+	// rejected server-side, just without this proactive UI cleanup).
+	let previousCourseId = formData.courseId;
+	$effect(() => {
+		if (formData.courseId !== previousCourseId) {
+			if (previousCourseId !== '' && formData.selectedQuestions.length > 0) {
+				formData.selectedQuestions = [];
+			}
+			previousCourseId = formData.courseId;
+		}
+	});
+
+	// ─── Handlers ────────────────────────────────────────────────────────────
+	function closeAndFocusCourse() {
+		courseOpen = false;
+		tick().then(() => {
+			courseTriggerRef?.focus();
+		});
+	}
+
+	function toggleQuestionSelection(questionId: string) {
+		const index = formData.selectedQuestions.indexOf(questionId);
+		if (index === -1) {
+			formData.selectedQuestions = [...formData.selectedQuestions, questionId];
+		} else {
+			formData.selectedQuestions = formData.selectedQuestions.filter((id) => id !== questionId);
+		}
+	}
+
+	function selectAllBankQuestions() {
+		const allIds = bankFilteredQuestions.map((q: any) => q.id);
+		formData.selectedQuestions = allIds;
+	}
+
+	function clearAllBankQuestions() {
+		formData.selectedQuestions = [];
+	}
+
+	// Opens the bank dialog against already-loaded data.bankQuestions.
+	// Requires a course to be selected first so the filtered list has
+	// something relevant to show (and so selections are unambiguous).
+	function openBankDialog() {
+		if (!formData.courseId) {
+			errors = { ...errors, courseId: 'Select a course before choosing questions from the bank' };
+			return;
+		}
+		questionBankOpen = true;
+	}
+
+async function handleFileUpload(event: Event) {
+	const target = event.target as HTMLInputElement;
+	const file = target.files?.[0];
+	if (!file || !formData.courseId) {
+		errors = { file: formData.courseId ? 'Select a file' : 'Select a course first' };
+		return;
+	}
+
+	const validTypes = ['.json', '.txt'];
+	const fileExt = '.' + file.name.split('.').pop()?.toLowerCase();
+	if (!validTypes.includes(fileExt)) {
+		errors = { file: 'Only .json and .txt files are supported' };
+		return;
+	}
+
+	if (file.size > 5 * 1024 * 1024) {
+		errors = { file: 'File size must be less than 5MB' };
+		return;
+	}
+
+	isUploading = true;
+	uploadSuccess = null;
+	errors = {};
+
+	try {
+		const formDataObj = new FormData();
+		formDataObj.append('courseId', formData.courseId);
+		formDataObj.append('file', file);
+
+		const response = await fetch('/lecturer/question-bank/import', {
+			method: 'POST',
+			body: formDataObj,
+		});
+
+		const result = await response.json();
+
+		// Success if status is OK OR if we have imported > 0
+		if ((response.ok || result.success) && result.imported > 0) {
+			uploadSuccess = {
+				imported: result.imported || 0,
+				errors: result.errors,
+			};
+			target.value = '';
+			
+			// Refresh the page to load the newly imported questions
+			await invalidateAll();
+			
+			// Close the upload dialog
+			uploadDialogOpen = false;
+		} else {
+			// Show the error message from the server
+			errors = { file: result.error || 'Import failed. Please check your file format.' };
+		}
+	} catch (err) {
+		errors = { file: err instanceof Error ? err.message : 'Import failed' };
+	} finally {
+		isUploading = false;
+	}
+}
 
 	function validateForm() {
 		errors = {};
@@ -50,6 +207,11 @@
 		}
 		if (formData.durationMinutes <= 0) errors.durationMinutes = 'Duration must be greater than 0';
 		if (formData.questionCount <= 0) errors.questionCount = 'Question count must be greater than 0';
+		if (formData.selectedQuestions.length === 0) {
+			errors.questions = 'At least one question must be selected';
+		} else if (formData.selectedQuestions.length < formData.questionCount) {
+			errors.questions = `You selected ${formData.selectedQuestions.length} question(s) but Question Count is ${formData.questionCount}. Select at least ${formData.questionCount}, or lower Question Count.`;
+		}
 		return Object.keys(errors).length === 0;
 	}
 
@@ -57,18 +219,23 @@
 		event.preventDefault();
 		if (!validateForm()) return;
 		isSubmitting = true;
-		
+
 		const formElement = event.target as HTMLFormElement;
 		const formDataObj = new FormData(formElement);
-		
+
+		// Add selected questions
+		formData.selectedQuestions.forEach((id) => {
+			formDataObj.append('questionIds[]', id);
+		});
+
 		try {
 			const response = await fetch('/lecturer/assessments/create/test', {
 				method: 'POST',
 				body: formDataObj,
 			});
-			
+
 			const result = await response.json();
-			
+
 			if (response.ok && result.success) {
 				window.location.href = `/lecturer/assessments/edit/${result.id}`;
 			} else if (response.status === 400 || response.status === 403) {
@@ -109,8 +276,8 @@
 				<Building2 class="size-12 text-muted-foreground/50 mb-4" />
 				<h3 class="text-lg font-semibold">Cannot create test</h3>
 				<p class="text-sm text-muted-foreground mt-1">
-					{error === 'No department assigned. Contact your HOD.' 
-						? 'Please contact your HOD to assign a department before creating tests.' 
+					{error === 'You have no assigned courses this semester. Contact your HOD.'
+						? 'Please contact your HOD to assign courses before creating tests.'
 						: 'There was an error loading the test creation form.'}
 				</p>
 				<Button variant="outline" class="mt-4" href="/lecturer/assessments">
@@ -130,7 +297,7 @@
 
 			<div class="grid gap-6 md:grid-cols-2">
 				<!-- Basic Information -->
-				<Card class="md:col-span-2">
+				<Card class="md:col-span-1">
 					<CardHeader>
 						<CardTitle>Basic Information</CardTitle>
 						<CardDescription>General details about the test</CardDescription>
@@ -138,29 +305,55 @@
 					<CardContent class="space-y-4">
 						<div class="space-y-2">
 							<Label for="courseId">Course *</Label>
-							<Select name="courseId" required>
-								<SelectTrigger id="courseId" class={errors.courseId ? 'border-destructive' : ''}>
-									<span class="truncate">
-										{formData.courseId 
-											? data.courses.find(c => c.id === formData.courseId)?.code + ' — ' + data.courses.find(c => c.id === formData.courseId)?.title
-											: 'Select a course'}
-									</span>
-								</SelectTrigger>
-								<SelectContent>
-									{#each data.courses as course}
-										<SelectItem 
-											value={course.id}
-											selected={course.id === formData.courseId}
-											onclick={() => formData.courseId = course.id}
+							<Popover.Root bind:open={courseOpen}>
+								<Popover.Trigger bind:ref={courseTriggerRef}>
+									{#snippet child({ props })}
+										<Button
+											{...props}
+											variant="outline"
+											class={cn(
+												'w-full justify-between h-12 text-base font-normal',
+												errors.courseId && 'border-destructive'
+											)}
+											role="combobox"
+											aria-expanded={courseOpen}
 										>
-											{course.code} — {course.title}
-											<Badge variant="outline" class="ml-2 text-xs">
-												{course.level} • {course.questionCount} questions
-											</Badge>
-										</SelectItem>
-									{/each}
-								</SelectContent>
-							</Select>
+											<span class="truncate">{selectedCourseLabel}</span>
+											<ChevronsUpDownIcon class="ml-2 size-4 shrink-0 opacity-50" />
+										</Button>
+									{/snippet}
+								</Popover.Trigger>
+								<Popover.Content class="w-[--radix-popover-trigger-width] p-0">
+									<Command.Root>
+										<Command.Input placeholder="Search courses..." />
+										<Command.List>
+											<Command.Empty>No course found.</Command.Empty>
+											<Command.Group>
+												{#each data?.courses || [] as course}
+													<Command.Item
+														value={course.code}
+														onSelect={() => {
+															formData.courseId = course.id;
+															closeAndFocusCourse();
+														}}
+													>
+														<CheckIcon
+															class={cn(
+																'mr-2 size-4',
+																formData.courseId === course.id ? 'opacity-100' : 'opacity-0'
+															)}
+														/>
+														{course.code} — {course.title}
+														<Badge variant="outline" class="ml-2 text-xs">
+															{course.level} • {course.questionCount} questions
+														</Badge>
+													</Command.Item>
+												{/each}
+											</Command.Group>
+										</Command.List>
+									</Command.Root>
+								</Popover.Content>
+							</Popover.Root>
 							{#if errors.courseId}
 								<p class="text-sm text-destructive">{errors.courseId}</p>
 							{/if}
@@ -217,9 +410,7 @@
 								class={errors.totalMarks ? 'border-destructive' : ''}
 								required
 							/>
-							<p class="text-xs text-muted-foreground">
-								Recommended: 30 marks for tests
-							</p>
+							<p class="text-xs text-muted-foreground">Recommended: 30 marks for tests</p>
 							{#if errors.totalMarks}
 								<p class="text-sm text-destructive">{errors.totalMarks}</p>
 							{/if}
@@ -237,9 +428,7 @@
 								class={errors.passMark ? 'border-destructive' : ''}
 								required
 							/>
-							<p class="text-xs text-muted-foreground">
-								Recommended: 60% of total marks (18/30)
-							</p>
+							<p class="text-xs text-muted-foreground">Recommended: 60% of total marks (18/30)</p>
 							{#if errors.passMark}
 								<p class="text-sm text-destructive">{errors.passMark}</p>
 							{/if}
@@ -256,9 +445,7 @@
 								class={errors.durationMinutes ? 'border-destructive' : ''}
 								required
 							/>
-							<p class="text-xs text-muted-foreground">
-								Recommended: 60 minutes for tests
-							</p>
+							<p class="text-xs text-muted-foreground">Recommended: 30 minutes for tests</p>
 							{#if errors.durationMinutes}
 								<p class="text-sm text-destructive">{errors.durationMinutes}</p>
 							{/if}
@@ -271,13 +458,12 @@
 								name="questionCount"
 								type="number"
 								bind:value={formData.questionCount}
-								min="1"
+								min="10"
+								max="30"
 								class={errors.questionCount ? 'border-destructive' : ''}
 								required
 							/>
-							<p class="text-xs text-muted-foreground">
-								Recommended: 8-10 questions
-							</p>
+							<p class="text-xs text-muted-foreground">Recommended: 10-15 questions</p>
 							{#if errors.questionCount}
 								<p class="text-sm text-destructive">{errors.questionCount}</p>
 							{/if}
@@ -285,7 +471,191 @@
 					</CardContent>
 				</Card>
 
-				<!-- Scheduling & Security -->
+				<!-- Questions Selection -->
+				<Card>
+					<CardHeader>
+						<CardTitle class="flex items-center justify-between">
+							<span>Questions</span>
+							<div class="flex gap-2">
+								<Button
+									variant="outline"
+									size="sm"
+									onclick={openBankDialog}
+									disabled={!formData.courseId}
+									title={!formData.courseId ? 'Select a course first' : ''}
+								>
+									<Database class="mr-2 size-4" />
+									Bank
+								</Button>
+
+								<Dialog>
+									<DialogTrigger>
+										{#snippet child({ props })}
+											<Button {...props} variant="outline" size="sm">
+												<Upload class="mr-2 size-4" />
+												Upload
+											</Button>
+										{/snippet}
+									</DialogTrigger>
+									<DialogContent>
+										<DialogHeader>
+											<DialogTitle>Upload Questions</DialogTitle>
+											<DialogDescription>
+												Upload questions from a JSON or TXT file into your question bank
+											</DialogDescription>
+										</DialogHeader>
+										<div class="space-y-4 py-4">
+											<div class="space-y-2">
+												<Label for="upload-file">Select File</Label>
+												<Input
+													id="upload-file"
+													type="file"
+													accept=".json,.txt"
+													onchange={handleFileUpload}
+													disabled={isUploading || !formData.courseId}
+												/>
+												{#if !formData.courseId}
+													<p class="text-xs text-destructive">Select a course first</p>
+												{:else}
+													<p class="text-xs text-muted-foreground">Max 5 MB · .json and .txt supported</p>
+												{/if}
+											</div>
+											{#if errors.file}
+												<Alert variant="destructive">
+													<AlertCircle class="size-4" />
+													<AlertDescription>{errors.file}</AlertDescription>
+												</Alert>
+											{/if}
+											{#if uploadSuccess}
+												<Alert class="bg-green-50 border-green-200">
+													<CheckIcon class="size-4 text-green-600" />
+													<AlertDescription class="text-green-800">
+														{uploadSuccess.imported} question(s) imported successfully.
+														{#if uploadSuccess.errors && uploadSuccess.errors.length > 0}
+															<span class="block text-destructive mt-1">
+																{uploadSuccess.errors.length} row(s) had errors.
+															</span>
+														{/if}
+													</AlertDescription>
+												</Alert>
+											{/if}
+											{#if isUploading}
+												<div class="flex items-center gap-2 text-sm text-muted-foreground">
+													<span class="animate-spin inline-block size-4 border-2 border-current border-t-transparent rounded-full"></span>
+													Uploading…
+												</div>
+											{/if}
+										</div>
+									</DialogContent>
+								</Dialog>
+							</div>
+						</CardTitle>
+						<CardDescription>Select questions from your bank or upload new ones</CardDescription>
+					</CardHeader>
+					<CardContent>
+						{#if errors.questions}
+							<Alert variant="destructive" class="mb-4">
+								<AlertCircle class="size-4" />
+								<AlertDescription>{errors.questions}</AlertDescription>
+							</Alert>
+						{/if}
+						<div class="rounded-lg border p-4 min-h-[100px]">
+							{#if formData.selectedQuestions.length === 0}
+								<div class="text-center text-muted-foreground py-4">
+									<FileText class="mx-auto size-8 text-muted-foreground/50 mb-2" />
+									<p class="text-sm font-medium">No questions selected</p>
+									<p class="text-xs mt-1">Click "Bank" to select from your question bank</p>
+								</div>
+							{:else}
+								<div class="space-y-2">
+									{#each formData.selectedQuestions
+										.map((qId) => ({ qId, question: (data?.bankQuestions || []).find((q: any) => q.id === qId) }))
+										.filter(({ question }) => !!question) as { qId, question }}
+										<div class="flex items-center justify-between p-2 rounded-lg bg-muted/30 hover:bg-muted/50">
+											<span class="text-sm truncate flex-1 mr-2">{question.body}</span>
+											<Button
+												type="button"
+												variant="ghost"
+												size="sm"
+												class="h-6 w-6 p-0 shrink-0"
+												onclick={() => toggleQuestionSelection(qId)}
+											>
+												<X class="size-3" />
+											</Button>
+										</div>
+									{/each}
+									<p class="text-xs text-muted-foreground pt-1">
+										{formData.selectedQuestions.length} question(s) selected
+									</p>
+								</div>
+							{/if}
+						</div>
+					</CardContent>
+				</Card>
+
+				<!-- Question Bank Dialog (outside the card, inside the form) -->
+				<Dialog>
+	<DialogTrigger>
+		{#snippet child({ props })}
+			<Button {...props} variant="outline" size="sm">
+				<Upload class="mr-2 size-4" />
+				Upload
+			</Button>
+		{/snippet}
+	</DialogTrigger>
+	<DialogContent>
+		<DialogHeader>
+			<DialogTitle>Upload Questions</DialogTitle>
+			<DialogDescription>
+				Upload questions from a JSON or TXT file into your question bank
+			</DialogDescription>
+		</DialogHeader>
+		<div class="space-y-4 py-4">
+			<div class="space-y-2">
+				<Label for="upload-file">Select File</Label>
+				<Input
+					id="upload-file"
+					type="file"
+					accept=".json,.txt"
+					onchange={handleFileUpload}
+					disabled={isUploading || !formData.courseId}
+				/>
+				{#if !formData.courseId}
+					<p class="text-xs text-destructive">Select a course first</p>
+				{:else}
+					<p class="text-xs text-muted-foreground">Max 5 MB · .json and .txt supported</p>
+				{/if}
+			</div>
+			{#if errors.file}
+				<Alert variant="destructive">
+					<AlertCircle class="size-4" />
+					<AlertDescription>{errors.file}</AlertDescription>
+				</Alert>
+			{/if}
+			{#if uploadSuccess}
+				<Alert class="bg-green-50 border-green-200">
+					<CheckIcon class="size-4 text-green-600" />
+					<AlertDescription class="text-green-800">
+						{uploadSuccess.imported} question(s) imported successfully.
+						{#if uploadSuccess.errors && uploadSuccess.errors.length > 0}
+							<span class="block text-destructive mt-1">
+								{uploadSuccess.errors.length} row(s) had errors.
+							</span>
+						{/if}
+					</AlertDescription>
+				</Alert>
+			{/if}
+			{#if isUploading}
+				<div class="flex items-center gap-2 text-sm text-muted-foreground">
+					<span class="animate-spin inline-block size-4 border-2 border-current border-t-transparent rounded-full"></span>
+					Uploading…
+				</div>
+			{/if}
+		</div>
+	</DialogContent>
+</Dialog>
+
+				<!-- Scheduling & Security (Merged) -->
 				<Card>
 					<CardHeader>
 						<CardTitle>Scheduling & Security</CardTitle>
@@ -294,22 +664,12 @@
 					<CardContent class="space-y-4">
 						<div class="space-y-2">
 							<Label for="startDate">Start Date & Time</Label>
-							<Input
-								id="startDate"
-								name="startDate"
-								type="datetime-local"
-								bind:value={formData.startDate}
-							/>
+							<Input id="startDate" name="startDate" type="datetime-local" bind:value={formData.startDate} />
 						</div>
 
 						<div class="space-y-2">
 							<Label for="endDate">End Date & Time</Label>
-							<Input
-								id="endDate"
-								name="endDate"
-								type="datetime-local"
-								bind:value={formData.endDate}
-							/>
+							<Input id="endDate" name="endDate" type="datetime-local" bind:value={formData.endDate} />
 						</div>
 
 						<div class="rounded-lg bg-yellow-500/10 border border-yellow-500/30 p-3">
@@ -319,7 +679,33 @@
 							</p>
 						</div>
 
-						<div class="pt-2 border-t">
+						<div class="pt-4 border-t space-y-3">
+							<div class="flex items-center justify-between space-x-2">
+								<div>
+									<Label for="shuffleQuestions" class="font-medium">Shuffle Questions</Label>
+									<p class="text-xs text-muted-foreground">Randomize question order</p>
+								</div>
+								<Switch
+									id="shuffleQuestions"
+									name="shuffleQuestions"
+									checked={formData.shuffleQuestions}
+									onchange={(e) => (formData.shuffleQuestions = e.currentTarget.checked)}
+								/>
+							</div>
+
+							<div class="flex items-center justify-between space-x-2">
+								<div>
+									<Label for="shuffleOptions" class="font-medium">Shuffle Options</Label>
+									<p class="text-xs text-muted-foreground">Randomize option order</p>
+								</div>
+								<Switch
+									id="shuffleOptions"
+									name="shuffleOptions"
+									checked={formData.shuffleOptions}
+									onchange={(e) => (formData.shuffleOptions = e.currentTarget.checked)}
+								/>
+							</div>
+
 							<div class="flex items-center justify-between space-x-2">
 								<div>
 									<Label for="requireFaceVerify" class="font-medium">Face Verification</Label>
@@ -329,11 +715,11 @@
 									id="requireFaceVerify"
 									name="requireFaceVerify"
 									checked={formData.requireFaceVerify}
-									onchange={(e) => formData.requireFaceVerify = e.currentTarget.checked}
+									onchange={(e) => (formData.requireFaceVerify = e.currentTarget.checked)}
 								/>
 							</div>
 
-							<div class="flex items-center justify-between space-x-2 mt-3">
+							<div class="flex items-center justify-between space-x-2">
 								<div>
 									<Label for="fullscreenRequired" class="font-medium">Fullscreen Required</Label>
 									<p class="text-xs text-muted-foreground">Must be in fullscreen mode</p>
@@ -342,44 +728,9 @@
 									id="fullscreenRequired"
 									name="fullscreenRequired"
 									checked={formData.fullscreenRequired}
-									onchange={(e) => formData.fullscreenRequired = e.currentTarget.checked}
+									onchange={(e) => (formData.fullscreenRequired = e.currentTarget.checked)}
 								/>
 							</div>
-						</div>
-					</CardContent>
-				</Card>
-
-				<!-- Settings -->
-				<Card>
-					<CardHeader>
-						<CardTitle>Test Settings</CardTitle>
-						<CardDescription>Configure how the test works</CardDescription>
-					</CardHeader>
-					<CardContent class="space-y-4">
-						<div class="flex items-center justify-between space-x-2">
-							<div>
-								<Label for="shuffleQuestions" class="font-medium">Shuffle Questions</Label>
-								<p class="text-xs text-muted-foreground">Randomize question order</p>
-							</div>
-							<Switch
-								id="shuffleQuestions"
-								name="shuffleQuestions"
-								checked={formData.shuffleQuestions}
-								onchange={(e) => formData.shuffleQuestions = e.currentTarget.checked}
-							/>
-						</div>
-
-						<div class="flex items-center justify-between space-x-2">
-							<div>
-								<Label for="shuffleOptions" class="font-medium">Shuffle Options</Label>
-								<p class="text-xs text-muted-foreground">Randomize option order</p>
-							</div>
-							<Switch
-								id="shuffleOptions"
-								name="shuffleOptions"
-								checked={formData.shuffleOptions}
-								onchange={(e) => formData.shuffleOptions = e.currentTarget.checked}
-							/>
 						</div>
 
 						<div class="rounded-lg bg-blue-500/10 border border-blue-500/30 p-3 mt-4">

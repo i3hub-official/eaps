@@ -295,55 +295,63 @@
 			<CardContent class="p-0">
 				<Table>
 					<TableHeader>
-	<TableRow>
-		<TableHead>Course Code</TableHead>
-		<TableHead>Title</TableHead>
-		<TableHead>Level</TableHead>
-		<TableHead>Type</TableHead>
-		<TableHead>Lecturer</TableHead>
-		<TableHead class="text-center">Students</TableHead>
-		<TableHead class="text-center">Assessments</TableHead>
-		<TableHead class="text-center">Questions</TableHead>
-		<TableHead class="text-right">Actions</TableHead>
-	</TableRow>
-</TableHeader>
-<TableBody>
-	{#if filteredCourses.length === 0}
-		<TableRow>
-			<TableCell colspan="9" class="text-center text-muted-foreground py-8">
-				<!-- unchanged -->
-			</TableCell>
-		</TableRow>
-	{:else}
-		{#each filteredCourses as course}
-			<TableRow class={course.isMine ? 'bg-primary/5' : ''}>
-				<TableCell class="font-medium">{course.code}</TableCell>
-				<TableCell>{course.title}</TableCell>
-				<TableCell><Badge variant="outline">{course.level}</Badge></TableCell>
-				<TableCell>
-					<Badge variant={getTypeBadge(course.type).variant}>
-						{getTypeBadge(course.type).label}
-					</Badge>
-				</TableCell>
-				<TableCell>
-					{#if course.isMine}
-						<Badge>You</Badge>
-					{:else if course.lecturerName}
-						<span class="text-sm text-muted-foreground">{course.lecturerName}</span>
-					{:else}
-						<span class="text-sm text-muted-foreground italic">Unassigned</span>
-					{/if}
-				</TableCell>
-				<TableCell class="text-center">{course.studentCount}</TableCell>
-				<TableCell class="text-center">{course.assessmentCount}</TableCell>
-				<TableCell class="text-center">{course.questionCount}</TableCell>
-				<TableCell class="text-right">
-					<!-- unchanged -->
-				</TableCell>
-			</TableRow>
-		{/each}
-	{/if}
-</TableBody>
+						<TableRow>
+							<TableHead>Course Code</TableHead>
+							<TableHead>Title</TableHead>
+							<TableHead>Level</TableHead>
+							<TableHead>Type</TableHead>
+							<TableHead class="text-center">Students</TableHead>
+							<TableHead class="text-center">Assessments</TableHead>
+							<TableHead class="text-center">Questions</TableHead>
+							<TableHead class="text-right">Actions</TableHead>
+						</TableRow>
+					</TableHeader>
+					<TableBody>
+						{#if filteredCourses.length === 0}
+							<TableRow>
+								<TableCell colspan="8" class="text-center text-muted-foreground py-8">
+									{#if searchQuery || filterLevel !== 'all' || filterType !== 'all'}
+										<Search class="mx-auto size-8 text-muted-foreground/50 mb-2" />
+										<p>No courses match your filters</p>
+										<p class="text-sm mt-1">Try adjusting your search or filter criteria</p>
+									{:else}
+										<BookOpen class="mx-auto size-8 text-muted-foreground/50 mb-2" />
+										<p>No courses available</p>
+									{/if}
+								</TableCell>
+							</TableRow>
+						{:else}
+							{#each filteredCourses as course}
+								<TableRow>
+									<TableCell class="font-medium">{course.code}</TableCell>
+									<TableCell>{course.title}</TableCell>
+									<TableCell>
+										<Badge variant="outline">{course.level}</Badge>
+									</TableCell>
+									<TableCell>
+										<Badge variant={getTypeBadge(course.type).variant}>
+											{getTypeBadge(course.type).label}
+										</Badge>
+									</TableCell>
+									<TableCell class="text-center">{course.studentCount}</TableCell>
+									<TableCell class="text-center">{course.assessmentCount}</TableCell>
+									<TableCell class="text-center">{course.questionCount}</TableCell>
+									<TableCell class="text-right">
+										<div class="flex justify-end gap-2">
+											<Button variant="ghost" size="sm" href={`/lecturer/courses/${course.id}`} class="h-8 w-8 p-0">
+												<Eye class="size-4" />
+												<span class="sr-only">View</span>
+											</Button>
+											<Button variant="ghost" size="sm" href={`/lecturer/courses/${course.id}/edit`} class="h-8 w-8 p-0">
+												<Edit class="size-4" />
+												<span class="sr-only">Edit</span>
+											</Button>
+										</div>
+									</TableCell>
+								</TableRow>
+							{/each}
+						{/if}
+					</TableBody>
 				</Table>
 			</CardContent>
 		</Card>

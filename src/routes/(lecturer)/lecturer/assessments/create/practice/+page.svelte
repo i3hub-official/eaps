@@ -7,15 +7,15 @@
 	import { Label } from '$lib/components/ui/label/index.js';
 	import { Textarea } from '$lib/components/ui/textarea/index.js';
 	import { Switch } from '$lib/components/ui/switch/index.js';
-	import {
-		Select,
-		SelectContent,
-		SelectItem,
-		SelectTrigger,
-	} from '$lib/components/ui/select/index.js';
+	import * as Command from '$lib/components/ui/command/index.js';
+	import * as Popover from '$lib/components/ui/popover/index.js';
 	import { Alert, AlertDescription } from '$lib/components/ui/alert/index.js';
 	import { Badge } from '$lib/components/ui/badge/index.js';
-	import { ArrowLeft, AlertCircle, HelpCircle, Users, Building2 } from '@lucide/svelte/icons';
+	import CheckIcon from '@lucide/svelte/icons/check';
+	import ChevronsUpDownIcon from '@lucide/svelte/icons/chevrons-up-down';
+	import { ArrowLeft, AlertCircle, HelpCircle, Users, Building2, GraduationCap } from '@lucide/svelte/icons';
+	import { cn } from '$lib/utils.js';
+	import { tick } from 'svelte';
 
 	let { data, form } = $props();
 
@@ -35,6 +35,26 @@
 	let isSubmitting = $state(false);
 
 	const error = data?.error;
+
+	// ─── Dropdown States ──────────────────────────────────────────────────────
+	let courseOpen = $state(false);
+	let courseTriggerRef = $state<HTMLButtonElement>(null!);
+
+	// ─── Computed ────────────────────────────────────────────────────────────
+	const selectedCourse = $derived(
+		data?.courses?.find((c: any) => c.id === formData.courseId)
+	);
+	const selectedCourseLabel = $derived(
+		selectedCourse ? `${selectedCourse.code} — ${selectedCourse.title}` : 'Select a course'
+	);
+
+	// ─── Handlers ────────────────────────────────────────────────────────────
+	function closeAndFocusCourse() {
+		courseOpen = false;
+		tick().then(() => {
+			courseTriggerRef?.focus();
+		});
+	}
 
 	function validateForm() {
 		errors = {};
@@ -105,8 +125,8 @@
 				<Building2 class="size-12 text-muted-foreground/50 mb-4" />
 				<h3 class="text-lg font-semibold">Cannot create practice set</h3>
 				<p class="text-sm text-muted-foreground mt-1">
-					{error === 'No department assigned. Contact your HOD.' 
-						? 'Please contact your HOD to assign a department before creating practice sets.' 
+					{error === 'You have no assigned courses this semester. Contact your HOD.' 
+						? 'Please contact your HOD to assign courses before creating practice sets.' 
 						: 'There was an error loading the practice set creation form.'}
 				</p>
 				<Button variant="outline" class="mt-4" href="/lecturer/assessments">
@@ -126,7 +146,7 @@
 
 			<div class="grid gap-6 md:grid-cols-2">
 				<!-- Basic Information -->
-				<Card class="md:col-span-2">
+				<Card class="md:col-span-1">
 					<CardHeader>
 						<CardTitle>Basic Information</CardTitle>
 						<CardDescription>General details about the practice set</CardDescription>
@@ -134,29 +154,55 @@
 					<CardContent class="space-y-4">
 						<div class="space-y-2">
 							<Label for="courseId">Course *</Label>
-							<Select name="courseId" required>
-								<SelectTrigger id="courseId" class={errors.courseId ? 'border-destructive' : ''}>
-									<span class="truncate">
-										{formData.courseId 
-											? data.courses.find(c => c.id === formData.courseId)?.code + ' — ' + data.courses.find(c => c.id === formData.courseId)?.title
-											: 'Select a course'}
-									</span>
-								</SelectTrigger>
-								<SelectContent>
-									{#each data.courses as course}
-										<SelectItem 
-											value={course.id}
-											selected={course.id === formData.courseId}
-											onclick={() => formData.courseId = course.id}
+							<Popover.Root bind:open={courseOpen}>
+								<Popover.Trigger bind:ref={courseTriggerRef}>
+									{#snippet child({ props })}
+										<Button
+											{...props}
+											variant="outline"
+											class={cn(
+												"w-full justify-between h-12 text-base font-normal",
+												errors.courseId && "border-destructive"
+											)}
+											role="combobox"
+											aria-expanded={courseOpen}
 										>
-											{course.code} — {course.title}
-											<Badge variant="outline" class="ml-2 text-xs">
-												{course.level} • {course.questionCount} questions
-											</Badge>
-										</SelectItem>
-									{/each}
-								</SelectContent>
-							</Select>
+											<span class="truncate">{selectedCourseLabel}</span>
+											<ChevronsUpDownIcon class="ml-2 size-4 shrink-0 opacity-50" />
+										</Button>
+									{/snippet}
+								</Popover.Trigger>
+								<Popover.Content class="w-[--radix-popover-trigger-width] p-0">
+									<Command.Root>
+										<Command.Input placeholder="Search courses..." />
+										<Command.List>
+											<Command.Empty>No course found.</Command.Empty>
+											<Command.Group>
+												{#each data?.courses || [] as course}
+													<Command.Item
+														value={course.code}
+														onSelect={() => {
+															formData.courseId = course.id;
+															closeAndFocusCourse();
+														}}
+													>
+														<CheckIcon
+															class={cn(
+																"mr-2 size-4",
+																formData.courseId === course.id ? "opacity-100" : "opacity-0"
+															)}
+														/>
+														{course.code} — {course.title}
+														<Badge variant="outline" class="ml-2 text-xs">
+															{course.level} • {course.questionCount} questions
+														</Badge>
+													</Command.Item>
+												{/each}
+											</Command.Group>
+										</Command.List>
+									</Command.Root>
+								</Popover.Content>
+							</Popover.Root>
 							{#if errors.courseId}
 								<p class="text-sm text-destructive">{errors.courseId}</p>
 							{/if}
@@ -194,11 +240,11 @@
 					</CardContent>
 				</Card>
 
-				<!-- Scoring & Timing -->
+				<!-- Scoring, Timing & Settings (Merged) -->
 				<Card>
 					<CardHeader>
-						<CardTitle>Scoring & Timing</CardTitle>
-						<CardDescription>Configure marks and time limits</CardDescription>
+						<CardTitle>Scoring, Timing & Settings</CardTitle>
+						<CardDescription>Configure marks, time limits, and practice behavior</CardDescription>
 					</CardHeader>
 					<CardContent class="space-y-4">
 						<div class="space-y-2">
@@ -272,45 +318,38 @@
 								<p class="text-sm text-destructive">{errors.questionCount}</p>
 							{/if}
 						</div>
-					</CardContent>
-				</Card>
 
-				<!-- Settings -->
-				<Card>
-					<CardHeader>
-						<CardTitle>Practice Settings</CardTitle>
-						<CardDescription>Configure how the practice works</CardDescription>
-					</CardHeader>
-					<CardContent class="space-y-4">
-						<div class="flex items-center justify-between space-x-2">
-							<div>
-								<Label for="shuffleQuestions" class="font-medium">Shuffle Questions</Label>
-								<p class="text-xs text-muted-foreground">Randomize question order</p>
+						<div class="pt-4 border-t space-y-3">
+							<div class="flex items-center justify-between space-x-2">
+								<div>
+									<Label for="shuffleQuestions" class="font-medium">Shuffle Questions</Label>
+									<p class="text-xs text-muted-foreground">Randomize question order</p>
+								</div>
+								<Switch
+									id="shuffleQuestions"
+									name="shuffleQuestions"
+									checked={formData.shuffleQuestions}
+									onchange={(e) => formData.shuffleQuestions = e.currentTarget.checked}
+								/>
 							</div>
-							<Switch
-								id="shuffleQuestions"
-								name="shuffleQuestions"
-								checked={formData.shuffleQuestions}
-								onchange={(e) => formData.shuffleQuestions = e.currentTarget.checked}
-							/>
-						</div>
 
-						<div class="flex items-center justify-between space-x-2">
-							<div>
-								<Label for="shuffleOptions" class="font-medium">Shuffle Options</Label>
-								<p class="text-xs text-muted-foreground">Randomize option order</p>
+							<div class="flex items-center justify-between space-x-2">
+								<div>
+									<Label for="shuffleOptions" class="font-medium">Shuffle Options</Label>
+									<p class="text-xs text-muted-foreground">Randomize option order</p>
+								</div>
+								<Switch
+									id="shuffleOptions"
+									name="shuffleOptions"
+									checked={formData.shuffleOptions}
+									onchange={(e) => formData.shuffleOptions = e.currentTarget.checked}
+								/>
 							</div>
-							<Switch
-								id="shuffleOptions"
-								name="shuffleOptions"
-								checked={formData.shuffleOptions}
-								onchange={(e) => formData.shuffleOptions = e.currentTarget.checked}
-							/>
 						</div>
 
 						<div class="rounded-lg bg-blue-500/10 border border-blue-500/30 p-3 mt-4">
 							<div class="flex items-start gap-2">
-								<Users class="size-4 text-blue-600 dark:text-blue-400 mt-0.5" />
+								<GraduationCap class="size-4 text-blue-600 dark:text-blue-400 mt-0.5" />
 								<div>
 									<p class="text-sm text-blue-700 dark:text-blue-400 font-medium">Practice Features</p>
 									<ul class="text-xs text-blue-600 dark:text-blue-300 mt-1 space-y-1 list-disc list-inside">
@@ -318,6 +357,7 @@
 										<li>Instant feedback and results</li>
 										<li>No face verification required</li>
 										<li>No time restrictions</li>
+										<li>Shuffle questions and options</li>
 									</ul>
 								</div>
 							</div>

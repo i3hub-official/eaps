@@ -7,15 +7,15 @@
 	import { Label } from '$lib/components/ui/label/index.js';
 	import { Textarea } from '$lib/components/ui/textarea/index.js';
 	import { Switch } from '$lib/components/ui/switch/index.js';
-	import {
-		Select,
-		SelectContent,
-		SelectItem,
-		SelectTrigger,
-	} from '$lib/components/ui/select/index.js';
+	import * as Command from '$lib/components/ui/command/index.js';
+	import * as Popover from '$lib/components/ui/popover/index.js';
 	import { Alert, AlertDescription } from '$lib/components/ui/alert/index.js';
 	import { Badge } from '$lib/components/ui/badge/index.js';
-	import { ArrowLeft, AlertCircle, HelpCircle, Building2 } from '@lucide/svelte/icons';
+	import CheckIcon from '@lucide/svelte/icons/check';
+	import ChevronsUpDownIcon from '@lucide/svelte/icons/chevrons-up-down';
+	import { ArrowLeft, AlertCircle, HelpCircle, Calendar, Shield, Building2 } from '@lucide/svelte/icons';
+	import { cn } from '$lib/utils.js';
+	import { tick } from 'svelte';
 
 	let { data, form } = $props();
 
@@ -26,7 +26,7 @@
 		totalMarks: 70,
 		passMark: 40,
 		durationMinutes: 120,
-		questionCount: 10,
+		questionCount: 35,
 		shuffleQuestions: true,
 		shuffleOptions: true,
 		requireFaceVerify: true,
@@ -41,6 +41,26 @@
 	let isSubmitting = $state(false);
 
 	const error = data?.error;
+
+	// ─── Dropdown States ──────────────────────────────────────────────────────
+	let courseOpen = $state(false);
+	let courseTriggerRef = $state<HTMLButtonElement>(null!);
+
+	// ─── Computed ────────────────────────────────────────────────────────────
+	const selectedCourse = $derived(
+		data?.courses?.find((c: any) => c.id === formData.courseId)
+	);
+	const selectedCourseLabel = $derived(
+		selectedCourse ? `${selectedCourse.code} — ${selectedCourse.title}` : 'Select a course'
+	);
+
+	// ─── Handlers ────────────────────────────────────────────────────────────
+	function closeAndFocusCourse() {
+		courseOpen = false;
+		tick().then(() => {
+			courseTriggerRef?.focus();
+		});
+	}
 
 	function validateForm() {
 		errors = {};
@@ -111,8 +131,8 @@
 				<Building2 class="size-12 text-muted-foreground/50 mb-4" />
 				<h3 class="text-lg font-semibold">Cannot create exam</h3>
 				<p class="text-sm text-muted-foreground mt-1">
-					{error === 'No department assigned. Contact your HOD.' 
-						? 'Please contact your HOD to assign a department before creating exams.' 
+					{error === 'You have no assigned courses this semester. Contact your HOD.' 
+						? 'Please contact your HOD to assign courses before creating exams.' 
 						: 'There was an error loading the exam creation form.'}
 				</p>
 				<Button variant="outline" class="mt-4" href="/lecturer/assessments">
@@ -140,29 +160,55 @@
 					<CardContent class="space-y-4">
 						<div class="space-y-2">
 							<Label for="courseId">Course *</Label>
-							<Select name="courseId" required>
-								<SelectTrigger id="courseId" class={errors.courseId ? 'border-destructive' : ''}>
-									<span class="truncate">
-										{formData.courseId 
-											? data.courses.find(c => c.id === formData.courseId)?.code + ' — ' + data.courses.find(c => c.id === formData.courseId)?.title
-											: 'Select a course'}
-									</span>
-								</SelectTrigger>
-								<SelectContent>
-									{#each data.courses as course}
-										<SelectItem 
-											value={course.id}
-											selected={course.id === formData.courseId}
-											onclick={() => formData.courseId = course.id}
+							<Popover.Root bind:open={courseOpen}>
+								<Popover.Trigger bind:ref={courseTriggerRef}>
+									{#snippet child({ props })}
+										<Button
+											{...props}
+											variant="outline"
+											class={cn(
+												"w-full justify-between h-12 text-base font-normal",
+												errors.courseId && "border-destructive"
+											)}
+											role="combobox"
+											aria-expanded={courseOpen}
 										>
-											{course.code} — {course.title}
-											<Badge variant="outline" class="ml-2 text-xs">
-												{course.level} • {course.questionCount} questions
-											</Badge>
-										</SelectItem>
-									{/each}
-								</SelectContent>
-							</Select>
+											<span class="truncate">{selectedCourseLabel}</span>
+											<ChevronsUpDownIcon class="ml-2 size-4 shrink-0 opacity-50" />
+										</Button>
+									{/snippet}
+								</Popover.Trigger>
+								<Popover.Content class="w-[--radix-popover-trigger-width] p-0">
+									<Command.Root>
+										<Command.Input placeholder="Search courses..." />
+										<Command.List>
+											<Command.Empty>No course found.</Command.Empty>
+											<Command.Group>
+												{#each data?.courses || [] as course}
+													<Command.Item
+														value={course.code}
+														onSelect={() => {
+															formData.courseId = course.id;
+															closeAndFocusCourse();
+														}}
+													>
+														<CheckIcon
+															class={cn(
+																"mr-2 size-4",
+																formData.courseId === course.id ? "opacity-100" : "opacity-0"
+															)}
+														/>
+														{course.code} — {course.title}
+														<Badge variant="outline" class="ml-2 text-xs">
+															{course.level} • {course.questionCount} questions
+														</Badge>
+													</Command.Item>
+												{/each}
+											</Command.Group>
+										</Command.List>
+									</Command.Root>
+								</Popover.Content>
+							</Popover.Root>
 							{#if errors.courseId}
 								<p class="text-sm text-destructive">{errors.courseId}</p>
 							{/if}
@@ -278,7 +324,7 @@
 								required
 							/>
 							<p class="text-xs text-muted-foreground">
-								Recommended: 10-15 questions
+								Recommended: 35-70 questions
 							</p>
 							{#if errors.questionCount}
 								<p class="text-sm text-destructive">{errors.questionCount}</p>
@@ -287,11 +333,11 @@
 					</CardContent>
 				</Card>
 
-				<!-- Scheduling -->
+				<!-- Scheduling & Security (Merged) -->
 				<Card>
 					<CardHeader>
-						<CardTitle>Schedule</CardTitle>
-						<CardDescription>When should the exam be available?</CardDescription>
+						<CardTitle>Scheduling & Security</CardTitle>
+						<CardDescription>Configure availability, security, and behavior</CardDescription>
 					</CardHeader>
 					<CardContent class="space-y-4">
 						<div class="space-y-2">
@@ -323,21 +369,12 @@
 
 						<div class="rounded-lg bg-yellow-500/10 border border-yellow-500/30 p-3">
 							<p class="text-xs text-yellow-700 dark:text-yellow-400">
-								<AlertCircle class="inline size-3 mr-1" />
+								<Calendar class="inline size-3 mr-1" />
 								Current academic session: <strong>{data.currentSession}</strong>
 							</p>
 						</div>
-					</CardContent>
-				</Card>
 
-				<!-- Settings -->
-				<Card class="md:col-span-2">
-					<CardHeader>
-						<CardTitle>Exam Settings</CardTitle>
-						<CardDescription>Configure security and behavior</CardDescription>
-					</CardHeader>
-					<CardContent>
-						<div class="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
+						<div class="pt-4 border-t space-y-3">
 							<div class="flex items-center justify-between space-x-2">
 								<div>
 									<Label for="shuffleQuestions" class="font-medium">Shuffle Questions</Label>
@@ -414,6 +451,22 @@
 									checked={formData.offlineEnabled}
 									onchange={(e) => formData.offlineEnabled = e.currentTarget.checked}
 								/>
+							</div>
+						</div>
+
+						<div class="rounded-lg bg-blue-500/10 border border-blue-500/30 p-3 mt-4">
+							<div class="flex items-start gap-2">
+								<Shield class="size-4 text-blue-600 dark:text-blue-400 mt-0.5" />
+								<div>
+									<p class="text-sm text-blue-700 dark:text-blue-400 font-medium">Exam Features</p>
+									<ul class="text-xs text-blue-600 dark:text-blue-300 mt-1 space-y-1 list-disc list-inside">
+										<li>70 marks standard exam format</li>
+										<li>Face verification and liveness check</li>
+										<li>Fullscreen mode required</li>
+										<li>Offline mode available</li>
+										<li>Results shown after grading</li>
+									</ul>
+								</div>
 							</div>
 						</div>
 					</CardContent>

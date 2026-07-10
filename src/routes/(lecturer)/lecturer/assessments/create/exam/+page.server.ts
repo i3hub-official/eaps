@@ -1,53 +1,36 @@
 // src/routes/(lecturer)/lecturer/assessments/create/exam/+page.server.ts
 import type { PageServerLoad, Actions } from './$types'
-import { redirect, fail } from '@sveltejs/kit'
+import { fail } from '@sveltejs/kit'
 import { getPrismaClient } from '$lib/server/db/index.js'
 import { requireLecturer } from '$lib/server/auth/guards.js'
-import { toDecimal } from '$lib/utils/decimal.js'
+import { Decimal } from 'decimal.js'
 
 export const load: PageServerLoad = async ({ locals }) => {
-	// Use the guard to ensure user is authenticated as lecturer
 	const user = await requireLecturer(locals.user)
-
-	// If no department ID, return error state
-	if (!user.departmentId) {
-		return {
-			user: {
-				id: user.id,
-				firstName: user.firstName,
-				lastName: user.lastName,
-			},
-			courses: [],
-			currentSession: '',
-			error: 'No department assigned. Contact your HOD.'
-		}
-	}
-
 	const prisma = await getPrismaClient()
 
-	// Get lecturer's courses
 	const courses = await prisma.course.findMany({
-		where: { departmentId: user.departmentId, status: 'ACTIVE' },
+		where: { status: 'ACTIVE', offerings: { some: { lecturerId: user.id } } },
 		include: {
 			level: true,
-			questions: {
-				where: { createdById: user.id, isActive: true },
-			},
+			questions: { where: { createdById: user.id, isActive: true } },
 		},
 		orderBy: { code: 'asc' },
 	})
 
-	// Get current academic session
-	const currentSession = await prisma.academicSession.findFirst({
-		where: { isCurrent: true },
-	})
+	const currentSession = await prisma.academicSession.findFirst({ where: { isCurrent: true } })
+
+	if (courses.length === 0) {
+		return {
+			user: { id: user.id, firstName: user.firstName, lastName: user.lastName },
+			courses: [],
+			currentSession: currentSession?.name ?? '',
+			error: 'You have no assigned courses this semester. Contact your HOD.',
+		}
+	}
 
 	return {
-		user: {
-			id: user.id,
-			firstName: user.firstName,
-			lastName: user.lastName,
-		},
+		user: { id: user.id, firstName: user.firstName, lastName: user.lastName },
 		courses: courses.map((c) => ({
 			id: c.id,
 			code: c.code,
@@ -61,14 +44,7 @@ export const load: PageServerLoad = async ({ locals }) => {
 
 export const actions: Actions = {
 	default: async ({ request, locals }) => {
-		// Use the guard
 		const user = await requireLecturer(locals.user)
-		
-		// Check if user has a department
-		if (!user.departmentId) {
-			return fail(403, { error: 'No department assigned. Contact your HOD.' })
-		}
-		
 		const formData = await request.formData()
 
 		const courseId = String(formData.get('courseId') ?? '')
@@ -89,8 +65,6 @@ export const actions: Actions = {
 		const endDate = formData.get('endDate') ? new Date(String(formData.get('endDate'))) : null
 
 		const errors: Record<string, string> = {}
-
-		// Validate
 		if (!courseId) errors.courseId = 'Course is required'
 		if (!title) errors.title = 'Title is required'
 		if (totalMarks <= 0) errors.totalMarks = 'Total marks must be greater than 0'
@@ -107,16 +81,15 @@ export const actions: Actions = {
 		try {
 			const prisma = await getPrismaClient()
 
-			// Verify course belongs to lecturer's department
-			const course = await prisma.course.findUnique({
-				where: { id: courseId },
+			// Verify this lecturer actually teaches this course this semester
+			const offering = await prisma.courseOffering.findFirst({
+				where: { courseId, lecturerId: user.id },
 			})
 
-			if (!course || course.departmentId !== user.departmentId) {
+			if (!offering) {
 				return fail(403, { error: 'You do not have access to this course' })
 			}
 
-			// Create exam (draft)
 			const exam = await prisma.assessment.create({
 				data: {
 					createdById: user.id,
@@ -124,9 +97,9 @@ export const actions: Actions = {
 					type: 'EXAMINATION',
 					status: 'DRAFT',
 					title,
-					instructions: instructions,
-					totalMarks: toDecimal(totalMarks),
-					passMark: toDecimal(passMark),
+					instructions,
+					totalMarks: Decimal(totalMarks),
+					passMark: Decimal(passMark),
 					durationMinutes,
 					questionCount,
 					shuffleQuestions,
