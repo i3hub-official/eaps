@@ -34,6 +34,7 @@ export interface AuthenticatedStaff {
   departmentId: string | null;
   status: StaffStatus;
   /** Flattened permission names from all active role assignments, e.g. "exam:create" */
+  roles: StaffRole[];
   permissions: string[];
 }
 

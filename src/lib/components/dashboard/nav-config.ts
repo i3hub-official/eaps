@@ -32,10 +32,11 @@ import LogOut from '@lucide/svelte/icons/log-out';
 
 export type NavItem = { label: string; href: string; icon: Component<any> };
 export type NavSection = { label?: string; items: NavItem[] };
-export type Role = 'student' | 'exam-officer' | 'invigilator' | 'admin';
+export type Role = 'student' | 'lecturer' | 'exam-officer' | 'invigilator' | 'admin';
 
 export const roleLabel: Record<Role, string> = {
 	student: 'Student Portal',
+	lecturer: 'Lecturer',
 	'exam-officer': 'Examination Office',
 	invigilator: 'Invigilation Console',
 	admin: 'Administration'
@@ -66,6 +67,39 @@ export const navByRole: Record<Role, NavSection[]> = {
 			items: [
 				{ label: 'Notifications', href: '/student/notifications', icon: Bell },
 				{ label: 'Messages', href: '/student/messages', icon: MessageSquare }
+			]
+		}
+	],
+	lecturer: [
+		{ items: [{ label: 'Dashboard', href: '/lecturer', icon: LayoutDashboard }] },
+		{
+			label: 'Teaching',
+			items: [
+				{ label: 'My Courses', href: '/lecturer/courses', icon: BookOpen },
+				{ label: 'Attendance', href: '/lecturer/attendance', icon: CalendarCheck }
+			]
+		},
+		{
+			label: 'Create',
+			items: [
+				{ label: 'Exam', href: '/lecturer/assessments/create/exam', icon: FilePlus },
+				{ label: 'Test', href: '/lecturer/assessments/create/test', icon: FilePlus },
+				{ label: 'Assignment', href: '/lecturer/assessments/create/assignment', icon: FilePlus },
+				{ label: 'Practice', href: '/lecturer/assessments/create/practice', icon: FilePlus }
+			]
+		},
+		{
+			label: 'Content',
+			items: [
+				{ label: 'Question bank', href: '/lecturer/question-bank', icon: Database },
+				{ label: 'Grade submissions', href: '/lecturer/grade', icon: ClipboardList }
+			]
+		},
+		{
+			label: 'Updates',
+			items: [
+				{ label: 'Notifications', href: '/lecturer/notifications', icon: Bell },
+				{ label: 'Messages', href: '/lecturer/messages', icon: MessageSquare }
 			]
 		}
 	],

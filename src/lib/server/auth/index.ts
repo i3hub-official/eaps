@@ -96,9 +96,11 @@ export async function getStaffByToken(token: string) {
   if (!session || session.expiresAt < new Date()) return null
   if (session.staff.status !== 'ACTIVE') return null
 
-  // flatten permissions into a set for O(1) lookup
+  // flatten permissions + role names into sets for O(1) lookup
   const permissions = new Set<string>()
+  const roles = new Set<string>()
   for (const ra of session.staff.roleAssignments) {
+    roles.add(ra.role.name)
     for (const rp of ra.role.permissions) {
       permissions.add(rp.permission.name)
     }
@@ -110,7 +112,7 @@ export async function getStaffByToken(token: string) {
     data: { lastActiveAt: new Date() },
   }).catch(() => {})
 
-  return { staff: session.staff, session, permissions }
+  return { staff: session.staff, session, permissions, roles }
 }
 
 export async function refreshStaffSession(refreshToken: string) {

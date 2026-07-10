@@ -16,6 +16,7 @@ import {
 } from '$lib/server/auth'
 import { revealEmail, revealMatricNumber, revealName } from '$lib/security/dataProtection'
 import type { User, Session } from '$lib/server/auth/types'
+import type { StaffRole } from '@prisma/client'
 
 let wss: any = null
 
@@ -40,39 +41,40 @@ function safeDecrypt(fn: () => string, fallback: string): string {
 async function loadSessionFromCookies(
   cookies: Cookies,
 ): Promise<{ user: User | null; session: Session | null }> {
-  const staffToken = cookies.get(STAFF_COOKIE)
-  if (staffToken) {
-    const result = await getStaffByToken(staffToken)
-    if (result) {
-      const { staff, session, permissions } = result
+const staffToken = cookies.get(STAFF_COOKIE)
 
-      const user: User = {
-        type: 'staff',
-        id: staff.id,
-        staffNumber: staff.staffNumber,
-        email: safeDecrypt(() => revealEmail(staff.email), ''),
-        firstName: safeDecrypt(() => revealName(staff.firstName), ''),
-        lastName: safeDecrypt(() => revealName(staff.lastName), ''),
-        primaryRole: staff.primaryRole,
-        collegeId: staff.collegeId,
-        departmentId: staff.departmentId,
-        status: staff.status,
-        permissions: Array.from(permissions),
-      }
+if (staffToken) {
+  const result = await getStaffByToken(staffToken)
+  if (result) {
+    const { staff, session, permissions, roles } = result
 
-      return {
-        user,
-        session: {
-          id: session.id,
-          token: session.token,
-          userType: 'staff',
-          expiresAt: session.expiresAt,
-        },
-      }
+    const user: User = {
+      type: 'staff',
+      id: staff.id,
+      staffNumber: staff.staffNumber,
+      email: safeDecrypt(() => revealEmail(staff.email), ''),
+      firstName: safeDecrypt(() => revealName(staff.firstName), ''),
+      lastName: safeDecrypt(() => revealName(staff.lastName), ''),
+      primaryRole: staff.primaryRole,
+      collegeId: staff.collegeId,
+      departmentId: staff.departmentId,
+      status: staff.status,
+      roles: Array.from(roles) as StaffRole[],
+      permissions: Array.from(permissions),
     }
-    // Stale/invalid/expired cookie — clear it so we stop re-querying a dead session.
-    cookies.delete(STAFF_COOKIE, { path: cookieOptions.path })
+
+    return {
+      user,
+      session: {
+        id: session.id,
+        token: session.token,
+        userType: 'staff',
+        expiresAt: session.expiresAt,
+      },
+    }
   }
+  cookies.delete(STAFF_COOKIE, { path: cookieOptions.path })
+}
 
   const studentToken = cookies.get(STUDENT_COOKIE)
   if (studentToken) {
