@@ -17,11 +17,132 @@ import { invalidateAll } from '$app/navigation';
 	import { Tabs, TabsContent, TabsList, TabsTrigger } from '$lib/components/ui/tabs/index.js';
 	import CheckIcon from '@lucide/svelte/icons/check';
 	import ChevronsUpDownIcon from '@lucide/svelte/icons/chevrons-up-down';
-	import { ArrowLeft, AlertCircle, HelpCircle, Calendar, Shield, Building2, Plus, Search, X, Upload, FileText, Database } from '@lucide/svelte/icons';
+	import { ArrowLeft, AlertCircle, HelpCircle, Calendar, Shield, Building2, Plus, Search, X, Upload, FileText, Database, Sparkles } from '@lucide/svelte/icons';
 	import { cn } from '$lib/utils.js';
 	import { tick } from 'svelte';
 
 	let { data, form } = $props();
+
+	// ─── Presets (settings & schedule) ─────────────────────────────────────
+	// Each preset prefills totalMarks/passMark/durationMinutes/questionCount
+	// and, optionally, a schedule offset. Selecting one just prefills the
+	// fields below — the lecturer can still edit anything afterwards, and
+	// editing a field after picking a preset doesn't get overwritten again
+	// unless they pick a (different) preset explicitly.
+	type Preset = {
+		id: string;
+		label: string;
+		description: string;
+		totalMarks: number;
+		passMark: number;
+		durationMinutes: number;
+		questionCount: number;
+		shuffleQuestions: boolean;
+		shuffleOptions: boolean;
+		requireFaceVerify: boolean;
+		fullscreenRequired: boolean;
+		/** Days from now the window should open, and how long it stays open. */
+		scheduleOffsetDays: number;
+		scheduleWindowDays: number;
+	};
+
+	const presets: Preset[] = [
+		{
+			id: 'quick-quiz',
+			label: 'Quick Quiz',
+			description: 'Short, low-stakes check — 10 questions, 15 mins',
+			totalMarks: 10,
+			passMark: 5,
+			durationMinutes: 15,
+			questionCount: 10,
+			shuffleQuestions: true,
+			shuffleOptions: true,
+			requireFaceVerify: false,
+			fullscreenRequired: false,
+			scheduleOffsetDays: 0,
+			scheduleWindowDays: 1,
+		},
+		{
+			id: 'standard-test',
+			label: 'Standard Test',
+			description: 'Typical in-course test — 15 questions, 30 mins',
+			totalMarks: 30,
+			passMark: 18,
+			durationMinutes: 30,
+			questionCount: 15,
+			shuffleQuestions: true,
+			shuffleOptions: true,
+			requireFaceVerify: true,
+			fullscreenRequired: true,
+			scheduleOffsetDays: 2,
+			scheduleWindowDays: 3,
+		},
+		{
+			id: 'extended-test',
+			label: 'Extended Test',
+			description: 'Longer coverage — 25 questions, 60 mins',
+			totalMarks: 50,
+			passMark: 30,
+			durationMinutes: 60,
+			questionCount: 25,
+			shuffleQuestions: true,
+			shuffleOptions: true,
+			requireFaceVerify: true,
+			fullscreenRequired: true,
+			scheduleOffsetDays: 3,
+			scheduleWindowDays: 5,
+		},
+		{
+			id: 'high-security',
+			label: 'High-Security Exam',
+			description: 'Strict proctoring — face verify + fullscreen enforced',
+			totalMarks: 50,
+			passMark: 30,
+			durationMinutes: 45,
+			questionCount: 20,
+			shuffleQuestions: true,
+			shuffleOptions: true,
+			requireFaceVerify: true,
+			fullscreenRequired: true,
+			scheduleOffsetDays: 5,
+			scheduleWindowDays: 2,
+		},
+	];
+
+	let selectedPresetId = $state<string | null>(null);
+
+	function toLocalDatetimeInputValue(date: Date): string {
+		// datetime-local inputs need "YYYY-MM-DDTHH:mm" in *local* time,
+		// so we offset by the timezone before slicing rather than using
+		// toISOString() directly (which is UTC and would shift the time).
+		const tzOffsetMs = date.getTimezoneOffset() * 60000;
+		return new Date(date.getTime() - tzOffsetMs).toISOString().slice(0, 16);
+	}
+
+	function applyPreset(preset: Preset) {
+		selectedPresetId = preset.id;
+
+		formData.totalMarks = preset.totalMarks;
+		formData.passMark = preset.passMark;
+		formData.durationMinutes = preset.durationMinutes;
+		formData.questionCount = preset.questionCount;
+		formData.shuffleQuestions = preset.shuffleQuestions;
+		formData.shuffleOptions = preset.shuffleOptions;
+		formData.requireFaceVerify = preset.requireFaceVerify;
+		formData.fullscreenRequired = preset.fullscreenRequired;
+
+		const now = new Date();
+		const start = new Date(now.getTime() + preset.scheduleOffsetDays * 24 * 60 * 60 * 1000);
+		const end = new Date(start.getTime() + preset.scheduleWindowDays * 24 * 60 * 60 * 1000);
+		formData.startDate = toLocalDatetimeInputValue(start);
+		formData.endDate = toLocalDatetimeInputValue(end);
+
+		// Re-validate anything that was already flagged so the preset's
+		// values clear stale errors immediately.
+		if (Object.keys(errors).length > 0) {
+			validateForm();
+		}
+	}
 
 	let formData = $state({
 		courseId: '',
@@ -44,6 +165,7 @@ import { invalidateAll } from '$app/navigation';
 	let isSubmitting = $state(false);
 	let isUploading = $state(false);
 	let uploadSuccess = $state<{ imported: number; errors?: string[] } | null>(null);
+	let uploadDialogOpen = $state(false);
 
 	// ─── Question Bank Dialog ──────────────────────────────────────────────
 	// Note: the bank's questions come entirely from `data.bankQuestions`,
@@ -295,6 +417,51 @@ async function handleFileUpload(event: Event) {
 				</Alert>
 			{/if}
 
+			<!-- Presets: settings & schedule -->
+			<Card>
+				<CardHeader>
+					<CardTitle class="flex items-center gap-2">
+						<Sparkles class="size-4" />
+						Presets
+					</CardTitle>
+					<CardDescription>
+						Start from a preset to prefill marks, duration, question count, security, and schedule — you can still edit anything below afterward.
+					</CardDescription>
+				</CardHeader>
+				<CardContent>
+					<div class="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+						{#each presets as preset}
+							<button
+								type="button"
+								onclick={() => applyPreset(preset)}
+								class={cn(
+									'text-left rounded-lg border p-3 transition-colors hover:border-primary/60 hover:bg-muted/40',
+									selectedPresetId === preset.id
+										? 'border-primary bg-primary/5 ring-1 ring-primary'
+										: 'border-border'
+								)}
+							>
+								<div class="flex items-center justify-between">
+									<span class="text-sm font-semibold">{preset.label}</span>
+									{#if selectedPresetId === preset.id}
+										<CheckIcon class="size-4 text-primary" />
+									{/if}
+								</div>
+								<p class="text-xs text-muted-foreground mt-1">{preset.description}</p>
+								<div class="flex flex-wrap gap-1 mt-2">
+									<Badge variant="secondary" class="text-[10px]">{preset.totalMarks} marks</Badge>
+									<Badge variant="secondary" class="text-[10px]">{preset.durationMinutes}m</Badge>
+									<Badge variant="secondary" class="text-[10px]">{preset.questionCount}q</Badge>
+									{#if preset.requireFaceVerify}
+										<Badge variant="outline" class="text-[10px]">Face verify</Badge>
+									{/if}
+								</div>
+							</button>
+						{/each}
+					</div>
+				</CardContent>
+			</Card>
+
 			<div class="grid gap-6 md:grid-cols-2">
 				<!-- Basic Information -->
 				<Card class="md:col-span-1">
@@ -488,7 +655,7 @@ async function handleFileUpload(event: Event) {
 									Bank
 								</Button>
 
-								<Dialog>
+								<Dialog bind:open={uploadDialogOpen}>
 									<DialogTrigger>
 										{#snippet child({ props })}
 											<Button {...props} variant="outline" size="sm">
@@ -548,6 +715,108 @@ async function handleFileUpload(event: Event) {
 										</div>
 									</DialogContent>
 								</Dialog>
+
+								<Dialog bind:open={questionBankOpen}>
+									<DialogContent class="max-w-2xl max-h-[85vh] flex flex-col">
+										<DialogHeader>
+											<DialogTitle>Question Bank</DialogTitle>
+											<DialogDescription>
+												Select questions for {selectedCourse ? `${selectedCourse.code} — ${selectedCourse.title}` : 'this course'}
+											</DialogDescription>
+										</DialogHeader>
+
+										<div class="flex flex-col gap-3 py-2">
+											<div class="relative">
+												<Search class="absolute left-2.5 top-2.5 size-4 text-muted-foreground" />
+												<Input
+													placeholder="Search questions..."
+													bind:value={bankSearchQuery}
+													class="pl-8"
+												/>
+											</div>
+
+											<div class="flex flex-wrap gap-2">
+												<select
+													bind:value={bankFilterType}
+													class="h-9 rounded-md border border-input bg-background px-2 text-sm"
+												>
+													<option value="all">All types</option>
+													<option value="SINGLE_CHOICE">Single choice</option>
+													<option value="MULTIPLE_CHOICE">Multiple choice</option>
+													<option value="TRUE_FALSE">True / False</option>
+													<option value="SHORT_ANSWER">Short answer</option>
+												</select>
+
+												<select
+													bind:value={bankFilterDifficulty}
+													class="h-9 rounded-md border border-input bg-background px-2 text-sm"
+												>
+													<option value="all">All difficulties</option>
+													<option value="EASY">Easy</option>
+													<option value="MEDIUM">Medium</option>
+													<option value="HARD">Hard</option>
+													<option value="EXPERT">Expert</option>
+												</select>
+
+												<div class="ml-auto flex gap-2">
+													<Button type="button" variant="outline" size="sm" onclick={selectAllBankQuestions}>
+														Select all ({bankFilteredQuestions.length})
+													</Button>
+													<Button type="button" variant="outline" size="sm" onclick={clearAllBankQuestions}>
+														Clear
+													</Button>
+												</div>
+											</div>
+
+											<p class="text-xs text-muted-foreground">
+												{formData.selectedQuestions.length} selected · {bankFilteredQuestions.length} shown
+											</p>
+										</div>
+
+										<div class="flex-1 overflow-y-auto border rounded-lg divide-y">
+											{#if bankFilteredQuestions.length === 0}
+												<div class="text-center text-muted-foreground py-8">
+													<FileText class="mx-auto size-8 text-muted-foreground/50 mb-2" />
+													<p class="text-sm font-medium">No questions found</p>
+													<p class="text-xs mt-1">
+														{(data?.bankQuestions || []).length === 0
+															? 'Your question bank is empty. Upload some questions first.'
+															: 'Try adjusting your search or filters.'}
+													</p>
+												</div>
+											{:else}
+												{#each bankFilteredQuestions as q (q.id)}
+													<label
+														class="flex items-start gap-3 p-3 hover:bg-muted/40 cursor-pointer"
+													>
+														<Checkbox
+															checked={formData.selectedQuestions.includes(q.id)}
+															onCheckedChange={() => toggleQuestionSelection(q.id)}
+															class="mt-0.5"
+														/>
+														<div class="min-w-0 flex-1">
+															<p class="text-sm">{q.body}</p>
+															<div class="flex flex-wrap gap-1 mt-1.5">
+																<Badge variant="outline" class="text-[10px]">{q.type}</Badge>
+																<Badge variant="outline" class="text-[10px]">{q.difficulty}</Badge>
+																<Badge variant="outline" class="text-[10px]">{q.marks} mark{q.marks === 1 ? '' : 's'}</Badge>
+															</div>
+														</div>
+													</label>
+												{/each}
+											{/if}
+										</div>
+
+										<DialogFooter>
+											<Button type="button" variant="outline" onclick={() => (questionBankOpen = false)}>
+												Cancel
+											</Button>
+											<Button type="button" onclick={() => (questionBankOpen = false)}>
+												Done ({formData.selectedQuestions.length} selected)
+											</Button>
+										</DialogFooter>
+									</DialogContent>
+								</Dialog>
 							</div>
 						</CardTitle>
 						<CardDescription>Select questions from your bank or upload new ones</CardDescription>
@@ -593,68 +862,6 @@ async function handleFileUpload(event: Event) {
 					</CardContent>
 				</Card>
 
-				<!-- Question Bank Dialog (outside the card, inside the form) -->
-				<Dialog>
-	<DialogTrigger>
-		{#snippet child({ props })}
-			<Button {...props} variant="outline" size="sm">
-				<Upload class="mr-2 size-4" />
-				Upload
-			</Button>
-		{/snippet}
-	</DialogTrigger>
-	<DialogContent>
-		<DialogHeader>
-			<DialogTitle>Upload Questions</DialogTitle>
-			<DialogDescription>
-				Upload questions from a JSON or TXT file into your question bank
-			</DialogDescription>
-		</DialogHeader>
-		<div class="space-y-4 py-4">
-			<div class="space-y-2">
-				<Label for="upload-file">Select File</Label>
-				<Input
-					id="upload-file"
-					type="file"
-					accept=".json,.txt"
-					onchange={handleFileUpload}
-					disabled={isUploading || !formData.courseId}
-				/>
-				{#if !formData.courseId}
-					<p class="text-xs text-destructive">Select a course first</p>
-				{:else}
-					<p class="text-xs text-muted-foreground">Max 5 MB · .json and .txt supported</p>
-				{/if}
-			</div>
-			{#if errors.file}
-				<Alert variant="destructive">
-					<AlertCircle class="size-4" />
-					<AlertDescription>{errors.file}</AlertDescription>
-				</Alert>
-			{/if}
-			{#if uploadSuccess}
-				<Alert class="bg-green-50 border-green-200">
-					<CheckIcon class="size-4 text-green-600" />
-					<AlertDescription class="text-green-800">
-						{uploadSuccess.imported} question(s) imported successfully.
-						{#if uploadSuccess.errors && uploadSuccess.errors.length > 0}
-							<span class="block text-destructive mt-1">
-								{uploadSuccess.errors.length} row(s) had errors.
-							</span>
-						{/if}
-					</AlertDescription>
-				</Alert>
-			{/if}
-			{#if isUploading}
-				<div class="flex items-center gap-2 text-sm text-muted-foreground">
-					<span class="animate-spin inline-block size-4 border-2 border-current border-t-transparent rounded-full"></span>
-					Uploading…
-				</div>
-			{/if}
-		</div>
-	</DialogContent>
-</Dialog>
-
 				<!-- Scheduling & Security (Merged) -->
 				<Card>
 					<CardHeader>
@@ -685,12 +892,7 @@ async function handleFileUpload(event: Event) {
 									<Label for="shuffleQuestions" class="font-medium">Shuffle Questions</Label>
 									<p class="text-xs text-muted-foreground">Randomize question order</p>
 								</div>
-								<Switch
-									id="shuffleQuestions"
-									name="shuffleQuestions"
-									checked={formData.shuffleQuestions}
-									onchange={(e) => (formData.shuffleQuestions = e.currentTarget.checked)}
-								/>
+								<Switch id="shuffleQuestions" name="shuffleQuestions" bind:checked={formData.shuffleQuestions} />
 							</div>
 
 							<div class="flex items-center justify-between space-x-2">
@@ -698,12 +900,7 @@ async function handleFileUpload(event: Event) {
 									<Label for="shuffleOptions" class="font-medium">Shuffle Options</Label>
 									<p class="text-xs text-muted-foreground">Randomize option order</p>
 								</div>
-								<Switch
-									id="shuffleOptions"
-									name="shuffleOptions"
-									checked={formData.shuffleOptions}
-									onchange={(e) => (formData.shuffleOptions = e.currentTarget.checked)}
-								/>
+								<Switch id="shuffleOptions" name="shuffleOptions" bind:checked={formData.shuffleOptions} />
 							</div>
 
 							<div class="flex items-center justify-between space-x-2">
@@ -711,12 +908,7 @@ async function handleFileUpload(event: Event) {
 									<Label for="requireFaceVerify" class="font-medium">Face Verification</Label>
 									<p class="text-xs text-muted-foreground">Require face verification</p>
 								</div>
-								<Switch
-									id="requireFaceVerify"
-									name="requireFaceVerify"
-									checked={formData.requireFaceVerify}
-									onchange={(e) => (formData.requireFaceVerify = e.currentTarget.checked)}
-								/>
+								<Switch id="requireFaceVerify" name="requireFaceVerify" bind:checked={formData.requireFaceVerify} />
 							</div>
 
 							<div class="flex items-center justify-between space-x-2">
@@ -724,12 +916,7 @@ async function handleFileUpload(event: Event) {
 									<Label for="fullscreenRequired" class="font-medium">Fullscreen Required</Label>
 									<p class="text-xs text-muted-foreground">Must be in fullscreen mode</p>
 								</div>
-								<Switch
-									id="fullscreenRequired"
-									name="fullscreenRequired"
-									checked={formData.fullscreenRequired}
-									onchange={(e) => (formData.fullscreenRequired = e.currentTarget.checked)}
-								/>
+								<Switch id="fullscreenRequired" name="fullscreenRequired" bind:checked={formData.fullscreenRequired} />
 							</div>
 						</div>
 

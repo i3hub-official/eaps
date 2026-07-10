@@ -7,7 +7,6 @@ export const load: PageServerLoad = async ({ parent }) => {
 
 	const prisma = await getPrismaClient()
 	const staffId = user.id
-	const departmentId = user.departmentId
 	const now = new Date()
 
 	const emptyStats = {
@@ -21,8 +20,29 @@ export const load: PageServerLoad = async ({ parent }) => {
 		totalSessions: 0,
 	}
 
-	// No department yet — onboarding modal (driven by layout data) will handle this.
-	if (!departmentId) {
+	// ─── Get courses the lecturer actually teaches via CourseOffering ──────
+	const offerings = await prisma.courseOffering.findMany({
+		where: {
+			lecturerId: staffId,
+			course: { status: 'ACTIVE' },
+		},
+		select: {
+			courseId: true,
+			course: {
+				select: {
+					id: true,
+					code: true,
+					title: true,
+				},
+			},
+		},
+		distinct: ['courseId'],
+	})
+
+	const allCourses = offerings.map((o) => o.course)
+	const courseIds = allCourses.map((c) => c.id)
+
+	if (courseIds.length === 0) {
 		return {
 			stats: emptyStats,
 			upcomingAssessments: [],
@@ -33,15 +53,6 @@ export const load: PageServerLoad = async ({ parent }) => {
 			pendingGrades: [],
 		}
 	}
-
-	// ─── Get all courses in department ─────────────────────────────────────
-
-	const allCourses = await prisma.course.findMany({
-		where: { departmentId, status: 'ACTIVE' },
-		select: { id: true, code: true, title: true },
-	})
-
-	const courseIds = allCourses.map((c) => c.id)
 
 	// ─── Statistics ────────────────────────────────────────────────────────
 
@@ -84,6 +95,7 @@ export const load: PageServerLoad = async ({ parent }) => {
 			createdById: staffId,
 			status: { in: ['PUBLISHED', 'SCHEDULED', 'ACTIVE'] },
 			startTime: { gte: now, lte: oneWeekFromNow },
+			courseId: { in: courseIds },
 		},
 		select: {
 			id: true,
@@ -106,6 +118,7 @@ export const load: PageServerLoad = async ({ parent }) => {
 			createdById: staffId,
 			type: 'ASSIGNMENT',
 			dueDate: { gte: now, lte: oneWeekFromNow },
+			courseId: { in: courseIds },
 		},
 		select: {
 			id: true,
@@ -123,7 +136,12 @@ export const load: PageServerLoad = async ({ parent }) => {
 	const recentAnswersToGrade = await prisma.studentAnswer.findMany({
 		where: {
 			isManualGraded: false,
-			session: { assessment: { createdById: staffId } },
+			session: {
+				assessment: {
+					createdById: staffId,
+					courseId: { in: courseIds },
+				},
+			},
 		},
 		include: {
 			question: { select: { body: true } },
@@ -142,14 +160,20 @@ export const load: PageServerLoad = async ({ parent }) => {
 
 	const activeSessions = await prisma.assessmentSession.count({
 		where: {
-			assessment: { createdById: staffId },
+			assessment: {
+				createdById: staffId,
+				courseId: { in: courseIds },
+			},
 			status: 'IN_PROGRESS',
 		},
 	})
 
 	const totalSessions = await prisma.assessmentSession.count({
 		where: {
-			assessment: { createdById: staffId },
+			assessment: {
+				createdById: staffId,
+				courseId: { in: courseIds },
+			},
 		},
 	})
 
@@ -199,7 +223,10 @@ export const load: PageServerLoad = async ({ parent }) => {
 	const assessmentStats = await Promise.all(
 		(
 			await prisma.assessment.findMany({
-				where: { createdById: staffId },
+				where: {
+					createdById: staffId,
+					courseId: { in: courseIds },
+				},
 				select: { id: true, title: true, type: true, course: { select: { code: true } } },
 				orderBy: { createdAt: 'desc' },
 				take: 5,
