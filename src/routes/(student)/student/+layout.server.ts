@@ -1,4 +1,4 @@
-// src/routes/student/+layout.server.ts
+// src/routes/(student)/student/+layout.server.ts
 import type { LayoutServerLoad } from './$types';
 import { requireStudent } from '$lib/server/auth/guards'
 

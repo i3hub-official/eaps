@@ -58,8 +58,7 @@ export const navByRole: Record<Role, NavSection[]> = {
 				{ label: 'Upcoming tests', href: '/student/tests', icon: CalendarClock },
 				{ label: 'Upcoming exams', href: '/student/exams', icon: GraduationCap },
 				{ label: 'Results', href: '/student/results', icon: BarChart3 },
-				{ label: 'Attendance', href: '/student/attendance', icon: CalendarCheck },
-				{ label: 'Face enrollment', href: '/student/face-enroll', icon: ScanFace }
+				{ label: 'Attendance', href: '/student/attendance', icon: CalendarCheck }
 			]
 		},
 		{

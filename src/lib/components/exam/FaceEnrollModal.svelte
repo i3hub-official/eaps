@@ -121,8 +121,11 @@
 		const h = canvasEl.height;
 		const cx = w / 2;
 		const cy = h / 2;
-		const rx = w * 0.28;
-		const ry = h * 0.44;
+		
+		// ── VERTICAL OVAL ──────────────────────────────────────────────────
+		// Make the oval taller than wide for a portrait orientation
+		const rx = w * 0.22;   // narrower width (was 0.28)
+		const ry = h * 0.48;   // taller height (was 0.44)
 
 		const primary = themeColor('--primary', '#00c9a7');
 		const destructive = themeColor('--destructive', '#ef4444');
@@ -147,6 +150,25 @@
 		ctx.strokeStyle = multiple ? destructive : detectedFace ? primary : border;
 		ctx.lineWidth = detectedFace ? 2.5 : 1.5;
 		ctx.stroke();
+
+		// Corner brackets - adjusted for vertical oval
+		const cornerOffset = 16;
+		const corners: [number, number, [number, number]][] = [
+			[cx - rx, cy - ry, [1,  1]],
+			[cx + rx, cy - ry, [-1, 1]],
+			[cx - rx, cy + ry, [1, -1]],
+			[cx + rx, cy + ry, [-1,-1]],
+		];
+		ctx.strokeStyle = multiple ? destructive : detectedFace ? primary : themeColor('--primary', 'rgba(0,201,167,0.6)', 0.6);
+		ctx.lineWidth = 2.5;
+		ctx.lineCap = 'round';
+		for (const [x, y, [dx, dy]] of corners) {
+			ctx.beginPath();
+			ctx.moveTo(x + dx * cornerOffset, y);
+			ctx.lineTo(x, y);
+			ctx.lineTo(x, y + dy * cornerOffset);
+			ctx.stroke();
+		}
 
 		// Progress arc while holding position / gesture
 		if (progress > 0 && detectedFace && !multiple) {
@@ -215,11 +237,12 @@
 			const h = canvasEl!.height;
 			const cx = w / 2;
 			const cy = h / 2;
-			const rx = w * 0.28;
-			const ry = h * 0.44;
+			// ── VERTICAL OVAL ──────────────────────────────────────────────────
+			const rx = w * 0.22;   // narrower width (was 0.28)
+			const ry = h * 0.48;   // taller height (was 0.44)
 
 			const centred = Math.abs(faceCX - cx) < rx * 0.5 && Math.abs(faceCY - cy) < ry * 0.5;
-			const largeEnough = faceW > w * 0.15 && faceH > h * 0.2;
+			const largeEnough = faceW > w * 0.12 && faceH > h * 0.18; // Adjusted for vertical oval
 
 			if (centred && largeEnough) {
 				const now = performance.now();

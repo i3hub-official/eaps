@@ -1,3 +1,4 @@
+<!-- src/lib/components/dashboard/session-clock.svelte -->
 <script lang="ts">
 	import { cn } from '$lib/utils';
 

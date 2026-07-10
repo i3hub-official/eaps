@@ -6,6 +6,7 @@
 	import Loader2 from '@lucide/svelte/icons/loader-2';
 	import CheckCircle2 from '@lucide/svelte/icons/check-circle-2';
 	import AlertCircle from '@lucide/svelte/icons/alert-circle';
+	import ScanFace from '@lucide/svelte/icons/scan-face';
 	import { getHuman, cosineSimilarity } from '$lib/client/face/human.js';
 
 	let {
@@ -20,6 +21,7 @@
 	let statusText = $state('Loading face model…');
 	let errorMessage = $state('');
 	let similarityPercent = $state<number | null>(null);
+	let faceDetected = $state(false);
 
 	// Tune these against your Human model's actual false-accept/false-reject
 	// rates in production — these are reasonable starting points, not
@@ -30,10 +32,101 @@
 	const MIN_ANTISPOOF = 0.5;
 
 	let videoEl = $state<HTMLVideoElement | null>(null);
+	let canvasEl = $state<HTMLCanvasElement | null>(null);
+	let ctx: CanvasRenderingContext2D | null = null;
 	let stream: MediaStream | null = null;
 	let human: Awaited<ReturnType<typeof getHuman>> | null = null;
 	let stopped = false;
 	let loopHandle: number | null = null;
+	let lastResult: any = null;
+
+	// ── Theme-aware colors ────────────────────────────────────────────────────
+	function themeColor(varName: string, fallback: string, alpha = 1) {
+		if (typeof window === 'undefined') return fallback;
+		const raw = getComputedStyle(document.documentElement).getPropertyValue(varName).trim();
+		if (!raw) return fallback;
+		return alpha < 1 ? `hsl(${raw} / ${alpha})` : `hsl(${raw})`;
+	}
+
+	function drawOverlay(detectedFace: boolean, multiple: boolean) {
+		if (!ctx || !canvasEl) return;
+		const w = canvasEl.width;
+		const h = canvasEl.height;
+		const cx = w / 2;
+		const cy = h / 2;
+		
+		// ── VERTICAL OVAL ──────────────────────────────────────────────────
+		const rx = w * 0.22;   // narrower width
+		const ry = h * 0.48;   // taller height
+
+		const primary = themeColor('--primary', '#00c9a7');
+		const destructive = themeColor('--destructive', '#ef4444');
+		const border = themeColor('--border', 'rgba(255,255,255,0.18)');
+
+		ctx.clearRect(0, 0, w, h);
+
+		// Dimming mask with an oval cutout for the face
+		ctx.save();
+		ctx.fillStyle = themeColor('--background', 'rgba(0,0,0,0.7)', 0.7);
+		ctx.fillRect(0, 0, w, h);
+		ctx.globalCompositeOperation = 'destination-out';
+		ctx.beginPath();
+		ctx.ellipse(cx, cy, rx, ry, 0, 0, Math.PI * 2);
+		ctx.fill();
+		ctx.restore();
+
+		// Oval ring
+		ctx.beginPath();
+		ctx.ellipse(cx, cy, rx, ry, 0, 0, Math.PI * 2);
+		ctx.strokeStyle = multiple ? destructive : detectedFace ? primary : border;
+		ctx.lineWidth = detectedFace ? 2.5 : 1.5;
+		ctx.stroke();
+
+		// Corner brackets - adjusted for vertical oval
+		const cornerOffset = 16;
+		const corners: [number, number, [number, number]][] = [
+			[cx - rx, cy - ry, [1,  1]],
+			[cx + rx, cy - ry, [-1, 1]],
+			[cx - rx, cy + ry, [1, -1]],
+			[cx + rx, cy + ry, [-1,-1]],
+		];
+		ctx.strokeStyle = multiple ? destructive : detectedFace ? primary : themeColor('--primary', 'rgba(0,201,167,0.6)', 0.6);
+		ctx.lineWidth = 2.5;
+		ctx.lineCap = 'round';
+		for (const [x, y, [dx, dy]] of corners) {
+			ctx.beginPath();
+			ctx.moveTo(x + dx * cornerOffset, y);
+			ctx.lineTo(x, y);
+			ctx.lineTo(x, y + dy * cornerOffset);
+			ctx.stroke();
+		}
+
+		// Status badge
+		const badgeY = h * 0.08;
+		ctx.save();
+		const badgeText = multiple ? '⚠ Multiple faces' : detectedFace ? '✓ Face detected' : 'Searching for face...';
+		const badgeColor = multiple ? destructive : detectedFace ? primary : border;
+		const bgColor = multiple ? themeColor('--destructive', 'rgba(239,68,68,0.2)', 0.2) : 
+						detectedFace ? themeColor('--primary', 'rgba(0,201,167,0.15)', 0.15) : 
+						themeColor('--muted', 'rgba(255,255,255,0.07)', 0.07);
+		
+		ctx.fillStyle = bgColor;
+		ctx.strokeStyle = badgeColor;
+		ctx.lineWidth = 1;
+		const textWidth = ctx.measureText(badgeText).width;
+		const pillW = Math.min(textWidth + 40, w * 0.8);
+		const pillX = cx - pillW / 2;
+		ctx.beginPath();
+		ctx.roundRect(pillX, badgeY - 14, pillW, 28, 14);
+		ctx.fill();
+		ctx.stroke();
+		ctx.fillStyle = badgeColor;
+		ctx.font = '600 12px system-ui';
+		ctx.textAlign = 'center';
+		ctx.textBaseline = 'middle';
+		ctx.fillText(badgeText, cx, badgeY);
+		ctx.restore();
+	}
 
 	async function start() {
 		try {
@@ -52,8 +145,15 @@
 			videoEl.srcObject = stream;
 			await videoEl.play();
 
+			if (canvasEl) {
+				canvasEl.width = videoEl.videoWidth || 640;
+				canvasEl.height = videoEl.videoHeight || 480;
+				ctx = canvasEl.getContext('2d');
+			}
+
 			phase = 'scanning';
 			statusText = 'Position your face in the frame';
+			faceDetected = false;
 			runDetectionLoop();
 		} catch (err) {
 			phase = 'error';
@@ -61,21 +161,43 @@
 		}
 	}
 
+	async function detect() {
+		if (!human || !videoEl || stopped) return;
+		try {
+			lastResult = await human.detect(videoEl);
+		} catch {
+			lastResult = null;
+		}
+	}
+
 	async function runDetectionLoop() {
 		if (stopped || !human || !videoEl) return;
 
-		const result = await human.detect(videoEl);
-		const face = result.face[0];
+		await detect();
+		const face = lastResult?.face?.[0];
+		const faces = lastResult?.face ?? [];
 
 		if (!face) {
+			faceDetected = false;
 			statusText = 'No face detected — center your face in the frame';
-		} else if (result.face.length > 1) {
+			drawOverlay(false, false);
+		} else if (faces.length > 1) {
+			faceDetected = false;
 			statusText = 'Multiple faces detected — make sure you are alone';
+			drawOverlay(false, true);
 		} else if ((face.faceScore ?? 0) < MIN_FACE_SCORE) {
+			faceDetected = true;
 			statusText = 'Move closer and look directly at the camera';
+			drawOverlay(true, false);
 		} else if (face.embedding) {
+			faceDetected = true;
+			drawOverlay(true, false);
 			await checkMatch(face.embedding, face.real ?? 0, face.live ?? 0);
 			return;
+		} else {
+			faceDetected = false;
+			statusText = 'Processing face...';
+			drawOverlay(false, false);
 		}
 
 		loopHandle = requestAnimationFrame(runDetectionLoop);
@@ -143,6 +265,7 @@
 	function retry() {
 		errorMessage = '';
 		similarityPercent = null;
+		faceDetected = false;
 		stopped = false;
 		start();
 	}
@@ -167,31 +290,58 @@
 			<X class="size-5" />
 		</button>
 
-		<h2 class="mb-1 text-lg font-semibold">Verify your identity</h2>
+		<div class="mb-1 flex items-center gap-2">
+			<h2 class="text-lg font-semibold">Verify your identity</h2>
+			{#if phase === 'scanning'}
+				<span class="rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-primary">
+					Scanning
+				</span>
+			{/if}
+		</div>
 		<p class="mb-4 text-sm text-muted-foreground">Look directly at the camera to continue.</p>
 
 		<div class="relative mb-4 aspect-video overflow-hidden rounded-lg bg-black">
 			<!-- svelte-ignore a11y_media_has_caption -->
 			<video bind:this={videoEl} class="h-full w-full -scale-x-100 object-cover" muted playsinline></video>
+			<canvas bind:this={canvasEl} class="pointer-events-none absolute inset-0 h-full w-full"></canvas>
 
 			{#if phase === 'loading-model' || phase === 'requesting-camera' || phase === 'checking'}
-				<div class="absolute inset-0 flex items-center justify-center bg-black/50">
+				<div class="absolute inset-0 flex flex-col items-center justify-center gap-2 bg-black/50">
 					<Loader2 class="size-8 animate-spin text-white" />
+					<p class="text-sm text-white/80">{statusText}</p>
 				</div>
 			{/if}
 
 			{#if phase === 'success'}
 				<div class="absolute inset-0 flex items-center justify-center bg-black/50">
-					<CheckCircle2 class="size-12 text-primary" />
+					<div class="flex flex-col items-center gap-2">
+						<CheckCircle2 class="size-12 text-primary" />
+						<p class="text-sm font-medium text-white">Verified!</p>
+					</div>
 				</div>
 			{/if}
 
 			{#if phase === 'failed'}
 				<div class="absolute inset-0 flex items-center justify-center bg-black/50">
-					<AlertCircle class="size-12 text-destructive" />
+					<div class="flex flex-col items-center gap-2">
+						<AlertCircle class="size-12 text-destructive" />
+						<p class="text-sm font-medium text-white">Verification Failed</p>
+					</div>
 				</div>
 			{/if}
 		</div>
+
+		{#if phase === 'scanning'}
+			<div class="mb-3 flex items-center justify-center gap-2 text-sm font-medium">
+				{#if faceDetected}
+					<CheckCircle2 class="size-4 text-primary" />
+					<span class="text-primary">Face detected</span>
+				{:else}
+					<ScanFace class="size-4 text-muted-foreground" />
+					<span class="text-muted-foreground">Looking for face…</span>
+				{/if}
+			</div>
+		{/if}
 
 		{#if phase === 'error'}
 			<div class="mb-4 flex items-start gap-2 rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
