@@ -337,40 +337,44 @@ async function handleFileUpload(event: Event) {
 		return Object.keys(errors).length === 0;
 	}
 
-	async function handleSubmit(event: Event) {
-		event.preventDefault();
-		if (!validateForm()) return;
-		isSubmitting = true;
+async function handleSubmit(event: Event) {
+	event.preventDefault();
+	if (!validateForm()) return;
+	isSubmitting = true;
 
-		const formElement = event.target as HTMLFormElement;
-		const formDataObj = new FormData(formElement);
+	const formElement = event.target as HTMLFormElement;
+	const formDataObj = new FormData(formElement);
 
-		// Add selected questions
-		formData.selectedQuestions.forEach((id) => {
-			formDataObj.append('questionIds[]', id);
+	// Add selected questions as a JSON string
+	const questionIdsJson = JSON.stringify(formData.selectedQuestions);
+	formDataObj.append('questionIds', questionIdsJson);
+
+	try {
+		const response = await fetch('/lecturer/assessments/create/test', {
+			method: 'POST',
+			body: formDataObj,
 		});
 
-		try {
-			const response = await fetch('/lecturer/assessments/create/test', {
-				method: 'POST',
-				body: formDataObj,
-			});
+		const result = await response.json();
 
-			const result = await response.json();
-
-			if (response.ok && result.success) {
-				window.location.href = `/lecturer/assessments/edit/${result.id}`;
-			} else if (response.status === 400 || response.status === 403) {
-				errors = result.errors || { error: result.error || 'Validation failed' };
+		if (response.ok && result.success) {
+			window.location.href = `/lecturer/assessments/edit/${result.id}`;
+		} else if (response.status === 400 || response.status === 403) {
+			// Handle validation errors
+			if (result.errors) {
+				errors = result.errors;
 			} else {
-				errors = { error: result.error || 'Failed to create test' };
+				errors = { error: result.error || 'Validation failed' };
 			}
-		} catch (err) {
-			errors = { error: err instanceof Error ? err.message : 'Failed to create test' };
-		} finally {
-			isSubmitting = false;
+		} else {
+			errors = { error: result.error || 'Failed to create test' };
 		}
+	} catch (err) {
+		errors = { error: err instanceof Error ? err.message : 'Failed to create test' };
+	} finally {
+		isSubmitting = false;
 	}
+}
 </script>
 
 <svelte:head>

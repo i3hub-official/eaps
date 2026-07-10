@@ -71,6 +71,8 @@ export const load: PageServerLoad = async ({ locals }) => {
 	};
 };
 
+
+
 export const actions: Actions = {
 	default: async ({ request, locals }) => {
 		const user = await requireLecturer(locals.user);
@@ -91,8 +93,16 @@ export const actions: Actions = {
 		const startDate = formData.get('startDate') ? new Date(String(formData.get('startDate'))) : null;
 		const endDate = formData.get('endDate') ? new Date(String(formData.get('endDate'))) : null;
 
-		// ← the piece that was missing entirely
-		const questionIds = formData.getAll('questionIds[]').map(String).filter(Boolean);
+		// Parse the JSON string for question IDs
+		let questionIds: string[] = [];
+		try {
+			const questionIdsJson = formData.get('questionIds');
+			if (questionIdsJson && typeof questionIdsJson === 'string') {
+				questionIds = JSON.parse(questionIdsJson);
+			}
+		} catch (err) {
+			console.error('Failed to parse questionIds:', err);
+		}
 
 		const errors: Record<string, string> = {};
 		if (!courseId) errors.courseId = 'Course is required';
@@ -124,8 +134,7 @@ export const actions: Actions = {
 			}
 
 			// Security: only allow linking questions the lecturer actually owns
-			// and that belong to the selected course — prevents a crafted
-			// request from pulling in another lecturer's question IDs.
+			// and that belong to the selected course.
 			const ownedQuestions = await prisma.question.findMany({
 				where: {
 					id: { in: questionIds },
@@ -145,9 +154,7 @@ export const actions: Actions = {
 				});
 			}
 
-			// Wrapped in a transaction so a partial failure (e.g. one bad
-			// AssessmentQuestion insert) doesn't leave an orphaned Assessment
-			// with no linked questions.
+			// Wrapped in a transaction
 			const test = await prisma.$transaction(async (tx) => {
 				const created = await tx.assessment.create({
 					data: {

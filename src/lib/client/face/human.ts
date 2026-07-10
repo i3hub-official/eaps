@@ -15,10 +15,12 @@ export async function getHuman(): Promise<Human> {
   loadPromise = (async () => {
     const { default: HumanClass } = await import('@vladmandic/human')
 
+        //modelBasePath: 'https://cdn.jsdelivr.net/npm/@vladmandic/human/models/',
+
+        
     const human = new HumanClass({
       backend: 'webgl',
       modelBasePath: '/models/human/',
-    //modelBasePath: 'https://cdn.jsdelivr.net/npm/@vladmandic/human/models/',
 
       face: {
         enabled: true,
@@ -29,10 +31,10 @@ export async function getHuman(): Promise<Human> {
         emotion: { enabled: true },
         antispoof: { enabled: true },
         liveness: { enabled: true },
-            },
+        },
       body: { enabled: false },
       hand: { enabled: false },
-      gesture: { enabled: true },
+      gesture: { enabled: false },
       filter: { enabled: false },
     })
 
