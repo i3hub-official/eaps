@@ -1,7 +1,7 @@
 <!-- src/routes/(auth)/register/+page.svelte -->
 <script lang="ts">
 	import { onDestroy, tick } from 'svelte';
-	 import { deserialize, enhance } from '$app/forms';
+	import { deserialize, enhance } from '$app/forms';
 	import { goto } from '$app/navigation';
 	import jsQR from 'jsqr';
 	import { AuthShell } from '$lib/components/index.js';
@@ -43,7 +43,14 @@
 	let currentStep = $state<Step>(1);
 	let isLoading = $state(false);
 	let errorMessage = $state(form?.error ?? '');
-	    let showSuccess = $state(false);
+	let showSuccess = $state(false);
+
+	// Keep errorMessage in sync whenever the server action returns a new
+	// `form` prop (e.g. progressive-enhancement fallback, or any path that
+	// doesn't go through the custom use:enhance branches below).
+	$effect(() => {
+		if (form?.error) errorMessage = form.error;
+	});
 
 	let uniMatric = $state('');
 	let refNumber = $state('');
@@ -277,7 +284,7 @@
 	async function handleQrUpload(e: Event) {
 		const file = (e.target as HTMLInputElement).files?.[0];
 		if (!file) return;
-		
+
 		const matricErr = validateMatricNumber(uniMatric);
 		if (matricErr) {
 			errorMessage = 'Please enter a valid matric number before scanning.';
@@ -287,7 +294,7 @@
 		}
 		errorMessage = '';
 		(e.target as HTMLInputElement).value = '';
-		
+
 		try {
 			const bitmap = await createImageBitmap(file);
 			const canvas = document.createElement('canvas');
@@ -296,10 +303,10 @@
 			const ctx = canvas.getContext('2d')!;
 			ctx.drawImage(bitmap, 0, 0);
 			const imgData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-			
+
 			// Try multiple detection methods
 			let code = jsQR(imgData.data, imgData.width, imgData.height);
-			
+
 			// Try inverted
 			if (!code) {
 				const invertedData = new Uint8ClampedArray(imgData.data);
@@ -308,7 +315,7 @@
 				}
 				code = jsQR(invertedData, imgData.width, imgData.height);
 			}
-			
+
 			// Try contrast enhanced
 			if (!code) {
 				const enhancedData = new Uint8ClampedArray(imgData.data);
@@ -321,7 +328,7 @@
 				}
 				code = jsQR(enhancedData, imgData.width, imgData.height);
 			}
-			
+
 			if (code?.data) {
 				settingFromScan = true;
 				refNumber = extractRefFromUrl(code.data, REF_EXTRACT_PARAM);
@@ -349,14 +356,14 @@
 		camError = '';
 		errorMessage = '';
 		scanAttempts = 0;
-		
+
 		try {
-			camStream = await navigator.mediaDevices.getUserMedia({ 
-				video: { 
+			camStream = await navigator.mediaDevices.getUserMedia({
+				video: {
 					facingMode: 'environment',
 					width: { ideal: 1280 },
 					height: { ideal: 720 }
-				} 
+				}
 			});
 			showWebcam = true;
 			await new Promise((r) => setTimeout(r, 100));
@@ -373,10 +380,10 @@
 	function startScanLoop() {
 		scanCanvas = document.createElement('canvas');
 		scanAttempts = 0;
-		
+
 		// Clear any existing interval
 		if (scanInterval) clearInterval(scanInterval);
-		
+
 		scanInterval = setInterval(async () => {
 			if (!videoEl || videoEl.readyState !== 4) {
 				scanAttempts++;
@@ -386,36 +393,34 @@
 				}
 				return;
 			}
-			
+
 			try {
 				scanCanvas.width = videoEl.videoWidth;
 				scanCanvas.height = videoEl.videoHeight;
 				const ctx = scanCanvas.getContext('2d')!;
-				
+
 				// Draw the video frame
 				ctx.drawImage(videoEl, 0, 0);
-				
+
 				// Get image data
 				const imgData = ctx.getImageData(0, 0, scanCanvas.width, scanCanvas.height);
-				
+
 				// Try to detect QR code with multiple attempts
 				let code = jsQR(imgData.data, imgData.width, imgData.height);
-				
+
 				// If not found, try with inverted colors (some QR codes are inverted)
 				if (!code) {
-					// Try with inverted image data
 					const invertedData = new Uint8ClampedArray(imgData.data);
 					for (let i = 0; i < invertedData.length; i++) {
 						invertedData[i] = 255 - invertedData[i];
 					}
 					code = jsQR(invertedData, imgData.width, imgData.height);
 				}
-				
+
 				// If still not found, try with grayscale contrast enhancement
 				if (!code) {
 					const enhancedData = new Uint8ClampedArray(imgData.data);
 					for (let i = 0; i < enhancedData.length; i += 4) {
-						// Simple contrast enhancement
 						const gray = (enhancedData[i] + enhancedData[i+1] + enhancedData[i+2]) / 3;
 						const enhanced = gray > 128 ? 255 : 0;
 						enhancedData[i] = enhanced;
@@ -424,9 +429,8 @@
 					}
 					code = jsQR(enhancedData, imgData.width, imgData.height);
 				}
-				
+
 				if (code?.data) {
-					// Found QR code - process it
 					stopWebcam();
 					settingFromScan = true;
 					refNumber = extractRefFromUrl(code.data, REF_EXTRACT_PARAM);
@@ -437,7 +441,7 @@
 					fetchReceipt(true);
 					return;
 				}
-				
+
 				scanAttempts++;
 				if (scanAttempts > MAX_SCAN_ATTEMPTS) {
 					stopWebcam();
@@ -499,55 +503,6 @@
 		errorMessage = '';
 		currentStep = (currentStep - 1) as Step;
 	}
-
-async function handleSubmit() {
-    console.log('handleSubmit called');  // ← add this
-    
-    errorMessage = '';
-    touchPassword(password);
-    touchConfirm(confirmPassword);
-    
-    console.log('errors3:', errors3);  // ← add this
-    
-    const pErr = validatePassword(password);
-    const cErr = validateConfirm(confirmPassword);
-    
-    console.log('pErr:', pErr, 'cErr:', cErr);  // ← add this
-    
-    if (pErr || cErr) {
-        errorMessage = pErr ?? cErr ?? '';
-        console.log('Validation failed, returning early');  // ← add this
-        return;
-    }
-    
-    isLoading = true;
-    console.log('Starting fetch...');  // ← add this
-    
-    try {
-        const fd = new FormData();
-        // ... set all fields ...
-        
-        console.log('FormData prepared, fetching...');  // ← add this
-        
-        const res = await fetch('?/signup', { method: 'POST', body: fd });
-        
-        console.log('Response status:', res.status);  // ← add this
-        console.log('Response headers:', Object.fromEntries(res.headers));  // ← add this
-        
-        const text = await res.text();
-        console.log('Response body:', text.slice(0, 500));  // ← add this
-        
-        const result = deserialize(text);
-        console.log('Deserialized result:', result);  // ← add this
-        
-        // ... rest of handling ...
-    } catch (err) {
-        console.error('Error in handleSubmit:', err);  // ← add this
-        errorMessage = err instanceof Error ? err.message : 'Network error';
-    } finally {
-        isLoading = false;
-    }
-}
 
 	const STEPS = ['Verify receipt', 'Your details', 'Set password'];
 
@@ -778,19 +733,19 @@ async function handleSubmit() {
 					{[surname, firstName, otherName].filter(Boolean).join(' ') || '—'}
 				</span>
 			</div>
-			
+
 			<!-- Matric Number -->
 			<div class="flex flex-col gap-0.5">
 				<span class="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">Matric Number</span>
 				<span class="text-base font-medium text-foreground">{matricNumber || '—'}</span>
 			</div>
-			
+
 			<!-- JAMB Registration -->
 			<div class="flex flex-col gap-0.5">
 				<span class="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">JAMB Registration</span>
 				<span class="text-base font-medium text-foreground">{jambRegNo || '—'}</span>
 			</div>
-			
+
 			<!-- College/Faculty with Short Name -->
 			<div class="flex flex-col gap-0.5">
 				<span class="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">College / Faculty</span>
@@ -798,31 +753,31 @@ async function handleSubmit() {
 					{college ? getCollegeDisplayName(college, collegeShortName) : '—'}
 				</span>
 			</div>
-			
+
 			<!-- Department -->
 			<div class="flex flex-col gap-0.5">
 				<span class="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">Department</span>
 				<span class="text-base font-medium text-foreground">{department || '—'}</span>
 			</div>
-			
+
 			<!-- Level -->
 			<div class="flex flex-col gap-0.5">
 				<span class="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">Level</span>
 				<span class="text-base font-medium text-foreground">{level || '—'}</span>
 			</div>
-			
+
 			<!-- Programme -->
 			<div class="flex flex-col gap-0.5">
 				<span class="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">Programme</span>
 				<span class="text-base font-medium text-foreground">UNDERGRADUATE (Regular)</span>
 			</div>
-			
+
 			<!-- Session -->
 			<div class="flex flex-col gap-0.5">
 				<span class="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">Session</span>
 				<span class="text-base font-medium text-foreground">{receiptRaw?.session || '—'}</span>
 			</div>
-			
+
 			<!-- Receipt Number -->
 			<div class="flex flex-col gap-0.5">
 				<span class="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">Receipt Number</span>
@@ -848,7 +803,7 @@ async function handleSubmit() {
 	<div class="flex flex-wrap items-center gap-2 rounded-lg border border-primary/20 bg-primary/5 px-4 py-3 text-sm text-muted-foreground">
 		<span>Student information has been successfully verified.</span>
 	</div>
-	
+
 	<!-- Re-scan button below -->
 	<div class="flex justify-end">
 		<button
@@ -858,7 +813,7 @@ async function handleSubmit() {
 				receiptFetched = false;
 				receiptRaw = null;
 				receiptPreview = null;
-				
+
 				// Clear all form fields
 				surname = '';
 				firstName = '';
@@ -877,7 +832,7 @@ async function handleSubmit() {
 				matricError = '';
 				matricTouched = false;
 				errorMessage = '';
-				
+
 				// Reset to step 1
 				currentStep = 1;
 			}}
@@ -916,10 +871,10 @@ async function handleSubmit() {
 
 			<div class="flex flex-col gap-2">
 				<Label for="s2phone" class="text-sm font-semibold">Phone Number</Label>
-				<Input 
+				<Input
 					id="s2phone"
-					type="tel" 
-					bind:value={phone} 
+					type="tel"
+					bind:value={phone}
 					placeholder="+234 801 234 5678"
 					class="h-11 text-base"
 				/>
@@ -971,31 +926,30 @@ async function handleSubmit() {
             isLoading = true;
             errorMessage = '';
 
-           // Inside use:enhance return callback:
-return async ({ result, update }) => {
-    isLoading = false;
+            return async ({ result, update }) => {
+                isLoading = false;
 
-		if (result.type === 'failure') {
-		// Coerce potential non-string error payloads to string to satisfy TS
-		errorMessage = String(result.data?.error ?? 'Something went wrong.');
-		return;
-	}
+                if (result.type === 'failure') {
+                    // Coerce potential non-string error payloads to string to satisfy TS
+                    errorMessage = String(result.data?.error ?? 'Something went wrong.');
+                    return;
+                }
 
-    if (result.type === 'error') {
-        errorMessage = result.error?.message ?? 'Server error.';
-        return;
-    }
+                if (result.type === 'error') {
+                    errorMessage = result.error?.message ?? 'Server error.';
+                    return;
+                }
 
-    if (result.type === 'success' && result.data?.success) {
-        showSuccess = true;
-        // Wait 2 seconds, then navigate
-        await new Promise(r => setTimeout(r, 2000));
-        await goto('/student', { invalidateAll: true });
-        return;
-    }
+                if (result.type === 'success' && result.data?.success) {
+                    showSuccess = true;
+                    // Wait 2 seconds, then navigate
+                    await new Promise(r => setTimeout(r, 2000));
+                    await goto('/student', { invalidateAll: true });
+                    return;
+                }
 
-    await update();
-};
+                await update();
+            };
         }}
         class="flex flex-col gap-6"
     >
@@ -1063,7 +1017,5 @@ return async ({ result, update }) => {
 {/if}
 
 {/if}
-
-
 
 </AuthShell>

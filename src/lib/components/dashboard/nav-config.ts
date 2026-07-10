@@ -36,7 +36,7 @@ export type Role = 'student' | 'lecturer' | 'exam-officer' | 'invigilator' | 'ad
 
 export const roleLabel: Record<Role, string> = {
 	student: 'Student Portal',
-	lecturer: 'Lecturer',
+	lecturer: 'Lecturer Portal',
 	'exam-officer': 'Examination Office',
 	invigilator: 'Invigilation Console',
 	admin: 'Administration'

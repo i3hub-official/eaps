@@ -1,6 +1,6 @@
 <script lang="ts">
 	import * as Sidebar from '$lib/components/ui/sidebar/index.js';
-		import { ThemeToggle } from '$lib/components/ui/theme-toggle/index.js';
+	import { ThemeToggle } from '$lib/components/ui/theme-toggle/index.js';
 	import * as DropdownMenu from '$lib/components/ui/dropdown-menu/index.js';
 	import { Separator } from '$lib/components/ui/separator/index.js';
 	import { Button } from '$lib/components/ui/button/index.js';
@@ -26,10 +26,30 @@
 		actions?: Snippet;
 	} = $props();
 
+	// `page.data.user` can arrive in two shapes depending on the portal:
+	//  - student layout pre-shapes it as { name, initials }
+	//  - staff layouts (lecturer/admin/invigilator/exam-officer) return the
+	//    raw AuthenticatedStaff object with firstName/lastName instead.
+	// These helpers normalize either shape so Topbar works for both without
+	// every staff layout needing to reshape its data individually.
+	function buildName(u: any): string | undefined {
+		if (u?.name) return u.name;
+		if (u?.firstName || u?.lastName) return `${u.lastName ?? ''} ${u.firstName ?? ''}`.trim();
+		return undefined;
+	}
+
+	function buildInitials(u: any): string | undefined {
+		if (u?.initials) return u.initials;
+		if (u?.firstName || u?.lastName) {
+			return `${u.lastName?.[0] ?? ''}${u.firstName?.[0] ?? ''}`.toUpperCase() || undefined;
+		}
+		return undefined;
+	}
+
 	// Falls back to session data from the nearest +layout.server.ts (via $page.data.user)
 	// when no explicit override is passed as a prop.
-	let resolvedName = $derived(userName ?? page.data.user?.name ?? 'Guest');
-	let resolvedInitials = $derived(userInitials ?? page.data.user?.initials ?? '?');
+	let resolvedName = $derived(userName ?? buildName(page.data.user) ?? 'Guest');
+	let resolvedInitials = $derived(userInitials ?? buildInitials(page.data.user) ?? '?');
 </script>
 
 <header
@@ -100,5 +120,5 @@
 			</DropdownMenu.Content>
 		</DropdownMenu.Root>
 	</div>
-	
+
 </header>

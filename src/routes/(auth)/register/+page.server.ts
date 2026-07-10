@@ -96,200 +96,197 @@ export const actions: Actions = {
 		}
 	},
 
-signup: async ({ request, cookies, getClientAddress }) => {
-    const form = await request.formData();
-    const g = (k: string) => form.get(k)?.toString().trim() ?? '';
+	signup: async ({ request, cookies, getClientAddress }) => {
+		const form = await request.formData();
+		const g = (k: string) => form.get(k)?.toString().trim() ?? '';
 
-    const firstName = g('firstName');
-    const otherName = g('otherName');
-    const surname = g('surname');
-    const email = g('email').toLowerCase();
-    const phone = g('phone') || null;
-    const password = g('password');
-    const matricNumber = g('matricNumber');
-    const jambRegNo = g('jambRegNo');
-    const departmentStr = g('department');
-    const levelStr = g('level');
-    const session = g('session') || null;
-    const receiptNo = g('receiptNo') || null;
-    const receiptRef = g('receiptRef') || null;
-    const programmeType = g('programmeType') || 'UNDERGRADUATE';
+		const firstName = g('firstName');
+		const otherName = g('otherName');
+		const surname = g('surname');
+		const email = g('email').toLowerCase();
+		const phone = g('phone') || null;
+		const password = g('password');
+		const matricNumber = g('matricNumber');
+		const jambRegNo = g('jambRegNo');
+		const departmentStr = g('department');
+		const levelStr = g('level');
+		const session = g('session') || null;
+		const receiptNo = g('receiptNo') || null;
+		const receiptRef = g('receiptRef') || null;
+		const programmeType = g('programmeType') || 'UNDERGRADUATE';
 
-    const values = { 
-        firstName, 
-        otherName, 
-        surname, 
-        email, 
-        phone, 
-        matricNumber, 
-        department: departmentStr, 
-        level: levelStr,
-        jambRegNo,
-    };
+		const values = {
+			firstName,
+			otherName,
+			surname,
+			email,
+			phone,
+			matricNumber,
+			department: departmentStr,
+			level: levelStr,
+			jambRegNo,
+		};
 
-    if (!email) return fail(400, { error: 'Email is required.', values });
-    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
-        return fail(400, { error: 'Enter a valid email address.', values });
-    }
-    if (!firstName) return fail(400, { error: 'First name is required.', values });
-    if (!surname) return fail(400, { error: 'Surname is required.', values });
-    if (!matricNumber) return fail(400, { error: 'Matric number is required.', values });
-    if (!jambRegNo) return fail(400, { error: 'JAMB registration number is required.', values });
-    if (!departmentStr) return fail(400, { error: 'Department is required.', values });
-    if (!levelStr) return fail(400, { error: 'Level is required.', values });
+		if (!email) return fail(400, { error: 'Email is required.', values });
+		if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+			return fail(400, { error: 'Enter a valid email address.', values });
+		}
+		if (!firstName) return fail(400, { error: 'First name is required.', values });
+		if (!surname) return fail(400, { error: 'Surname is required.', values });
+		if (!matricNumber) return fail(400, { error: 'Matric number is required.', values });
+		if (!jambRegNo) return fail(400, { error: 'JAMB registration number is required.', values });
+		if (!departmentStr) return fail(400, { error: 'Department is required.', values });
+		if (!levelStr) return fail(400, { error: 'Level is required.', values });
 
-    const pwErr = validatePasswordStrength(password);
-    if (pwErr) return fail(400, { error: pwErr, values });
+		const pwErr = validatePasswordStrength(password);
+		if (pwErr) return fail(400, { error: pwErr, values });
 
-    const prisma = await getPrismaClient();
+		const prisma = await getPrismaClient();
 
-    // Find department with college
-    const dept = await prisma.department.findFirst({
-        where: { name: { contains: departmentStr, mode: 'insensitive' } },
-        include: { college: true },
-    });
-    if (!dept) {
-        return {
-            success: false,
-            error: `Could not match department "${departmentStr}" to a known department. Contact the registrar.`,
-            values,
-        };
-    }
+		// Find department with college
+		const dept = await prisma.department.findFirst({
+			where: { name: { contains: departmentStr, mode: 'insensitive' } },
+			include: { college: true },
+		});
+		if (!dept) {
+			return fail(400, {
+				error: `Could not match department "${departmentStr}" to a known department. Contact the registrar.`,
+				values,
+			});
+		}
 
-    // Try multiple strategies to find a programme
-    let programme = null;
+		// Try multiple strategies to find a programme
+		let programme = null;
 
-    programme = await prisma.programme.findFirst({
-        where: {
-            departmentId: dept.id,
-            type: programmeType as any,
-            shortName: { contains: 'Regular', mode: 'insensitive' },
-            isActive: true,
-        },
-    });
+		programme = await prisma.programme.findFirst({
+			where: {
+				departmentId: dept.id,
+				type: programmeType as any,
+				shortName: { contains: 'Regular', mode: 'insensitive' },
+				isActive: true,
+			},
+		});
 
-    if (!programme) {
-        programme = await prisma.programme.findFirst({
-            where: {
-                departmentId: dept.id,
-                type: programmeType as any,
-                isActive: true,
-            },
-        });
-    }
+		if (!programme) {
+			programme = await prisma.programme.findFirst({
+				where: {
+					departmentId: dept.id,
+					type: programmeType as any,
+					isActive: true,
+				},
+			});
+		}
 
-    if (!programme) {
-        programme = await prisma.programme.findFirst({
-            where: {
-                departmentId: dept.id,
-                isActive: true,
-            },
-        });
-    }
+		if (!programme) {
+			programme = await prisma.programme.findFirst({
+				where: {
+					departmentId: dept.id,
+					isActive: true,
+				},
+			});
+		}
 
-    if (!programme) {
-        return {
-            success: false,
-            error: `No active programme is configured for ${dept.name}. Contact the registrar.`,
-            values,
-        };
-    }
+		if (!programme) {
+			return fail(400, {
+				error: `No active programme is configured for ${dept.name}. Contact the registrar.`,
+				values,
+			});
+		}
 
-    const levelNum = parseInt(levelStr, 10);
-    if (Number.isNaN(levelNum)) {
-        return { success: false, error: `Could not read level "${levelStr}".`, values };
-    }
-    const level = await prisma.level.findUnique({ where: { name: levelNum } });
-    if (!level) {
-        return {
-            success: false,
-            error: `Level ${levelNum} is not configured in the system. Contact the registrar.`,
-            values,
-        };
-    }
+		const levelNum = parseInt(levelStr, 10);
+		if (Number.isNaN(levelNum)) {
+			return fail(400, { error: `Could not read level "${levelStr}".`, values });
+		}
+		const level = await prisma.level.findUnique({ where: { name: levelNum } });
+		if (!level) {
+			return fail(400, {
+				error: `Level ${levelNum} is not configured in the system. Contact the registrar.`,
+				values,
+			});
+		}
 
-    const protectedData = await protectStudentRegistration({
-        email,
-        phone,
-        firstName,
-        lastName: surname,
-        otherNames: otherName || null,
-        matricNumber,
-        jambRegNo,
-        receiptNo,
-        receiptRef,
-    });
+		const protectedData = await protectStudentRegistration({
+			email,
+			phone,
+			firstName,
+			lastName: surname,
+			otherNames: otherName || null,
+			matricNumber,
+			jambRegNo,
+			receiptNo,
+			receiptRef,
+		});
 
-    const [dupEmail, dupMatric, dupJamb, dupPhone] = await Promise.all([
-        prisma.student.findUnique({ where: { emailHash: protectedData.emailHash } }),
-        prisma.student.findUnique({ where: { matricNumber: protectedData.matricNumber } }),
-        prisma.student.findUnique({ where: { jambRegNo: protectedData.jambRegNo } }),
-        protectedData.phoneHash 
-            ? prisma.student.findUnique({ where: { phoneHash: protectedData.phoneHash } })
-            : Promise.resolve(null),
-    ]);
+		const [dupEmail, dupMatric, dupJamb, dupPhone] = await Promise.all([
+			prisma.student.findUnique({ where: { emailHash: protectedData.emailHash } }),
+			prisma.student.findUnique({ where: { matricNumber: protectedData.matricNumber } }),
+			prisma.student.findUnique({ where: { jambRegNo: protectedData.jambRegNo } }),
+			protectedData.phoneHash
+				? prisma.student.findUnique({ where: { phoneHash: protectedData.phoneHash } })
+				: Promise.resolve(null),
+		]);
 
-    if (dupEmail) {
-        return fail(400, { error: 'An account with this email already exists.', values });
-    }
-    if (dupMatric) {
-        return fail(400, { error: 'An account with this matric number already exists.', values });
-    }
-    if (dupJamb) {
-        return fail(400, { error: 'An account with this JAMB registration number already exists.', values });
-    }
-    if (dupPhone) {
-        return fail(400, { error: 'An account with this phone number already exists.', values });
-    }
+		if (dupEmail) {
+			return fail(400, { error: 'An account with this email already exists.', values });
+		}
+		if (dupMatric) {
+			return fail(400, { error: 'An account with this matric number already exists.', values });
+		}
+		if (dupJamb) {
+			return fail(400, { error: 'An account with this JAMB registration number already exists.', values });
+		}
+		if (dupPhone) {
+			return fail(400, { error: 'An account with this phone number already exists.', values });
+		}
 
-    const passwordHash = await hashPassword(password);
+		const passwordHash = await hashPassword(password);
 
-    const entryYear =
-        session && /^\d{4}/.test(session) ? parseInt(session.slice(0, 4), 10) : new Date().getFullYear();
+		const entryYear =
+			session && /^\d{4}/.test(session) ? parseInt(session.slice(0, 4), 10) : new Date().getFullYear();
 
-    let student;
-    try {
-        student = await prisma.student.create({
-            data: {
-                matricNumber: protectedData.matricNumber,
-                jambRegNo: protectedData.jambRegNo,
-                receiptNo: protectedData.receiptNo,
-                receiptRef: protectedData.receiptRef,
-                receiptSource: 'MOUAU',
-                registrationSession: session,
-                email: protectedData.email,
-                emailHash: protectedData.emailHash,
-                passwordHash,
-                firstName: protectedData.firstName,
-                lastName: protectedData.lastName,
-                otherNames: protectedData.otherNames,
-                phone: protectedData.phone,
-                phoneHash: protectedData.phoneHash,
-                departmentId: dept.id,
-                programmeId: programme.id,
-                currentLevelId: level.id,
-                entryYear,
-            },
-        });
-    } catch (err: unknown) {
-        const message = err instanceof Error ? err.message : String(err);
-        console.error('[register/signup]', message);
+		let student;
+		try {
+			student = await prisma.student.create({
+				data: {
+					matricNumber: protectedData.matricNumber,
+					jambRegNo: protectedData.jambRegNo,
+					receiptNo: protectedData.receiptNo,
+					receiptRef: protectedData.receiptRef,
+					receiptSource: 'MOUAU',
+					registrationSession: session,
+					email: protectedData.email,
+					emailHash: protectedData.emailHash,
+					passwordHash,
+					firstName: protectedData.firstName,
+					lastName: protectedData.lastName,
+					otherNames: protectedData.otherNames,
+					phone: protectedData.phone,
+					phoneHash: protectedData.phoneHash,
+					departmentId: dept.id,
+					programmeId: programme.id,
+					currentLevelId: level.id,
+					entryYear,
+				},
+			});
+		} catch (err: unknown) {
+			const message = err instanceof Error ? err.message : String(err);
+			console.error('[register/signup]', message);
 
-        if (message.toLowerCase().includes('unique constraint')) {
-            return fail(400, {
-                error: 'An account with this email, matric number, JAMB number, or phone number already exists.',
-                values,
-            });
-        }
-        return fail(400, { error: 'Unable to create account. Please try again.', values });
-    }
+			if (message.toLowerCase().includes('unique constraint')) {
+				return fail(400, {
+					error: 'An account with this email, matric number, JAMB number, or phone number already exists.',
+					values,
+				});
+			}
+			return fail(400, { error: 'Unable to create account. Please try again.', values });
+		}
 
-    const ip = getClientAddress();
-    const userAgent = request.headers.get('user-agent') ?? undefined;
-    const { token } = await createStudentSession(student.id, { ipAddress: ip, userAgent });
-    cookies.set(STUDENT_COOKIE, token, cookieOptions);
+		const ip = getClientAddress();
+		const userAgent = request.headers.get('user-agent') ?? undefined;
+		const { token } = await createStudentSession(student.id, { ipAddress: ip, userAgent });
+		cookies.set(STUDENT_COOKIE, token, cookieOptions);
 
-    // throw redirect(303, '/student');
-	return { success: true };
-},
+		// throw redirect(303, '/student');
+		return { success: true };
+	},
 };

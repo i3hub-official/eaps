@@ -1,196 +1,446 @@
 <!-- src/routes/(lecturer)/lecturer/+page.svelte -->
 <script lang="ts">
-	import { page } from '$app/state';
-	import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '$lib/components/ui/card/index.js';
-	import { Badge } from '$lib/components/ui/badge/index.js';
-	import { Button } from '$lib/components/ui/button/index.js';
-	import StatCard from '$lib/components/dashboard/stat-card.svelte';
+	import {
+		Card,
+		CardContent,
+		CardDescription,
+		CardHeader,
+		CardTitle,
+	} from '$lib/components/ui/card/index.js'
+	import { Badge } from '$lib/components/ui/badge/index.js'
+	import { Button } from '$lib/components/ui/button/index.js'
+	import { Progress } from '$lib/components/ui/progress/index.js'
 	import {
 		Table,
 		TableBody,
-		TableCaption,
 		TableCell,
 		TableHead,
 		TableHeader,
 		TableRow,
-	} from '$lib/components/ui/table/index.js';
-	import { Tabs, TabsContent, TabsList, TabsTrigger } from '$lib/components/ui/tabs/index.js';
-	import { Progress } from '$lib/components/ui/progress/index.js';
-	import BookOpen from '@lucide/svelte/icons/book-open';
-	import Users from '@lucide/svelte/icons/users';
-	import FileCheck from '@lucide/svelte/icons/file-check';
-	import Clock from '@lucide/svelte/icons/clock';
-	import Calendar from '@lucide/svelte/icons/calendar';
-	import ChevronRight from '@lucide/svelte/icons/chevron-right';
-	import GraduationCap from '@lucide/svelte/icons/graduation-cap';
-	import ClipboardList from '@lucide/svelte/icons/clipboard-list';
+	} from '$lib/components/ui/table/index.js'
+	import { Tabs, TabsContent, TabsList, TabsTrigger } from '$lib/components/ui/tabs/index.js'
+	import StatCard from '$lib/components/dashboard/stat-card.svelte'
 
-	let { data } = $props();
+	import BookOpen from '@lucide/svelte/icons/book-open'
+	import Users from '@lucide/svelte/icons/users'
+	import FileText from '@lucide/svelte/icons/file-text'
+	import Calendar from '@lucide/svelte/icons/calendar'
+	import AlertCircle from '@lucide/svelte/icons/alert-circle'
+	import CheckCircle from '@lucide/svelte/icons/check-circle'
+	import Clock from '@lucide/svelte/icons/clock'
+	import TrendingUp from '@lucide/svelte/icons/trending-up'
+	import ChevronRight from '@lucide/svelte/icons/chevron-right'
+	import Play from '@lucide/svelte/icons/play'
 
-	const stats = [
-		{ title: 'My Courses', value: data.stats.totalCourses, icon: BookOpen, trend: '+2 this semester' },
-		{ title: 'Total Students', value: data.stats.totalStudents, icon: Users, trend: '+12 this month' },
-		{ title: 'Pending Assessments', value: data.stats.pendingAssessments, icon: FileCheck, trend: '3 need grading' },
-		{ title: 'Upcoming Exams', value: data.stats.upcomingExams, icon: Calendar, trend: 'Next: Tomorrow' },
-	];
+	let { data } = $props()
 
-	const recentActivity = [
-		{ type: 'Assessment', title: 'CSC301 Quiz 2 graded', time: '2 hours ago', status: 'completed' },
-		{ type: 'Student', title: 'John Doe submitted assignment', time: '4 hours ago', status: 'pending' },
-		{ type: 'Course', title: 'CSC401 Lecture notes updated', time: '1 day ago', status: 'completed' },
-		{ type: 'Assessment', title: 'CSC301 Exam scheduled', time: '2 days ago', status: 'pending' },
-	];
+	const formatDate = (date: Date | string) => {
+		const d = new Date(date)
+		const now = new Date()
+		const diff = d.getTime() - now.getTime()
+		const days = Math.floor(diff / (1000 * 60 * 60 * 24))
+		const hours = Math.floor((diff / (1000 * 60 * 60)) % 24)
 
-	const courses = data.courses.slice(0, 4);
+		if (days === 0 && hours > 0) return `in ${hours}h`
+		if (days === 0) return 'today'
+		if (days === 1) return 'tomorrow'
+		return `in ${days}d`
+	}
+
+	const getStatusColor = (status: string) => {
+		const colors: Record<string, string> = {
+			ACTIVE: 'bg-green-100 text-green-800',
+			SCHEDULED: 'bg-blue-100 text-blue-800',
+			DRAFT: 'bg-gray-100 text-gray-800',
+			ENDED: 'bg-purple-100 text-purple-800',
+			CANCELLED: 'bg-red-100 text-red-800',
+		}
+		return colors[status] || 'bg-gray-100 text-gray-800'
+	}
+
+	const getTypeColor = (type: string) => {
+		const colors: Record<string, string> = {
+			EXAMINATION: 'bg-red-100 text-red-800',
+			TEST: 'bg-orange-100 text-orange-800',
+			ASSIGNMENT: 'bg-blue-100 text-blue-800',
+			PRACTICE: 'bg-green-100 text-green-800',
+		}
+		return colors[type] || 'bg-gray-100 text-gray-800'
+	}
 </script>
 
-<div class="space-y-6">
-	<div class="flex items-center justify-between">
+<div class="flex flex-1 flex-col gap-8 p-8">
+	<!-- Welcome Banner -->
+	<div class="flex flex-col gap-6 md:flex-row md:items-center md:justify-between">
 		<div>
-			<h1 class="text-3xl font-bold">Welcome back, {data.user.firstName}</h1>
-			<p class="text-muted-foreground">Here's what's happening with your courses today.</p>
+			<h1 class="text-3xl font-bold tracking-tight">Welcome back, {data.user.firstName}</h1>
+			<p class="text-muted-foreground mt-1">
+				{data.stats.activeSessions > 0
+					? `${data.stats.activeSessions} exam(s) in progress`
+					: 'No active exams right now'}
+			</p>
 		</div>
-		<Button href="/lecturer/courses">
-			View All Courses
-			<ChevronRight class="ml-2 size-4" />
-		</Button>
+		<div class="flex gap-3">
+			<Button href="/lecturer/grade" variant={data.stats.pendingGrades > 0 ? 'default' : 'outline'} size="default">
+				{#if data.stats.pendingGrades > 0}
+					<AlertCircle class="mr-2 size-4" />
+					Grade ({data.stats.pendingGrades})
+				{:else}
+					All graded
+				{/if}
+			</Button>
+			<Button href="/lecturer/courses" variant="outline" size="default">
+				All Courses
+				<ChevronRight class="ml-2 size-4" />
+			</Button>
+		</div>
 	</div>
 
 	<!-- Stats Grid -->
-	<div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-		{#each stats as stat}
-			<StatCard
-				title={stat.title}
-				value={stat.value}
-				icon={stat.icon}
-				trend={stat.trend}
-			/>
-		{/each}
+	<div class="grid gap-6 sm:grid-cols-2 lg:grid-cols-4">
+		<StatCard
+			title="My Courses"
+			value={data.stats.courses}
+			icon={BookOpen}
+			trend="{data.stats.students} total students"
+		/>
+		<StatCard
+			title="Questions"
+			value={data.stats.questions}
+			icon={FileText}
+			trend="in question bank"
+		/>
+		<StatCard
+			title="Assessments"
+			value={data.stats.published}
+			icon={Calendar}
+			trend="published / {data.stats.assessments} total"
+		/>
+		<StatCard
+			title="Pending Grades"
+			value={data.stats.pendingGrades}
+			icon={AlertCircle}
+			trend="waiting to be graded"
+			trendClass={data.stats.pendingGrades > 0 ? 'text-red-500' : ''}
+		/>
 	</div>
 
-	<!-- Tabs for different views -->
-	<Tabs defaultValue="overview" class="space-y-4">
-		<TabsList>
-			<TabsTrigger value="overview">Overview</TabsTrigger>
-			<TabsTrigger value="courses">My Courses</TabsTrigger>
-			<TabsTrigger value="assessments">Assessments</TabsTrigger>
+	<!-- Tabs -->
+	<Tabs defaultValue="urgent" class="space-y-6">
+		<TabsList class="grid w-full max-w-md grid-cols-4">
+			<TabsTrigger value="urgent">Urgent</TabsTrigger>
+			<TabsTrigger value="upcoming">Upcoming</TabsTrigger>
+			<TabsTrigger value="performance">Performance</TabsTrigger>
+			<TabsTrigger value="activity">Activity</TabsTrigger>
 		</TabsList>
 
-		<TabsContent value="overview" class="space-y-4">
-			<div class="grid gap-4 md:grid-cols-2">
-				<Card>
-					<CardHeader>
-						<CardTitle class="flex items-center gap-2">
-							<ClipboardList class="size-5" />
-							Recent Activity
-						</CardTitle>
-						<CardDescription>Latest updates from your courses</CardDescription>
-					</CardHeader>
-					<CardContent>
-						<div class="space-y-4">
-							{#each recentActivity as activity}
-								<div class="flex items-center justify-between border-b border-border/50 pb-3 last:border-0 last:pb-0">
-									<div>
-										<p class="text-sm font-medium">{activity.title}</p>
-										<div class="flex items-center gap-2 text-xs text-muted-foreground">
-											<span>{activity.type}</span>
-											<span>•</span>
-											<span>{activity.time}</span>
+		<!-- Urgent Tab -->
+		<TabsContent value="urgent" class="space-y-6">
+			<div class="grid gap-6 md:grid-cols-2">
+				<!-- Active Sessions -->
+				{#if data.stats.activeSessions > 0}
+					<Card class="border-orange-200/50 bg-orange-50/50">
+						<CardHeader class="pb-3">
+							<CardTitle class="flex items-center gap-2 text-orange-900">
+								<Play class="size-5" />
+								Active Exams Right Now
+							</CardTitle>
+							<CardDescription class="text-orange-800">
+								{data.stats.activeSessions} student(s) in progress
+							</CardDescription>
+						</CardHeader>
+						<CardContent>
+							<Button href="/invigilator" size="sm" variant="outline">
+								Monitor Now
+								<ChevronRight class="ml-2 size-4" />
+							</Button>
+						</CardContent>
+					</Card>
+				{/if}
+
+				<!-- Pending Grades Alert -->
+				{#if data.stats.pendingGrades > 0}
+					<Card class="border-red-200/50 bg-red-50/50">
+						<CardHeader class="pb-3">
+							<CardTitle class="flex items-center gap-2 text-red-900">
+								<AlertCircle class="size-5" />
+								Answers Awaiting Grade
+							</CardTitle>
+							<CardDescription class="text-red-800">
+								{data.stats.pendingGrades} submission(s) need grading
+							</CardDescription>
+						</CardHeader>
+						<CardContent>
+							<Button href="/lecturer/grade" variant="default" size="sm">
+								Grade Now
+								<ChevronRight class="ml-2 size-4" />
+							</Button>
+						</CardContent>
+					</Card>
+				{/if}
+
+				<!-- Upcoming Due Dates -->
+				{#if data.pendingSubmissions && data.pendingSubmissions.length > 0}
+					<Card class="border-yellow-200/50 bg-yellow-50/50 md:col-span-2">
+						<CardHeader class="pb-3">
+							<CardTitle class="flex items-center gap-2 text-yellow-900">
+								<Clock class="size-5" />
+								Upcoming Assignment Due Dates
+							</CardTitle>
+						</CardHeader>
+						<CardContent>
+							<div class="space-y-3">
+								{#each data.pendingSubmissions.slice(0, 3) as assignment}
+									<div class="flex items-center justify-between rounded-lg border border-yellow-200 bg-white p-4">
+										<div>
+											<p class="font-medium">{assignment.title}</p>
+											<p class="text-sm text-muted-foreground">{assignment.courseCode}</p>
 										</div>
+										<Badge class={formatDate(assignment.dueDate) === 'today' ? 'bg-red-600 text-white' : 'bg-yellow-600 text-white'}>
+											{formatDate(assignment.dueDate)}
+										</Badge>
 									</div>
-									<Badge variant={activity.status === 'completed' ? 'default' : 'secondary'}>
-										{activity.status}
-									</Badge>
+								{/each}
+							</div>
+						</CardContent>
+					</Card>
+				{/if}
+
+				<!-- Recent Submissions to Grade -->
+				{#if data.pendingGrades && data.pendingGrades.length > 0}
+					<Card class="md:col-span-2">
+						<CardHeader class="pb-3">
+							<CardTitle class="flex items-center gap-2">
+								<FileText class="size-5" />
+								Recent Submissions to Grade
+							</CardTitle>
+							<CardDescription>Latest answers awaiting your feedback</CardDescription>
+						</CardHeader>
+						<CardContent>
+							<div class="space-y-4">
+								{#each data.pendingGrades.slice(0, 5) as submission}
+									<div class="flex items-start justify-between rounded-lg border p-4 hover:bg-muted/50 transition-colors">
+										<div class="flex-1">
+											<a href={`/lecturer/grade?submission=${submission.id}`} class="font-medium hover:underline">
+												{submission.studentName}
+											</a>
+											<p class="text-sm text-muted-foreground">{submission.studentMatric}</p>
+											<p class="text-sm mt-1">{submission.assessment}</p>
+											<p class="text-sm text-muted-foreground italic">{submission.questionPreview}</p>
+										</div>
+										<span class="text-sm text-muted-foreground whitespace-nowrap ml-4">
+											{new Date(submission.answeredAt).toLocaleDateString()}
+										</span>
+									</div>
+								{/each}
+							</div>
+						</CardContent>
+					</Card>
+				{/if}
+			</div>
+		</TabsContent>
+
+		<!-- Upcoming Tab -->
+		<TabsContent value="upcoming" class="space-y-6">
+			<Card>
+				<CardHeader class="pb-3">
+					<CardTitle class="flex items-center gap-2">
+						<Calendar class="size-5" />
+						Upcoming Assessments
+					</CardTitle>
+					<CardDescription>Scheduled exams, tests, and assignments</CardDescription>
+				</CardHeader>
+				<CardContent>
+					{#if data.upcomingAssessments && data.upcomingAssessments.length > 0}
+						<div class="space-y-4">
+							{#each data.upcomingAssessments as assessment}
+								<div class="flex items-start justify-between rounded-lg border p-5 hover:bg-muted/50 transition-colors">
+									<div class="flex-1">
+										<div class="flex items-center gap-2">
+											<Badge class={getTypeColor(assessment.type)} variant="outline">
+												{assessment.type}
+											</Badge>
+											<Badge class={getStatusColor(assessment.status)}>
+												{assessment.status}
+											</Badge>
+										</div>
+										<h4 class="font-medium mt-2 text-lg">{assessment.title}</h4>
+										<p class="text-sm text-muted-foreground">
+											{assessment.courseCode} — {assessment.courseName}
+										</p>
+										<p class="text-sm text-muted-foreground mt-1">
+											Duration: {assessment.duration} minutes
+										</p>
+									</div>
+									<div class="text-right whitespace-nowrap ml-4">
+										<p class="font-medium">
+											{formatDate(assessment.startTime)}
+										</p>
+										<p class="text-sm text-muted-foreground">
+											{new Date(assessment.startTime).toLocaleTimeString('en-US', {
+												hour: '2-digit',
+												minute: '2-digit',
+											})}
+										</p>
+										<Button href={`/lecturer/assessments/${assessment.id}`} size="sm" variant="ghost" class="mt-3">
+											View Details
+											<ChevronRight class="ml-2 size-4" />
+										</Button>
+									</div>
 								</div>
 							{/each}
 						</div>
+					{:else}
+						<div class="rounded-lg border border-dashed p-12 text-center">
+							<CheckCircle class="mx-auto size-10 text-muted-foreground mb-3" />
+							<p class="text-muted-foreground">No assessments scheduled</p>
+							<Button href="/lecturer/assessments/create/exam" size="sm" variant="outline" class="mt-4">
+								Create Assessment
+							</Button>
+						</div>
+					{/if}
+				</CardContent>
+			</Card>
+		</TabsContent>
+
+		<!-- Performance Tab -->
+		<TabsContent value="performance" class="space-y-6">
+			<div class="grid gap-6 md:grid-cols-2">
+				<Card class="md:col-span-2">
+					<CardHeader class="pb-3">
+						<CardTitle class="flex items-center gap-2">
+							<TrendingUp class="size-5" />
+							Course Performance Overview
+						</CardTitle>
+						<CardDescription>Student performance across your courses</CardDescription>
+					</CardHeader>
+					<CardContent>
+						{#if data.coursePerformance && data.coursePerformance.length > 0}
+							<div class="space-y-6">
+								{#each data.coursePerformance as course}
+									<div class="space-y-2">
+										<div class="flex items-center justify-between">
+											<div>
+												<h4 class="font-medium">{course.code} — {course.name}</h4>
+												<p class="text-sm text-muted-foreground">
+													{course.students} students • {course.assessments} assessments
+												</p>
+											</div>
+											<div class="text-right">
+												<p class="font-bold text-lg">{course.avgScore}%</p>
+												<p class="text-sm text-muted-foreground">Pass rate: {course.passRate}%</p>
+											</div>
+										</div>
+										<Progress value={course.avgScore} class="h-2" />
+									</div>
+								{/each}
+							</div>
+						{:else}
+							<p class="text-muted-foreground py-4">No course performance data yet</p>
+						{/if}
 					</CardContent>
 				</Card>
 
-				<Card>
-					<CardHeader>
+				<Card class="md:col-span-2">
+					<CardHeader class="pb-3">
 						<CardTitle class="flex items-center gap-2">
-							<GraduationCap class="size-5" />
-							Course Progress
+							<FileText class="size-5" />
+							Recent Assessment Statistics
 						</CardTitle>
-						<CardDescription>Student progress across your courses</CardDescription>
+						<CardDescription>Performance metrics from your recent assessments</CardDescription>
 					</CardHeader>
 					<CardContent>
-						<div class="space-y-4">
-							{#each data.courseProgress as course}
-								<div>
-									<div class="flex items-center justify-between text-sm">
-										<span>{course.name}</span>
-										<span class="font-medium">{course.progress}%</span>
-									</div>
-									<Progress value={course.progress} class="h-2" />
-									<p class="mt-1 text-xs text-muted-foreground">
-										{course.enrolled} students enrolled
-									</p>
-								</div>
-							{/each}
-						</div>
+						{#if data.assessmentStats && data.assessmentStats.length > 0}
+							<Table>
+								<TableHeader>
+									<TableRow>
+										<TableHead>Assessment</TableHead>
+										<TableHead>Type</TableHead>
+										<TableHead class="text-right">Completed</TableHead>
+										<TableHead class="text-right">Avg Score</TableHead>
+									</TableRow>
+								</TableHeader>
+								<TableBody>
+									{#each data.assessmentStats as stat}
+										<TableRow>
+											<TableCell class="max-w-xs">
+												<div class="font-medium">{stat.title}</div>
+												<div class="text-sm text-muted-foreground">{stat.courseCode}</div>
+											</TableCell>
+											<TableCell>
+												<Badge class={getTypeColor(stat.type)} variant="outline">
+													{stat.type}
+												</Badge>
+											</TableCell>
+											<TableCell class="text-right">{stat.completions}</TableCell>
+											<TableCell class="text-right font-medium">{stat.avgScore}%</TableCell>
+										</TableRow>
+									{/each}
+								</TableBody>
+							</Table>
+						{:else}
+							<p class="text-muted-foreground py-4">No assessment data yet</p>
+						{/if}
 					</CardContent>
 				</Card>
 			</div>
 		</TabsContent>
 
-		<TabsContent value="courses" class="space-y-4">
+		<!-- Activity Tab -->
+		<TabsContent value="activity" class="space-y-6">
 			<Card>
-				<CardHeader>
-					<CardTitle>My Courses</CardTitle>
-					<CardDescription>All courses you're currently teaching</CardDescription>
+				<CardHeader class="pb-3">
+					<CardTitle>Recent Activity</CardTitle>
+					<CardDescription>Your recent actions in the system</CardDescription>
 				</CardHeader>
 				<CardContent>
-					<Table>
-						<TableHeader>
-							<TableRow>
-								<TableHead>Course Code</TableHead>
-								<TableHead>Title</TableHead>
-								<TableHead>Students</TableHead>
-								<TableHead>Status</TableHead>
-								<TableHead class="text-right">Action</TableHead>
-							</TableRow>
-						</TableHeader>
-						<TableBody>
-							{#each data.courses as course}
-								<TableRow>
-									<TableCell class="font-medium">{course.code}</TableCell>
-									<TableCell>{course.title}</TableCell>
-									<TableCell>{course.studentCount}</TableCell>
-									<TableCell>
-										<Badge variant={course.status === 'Active' ? 'default' : 'secondary'}>
-											{course.status}
-										</Badge>
-									</TableCell>
-									<TableCell class="text-right">
-										<Button variant="ghost" size="sm" href={`/lecturer/courses/${course.id}`}>
-											View
-										</Button>
-									</TableCell>
-								</TableRow>
+					{#if data.recentActivity && data.recentActivity.length > 0}
+						<div class="space-y-4">
+							{#each data.recentActivity as activity}
+								<div class="flex items-center justify-between border-b pb-4 last:border-0">
+									<div>
+										<p class="font-medium">{activity.action}</p>
+										<p class="text-sm text-muted-foreground">{activity.entity}</p>
+									</div>
+									<span class="text-sm text-muted-foreground">
+										{new Date(activity.createdAt).toLocaleDateString()} {new Date(
+											activity.createdAt
+										).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}
+									</span>
+								</div>
 							{/each}
-						</TableBody>
-					</Table>
-				</CardContent>
-			</Card>
-		</TabsContent>
-
-		<TabsContent value="assessments" class="space-y-4">
-			<Card>
-				<CardHeader>
-					<CardTitle>Assessments</CardTitle>
-					<CardDescription>Create and manage assessments for your courses</CardDescription>
-				</CardHeader>
-				<CardContent>
-					<div class="flex gap-2">
-						<Button href="/lecturer/assessments/create/exam">Create Exam</Button>
-						<Button href="/lecturer/assessments/create/test" variant="outline">Create Test</Button>
-						<Button href="/lecturer/assessments/create/assignment" variant="outline">Create Assignment</Button>
-						<Button href="/lecturer/assessments/create/practice" variant="outline">Create Practice</Button>
-					</div>
+						</div>
+					{:else}
+						<p class="text-muted-foreground py-4">No recent activity</p>
+					{/if}
 				</CardContent>
 			</Card>
 		</TabsContent>
 	</Tabs>
+
+	<!-- Quick Actions -->
+	<Card class="bg-muted/30 border-border">
+		<CardHeader class="pb-3">
+			<CardTitle class="flex items-center gap-2">
+				<Play class="size-5" />
+				Quick Actions
+			</CardTitle>
+		</CardHeader>
+		<CardContent>
+			<div class="grid gap-3 sm:grid-cols-4">
+				<Button href="/lecturer/assessments/create/exam" variant="outline" size="default" class="justify-center">
+					Create Exam
+				</Button>
+				<Button href="/lecturer/assessments/create/test" variant="outline" size="default" class="justify-center">
+					Create Test
+				</Button>
+				<Button href="/lecturer/question-bank" variant="outline" size="default" class="justify-center">
+					Question Bank
+				</Button>
+				<Button href="/lecturer/grade" variant="outline" size="default" class="justify-center">
+					Grade Submissions
+				</Button>
+			</div>
+		</CardContent>
+	</Card>
 </div>

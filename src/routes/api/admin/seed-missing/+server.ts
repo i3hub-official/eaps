@@ -288,61 +288,59 @@ export const POST: RequestHandler = async () => {
     }
 
     // ─── 2. Colleges ────────────────────────────────────────────────────
-    const collegeMap = new Map<string, { id: string; shortName: string }>();
-    for (const collegeData of COLLEGES) {
-      const existing = await prisma.college.findFirst({
-        where: { universityId: university.id, shortName: collegeData.shortName },
-      });
+const collegeMap = new Map<string, { id: string; shortName: string }>();
+for (const collegeData of COLLEGES) {
+  const existing = await prisma.college.findFirst({
+    where: { universityId: university.id, shortName: collegeData.shortName },
+  });
 
-      if (!existing) {
-        const [name, shortName, code] = await Promise.all([
-          protectText(collegeData.name),
-          protectText(collegeData.shortName),
-          protectText(collegeData.code),
-        ]);
+  if (!existing) {
+    const created = await prisma.college.create({
+      data: {
+        universityId: university.id,
+        name: collegeData.name,
+        shortName: collegeData.shortName,
+        code: collegeData.code,
+      },
+    });
+    collegeMap.set(collegeData.code, created);
+    results.colleges.created++;
+    totalCreated++;
+  } else {
+    collegeMap.set(collegeData.code, existing);
+    results.colleges.skipped++;
+    totalSkipped++;
+  }
+}
 
-        const created = await prisma.college.create({
-          data: { universityId: university.id, name, shortName, code },
-        });
-        collegeMap.set(collegeData.code, created);
-        results.colleges.created++;
-        totalCreated++;
-      } else {
-        collegeMap.set(collegeData.code, existing);
-        results.colleges.skipped++;
-        totalSkipped++;
-      }
-    }
+// ─── 3. Departments ─────────────────────────────────────────────────
+const deptMap = new Map<string, { id: string; shortName: string; name: string }>();
+for (const deptData of DEPARTMENTS) {
+  const college = collegeMap.get(deptData.collegeCode);
+  if (!college) continue;
 
-    // ─── 3. Departments ─────────────────────────────────────────────────
-    const deptMap = new Map<string, { id: string; shortName: string; name: string }>();
-    for (const deptData of DEPARTMENTS) {
-      const college = collegeMap.get(deptData.collegeCode);
-      if (!college) continue;
+  const existing = await prisma.department.findFirst({
+    where: { collegeId: college.id, shortName: deptData.shortName },
+  });
 
-      const existing = await prisma.department.findFirst({
-        where: { collegeId: college.id, shortName: deptData.shortName },
-      });
-
-      if (!existing) {
-        const [name, shortName, code] = await Promise.all([
-          protectText(deptData.name),
-          protectText(deptData.shortName),
-          protectText(deptData.code),
-        ]);
-
-        const created = await prisma.department.create({
-          data: { collegeId: college.id, name, shortName, code },
-        });
-        deptMap.set(deptData.code, created);
-        results.departments.created++;
-        totalCreated++;
-      } else {
-        deptMap.set(deptData.code, existing);
-        results.departments.skipped++;
-        totalSkipped++;
-      }
-    }
+  if (!existing) {
+    const created = await prisma.department.create({
+      data: {
+        collegeId: college.id,
+        name: deptData.name,
+        shortName: deptData.shortName,
+        code: deptData.code,
+      },
+    });
+    deptMap.set(deptData.code, created);
+    results.departments.created++;
+    totalCreated++;
+  } else {
+    deptMap.set(deptData.code, existing);
+    results.departments.skipped++;
+    totalSkipped++;
+  }
+}
 
     // ─── 4. Levels ──────────────────────────────────────────────────────
     const levelMap = new Map<number, { id: string; name: number }>();
