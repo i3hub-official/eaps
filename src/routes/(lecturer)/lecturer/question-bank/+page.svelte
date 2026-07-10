@@ -132,7 +132,7 @@
 					const label = labels[type] || type;
 					return {
 						render: () =>
-							`<span class="inline-flex items-center rounded-md border px-2.5 py-0.5 text-xs font-semibold">${label}</span>`,
+							`<span class="inline-flex items-center rounded-md border px-2.5 py-0.5 text-xs font-semibold whitespace-nowrap">${label}</span>`,
 					};
 				});
 				return renderSnippet(cellSnippet, { type: row.original.type });
@@ -153,7 +153,7 @@
 					const color = colors[difficulty] || 'bg-gray-100 text-gray-800 dark:bg-gray-800/30 dark:text-gray-400';
 					return {
 						render: () =>
-							`<span class="inline-flex items-center rounded-md px-2.5 py-0.5 text-xs font-semibold ${color}">${difficulty}</span>`,
+							`<span class="inline-flex items-center rounded-md px-2.5 py-0.5 text-xs font-semibold whitespace-nowrap ${color}">${difficulty}</span>`,
 					};
 				});
 				return renderSnippet(cellSnippet, { difficulty: row.original.difficulty });
@@ -165,7 +165,10 @@
 			cell: ({ row }) => {
 				const cellSnippet = createRawSnippet<[{ course: string }]>((getCourse) => {
 					const { course } = getCourse();
-					return { render: () => `<div>${course}</div>` };
+					return {
+						render: () =>
+							`<div class="max-w-[160px] truncate" title="${course.replace(/"/g, '&quot;')}">${course}</div>`,
+					};
 				});
 				return renderSnippet(cellSnippet, { course: row.original.course });
 			},
@@ -216,7 +219,7 @@
 						: 'bg-gray-100 text-gray-600 dark:bg-gray-800/30 dark:text-gray-400';
 					return {
 						render: () =>
-							`<span class="inline-flex items-center rounded-md px-2.5 py-0.5 text-xs font-semibold ${cls}">${label}</span>`,
+							`<span class="inline-flex items-center rounded-md px-2.5 py-0.5 text-xs font-semibold whitespace-nowrap ${cls}">${label}</span>`,
 					};
 				});
 				return renderSnippet(cellSnippet, { isActive: row.original.isActive });
@@ -554,78 +557,105 @@
 		<!-- DataTable -->
 		<Card class="mt-6">
 			<CardContent class="p-0">
-				<div class="w-full">
-					<div class="rounded-md border">
-						<Table.Root>
-							<Table.Header>
-								{#each table.getHeaderGroups() as headerGroup (headerGroup.id)}
-									<Table.Row>
-										{#each headerGroup.headers as header (header.id)}
-											<Table.Head>
-												{#if !header.isPlaceholder}
-													<FlexRender content={header.column.columnDef.header} context={header.getContext()} />
-												{/if}
-											</Table.Head>
-										{/each}
-									</Table.Row>
-								{/each}
-							</Table.Header>
-							<Table.Body>
-								{#each table.getRowModel().rows as row (row.id)}
-									<Table.Row>
-										{#each row.getVisibleCells() as cell (cell.id)}
-											<Table.Cell>
-												<FlexRender content={cell.column.columnDef.cell} context={cell.getContext()} />
-											</Table.Cell>
-										{/each}
-									</Table.Row>
-								{:else}
-									<Table.Row>
-										<Table.Cell colspan={columns.length} class="h-24 text-center">
-											{#if questions.length === 0 && (searchQuery || filterCourse !== 'all' || filterType !== 'all' || filterDifficulty !== 'all')}
-												No questions match your filters.
-											{:else}
-												No questions in your bank yet.
-											{/if}
-										</Table.Cell>
-									</Table.Row>
-								{/each}
-							</Table.Body>
-						</Table.Root>
-					</div>
+				<!--
+					Width fix: Table.Root renders <table class="w-full">, which has
+					no cap of its own — with 9 columns (several with fixed min
+					content widths: badges, truncated text, action icons) the table's
+					intrinsic width can exceed the card's box and overflow the page
+					instead of respecting the card boundary.
 
-					<!-- Pagination — real page numbers, driven by the server -->
-					<div class="flex items-center justify-between pt-4">
-						<span class="text-sm text-muted-foreground">
-							Page {pagination?.page ?? 1} of {pagination?.totalPages ?? 1} · {pagination?.totalCount ?? 0} total
-						</span>
-						<div class="flex items-center gap-1">
-							<Button variant="outline" size="sm" onclick={() => goToPage((pagination?.page ?? 1) - 1)} disabled={(pagination?.page ?? 1) <= 1}>
-								Previous
-							</Button>
-							{#each pageNumbers as p}
-								{#if p === '...'}
-									<span class="px-2 text-sm text-muted-foreground">…</span>
-								{:else}
-									<Button
-										variant={p === pagination?.page ? 'default' : 'outline'}
-										size="sm"
-										class="w-9"
-										onclick={() => goToPage(p)}
-									>
-										{p}
-									</Button>
-								{/if}
+					Wrapping it in a block with `overflow-x-auto` gives the table a
+					horizontal scrollbar *inside* the card when content is wider than
+					the viewport, instead of the whole card (or page) stretching.
+					`max-w-full` ensures the wrapper itself never exceeds its parent.
+				-->
+				<div class="w-full max-w-full overflow-x-auto">
+					<Table.Root class="min-w-[900px]">
+						<Table.Header>
+							{#each table.getHeaderGroups() as headerGroup (headerGroup.id)}
+								<Table.Row>
+									{#each headerGroup.headers as header (header.id)}
+										<Table.Head class="whitespace-nowrap">
+											{#if !header.isPlaceholder}
+												<FlexRender content={header.column.columnDef.header} context={header.getContext()} />
+											{/if}
+										</Table.Head>
+									{/each}
+								</Table.Row>
 							{/each}
-							<Button
-								variant="outline"
-								size="sm"
-								onclick={() => goToPage((pagination?.page ?? 1) + 1)}
-								disabled={(pagination?.page ?? 1) >= (pagination?.totalPages ?? 1)}
-							>
-								Next
-							</Button>
-						</div>
+						</Table.Header>
+						<Table.Body>
+							{#each table.getRowModel().rows as row (row.id)}
+								<Table.Row>
+									{#each row.getVisibleCells() as cell (cell.id)}
+										<Table.Cell>
+											<FlexRender content={cell.column.columnDef.cell} context={cell.getContext()} />
+										</Table.Cell>
+									{/each}
+								</Table.Row>
+							{:else}
+								<Table.Row>
+									<Table.Cell colspan={columns.length} class="h-40 text-center">
+										{#if searchQuery || filterCourse !== 'all' || filterType !== 'all' || filterDifficulty !== 'all'}
+											<p class="text-sm text-muted-foreground">No questions match your filters.</p>
+											<Button variant="ghost" size="sm" class="mt-2" onclick={clearFilters}>
+												<X class="mr-1 size-4" />
+												Clear filters
+											</Button>
+										{:else}
+											<div class="flex flex-col items-center gap-3 py-4">
+												<Database class="size-10 text-muted-foreground/40" />
+												<div>
+													<p class="text-sm font-medium">No questions in your bank yet</p>
+													<p class="text-xs text-muted-foreground mt-1">Get started by creating your first question.</p>
+												</div>
+												<Button
+													size="sm"
+													onclick={() => (window.location.href = '/lecturer/question-bank/create/single-choice')}
+												>
+													<Plus class="mr-2 size-4" />
+													Add Question
+												</Button>
+											</div>
+										{/if}
+									</Table.Cell>
+								</Table.Row>
+							{/each}
+						</Table.Body>
+					</Table.Root>
+				</div>
+
+				<!-- Pagination — real page numbers, driven by the server -->
+				<div class="flex items-center justify-between p-4">
+					<span class="text-sm text-muted-foreground">
+						Page {pagination?.page ?? 1} of {pagination?.totalPages ?? 1} · {pagination?.totalCount ?? 0} total
+					</span>
+					<div class="flex items-center gap-1">
+						<Button variant="outline" size="sm" onclick={() => goToPage((pagination?.page ?? 1) - 1)} disabled={(pagination?.page ?? 1) <= 1}>
+							Previous
+						</Button>
+						{#each pageNumbers as p}
+							{#if p === '...'}
+								<span class="px-2 text-sm text-muted-foreground">…</span>
+							{:else}
+								<Button
+									variant={p === pagination?.page ? 'default' : 'outline'}
+									size="sm"
+									class="w-9"
+									onclick={() => goToPage(p)}
+								>
+									{p}
+								</Button>
+							{/if}
+						{/each}
+						<Button
+							variant="outline"
+							size="sm"
+							onclick={() => goToPage((pagination?.page ?? 1) + 1)}
+							disabled={(pagination?.page ?? 1) >= (pagination?.totalPages ?? 1)}
+						>
+							Next
+						</Button>
 					</div>
 				</div>
 			</CardContent>
