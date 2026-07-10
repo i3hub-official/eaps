@@ -4,7 +4,6 @@
 
 import { Worker } from 'worker_threads'
 import { resolve } from 'path'
-import { getPrismaClient } from '$lib/server/db/index.js'
 import { createCipheriv, createDecipheriv, randomBytes } from 'crypto'
 import { getPrismaClient } from '$lib/server/db/index.js';
 import { env }    from '$env/dynamic/private';
