@@ -23,9 +23,6 @@
 	let similarityPercent = $state<number | null>(null);
 	let faceDetected = $state(false);
 
-	// Tune these against your Human model's actual false-accept/false-reject
-	// rates in production — these are reasonable starting points, not
-	// guaranteed-correct values.
 	const MATCH_THRESHOLD = 0.75;
 	const MIN_FACE_SCORE = 0.7;
 	const MIN_LIVENESS = 0.5;
@@ -40,7 +37,6 @@
 	let loopHandle: number | null = null;
 	let lastResult: any = null;
 
-	// ── Theme-aware colors ────────────────────────────────────────────────────
 	function themeColor(varName: string, fallback: string, alpha = 1) {
 		if (typeof window === 'undefined') return fallback;
 		const raw = getComputedStyle(document.documentElement).getPropertyValue(varName).trim();
@@ -55,9 +51,8 @@
 		const cx = w / 2;
 		const cy = h / 2;
 		
-		// ── VERTICAL OVAL ──────────────────────────────────────────────────
-		const rx = w * 0.22;   // narrower width
-		const ry = h * 0.48;   // taller height
+		const rx = w * 0.22;
+		const ry = h * 0.48;
 
 		const primary = themeColor('--primary', '#00c9a7');
 		const destructive = themeColor('--destructive', '#ef4444');
@@ -65,7 +60,6 @@
 
 		ctx.clearRect(0, 0, w, h);
 
-		// Dimming mask with an oval cutout for the face
 		ctx.save();
 		ctx.fillStyle = themeColor('--background', 'rgba(0,0,0,0.7)', 0.7);
 		ctx.fillRect(0, 0, w, h);
@@ -75,14 +69,12 @@
 		ctx.fill();
 		ctx.restore();
 
-		// Oval ring
 		ctx.beginPath();
 		ctx.ellipse(cx, cy, rx, ry, 0, 0, Math.PI * 2);
 		ctx.strokeStyle = multiple ? destructive : detectedFace ? primary : border;
 		ctx.lineWidth = detectedFace ? 2.5 : 1.5;
 		ctx.stroke();
 
-		// Corner brackets - adjusted for vertical oval
 		const cornerOffset = 16;
 		const corners: [number, number, [number, number]][] = [
 			[cx - rx, cy - ry, [1,  1]],
@@ -101,7 +93,6 @@
 			ctx.stroke();
 		}
 
-		// Status badge
 		const badgeY = h * 0.08;
 		ctx.save();
 		const badgeText = multiple ? '⚠ Multiple faces' : detectedFace ? '✓ Face detected' : 'Searching for face...';
@@ -130,9 +121,12 @@
 
 	async function start() {
 		try {
+			stopped = false;
 			phase = 'loading-model';
 			statusText = 'Loading face model…';
 			human = await getHuman();
+
+			if (stopped) return;
 
 			phase = 'requesting-camera';
 			statusText = 'Requesting camera access…';
@@ -140,6 +134,11 @@
 				video: { facingMode: 'user', width: { ideal: 640 }, height: { ideal: 480 } },
 				audio: false,
 			});
+
+			if (stopped) {
+				stream.getTracks().forEach(t => t.stop());
+				return;
+			}
 
 			if (!videoEl) throw new Error('Video element not ready.');
 			videoEl.srcObject = stream;
@@ -174,6 +173,8 @@
 		if (stopped || !human || !videoEl) return;
 
 		await detect();
+		if (stopped) return;
+
 		const face = lastResult?.face?.[0];
 		const faces = lastResult?.face ?? [];
 
@@ -192,7 +193,12 @@
 		} else if (face.embedding) {
 			faceDetected = true;
 			drawOverlay(true, false);
-			await checkMatch(face.embedding, face.real ?? 0, face.live ?? 0);
+			
+			// Safe model fallback parsing for anti-spoof and liveness structures
+			const antispoofScore = face.real ?? face.antispoof ?? 0;
+			const livenessScore = face.live ?? face.liveness ?? 0;
+			
+			await checkMatch(face.embedding, antispoofScore, livenessScore);
 			return;
 		} else {
 			faceDetected = false;

@@ -37,12 +37,10 @@
 	let statusText = $state('Loading face model…');
 	let faceDetected = $state(false);
 
-	// ── Positioning hold ───────────────────────────────────────────────────
 	let posHoldProgress = $state(0);
 	let posHoldStart: number | null = null;
 	const POS_HOLD_MS = 1000;
 
-	// ── Gesture state ──────────────────────────────────────────────────────
 	let selected: GestureDefinition[] = [];
 	let gestureIndex = $state(0);
 	let gesturesDone = $state(0);
@@ -52,7 +50,6 @@
 
 	let descriptors: number[][] = [];
 
-	// ── DOM / detection plumbing ───────────────────────────────────────────
 	let videoEl = $state<HTMLVideoElement | null>(null);
 	let canvasEl = $state<HTMLCanvasElement | null>(null);
 	let ctx: CanvasRenderingContext2D | null = null;
@@ -69,12 +66,19 @@
 			statusText = 'Loading face model…';
 			human = await getHuman();
 
+			if (stopped) return;
+
 			phase = 'requesting-camera';
 			statusText = 'Requesting camera access…';
 			stream = await navigator.mediaDevices.getUserMedia({
 				video: { facingMode: 'user', width: { ideal: 640 }, height: { ideal: 480 } },
 				audio: false,
 			});
+
+			if (stopped) {
+				stream.getTracks().forEach(t => t.stop());
+				return;
+			}
 
 			if (!videoEl) throw new Error('Video element not ready.');
 			videoEl.srcObject = stream;
@@ -106,12 +110,10 @@
 		}
 	}
 
-	// ── Theme-aware colors, pulled straight from shadcn's CSS variables ────
 	function themeColor(varName: string, fallback: string, alpha = 1) {
 		if (typeof window === 'undefined') return fallback;
 		const raw = getComputedStyle(document.documentElement).getPropertyValue(varName).trim();
 		if (!raw) return fallback;
-		// shadcn vars are typically "H S% L%" triples usable inside hsl()
 		return alpha < 1 ? `hsl(${raw} / ${alpha})` : `hsl(${raw})`;
 	}
 
@@ -122,10 +124,8 @@
 		const cx = w / 2;
 		const cy = h / 2;
 		
-		// ── VERTICAL OVAL ──────────────────────────────────────────────────
-		// Make the oval taller than wide for a portrait orientation
-		const rx = w * 0.22;   // narrower width (was 0.28)
-		const ry = h * 0.48;   // taller height (was 0.44)
+		const rx = w * 0.22;
+		const ry = h * 0.48;
 
 		const primary = themeColor('--primary', '#00c9a7');
 		const destructive = themeColor('--destructive', '#ef4444');
@@ -134,7 +134,6 @@
 
 		ctx.clearRect(0, 0, w, h);
 
-		// Dimming mask with an oval cutout for the face
 		ctx.save();
 		ctx.fillStyle = themeColor('--background', 'rgba(0,0,0,0.7)', 0.7);
 		ctx.fillRect(0, 0, w, h);
@@ -144,14 +143,12 @@
 		ctx.fill();
 		ctx.restore();
 
-		// Oval ring
 		ctx.beginPath();
 		ctx.ellipse(cx, cy, rx, ry, 0, 0, Math.PI * 2);
 		ctx.strokeStyle = multiple ? destructive : detectedFace ? primary : border;
 		ctx.lineWidth = detectedFace ? 2.5 : 1.5;
 		ctx.stroke();
 
-		// Corner brackets - adjusted for vertical oval
 		const cornerOffset = 16;
 		const corners: [number, number, [number, number]][] = [
 			[cx - rx, cy - ry, [1,  1]],
@@ -170,7 +167,6 @@
 			ctx.stroke();
 		}
 
-		// Progress arc while holding position / gesture
 		if (progress > 0 && detectedFace && !multiple) {
 			ctx.save();
 			ctx.beginPath();
@@ -182,7 +178,6 @@
 			ctx.restore();
 		}
 
-		// Gesture label pill
 		if (label && !multiple) {
 			ctx.save();
 			const pillH = 36;
@@ -206,10 +201,11 @@
 		}
 	}
 
-	// ── Positioning loop ────────────────────────────────────────────────────
 	async function positioningLoop() {
-		if (stopped || phase !== 'positioning') return;
+		if (stopped || phase !== 'positioning' || !canvasEl) return;
 		await detect();
+		if (stopped || phase !== 'positioning') return;
+
 		const faces = lastResult?.face ?? [];
 
 		if (faces.length === 0) {
@@ -233,16 +229,16 @@
 			const faceCX = Array.isArray(box) ? box[0] + box[2] / 2 : (box.topLeft[0] + box.bottomRight[0]) / 2;
 			const faceCY = Array.isArray(box) ? box[1] + box[3] / 2 : (box.topLeft[1] + box.bottomRight[1]) / 2;
 
-			const w = canvasEl!.width;
-			const h = canvasEl!.height;
+			const w = canvasEl.width;
+			const h = canvasEl.height;
 			const cx = w / 2;
 			const cy = h / 2;
-			// ── VERTICAL OVAL ──────────────────────────────────────────────────
-			const rx = w * 0.22;   // narrower width (was 0.28)
-			const ry = h * 0.48;   // taller height (was 0.44)
+			
+			const rx = w * 0.22;
+			const ry = h * 0.48;
 
 			const centred = Math.abs(faceCX - cx) < rx * 0.5 && Math.abs(faceCY - cy) < ry * 0.5;
-			const largeEnough = faceW > w * 0.12 && faceH > h * 0.18; // Adjusted for vertical oval
+			const largeEnough = faceW > w * 0.12 && faceH > h * 0.18;
 
 			if (centred && largeEnough) {
 				const now = performance.now();
@@ -274,10 +270,11 @@
 		loopHandle = requestAnimationFrame(positioningLoop);
 	}
 
-	// ── Gesture loop ────────────────────────────────────────────────────────
 	async function gestureLoop() {
 		if (stopped || phase !== 'gesture') return;
 		await detect();
+		if (stopped || phase !== 'gesture') return;
+
 		const faces = lastResult?.face ?? [];
 		const gestures = lastResult?.gesture ?? [];
 

@@ -17,12 +17,10 @@ export const ALL_GESTURES: GestureDefinition[] = [
   { id: 'open_mouth',  label: 'Open your mouth wide', icon: 'mouth' },
 ];
 
-// ── Tuning ──────────────────────────────────────────────────────────────────
 const CONFIRM_FRAMES = 5;
 const HIT_RATIO      = 0.70;
 const DECAY_RATE     = 0.10;
 
-// Face detection thresholds
 const YAW_LEFT_THRESH   = -0.20;
 const YAW_RIGHT_THRESH  =  0.20;
 const PITCH_UP_THRESH   = -0.12;
@@ -30,15 +28,12 @@ const PITCH_DOWN_THRESH =  0.12;
 const EAR_CLOSED_MAX    = 0.25;
 const MOUTH_OPEN_RATIO  = 0.045;
 
-// ── Mesh indices ───────────────────────────────────────────────────────────
 const LEFT_EYE_IDX  = [33,  160, 158, 133, 153, 144];
 const RIGHT_EYE_IDX = [263, 387, 385, 362, 380, 373];
 const MOUTH_TOP_IDX = 13;
 const MOUTH_BOT_IDX = 14;
 const CHIN_IDX      = 152;
 const FOREHEAD_IDX  = 10;
-
-// ── Helpers ─────────────────────────────────────────────────────────────────
 
 function dist(a: number[], b: number[]): number {
   return Math.hypot(a[0] - b[0], a[1] - b[1]);
@@ -56,7 +51,6 @@ function meanEar(mesh: number[][]): number {
   return (ear(mesh, LEFT_EYE_IDX) + ear(mesh, RIGHT_EYE_IDX)) / 2;
 }
 
-// ── Robust angle extraction ──────────────────────────────────────────────────
 function getYaw(face: any): number {
   const deg = face?.rotation?.angle?.yaw;
   if (deg != null) return deg;
@@ -72,8 +66,6 @@ function getPitch(face: any): number {
   if (rad != null) return rad * (180 / Math.PI);
   return 0;
 }
-
-// ── Detectors ───────────────────────────────────────────────────────────────
 
 function detectTurnLeft(face: any): number {
   const yaw = getYaw(face);
@@ -131,13 +123,9 @@ function detectOpenMouth(face: any): number {
   return 0;
 }
 
-// ── Human gesture string helpers ───────────────────────────────────────────
-
 function humanGestureContains(gestures: Array<{ gesture: string }>, keyword: string): boolean {
   return gestures.some(g => g.gesture.toLowerCase().includes(keyword));
 }
-
-// ── Main confidence ─────────────────────────────────────────────────────────
 
 export function gestureConfidence(
   id: GestureId,
@@ -183,13 +171,6 @@ export function gestureConfidence(
   return Math.min(1, raw + boost);
 }
 
-// ── GestureTracker ───────────────────────────────────────────────────────────
-
-export interface GestureTrackerOptions {
-  confirmFrames?: number;
-  hitRatio?: number;
-}
-
 export class GestureTracker {
   private window: number[] = [];
   holdProgress = 0;
@@ -231,7 +212,10 @@ export class GestureTracker {
   }
 }
 
-// ── Factory: creates the right tracker per gesture ───────────────────────────
+export interface GestureTrackerOptions {
+  confirmFrames?: number;
+  hitRatio?: number;
+}
 
 export function createTrackerForGesture(id: GestureId): GestureTracker {
   if (id === 'blink') {
@@ -240,17 +224,17 @@ export function createTrackerForGesture(id: GestureId): GestureTracker {
   return new GestureTracker();
 }
 
-// ── Selection ───────────────────────────────────────────────────────────────
-
 export function selectGestures(count: number): GestureDefinition[] {
   const pool = [...ALL_GESTURES];
   const selected: GestureDefinition[] = [];
 
-  // Always include at least one head turn
   const turns = pool.filter(g => g.id === 'turn_left' || g.id === 'turn_right');
   const turn  = turns[Math.floor(Math.random() * turns.length)];
-  selected.push(turn);
-  pool.splice(pool.indexOf(turn), 1);
+  if (turn) {
+    selected.push(turn);
+    const turnIdx = pool.indexOf(turn);
+    if (turnIdx > -1) pool.splice(turnIdx, 1);
+  }
 
   while (selected.length < count && pool.length > 0) {
     const idx = Math.floor(Math.random() * pool.length);
@@ -258,7 +242,6 @@ export function selectGestures(count: number): GestureDefinition[] {
     pool.splice(idx, 1);
   }
 
-  // Shuffle
   for (let i = selected.length - 1; i > 0; i--) {
     const j = Math.floor(Math.random() * (i + 1));
     [selected[i], selected[j]] = [selected[j], selected[i]];

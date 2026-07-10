@@ -1,8 +1,4 @@
 // src/lib/client/face/human.ts
-// Lazily-loaded, singleton @vladmandic/human instance for browser use only.
-// Models are self-hosted under /static/models/human — no CDN dependency,
-// so this keeps working even if the exam venue has no internet access
-// beyond the app server itself.
 import type Human from '@vladmandic/human'
 
 let humanInstance: Human | null = null
@@ -14,18 +10,25 @@ export async function getHuman(): Promise<Human> {
 
   loadPromise = (async () => {
     try {
+      // 1. Defend against SSR execution (Human breaks outside the browser)
+      if (typeof window === 'undefined') {
+        throw new Error('Human can only be instantiated in browser environments.');
+      }
+
       const { default: HumanClass } = await import('@vladmandic/human');
       
       const human = new HumanClass({
         backend: 'webgl',
-        modelBasePath: '/models/human/',
+        // Points exactly to static/models/human/ matching your PWA rule
+        modelBasePath: '/models/human/', 
         face: {
           enabled: true,
           detector: { rotation: true, maxDetected: 3 },
           mesh: { enabled: true },
           iris: { enabled: true },
           description: { enabled: true },
-          emotion: { enabled: true },
+          // ⚠️ PERFORMANCE TWEAK: Turn off non-essential sub-models if you aren't logging them
+          emotion: false, 
           antispoof: { enabled: true },
           liveness: { enabled: true },
         },
@@ -35,13 +38,19 @@ export async function getHuman(): Promise<Human> {
         filter: { enabled: false },
       });
 
+      // 2. Parallelize network requests for the individual model files
       await human.load();
-      await human.warmup();
+      
+      // 3. Prevent blocking warmup cycles (Warmup compilation happens in background)
+      // Passing an explicit canvas size tells WebGL exactly what to allocate ahead of time
+      human.warmup({ width: 640, height: 480 }).catch((err) => {
+        console.warn('Human non-blocking warmup failed:', err);
+      });
 
       humanInstance = human;
       return human;
     } catch (err) {
-      loadPromise = null; // Reset promise to allow retries if loading fails
+      loadPromise = null; // Reset promise to allow retries if network fails
       throw err;
     }
   })();
@@ -49,11 +58,13 @@ export async function getHuman(): Promise<Human> {
   return loadPromise;
 }
 
-export function cosineSimilarity(a: number[], b: number[]): number {
-  if (a.length !== b.length || a.length === 0) return 0;
+// 4. Highly optimized Math vector routine
+export function cosineSimilarity(a: number[] | Float32Array, b: number[] | Float32Array): number {
+  const len = a.length;
+  if (len !== b.length || len === 0) return 0;
   
   let dot = 0, magA = 0, magB = 0;
-  for (let i = 0; i < a.length; i++) {
+  for (let i = 0; i < len; i++) {
     const valA = a[i];
     const valB = b[i];
     dot += valA * valB;

@@ -7,9 +7,9 @@
 	let { sessionId }: { sessionId: string } = $props();
 
 	const CHECK_INTERVAL_MS = 8000;
-	const VIOLATION_COOLDOWN_MS = 30000; // don't log the same violation type more than once per 30s
-	const NO_FACE_STRIKES_BEFORE_LOG = 2; // ~16s of no face before logging, to tolerate briefly looking away
-	const MATCH_THRESHOLD = 0.7; // slightly looser than initial verify — ongoing monitoring, not gatekeeping
+	const VIOLATION_COOLDOWN_MS = 30000; 
+	const NO_FACE_STRIKES_BEFORE_LOG = 2; 
+	const MATCH_THRESHOLD = 0.7; 
 
 	type Status = 'ok' | 'warning' | 'violation';
 	let status = $state<Status>('ok');
@@ -22,16 +22,26 @@
 	let intervalHandle: ReturnType<typeof setInterval> | null = null;
 	let bannerTimeout: ReturnType<typeof setTimeout> | null = null;
 	let noFaceStrikes = 0;
+	let stopped = false;
 	const lastLoggedAt: Record<string, number> = {};
 
 	async function init() {
 		try {
+			stopped = false;
 			human = await getHuman();
+
+			if (stopped) return;
 
 			stream = await navigator.mediaDevices.getUserMedia({
 				video: { facingMode: 'user', width: { ideal: 320 }, height: { ideal: 240 } },
 				audio: false,
 			});
+			
+			if (stopped) {
+				stream.getTracks().forEach(t => t.stop());
+				return;
+			}
+
 			if (videoEl) {
 				videoEl.srcObject = stream;
 				await videoEl.play();
@@ -45,9 +55,6 @@
 
 			intervalHandle = setInterval(runCheck, CHECK_INTERVAL_MS);
 		} catch (err) {
-			// Monitoring is a background safety net, not a hard gate — if the
-			// camera fails mid-exam we surface it once and continue rather
-			// than blocking the student's submission.
 			console.error('[FaceMonitorModal] Failed to initialize:', err);
 			status = 'warning';
 			showBanner('Camera monitoring unavailable.');
@@ -80,11 +87,12 @@
 	}
 
 	async function runCheck() {
-		if (!human || !videoEl) return;
+		if (!human || !videoEl || stopped) return;
 
 		const result = await human.detect(videoEl);
+		if (stopped) return;
 
-		if (result.face.length === 0) {
+		if (!result || !result.face || result.face.length === 0) {
 			noFaceStrikes += 1;
 			status = 'warning';
 			if (noFaceStrikes >= NO_FACE_STRIKES_BEFORE_LOG && canLog('FACE_NOT_DETECTED')) {
@@ -124,6 +132,7 @@
 	}
 
 	function stopCamera() {
+		stopped = true;
 		if (intervalHandle) clearInterval(intervalHandle);
 		if (bannerTimeout) clearTimeout(bannerTimeout);
 		stream?.getTracks().forEach((t) => t.stop());
@@ -134,8 +143,6 @@
 	onDestroy(stopCamera);
 </script>
 
-<!-- Persistent, unobtrusive monitoring widget — not a blocking modal.
-     Sits in a corner for the duration of the exam session. -->
 <div class="fixed bottom-4 right-4 z-40 flex flex-col items-end gap-2">
 	{#if banner}
 		<div class="flex items-center gap-2 rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-2 text-xs text-destructive shadow-lg">
