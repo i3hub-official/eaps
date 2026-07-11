@@ -1,22 +1,18 @@
-
-// ─────────────────────────────────────────────────────────────────────────────
 // src/routes/api/assessment/session/[sessionId]/answer/+server.ts
-// POST — save/update a single answer (called on every option select)
-
-import { json as j3, error as e3 } from '@sveltejs/kit'
-import type { RequestHandler as RH3 } from './$types'
-import { requireStudent as rs3 } from '$lib/server/auth/guards'
+import { json, error } from '@sveltejs/kit'
+import type { RequestHandler } from './$types'
+import { requireStudent } from '$lib/server/auth/guards'
 import { saveAnswer } from '$lib/server/assessment/engine'
-import { getPrismaClient } from '$lib/server/db/index.js';
+import { getPrismaClient } from '$lib/server/db/index.js'
 
-export const _answer_POST: RH3 = async (event) => {
-  const { student } = await rs3(event)
-  const { sessionId } = event.params
-  const body = await event.request.json()
+export const POST: RequestHandler = async ({ request, locals, params }) => {
+  const student = await requireStudent(locals.user)
+  const { sessionId } = params
+  const body = await request.json()
 
-  const prisma = await getPrismaClient();
+  const prisma = await getPrismaClient()
   const session = await prisma.assessmentSession.findUnique({ where: { id: sessionId } })
-  if (!session || session.studentId !== student.id) throw e3(403, 'Forbidden')
+  if (!session || session.studentId !== student.id) throw error(403, 'Forbidden')
 
   const answer = await saveAnswer(sessionId, {
     questionId: body.questionId,
@@ -26,6 +22,5 @@ export const _answer_POST: RH3 = async (event) => {
     matchAnswer: body.matchAnswer,
   })
 
-  return j3({ saved: true, answeredAt: answer.answeredAt })
+  return json({ saved: true, answeredAt: answer.answeredAt })
 }
-

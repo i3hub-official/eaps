@@ -960,12 +960,18 @@ model AssessmentSession {
   studentId     String
   attemptNumber Int           @default(1)
   status        SessionStatus @default(PENDING)
-  paperVariant  String? // "A", "B", "C"
+  paperVariant  String?
 
   // timing
   startedAt   DateTime?
   submittedAt DateTime?
-  expiresAt   DateTime? // startedAt + durationMinutes
+  expiresAt   DateTime?
+
+  // consent — recorded the moment the student accepts the rules screen,
+  // before any face verification or kiosk access. Kept separate from
+  // faceVerifiedAt since consent and identity are distinct compliance
+  // events under NDPR (biometric data requires consent before capture).
+  termsAcceptedAt DateTime?
 
   // submission
   submissionMode    SubmissionMode?
@@ -975,12 +981,10 @@ model AssessmentSession {
 
   // face verification result
   faceVerifiedAt DateTime?
-  faceScore      Float? // cosine similarity at verification
+  faceScore      Float?
 
-  // server-authoritative timer (seconds remaining at last sync)
   timeRemainingSeconds Int?
 
-  // offline
   isOffline  Boolean   @default(false)
   lastSyncAt DateTime?
 
@@ -993,7 +997,6 @@ model AssessmentSession {
   violations Violation[]
   result     AssessmentResult?
 
-  // the shuffled question order for this specific session
   questionOrder SessionQuestionOrder[]
 
   @@unique([assessmentId, studentId, attemptNumber])

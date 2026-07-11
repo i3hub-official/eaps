@@ -1,24 +1,19 @@
-
-// ─────────────────────────────────────────────────────────────────────────────
 // src/routes/api/assessment/session/[sessionId]/start/+server.ts
-// POST — transition session from PENDING to IN_PROGRESS (after face verify)
-
-import { json as j2, error as e2 } from '@sveltejs/kit'
-import type { RequestHandler as RH2 } from './$types'
-import { requireStudent as rs2 } from '$lib/server/auth/guards'
+import { json, error } from '@sveltejs/kit'
+import type { RequestHandler } from './$types'
+import { requireStudent } from '$lib/server/auth/guards'
 import { startSession } from '$lib/server/assessment/engine'
-import { getPrismaClient } from '$lib/server/db/index.js';
+import { getPrismaClient } from '$lib/server/db/index.js'
 
-export const _start_POST: RH2 = async (event) => {
-  const { student } = await rs2(event)
-  const { sessionId } = event.params
+export const POST: RequestHandler = async ({ locals, params }) => {
+  const student = await requireStudent(locals.user)
+  const { sessionId } = params
 
-  const prisma = await getPrismaClient();
+  const prisma = await getPrismaClient()
   const session = await prisma.assessmentSession.findUnique({ where: { id: sessionId } })
-  if (!session || session.studentId !== student.id) throw e2(403, 'Forbidden')
+  if (!session || session.studentId !== student.id) throw error(403, 'Forbidden')
 
   const updated = await startSession(sessionId)
 
-  return j2({ status: updated.status, expiresAt: updated.expiresAt })
+  return json({ status: updated.status, expiresAt: updated.expiresAt })
 }
-

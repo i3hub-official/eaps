@@ -3,6 +3,8 @@ import { fail, redirect } from '@sveltejs/kit'
 import type { Actions, PageServerLoad } from './$types'
 import { getPrismaClient } from '$lib/server/db/index.js'
 import { requireStudent } from '$lib/server/auth/guards'
+import { createSession } from '$lib/server/assessment/engine'
+
 
 export const load: PageServerLoad = async ({ locals }) => {
   const student = await requireStudent(locals.user)
@@ -229,8 +231,8 @@ export const load: PageServerLoad = async ({ locals }) => {
 }
 
 export const actions: Actions = {
-  start: async ({ request, locals }) => {
-    const student = await requireStudent(locals.user)
+start: async ({ request, locals, getClientAddress }) => {
+      const student = await requireStudent(locals.user)
 
     const form = await request.formData()
     const assessmentId = form.get('assessmentId')?.toString()
@@ -346,15 +348,10 @@ export const actions: Actions = {
       return fail(400, { startError: 'You have used all attempts for this test.' })
     }
 
-    const session = await prisma.assessmentSession.create({
-      data: {
-        assessmentId: assessment.id,
-        studentId: student.id,
-        attemptNumber: attemptsUsed + 1,
-        status: 'PENDING',
-        expiresAt: new Date(Date.now() + assessment.durationMinutes * 60 * 1000),
-      },
-    })
+ const ip = getClientAddress()
+const userAgent = request.headers.get('user-agent') ?? undefined
+const session = await createSession(assessment.id, student.id, { ipAddress: ip, userAgent })
+
 
     throw redirect(303, `/student/tests/${session.id}`)
   },
