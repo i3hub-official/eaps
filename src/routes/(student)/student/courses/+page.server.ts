@@ -147,8 +147,6 @@ export const actions: Actions = {
       return fail(400, { registerError: 'There is no active registration period right now.' })
     }
 
-    // Same window check as `load` — server-side, never trust that the
-    // dialog only rendered because the window looked open on page load.
     const windowState = getRegistrationWindowState(semester)
     if (!windowState.open) {
       const message =
@@ -160,9 +158,6 @@ export const actions: Actions = {
       return fail(400, { registerError: message })
     }
 
-    // Never trust the client-submitted course list blindly — re-verify each
-    // course actually belongs to this student's department + level and is
-    // offered this semester before creating any registration rows.
     const eligibleCourses = await prisma.course.findMany({
       where: {
         id: { in: courseIds },
@@ -177,9 +172,29 @@ export const actions: Actions = {
       return fail(400, { registerError: 'None of the selected courses are available for registration.' })
     }
 
-    const results = await Promise.allSettled(
-      eligibleCourses.map((course) =>
-        prisma.courseRegistration.create({
+    // The DB's unique constraint is (student, course, session, semester) with
+    // no status in the key — so a previously DROPPED (CANCELLED) or REJECTED
+    // course leaves a row behind that a plain `create` would collide with.
+    // Look those up first so we can reactivate instead of insert.
+    const existing = await prisma.courseRegistration.findMany({
+      where: {
+        studentId: student.id,
+        sessionId: session.id,
+        semesterId: semester.id,
+        courseId: { in: eligibleCourses.map((c) => c.id) },
+      },
+    })
+    const existingByCourseId = new Map(existing.map((r) => [r.courseId, r]))
+
+    let succeededCount = 0
+    let alreadyActiveCount = 0
+    let editLimitCount = 0
+
+    for (const course of eligibleCourses) {
+      const existingReg = existingByCourseId.get(course.id)
+
+      if (!existingReg) {
+        await prisma.courseRegistration.create({
           data: {
             studentId: student.id,
             courseId: course.id,
@@ -189,27 +204,55 @@ export const actions: Actions = {
             type: 'NORMAL',
             status: 'PENDING',
           },
-        }),
-      ),
-    )
+        })
+        succeededCount++
+        continue
+      }
 
-    const failedCount = results.filter((r) => r.status === 'rejected').length
-    const succeededCount = results.length - failedCount
+      if (existingReg.status === 'CANCELLED' || existingReg.status === 'REJECTED') {
+        if (existingReg.editCount >= MAX_EDITS) {
+          editLimitCount++
+          continue
+        }
+        await prisma.courseRegistration.update({
+          where: { id: existingReg.id },
+          data: { status: 'PENDING', editCount: { increment: 1 } },
+        })
+        succeededCount++
+        continue
+      }
+
+      // PENDING or APPROVED — already active, nothing to do
+      alreadyActiveCount++
+    }
 
     if (succeededCount === 0) {
+      if (editLimitCount > 0) {
+        return fail(400, {
+          registerError: `Reached the maximum of ${MAX_EDITS} edits for ${editLimitCount} course${editLimitCount > 1 ? 's' : ''}. Contact your exam officer.`,
+        })
+      }
       return fail(400, { registerError: 'Those courses are already registered.' })
+    }
+
+    const parts = [
+      `Registered ${succeededCount} course${succeededCount > 1 ? 's' : ''} successfully. Awaiting approval.`,
+    ]
+    if (alreadyActiveCount > 0) {
+      parts.push(`${alreadyActiveCount} already registered.`)
+    }
+    if (editLimitCount > 0) {
+      parts.push(`${editLimitCount} could not be re-added (edit limit reached).`)
     }
 
     return {
       registerSuccess: true,
-      registerMessage:
-        failedCount > 0
-          ? `Registered ${succeededCount} course${succeededCount > 1 ? 's' : ''}. ${failedCount} could not be added (already registered).`
-          : `Registered ${succeededCount} course${succeededCount > 1 ? 's' : ''} successfully. Awaiting approval.`,
+      registerMessage: parts.join(' '),
     }
   },
 
   drop: async ({ request, locals }) => {
+    // unchanged — same as your original
     const student = await requireStudent(locals.user)
 
     const form = await request.formData()
@@ -250,12 +293,8 @@ export const actions: Actions = {
     }
 
     if (registration.status === 'PENDING') {
-      // Not yet approved — safe to remove outright, no audit trail needed.
       await prisma.courseRegistration.delete({ where: { id: registrationId } })
     } else {
-      // Already approved — soft-cancel and record the edit rather than
-      // deleting, since exam officers need to see it was dropped, not that
-      // it never existed.
       await prisma.courseRegistration.update({
         where: { id: registrationId },
         data: { status: 'CANCELLED', editCount: { increment: 1 } },

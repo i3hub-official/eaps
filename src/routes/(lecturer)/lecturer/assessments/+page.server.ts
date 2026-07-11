@@ -56,6 +56,7 @@ export const load: PageServerLoad = async ({ locals }) => {
 					passed: true,
 				},
 			},
+			tags: { include: { tag: true } },
 		},
 		orderBy: {
 			createdAt: 'desc',
@@ -103,20 +104,21 @@ export const load: PageServerLoad = async ({ locals }) => {
 		}
 
 		return {
-			id: assessment.id,
-			title: assessment.title,
-			type: assessment.type,
-			status: assessment.status,
-			courseCode: assessment.course.code,
-			courseTitle: assessment.course.title,
-			studentCount: sessionCount,
-			completionRate: completionRate,
-			avgScore: avgScore,
-			createdAt: assessment.createdAt,
-			startTime: assessment.startTime,
-			endTime: assessment.endTime,
-			dueDate: assessment.dueDate,
-		}
+	id: assessment.id,
+	title: assessment.title,
+	type: assessment.type,
+	status: assessment.status,
+	courseCode: assessment.course.code,
+	courseTitle: assessment.course.title,
+	studentCount: sessionCount,
+	completionRate: completionRate,
+	avgScore: avgScore,
+	createdAt: assessment.createdAt,
+	startTime: assessment.startTime,
+	endTime: assessment.endTime,
+	dueDate: assessment.dueDate,
+	tags: assessment.tags.map((t) => t.tag.name),   // ← add this
+}
 	})
 
 	const overallCompletionRate = totalSessions > 0 ? Math.round((totalCompletions / totalSessions) * 100) : 0
