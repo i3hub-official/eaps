@@ -25,6 +25,35 @@ function getRegistrationWindowState(semester: SemesterWindow): WindowState {
   return { open: true, reason: 'OPEN' }
 }
 
+// Backfills AssessmentEligibility for a student against any currently
+// open assessments on a given course. Needed because eligibility is
+// seeded from registrants AT TEST-CREATION TIME (see the lecturer
+// test-create action) — a student who registers for the course AFTER
+// a test/exam/assignment was already published would otherwise be
+// silently invisible to it despite holding a valid registration.
+// skipDuplicates makes this safe to call on every approve/re-approve.
+async function backfillAssessmentEligibility(
+  prisma: Awaited<ReturnType<typeof getPrismaClient>>,
+  courseId: string,
+  studentId: string
+) {
+  const openAssessments = await prisma.assessment.findMany({
+    where: {
+      courseId,
+      type: { in: ['TEST', 'EXAMINATION', 'ASSIGNMENT'] },
+      status: { in: ['PUBLISHED', 'SCHEDULED', 'ACTIVE'] },
+    },
+    select: { id: true },
+  })
+
+  if (openAssessments.length === 0) return
+
+  await prisma.assessmentEligibility.createMany({
+    data: openAssessments.map((a) => ({ assessmentId: a.id, studentId })),
+    skipDuplicates: true,
+  })
+}
+
 export const load: PageServerLoad = async ({ locals }) => {
   const student = await requireStudent(locals.user)
   const prisma = await getPrismaClient()
@@ -202,6 +231,9 @@ export const actions: Actions = {
             approvedAt: now,
           },
         })
+        // New APPROVED registration — catch up on any already-published
+        // assessments for this course so the student isn't invisible to them.
+        await backfillAssessmentEligibility(prisma, course.id, student.id)
         succeededCount++
         continue
       }
@@ -221,6 +253,8 @@ export const actions: Actions = {
             editCount: { increment: 1 },
           },
         })
+        // Re-approved registration — same backfill applies.
+        await backfillAssessmentEligibility(prisma, course.id, student.id)
         succeededCount++
         continue
       }
@@ -244,7 +278,7 @@ export const actions: Actions = {
     return { registerSuccess: true, registerMessage: parts.join(' ') }
   },
 
-  drop: async ({ request, locals }) => {
+ drop: async ({ request, locals }) => {
     const student = await requireStudent(locals.user)
     const form = await request.formData()
     const registrationId = form.get('registrationId')?.toString() ?? ''
@@ -277,6 +311,29 @@ export const actions: Actions = {
       return fail(400, {
         dropError: `This course has reached the maximum of ${MAX_EDITS} edits. Contact your exam officer to drop it.`,
       })
+
+    // ── Block drop if the student has any submitted assessment work ────
+    // A SUBMITTED/TIMED_OUT/DISQUALIFIED session (or one with a result)
+    // is a real academic record. Dropping the course afterward would
+    // orphan that record against a registration that no longer exists,
+    // corrupting transcripts. PENDING/IN_PROGRESS/PAUSED sessions don't
+    // block — an abandoned/unstarted attempt isn't a submitted record.
+    const submittedSession = await prisma.assessmentSession.findFirst({
+      where: {
+        studentId: student.id,
+        status: { in: ['SUBMITTED', 'TIMED_OUT', 'DISQUALIFIED'] },
+        assessment: { courseId: registration.courseId },
+      },
+      include: {
+        assessment: { select: { title: true, type: true } },
+      },
+    })
+
+    if (submittedSession) {
+      return fail(400, {
+        dropError: `You cannot drop this course — you have already submitted "${submittedSession.assessment.title}" (${submittedSession.assessment.type.toLowerCase()}). Contact your exam officer if you believe this is an error.`,
+      })
+    }
 
     if (registration.status === 'PENDING') {
       await prisma.courseRegistration.delete({ where: { id: registrationId } })

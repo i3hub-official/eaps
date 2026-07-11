@@ -1,4 +1,4 @@
-// src/routes/(lecturer)/lecturer/assessments/create/test/+page.server.ts (CORRECTED)
+// src/routes/(lecturer)/lecturer/assessments/create/test/+page.server.ts
 import type { PageServerLoad, Actions } from './$types'
 import { fail } from '@sveltejs/kit'
 import { getPrismaClient } from '$lib/server/db/index.js'
@@ -148,6 +148,7 @@ export const actions: Actions = {
 			console.log('[TEST-CREATE] Verifying course access...')
 			const offering = await prisma.courseOffering.findFirst({
 				where: { courseId, lecturerId: user.id },
+				include: { course: true },
 			})
 
 			if (!offering) {
@@ -227,6 +228,37 @@ export const actions: Actions = {
 				})
 
 				console.log('[TEST-CREATE] Assessment created:', created.id)
+
+				// ── Eligibility ─────────────────────────────────────────────
+				// Built from actual APPROVED registrants of this course, NOT
+				// from department/level. This is required to correctly
+				// include carryover students — e.g. a 300L student retaking a
+				// 200L course has student.currentLevelId=300 but the course's
+				// own levelId=200, so a department/level-based eligibility
+				// row would silently exclude them even though they hold a
+				// valid, approved registration.
+				//
+				// Note: this only captures students registered as of RIGHT
+				// NOW. Anyone who registers for this course AFTER the test is
+				// created needs their eligibility backfilled — see the
+				// `register` action in src/routes/student/courses/+page.server.ts,
+				// which handles that side of the race.
+				const registrants = await tx.courseRegistration.findMany({
+					where: { courseId, status: 'APPROVED' },
+					select: { studentId: true },
+				})
+
+				if (registrants.length > 0) {
+					await tx.assessmentEligibility.createMany({
+						data: registrants.map((r) => ({
+							assessmentId: created.id,
+							studentId: r.studentId,
+						})),
+						skipDuplicates: true,
+					})
+				}
+
+				console.log('[TEST-CREATE] Eligibility set for', registrants.length, 'registered students')
 
 				// Link questions
 				await tx.assessmentQuestion.createMany({
