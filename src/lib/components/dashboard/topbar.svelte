@@ -7,11 +7,8 @@
 	import { page } from '$app/state';
 	import SessionClock from './session-clock.svelte';
 	import Bell from '@lucide/svelte/icons/bell';
-	import Search from '@lucide/svelte/icons/search';
 	import LogOut from '@lucide/svelte/icons/log-out';
 	import Settings from '@lucide/svelte/icons/settings';
-	import Menu from '@lucide/svelte/icons/menu';
-	import User from '@lucide/svelte/icons/user';
 	import type { Snippet } from 'svelte';
 
 	let {
@@ -28,6 +25,12 @@
 		actions?: Snippet;
 	} = $props();
 
+	// `page.data.user` can arrive in two shapes depending on the portal:
+	//  - student layout pre-shapes it as { name, initials }
+	//  - staff layouts (lecturer/admin/invigilator/exam-officer) return the
+	//    raw AuthenticatedStaff object with firstName/lastName instead.
+	// These helpers normalize either shape so Topbar works for both without
+	// every staff layout needing to reshape its data individually.
 	function buildName(u: any): string | undefined {
 		if (u?.name) return u.name;
 		if (u?.firstName || u?.lastName) return `${u.lastName ?? ''} ${u.firstName ?? ''}`.trim();
@@ -42,128 +45,77 @@
 		return undefined;
 	}
 
+	// Falls back to session data from the nearest +layout.server.ts (via $page.data.user)
+	// when no explicit override is passed as a prop.
 	let resolvedName = $derived(userName ?? buildName(page.data.user) ?? 'Guest');
 	let resolvedInitials = $derived(userInitials ?? buildInitials(page.data.user) ?? '?');
-	let userDropdownOpen = $state(false);
 </script>
 
 <header
-	class="sticky top-0 z-10 flex items-center justify-between gap-2 sm:gap-4 border-b bg-background/90 px-2 sm:px-4 py-2 sm:py-3 backdrop-blur"
+	class="sticky top-0 z-10 flex items-center justify-between gap-2 border-b bg-background/90 px-3 py-2.5 backdrop-blur sm:gap-4 sm:px-4 sm:py-3"
 >
-	<!-- Left side: Menu button + Title -->
-	<div class="flex items-center gap-2 sm:gap-3 min-w-0 flex-1">
-		<Sidebar.Trigger asChild>
-			<Button variant="ghost" size="icon" class="shrink-0" aria-label="Toggle sidebar">
-				<Menu class="size-4 sm:size-5" />
-			</Button>
-		</Sidebar.Trigger>
-		
-		<Separator orientation="vertical" class="h-4 sm:h-5! hidden sm:block" />
-		
-		<div class="min-w-0 flex-1">
-			<h1 class="text-sm sm:text-base font-semibold leading-tight truncate">{title}</h1>
+	<div class="flex min-w-0 items-center gap-2 sm:gap-3">
+		<Sidebar.Trigger class="shrink-0" />
+		<Separator orientation="vertical" class="hidden h-5! sm:block" />
+		<div class="flex min-w-0 flex-col">
+			<h1 class="truncate text-sm font-semibold leading-tight sm:text-base">{title}</h1>
 			{#if description}
-				<p class="text-xs text-muted-foreground truncate hidden sm:block">{description}</p>
+				<p class="hidden truncate text-xs text-muted-foreground sm:block">{description}</p>
 			{/if}
 		</div>
 	</div>
 
-	<!-- Right side: Actions -->
-	<div class="flex items-center gap-1 sm:gap-3 shrink-0">
+	<div class="flex shrink-0 items-center gap-1.5 sm:gap-3">
 		{#if actions}
-			<div class="hidden sm:flex items-center gap-2">
+			<div class="hidden items-center gap-1.5 sm:flex sm:gap-3">
 				{@render actions()}
-				<Separator orientation="vertical" class="h-5!" />
 			</div>
-			<!-- Mobile actions dropdown -->
-			<DropdownMenu.Root>
-				<DropdownMenu.Trigger asChild>
-					<Button variant="ghost" size="icon" class="sm:hidden" aria-label="Actions">
-						<svg class="size-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-							<circle cx="12" cy="12" r="1" />
-							<circle cx="19" cy="12" r="1" />
-							<circle cx="5" cy="12" r="1" />
-						</svg>
-					</Button>
-				</DropdownMenu.Trigger>
-				<DropdownMenu.Content align="end" class="w-48">
-					{#if actions}
-						<div class="flex flex-col gap-1 p-1">
-							{@render actions()}
-						</div>
-						<DropdownMenu.Separator />
-					{/if}
-					<DropdownMenu.Item onselect={() => {}}>
-						<Search class="size-4" />
-						Search
-					</DropdownMenu.Item>
-				</DropdownMenu.Content>
-			</DropdownMenu.Root>
+			<Separator orientation="vertical" class="hidden h-5! sm:block" />
 		{/if}
 
-		<SessionClock class="hidden sm:flex" />
+		<SessionClock class="hidden md:flex" />
 
 		<ThemeToggle />
 
-		<Button variant="ghost" size="icon" class="relative shrink-0" aria-label="Notifications">
-			<Bell class="size-4 sm:size-4.5" />
-			<span class="absolute top-1.5 sm:top-2 right-1.5 sm:right-2 size-1.5 rounded-full bg-emerald-500"></span>
+		<Button variant="ghost" size="icon" class="relative" aria-label="Notifications">
+			<Bell class="size-4.5" />
+			<span class="absolute top-2 right-2 size-1.5 rounded-full bg-emerald-500"></span>
 		</Button>
 
-		<!-- User dropdown - single source of truth -->
-		<DropdownMenu.Root bind:open={userDropdownOpen}>
-			<DropdownMenu.Trigger asChild>
-				<div class="flex items-center gap-2">
-					<!-- Desktop user button -->
-					<Button variant="ghost" class="hidden sm:flex items-center gap-2.5 border-l pl-3 focus-visible:outline-none h-10">
+		<DropdownMenu.Root>
+			<DropdownMenu.Trigger>
+				{#snippet child({ props }: { props: Record<string, unknown> })}
+					<button
+						{...props}
+						class="flex items-center gap-2 pl-1.5 focus-visible:outline-none sm:gap-2.5 sm:border-l sm:pl-3"
+					>
 						<div
-							class="flex size-8 shrink-0 items-center justify-center rounded-full bg-primary font-mono text-xs font-semibold text-primary-foreground"
+							class="flex size-7 shrink-0 items-center justify-center rounded-full bg-primary font-mono text-[11px] font-semibold text-primary-foreground sm:size-8 sm:text-xs"
 						>
 							{resolvedInitials}
 						</div>
 						<span class="hidden text-sm font-medium lg:inline">{resolvedName}</span>
-					</Button>
-					<!-- Mobile user button -->
-					<Button 
-						variant="ghost" 
-						size="icon" 
-						class="sm:hidden shrink-0" 
-						aria-label="User menu"
-						onclick={() => (userDropdownOpen = !userDropdownOpen)}
-					>
-						<div class="flex size-7 items-center justify-center rounded-full bg-primary font-mono text-xs font-semibold text-primary-foreground">
-							{resolvedInitials}
-						</div>
-					</Button>
-				</div>
+					</button>
+				{/snippet}
 			</DropdownMenu.Trigger>
 			<DropdownMenu.Content align="end" class="w-48">
-				<!-- User info at top of dropdown (visible on mobile) -->
-				<div class="flex items-center gap-2 px-2 py-1.5 sm:hidden">
-					<div
-						class="flex size-8 shrink-0 items-center justify-center rounded-full bg-primary font-mono text-xs font-semibold text-primary-foreground"
-					>
-						{resolvedInitials}
+				{#if actions}
+					<div class="flex flex-col gap-1 border-b p-1 sm:hidden">
+						{@render actions()}
 					</div>
-					<div class="flex flex-col min-w-0">
-						<span class="text-sm font-medium truncate">{resolvedName}</span>
-						<span class="text-xs text-muted-foreground truncate">{page.data.user?.email || ''}</span>
-					</div>
-				</div>
-				<DropdownMenu.Separator class="sm:hidden" />
-				
-				<DropdownMenu.Item onselect={() => (window.location.href = '/profile')}>
-					<User class="size-4" />
-					Profile
-				</DropdownMenu.Item>
-				<DropdownMenu.Item onselect={() => (window.location.href = '/settings')}>
-					<Settings class="size-4" />
+				{/if}
+				<DropdownMenu.Item>
+					<Settings />
 					Account settings
 				</DropdownMenu.Item>
 				<DropdownMenu.Separator />
-				<DropdownMenu.Item variant="destructive" onselect={() => (window.location.href = '/logout')}>
-					<LogOut class="size-4" />
-					Sign out
+				<DropdownMenu.Item variant="destructive">
+					{#snippet child({ props }: { props: Record<string, unknown> })}
+						<a href="/logout" {...props}>
+							<LogOut />
+							Sign out
+						</a>
+					{/snippet}
 				</DropdownMenu.Item>
 			</DropdownMenu.Content>
 		</DropdownMenu.Root>

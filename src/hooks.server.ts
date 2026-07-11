@@ -1,9 +1,10 @@
 // src/hooks.server.ts
 // Populates event.locals.user / event.locals.session from the staff or
-// student session cookie on every request, and mounts the invigilator
-// WebSocket server on HTTP upgrade requests (SvelteKit doesn't handle WS
-// natively — we intercept the upgrade event from the underlying Node
-// HTTP server).
+// student session cookie on every request, redirects already-authenticated
+// users away from guest-only routes ("/", "/login", "/forgot-password"),
+// and mounts the invigilator WebSocket server on HTTP upgrade requests
+// (SvelteKit doesn't handle WS natively — we intercept the upgrade event
+// from the underlying Node HTTP server).
 
 import type { Handle, Cookies } from '@sveltejs/kit'
 import { createInvigilatorWSS } from '$lib/server/invigilator/websocket'
@@ -17,6 +18,7 @@ import {
 import { revealEmail, revealMatricNumber, revealName } from '$lib/security/dataProtection'
 import type { User, Session } from '$lib/server/auth/types'
 import type { StaffRole } from '@prisma/client'
+import { enforceGuestOnly } from '$lib/server/auth/guestOnly.js'
 
 let wss: any = null
 
@@ -120,6 +122,13 @@ export const handle: Handle = async ({ event, resolve }) => {
   const { user, session } = await loadSessionFromCookies(event.cookies)
   event.locals.user = user
   event.locals.session = session
+
+  // Must run AFTER `user` is resolved above — it decides whether to bounce
+  // an already-authenticated visitor off "/", "/login", and
+  // "/forgot-password" toward their dashboard instead. Throws a redirect
+  // (via SvelteKit's `redirect()`), which propagates up through this
+  // handle function same as any other thrown redirect.
+  enforceGuestOnly(event.url.pathname, user)
 
   // Attach WS upgrade handler to the Node server on first request
   if (!globalThis.__wsAttached) {

@@ -153,7 +153,7 @@
 <!-- ─── Main Content ──────────────────────────────────────────────────────── -->
 <div class="p-6">
 	<div class="mb-6 flex flex-col gap-4">
-		<FaceEnrollPrompt enrolled={student?.faceEnrolled ?? false} />
+<FaceEnrollPrompt enrolled={student?.faceEnrolled ?? false} />
 		<FaceVerifyPrompt assessment={nextVerifiableAssessment} />
 	</div>
 

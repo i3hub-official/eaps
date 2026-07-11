@@ -25,15 +25,23 @@
 	import EyeOff from '@lucide/svelte/icons/eye-off';
 	import Copy from '@lucide/svelte/icons/copy';
 	import Check from '@lucide/svelte/icons/check';
+	import FileQuestion from '@lucide/svelte/icons/file-question';
+	import ClipboardList from '@lucide/svelte/icons/clipboard-list';
+	import Tag from '@lucide/svelte/icons/tag';
+	import UserCheck from '@lucide/svelte/icons/user-check';
 
 	type ResultBlock = { created: number; skipped: number; total: number };
-	type Credential = { staffNumber: string; email: string; role: string; password: string };
 
-	let loading = $state(false);
-	let success = $state(false);
-	let error = $state<string | null>(null);
-	let progress = $state(0);
-	let results = $state<{
+	// Matches SeedResults['credentials'] from src/routes/api/admin/seed-missing/+server.ts
+	type Credential = {
+		type: 'staff' | 'student';
+		identifier: string; // staffNumber or matricNumber
+		role: string;
+		email: string;
+		password: string;
+	};
+
+	type SeedResults = {
 		university: { created: boolean; skipped: boolean };
 		colleges: ResultBlock;
 		departments: ResultBlock;
@@ -46,13 +54,34 @@
 		gradeScale: ResultBlock;
 		roles: ResultBlock;
 		staff: ResultBlock;
+		students: ResultBlock;
+		lecturerAssignments: ResultBlock;
+		questionTags: ResultBlock;
+		questions: ResultBlock;
+		assessments: ResultBlock;
+		assessmentQuestions: ResultBlock;
+		assessmentEligibility: ResultBlock;
+		assessmentInvigilators: ResultBlock;
 		credentials: Credential[];
 		totalCreated: number;
 		totalSkipped: number;
-	} | null>(null);
+	};
+
+	let loading = $state(false);
+	let success = $state(false);
+	let error = $state<string | null>(null);
+	let progress = $state(0);
+	let results = $state<SeedResults | null>(null);
 
 	let showPasswords = $state(false);
 	let copied = $state(false);
+	let credentialFilter = $state<'all' | 'staff' | 'student'>('all');
+
+	const filteredCredentials = $derived(
+		results?.credentials.filter((c) => credentialFilter === 'all' || c.type === credentialFilter) ?? [],
+	);
+	const staffCredCount = $derived(results?.credentials.filter((c) => c.type === 'staff').length ?? 0);
+	const studentCredCount = $derived(results?.credentials.filter((c) => c.type === 'student').length ?? 0);
 
 	const seedPlan = [
 		{ icon: Building, label: 'Colleges', count: '12', detail: 'All MOUAU colleges' },
@@ -61,10 +90,14 @@
 		{ icon: CalendarRange, label: 'Session & Semesters', count: '1 · 2', detail: 'Current academic session' },
 		{ icon: BookOpen, label: 'Courses', count: '33', detail: 'Sample courses + offerings' },
 		{ icon: Shield, label: 'Roles', count: '14', detail: 'System role definitions' },
-		{ icon: Users, label: 'Staff Users', count: '10', detail: 'Default password: Admin@123' },
+		{ icon: Users, label: 'Staff Users', count: '10', detail: 'Default password: Admin123' },
+		{ icon: GraduationCap, label: 'Students', count: 'Varies', detail: '2 per dept (5 for COLPAS) · Default password: Student123' },
+		{ icon: Tag, label: 'Question Tags', count: '1/course', detail: 'One fundamentals tag per course' },
+		{ icon: FileQuestion, label: 'Questions', count: '10/course', detail: 'Single-choice, 4 options each' },
+		{ icon: ClipboardList, label: 'Assessments', count: '3/course', detail: 'Practice · Test · Examination' },
 	];
 
-	const resultMeta: { key: keyof NonNullable<typeof results>; label: string; icon: typeof Building }[] = [
+	const resultMeta: { key: keyof SeedResults; label: string; icon: typeof Building }[] = [
 		{ key: 'colleges', label: 'Colleges', icon: Building },
 		{ key: 'departments', label: 'Departments', icon: Layers },
 		{ key: 'levels', label: 'Levels', icon: GraduationCap },
@@ -75,17 +108,26 @@
 		{ key: 'gradeScale', label: 'Grade Scale', icon: Shield },
 		{ key: 'roles', label: 'Roles', icon: Shield },
 		{ key: 'staff', label: 'Staff Users', icon: Users },
+		{ key: 'students', label: 'Students', icon: GraduationCap },
+		{ key: 'lecturerAssignments', label: 'Lecturer Assignments', icon: UserCheck },
+		{ key: 'questionTags', label: 'Question Tags', icon: Tag },
+		{ key: 'questions', label: 'Questions', icon: FileQuestion },
+		{ key: 'assessments', label: 'Assessments', icon: ClipboardList },
+		{ key: 'assessmentQuestions', label: 'Assessment Questions', icon: ClipboardList },
+		{ key: 'assessmentEligibility', label: 'Assessment Eligibility', icon: UserCheck },
+		{ key: 'assessmentInvigilators', label: 'Assessment Invigilators', icon: UserCheck },
 	];
 
 	function credentialsAsText(list: Credential[]): string {
 		const lines = [
-			'MOUAU eTEST — Seeded Staff Login Credentials',
+			'MOUAU eTEST — Seeded Login Credentials',
 			`Generated: ${new Date().toISOString()}`,
 			'='.repeat(60),
 			'',
 			...list.map(
 				(c) =>
-					`Staff Number : ${c.staffNumber}\n` +
+					`Type         : ${c.type === 'staff' ? 'Staff' : 'Student'}\n` +
+					`${c.type === 'staff' ? 'Staff Number' : 'Matric No.  '} : ${c.identifier}\n` +
 					`Role         : ${c.role}\n` +
 					`Email        : ${c.email}\n` +
 					`Password     : ${c.password}\n` +
@@ -99,13 +141,13 @@
 	}
 
 	function downloadCredentials() {
-		if (!results?.credentials?.length) return;
-		const text = credentialsAsText(results.credentials);
+		if (!filteredCredentials.length) return;
+		const text = credentialsAsText(filteredCredentials);
 		const blob = new Blob([text], { type: 'text/plain;charset=utf-8' });
 		const url = URL.createObjectURL(blob);
 		const a = document.createElement('a');
 		a.href = url;
-		a.download = `mouau-etest-staff-credentials-${new Date().toISOString().slice(0, 10)}.txt`;
+		a.download = `mouau-etest-credentials-${credentialFilter}-${new Date().toISOString().slice(0, 10)}.txt`;
 		document.body.appendChild(a);
 		a.click();
 		a.remove();
@@ -113,9 +155,9 @@
 	}
 
 	async function copyCredentials() {
-		if (!results?.credentials?.length) return;
+		if (!filteredCredentials.length) return;
 		try {
-			await navigator.clipboard.writeText(credentialsAsText(results.credentials));
+			await navigator.clipboard.writeText(credentialsAsText(filteredCredentials));
 			copied = true;
 			setTimeout(() => (copied = false), 1800);
 		} catch {
@@ -130,6 +172,7 @@
 		results = null;
 		progress = 0;
 		showPasswords = false;
+		credentialFilter = 'all';
 
 		const progressInterval = setInterval(() => {
 			progress = Math.min(progress + 5, 90);
@@ -168,7 +211,7 @@
 		<div class="min-w-0">
 			<h1 class="text-2xl font-bold tracking-tight">Seed Database</h1>
 			<p class="mt-0.5 text-sm text-muted-foreground">
-				Populate the academic structure, courses, roles, and default staff accounts.
+				Populate the academic structure, courses, roles, staff/student accounts, and sample assessments.
 			</p>
 		</div>
 	</div>
@@ -200,7 +243,12 @@
 
 		<div class="mt-4 flex items-start gap-2 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2.5 text-xs text-amber-700 dark:text-amber-400">
 			<KeyRound class="mt-0.5 size-3.5 shrink-0" />
-			<span>All staff accounts are created with the default password <strong class="font-mono">Admin@123</strong> and <code class="rounded bg-amber-500/15 px-1 py-0.5">mustChangePassword</code> enabled. You'll be able to view or download the full login list after seeding.</span>
+			<span
+				>Staff accounts use the default password <strong class="font-mono">Admin123</strong>, students use
+				<strong class="font-mono">Student123</strong> — both with <code class="rounded bg-amber-500/15 px-1 py-0.5"
+					>mustChangePassword</code
+				> enabled. You'll be able to view or download the full login list after seeding.</span
+			>
 		</div>
 
 		{#if loading}
@@ -314,17 +362,18 @@
 			{#if results.credentials?.length}
 				<Card class="border-blue-500/30 bg-blue-500/5">
 					<CardHeader class="pb-3">
-						<div class="flex items-center justify-between gap-3">
+						<div class="flex flex-wrap items-center justify-between gap-3">
 							<div>
 								<CardTitle class="flex items-center gap-2 text-base">
 									<KeyRound class="size-4" />
-									Staff Login Credentials
+									Login Credentials
 								</CardTitle>
 								<CardDescription class="mt-1">
-									{results.credentials.length} account{results.credentials.length === 1 ? '' : 's'} · default password <span class="font-mono">Admin@123</span>
+									{staffCredCount} staff · {studentCredCount} student{studentCredCount === 1 ? '' : 's'} — default passwords
+									<span class="font-mono">Admin123</span> / <span class="font-mono">Student123</span>
 								</CardDescription>
 							</div>
-							<div class="flex shrink-0 gap-2">
+							<div class="flex shrink-0 flex-wrap gap-2">
 								<Button variant="outline" size="sm" onclick={() => (showPasswords = !showPasswords)}>
 									{#if showPasswords}
 										<EyeOff class="mr-1.5 size-3.5" /> Hide
@@ -344,22 +393,55 @@
 								</Button>
 							</div>
 						</div>
+
+						<div class="mt-3 flex gap-1.5">
+							<Button
+								variant={credentialFilter === 'all' ? 'default' : 'outline'}
+								size="sm"
+								class="h-7 px-2.5 text-xs"
+								onclick={() => (credentialFilter = 'all')}
+							>
+								All ({results.credentials.length})
+							</Button>
+							<Button
+								variant={credentialFilter === 'staff' ? 'default' : 'outline'}
+								size="sm"
+								class="h-7 px-2.5 text-xs"
+								onclick={() => (credentialFilter = 'staff')}
+							>
+								Staff ({staffCredCount})
+							</Button>
+							<Button
+								variant={credentialFilter === 'student' ? 'default' : 'outline'}
+								size="sm"
+								class="h-7 px-2.5 text-xs"
+								onclick={() => (credentialFilter = 'student')}
+							>
+								Students ({studentCredCount})
+							</Button>
+						</div>
 					</CardHeader>
 					<CardContent class="p-0">
 						<div class="max-h-80 overflow-y-auto">
 							<table class="w-full text-sm">
 								<thead class="sticky top-0 bg-blue-500/10 text-xs uppercase text-muted-foreground backdrop-blur">
 									<tr>
-										<th class="px-4 py-2 text-left font-medium">Staff #</th>
+										<th class="px-4 py-2 text-left font-medium">Type</th>
+										<th class="px-4 py-2 text-left font-medium">ID</th>
 										<th class="px-4 py-2 text-left font-medium">Role</th>
 										<th class="px-4 py-2 text-left font-medium">Email</th>
 										<th class="px-4 py-2 text-left font-medium">Password</th>
 									</tr>
 								</thead>
 								<tbody class="divide-y divide-border/50">
-									{#each results.credentials as cred}
+									{#each filteredCredentials as cred}
 										<tr class="hover:bg-muted/40">
-											<td class="whitespace-nowrap px-4 py-2 font-mono text-xs">{cred.staffNumber}</td>
+											<td class="whitespace-nowrap px-4 py-2 text-xs">
+												<Badge variant={cred.type === 'staff' ? 'outline' : 'secondary'} class="text-[10px]">
+													{cred.type === 'staff' ? 'Staff' : 'Student'}
+												</Badge>
+											</td>
+											<td class="whitespace-nowrap px-4 py-2 font-mono text-xs">{cred.identifier}</td>
 											<td class="whitespace-nowrap px-4 py-2 text-xs text-muted-foreground">{cred.role}</td>
 											<td class="whitespace-nowrap px-4 py-2 font-mono text-xs">{cred.email}</td>
 											<td class="whitespace-nowrap px-4 py-2 font-mono text-xs">
