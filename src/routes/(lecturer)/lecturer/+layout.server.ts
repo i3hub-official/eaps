@@ -2,6 +2,7 @@
 import type { LayoutServerLoad } from './$types'
 import { getPrismaClient } from '$lib/server/db/index.js'
 import { requireLecturer } from '$lib/server/auth/guards.js'
+import { revealName, revealEmail } from '$lib/security/dataProtection'
 
 export const load: LayoutServerLoad = async ({ locals }) => {
 	const user = await requireLecturer(locals.user)
@@ -14,16 +15,13 @@ export const load: LayoutServerLoad = async ({ locals }) => {
 		prisma.level.findMany({ orderBy: { name: 'asc' } }),
 	])
 
-	// Check if the lecturer has a college and department assigned
 	const hasCollege = !!user.collegeId && colleges.length > 0
 	const hasDepartment = !!user.departmentId && departments.length > 0
 
-	// Check if the lecturer has been assigned to teach any courses
 	let courses: Array<{ id: string; code: string; title: string }> = []
 	let hasCourse = false
 
 	if (user.departmentId) {
-		// Check for courses in their department OR course offerings
 		const offerings = await prisma.courseOffering.findMany({
 			where: {
 				lecturerId: user.id,
@@ -45,7 +43,6 @@ export const load: LayoutServerLoad = async ({ locals }) => {
 			hasCourse = true
 			courses = offerings.map(o => o.course)
 		} else {
-			// Fallback: check for courses in their department
 			courses = await prisma.course.findMany({
 				where: { departmentId: user.departmentId },
 				orderBy: { code: 'asc' },
@@ -61,12 +58,29 @@ export const load: LayoutServerLoad = async ({ locals }) => {
 		user.primaryRole,
 	)
 
+	// user.firstName / lastName / email are stored encrypted at rest (see
+	// protectStaffRegistration in dataProtection.ts). This layout only ever
+	// exposes a lecturer their own account's info, so decrypting here is
+	// just displaying their own data back to them — not a new access path.
+	let firstName = user.firstName || 'Lecturer'
+	let lastName = user.lastName || ''
+	let email = user.email || ''
+	try {
+		if (user.firstName) firstName = revealName(user.firstName)
+		if (user.lastName) lastName = revealName(user.lastName)
+		if (user.email) email = revealEmail(user.email)
+	} catch {
+		// If decryption fails, fall back to the raw stored values rather than
+		// crashing every lecturer page — the fields above already default to
+		// safe placeholders/raw values.
+	}
+
 	return {
 		user: {
 			id: user.id,
-			firstName: user.firstName || 'Lecturer',
-			lastName: user.lastName || '',
-			email: user.email || '',
+			firstName,
+			lastName,
+			email,
 			primaryRole: user.primaryRole || 'LECTURER',
 			departmentId: user.departmentId,
 			collegeId: user.collegeId,

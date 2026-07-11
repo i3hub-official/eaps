@@ -14,10 +14,18 @@
 	import XCircle from '@lucide/svelte/icons/x-circle';
 	import Loader from '@lucide/svelte/icons/loader';
 	import BookOpen from '@lucide/svelte/icons/book-open';
+	import Archive from '@lucide/svelte/icons/archive';
 
 	let { data, form } = $props();
 
 	let startingId = $state<string | null>(null);
+
+	// Split into two independent groups. Each entry here is a single
+	// assessment (by assessmentId), never merged or compared against other
+	// assessments for the same course — a student's score on one PHY112
+	// test has no effect on any other PHY112 test's record.
+	const availableTests = $derived(data.tests.filter((t) => !t.completed));
+	const completedTests = $derived(data.tests.filter((t) => t.completed));
 
 	function formatDate(d: string | Date | null) {
 		if (!d) return null;
@@ -34,10 +42,21 @@
 				return { label: t.startTime ? `Opens ${formatDate(t.startTime)}` : 'Upcoming', variant: 'outline' as const };
 			case 'ENDED':
 				return { label: 'Ended', variant: 'secondary' as const };
-			case 'ATTEMPTS_USED':
-				return { label: 'Attempts used', variant: 'outline' as const };
 			default:
 				return { label: 'Open', variant: 'default' as const };
+		}
+	}
+
+	// Distinguish a normal finished attempt from a timed-out or
+	// disqualified one, since those carry different implications.
+	function completedBadge(t: (typeof data.tests)[number]) {
+		switch (t.completedSessionStatus) {
+			case 'DISQUALIFIED':
+				return { label: 'Disqualified', variant: 'destructive' as const };
+			case 'TIMED_OUT':
+				return { label: 'Auto-submitted', variant: 'secondary' as const };
+			default:
+				return { label: 'Completed', variant: 'secondary' as const };
 		}
 	}
 </script>
@@ -120,107 +139,186 @@
 			</div>
 		</Card>
 	{:else}
-		<div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-			{#each data.tests as t (t.id)}
-				{@const badge = statusBadge(t)}
-				<Card class="flex flex-col gap-4 p-5 {t.cancelled ? 'opacity-70' : ''}">
-					<div class="flex items-start justify-between gap-2">
-						<div>
-							{#if t.course}
-								<Badge variant="secondary" class="mb-1.5 font-normal">
-									<BookOpen class="mr-1 size-3" />
-									{t.course.code} • Level {t.course.level}
-								</Badge>
-							{/if}
-							<p class="font-semibold leading-snug">{t.title}</p>
-						</div>
-						<Badge variant={badge.variant} class="whitespace-nowrap">{badge.label}</Badge>
-					</div>
+		<!-- ─── Available Tests ────────────────────────────────────────────── -->
+		{#if availableTests.length > 0}
+			<div class="flex flex-col gap-4">
+				<h2 class="text-sm font-semibold text-muted-foreground">Available Tests</h2>
+				<div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+					{#each availableTests as t (t.id)}
+						{@const badge = statusBadge(t)}
+						<Card class="flex flex-col gap-4 p-5 {t.cancelled ? 'opacity-70' : ''}">
+							<div class="flex items-start justify-between gap-2">
+								<div>
+									{#if t.course}
+										<Badge variant="secondary" class="mb-1.5 font-normal">
+											<BookOpen class="mr-1 size-3" />
+											{t.course.code} • Level {t.course.level}
+										</Badge>
+									{/if}
+									<p class="font-semibold leading-snug">{t.title}</p>
+								</div>
+								<Badge variant={badge.variant} class="whitespace-nowrap">{badge.label}</Badge>
+							</div>
 
-					<div class="flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
-						<span class="flex items-center gap-1">
-							<Clock class="size-3.5" />
-							{t.durationMinutes} min
-						</span>
-						<span>{t.questionCount} question{t.questionCount === 1 ? '' : 's'}</span>
-						<span class="flex items-center gap-1">
-							<RotateCcw class="size-3.5" />
-							{t.attemptsUsed}/{t.maxAttempts} attempts used
-						</span>
-					</div>
+							<div class="flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
+								<span class="flex items-center gap-1">
+									<Clock class="size-3.5" />
+									{t.durationMinutes} min
+								</span>
+								<span>{t.questionCount} question{t.questionCount === 1 ? '' : 's'}</span>
+								<span class="flex items-center gap-1">
+									<RotateCcw class="size-3.5" />
+									{t.attemptsUsed}/{t.maxAttempts} attempts used
+								</span>
+							</div>
 
-					<div class="flex flex-wrap gap-1.5">
-						{#if t.requireFaceVerify}
-							<Badge variant="outline" class="gap-1 font-normal">
-								<ScanFace class="size-3" />
-								Face verification
-							</Badge>
-						{/if}
-						{#if t.fullscreenRequired}
-							<Badge variant="outline" class="font-normal">Fullscreen required</Badge>
-						{/if}
-					</div>
-
-					{#if t.cancelled}
-						<div class="flex items-center gap-1.5 rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive">
-							<XCircle class="size-3.5" />
-							This test was cancelled by your lecturer.
-						</div>
-					{:else if t.result?.isReleased}
-						<div class="rounded-md bg-muted px-3 py-2 text-sm">
-							<span class="flex items-center gap-1.5 text-muted-foreground">
-								<CheckCircle2 class="size-3.5 text-primary" />
-								Last score:
-							</span>
-							<span class="font-medium">
-								{t.result.marksObtained}/{t.result.totalMarks} ({t.result.percentage}%)
-							</span>
-							{#if t.result.grade}
-								<Badge variant="outline" class="ml-2 font-normal">{t.result.grade}</Badge>
-							{/if}
-						</div>
-					{/if}
-
-					{#if !t.cancelled}
-						<form
-							method="POST"
-							action="?/start"
-							use:enhance={() => {
-								startingId = t.id;
-								return async ({ update }) => {
-									await update();
-									startingId = null;
-								};
-							}}
-							class="mt-auto"
-						>
-							<input type="hidden" name="assessmentId" value={t.id} />
-							<Button
-								type="submit"
-								class="w-full"
-								disabled={(!t.canStart && !t.inProgressSessionId) || startingId === t.id}
-							>
-								{#if startingId === t.id}
-									<Loader class="size-4 animate-spin" />
-									Starting…
-								{:else if t.inProgressSessionId}
-									Resume test
-								{:else if !data.faceEnrolled && t.requireFaceVerify}
-									Face enrollment required
-								{:else if t.displayStatus === 'ENDED'}
-									Ended
-								{:else if t.displayStatus === 'UPCOMING'}
-									Not yet open
-								{:else if t.canStart}
-									Start test
-								{:else}
-									Unavailable
+							<div class="flex flex-wrap gap-1.5">
+								{#if t.requireFaceVerify}
+									<Badge variant="outline" class="gap-1 font-normal">
+										<ScanFace class="size-3" />
+										Face verification
+									</Badge>
 								{/if}
+								{#if t.fullscreenRequired}
+									<Badge variant="outline" class="font-normal">Fullscreen required</Badge>
+								{/if}
+							</div>
+
+							{#if t.cancelled}
+								<div class="flex items-center gap-1.5 rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive">
+									<XCircle class="size-3.5" />
+									This test was cancelled by your lecturer.
+								</div>
+							{:else if t.result?.isReleased}
+								<div class="rounded-md bg-muted px-3 py-2 text-sm">
+									<span class="flex items-center gap-1.5 text-muted-foreground">
+										<CheckCircle2 class="size-3.5 text-primary" />
+										Last score:
+									</span>
+									<span class="font-medium">
+										{t.result.marksObtained}/{t.result.totalMarks} ({t.result.percentage}%)
+									</span>
+									{#if t.result.grade}
+										<Badge variant="outline" class="ml-2 font-normal">{t.result.grade}</Badge>
+									{/if}
+								</div>
+							{/if}
+
+							{#if !t.cancelled}
+								<form
+									method="POST"
+									action="?/start"
+									use:enhance={() => {
+										startingId = t.id;
+										return async ({ update }) => {
+											await update();
+											startingId = null;
+										};
+									}}
+									class="mt-auto"
+								>
+									<input type="hidden" name="assessmentId" value={t.id} />
+									<Button
+										type="submit"
+										class="w-full"
+										disabled={(!t.canStart && !t.inProgressSessionId) || startingId === t.id}
+									>
+										{#if startingId === t.id}
+											<Loader class="size-4 animate-spin" />
+											Starting…
+										{:else if t.inProgressSessionId}
+											Resume test
+										{:else if !data.faceEnrolled && t.requireFaceVerify}
+											Face enrollment required
+										{:else if t.displayStatus === 'ENDED'}
+											Ended
+										{:else if t.displayStatus === 'UPCOMING'}
+											Not yet open
+										{:else if t.canStart}
+											Start test
+										{:else}
+											Unavailable
+										{/if}
+									</Button>
+								</form>
+							{/if}
+						</Card>
+					{/each}
+				</div>
+			</div>
+		{/if}
+
+		<!-- ─── Already Taken ──────────────────────────────────────────────── -->
+		{#if completedTests.length > 0}
+			<div class="flex flex-col gap-4">
+				<h2 class="flex items-center gap-1.5 text-sm font-semibold text-muted-foreground">
+					<Archive class="size-4" />
+					Already Taken
+				</h2>
+				<div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+					{#each completedTests as t (t.id)}
+						{@const badge = completedBadge(t)}
+						<Card class="flex flex-col gap-4 p-5 opacity-90">
+							<div class="flex items-start justify-between gap-2">
+								<div>
+									{#if t.course}
+										<Badge variant="secondary" class="mb-1.5 font-normal">
+											<BookOpen class="mr-1 size-3" />
+											{t.course.code} • Level {t.course.level}
+										</Badge>
+									{/if}
+									<p class="font-semibold leading-snug">{t.title}</p>
+								</div>
+								<Badge variant={badge.variant} class="whitespace-nowrap">{badge.label}</Badge>
+							</div>
+
+							<div class="flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
+								<span class="flex items-center gap-1">
+									<Clock class="size-3.5" />
+									{t.durationMinutes} min
+								</span>
+								<span>{t.questionCount} question{t.questionCount === 1 ? '' : 's'}</span>
+								<span class="flex items-center gap-1">
+									<RotateCcw class="size-3.5" />
+									{t.attemptsUsed}/{t.maxAttempts} attempts used
+								</span>
+							</div>
+
+							<div class="flex items-center gap-1.5 rounded-md bg-muted px-3 py-2 text-sm text-muted-foreground">
+								{#if t.completedSessionStatus === 'DISQUALIFIED'}
+									<XCircle class="size-3.5 text-destructive" />
+									This attempt was disqualified. No further attempts remain.
+								{:else if t.completedSessionStatus === 'TIMED_OUT'}
+									<Clock class="size-3.5" />
+									Auto-submitted when time expired. No further attempts remain.
+								{:else}
+									<CheckCircle2 class="size-3.5 text-primary" />
+									You have completed this test. No further attempts remain.
+								{/if}
+							</div>
+
+							{#if t.result?.isReleased}
+								<div class="rounded-md bg-muted px-3 py-2 text-sm">
+									<span class="flex items-center gap-1.5 text-muted-foreground">
+										<CheckCircle2 class="size-3.5 text-primary" />
+										Score:
+									</span>
+									<span class="font-medium">
+										{t.result.marksObtained}/{t.result.totalMarks} ({t.result.percentage}%)
+									</span>
+									{#if t.result.grade}
+										<Badge variant="outline" class="ml-2 font-normal">{t.result.grade}</Badge>
+									{/if}
+								</div>
+							{/if}
+
+							<Button href={`/student/tests/${t.completedSessionId}/result`} variant="outline" class="mt-auto w-full">
+								View Result
 							</Button>
-						</form>
-					{/if}
-				</Card>
-			{/each}
-		</div>
+						</Card>
+					{/each}
+				</div>
+			</div>
+		{/if}
 	{/if}
 </main>

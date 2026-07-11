@@ -22,6 +22,8 @@
 	} from '$lib/components/ui/select/index.js';
 	import { Alert, AlertDescription } from '$lib/components/ui/alert/index.js';
 	import { Tabs, TabsContent, TabsList, TabsTrigger } from '$lib/components/ui/tabs/index.js';
+	import * as Popover from '$lib/components/ui/popover/index.js';
+	import * as Command from '$lib/components/ui/command/index.js';
 	import {
 		FileCheck,
 		Search,
@@ -34,9 +36,12 @@
 		XCircle,
 		Building2,
 		FileText,
+		ChevronsUpDown,
 	} from '@lucide/svelte/icons';
 	import { invalidateAll } from '$app/navigation';
 	import { format } from '$lib/utils/date';
+	import { cn } from '$lib/utils.js';
+	import { tick } from 'svelte';
 
 	let { data, form } = $props();
 
@@ -46,6 +51,10 @@
 	let filterCourse = $state(data?.filters?.course || 'all');
 	let filterStatus = $state(data?.filters?.status || 'pending');
 
+	// ─── Course Combobox State ──────────────────────────────────────────────
+	let courseOpen = $state(false);
+	let courseTriggerRef = $state<HTMLButtonElement>(null!);
+
 	// ─── Data ────────────────────────────────────────────────────────────────
 	let user = $derived(data?.user);
 	let submissions = $derived(data?.submissions || []);
@@ -53,6 +62,12 @@
 	let error = $derived(data?.error);
 
 	// ─── Computed ────────────────────────────────────────────────────────────
+	const selectedCourseLabel = $derived(
+		filterCourse === 'all' 
+			? 'All Courses' 
+			: data?.courses?.find((c) => c.id === filterCourse)?.label || 'All Courses'
+	);
+
 	let filteredSubmissions = $derived(
 		submissions.filter(s => {
 			const matchesSearch = s.studentName.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -67,6 +82,13 @@
 	);
 
 	// ─── Handlers ────────────────────────────────────────────────────────────
+	function closeAndFocusCourse() {
+		courseOpen = false;
+		tick().then(() => {
+			courseTriggerRef?.focus();
+		});
+	}
+
 	async function handleRefresh() {
 		if (isRefreshing) return;
 		isRefreshing = true;
@@ -233,31 +255,65 @@
 							/>
 						</div>
 						<div class="flex gap-2">
-							<Select>
-								<SelectTrigger class="w-[150px]" onchange={(e) => filterCourse = e.currentTarget.value}>
-									<span class="truncate">
-										{filterCourse === 'all' ? 'All Courses' : data?.courses?.find(c => c.id === filterCourse)?.label || 'Select'}
-									</span>
-								</SelectTrigger>
-								<SelectContent>
-									<SelectItem 
-										value="all" 
-										selected={filterCourse === 'all'}
-										onclick={() => filterCourse = 'all'}
-									>
-										All Courses
-									</SelectItem>
-									{#each data?.courses || [] as course}
-										<SelectItem 
-											value={course.id}
-											selected={filterCourse === course.id}
-											onclick={() => filterCourse = course.id}
+							<!-- Course Combobox -->
+							<Popover.Root bind:open={courseOpen}>
+								<Popover.Trigger bind:ref={courseTriggerRef}>
+									{#snippet child({ props })}
+										<Button
+											{...props}
+											variant="outline"
+											class="w-[180px] justify-between h-10"
+											role="combobox"
+											aria-expanded={courseOpen}
 										>
-											{course.label}
-										</SelectItem>
-									{/each}
-								</SelectContent>
-							</Select>
+											<span class="truncate">{selectedCourseLabel}</span>
+											<ChevronsUpDown class="ml-2 size-4 shrink-0 opacity-50" />
+										</Button>
+									{/snippet}
+								</Popover.Trigger>
+								<Popover.Content class="w-[180px] p-0">
+									<Command.Root>
+										<Command.Input placeholder="Search courses..." />
+										<Command.List>
+											<Command.Empty>No course found.</Command.Empty>
+											<Command.Group>
+												<Command.Item
+													value="all"
+													onSelect={() => {
+														filterCourse = 'all';
+														closeAndFocusCourse();
+													}}
+												>
+													<CheckCircle
+														class={cn(
+															"mr-2 size-4",
+															filterCourse === 'all' ? "opacity-100" : "opacity-0"
+														)}
+													/>
+													All Courses
+												</Command.Item>
+												{#each data?.courses || [] as course}
+													<Command.Item
+														value={course.id}
+														onSelect={() => {
+															filterCourse = course.id;
+															closeAndFocusCourse();
+														}}
+													>
+														<CheckCircle
+															class={cn(
+																"mr-2 size-4",
+																filterCourse === course.id ? "opacity-100" : "opacity-0"
+															)}
+														/>
+														{course.label}
+													</Command.Item>
+												{/each}
+											</Command.Group>
+										</Command.List>
+									</Command.Root>
+								</Popover.Content>
+							</Popover.Root>
 
 							<Select>
 								<SelectTrigger class="w-[130px]" onchange={(e) => filterStatus = e.currentTarget.value}>

@@ -8,6 +8,13 @@
 	import AlertCircle from '@lucide/svelte/icons/alert-circle';
 	import ScanFace from '@lucide/svelte/icons/scan-face';
 	import Eye from '@lucide/svelte/icons/eye';
+	import EyeClosed from '@lucide/svelte/icons/eye-closed';
+	import ArrowLeft from '@lucide/svelte/icons/arrow-left';
+	import ArrowRight from '@lucide/svelte/icons/arrow-right';
+	import ChevronUp from '@lucide/svelte/icons/chevron-up';
+	import ChevronDown from '@lucide/svelte/icons/chevron-down';
+	import Smile from '@lucide/svelte/icons/smile';
+	import MousePointerClick from '@lucide/svelte/icons/mouse-pointer-click';
 	import { getHuman, cosineSimilarity } from '$lib/client/face/human.js';
 	import { gestureConfidence } from './gesture-service.js';
 
@@ -18,25 +25,41 @@
 	}: { examId: string; onSuccess: () => void; onCancel: () => void } = $props();
 
 	type Phase = 'loading-model' | 'requesting-camera' | 'scanning' | 'stabilizing' | 'checking' | 'success' | 'failed' | 'error';
-	type LivenessGesture = 'blink' | 'stable_gaze';
+	type LivenessTask = 'blink' | 'look_left' | 'look_right' | 'nod_up' | 'nod_down' | 'smile';
 
 	let phase = $state<Phase>('loading-model');
 	let statusText = $state('Loading face model…');
 	let errorMessage = $state('');
 	let similarityPercent = $state<number | null>(null);
 	let faceDetected = $state(false);
-	let detectedGestures = $state<Set<LivenessGesture>>(new Set());
-	let verificationProgress = $state(0); // 0-1 for progress bar
-	let gesturesDone = $state<Array<LivenessGesture>>([]);
+	let verificationProgress = $state(0);
 
-	// Thresholds (relaxed for better UX - 71% was too high to achieve)
-	const MATCH_THRESHOLD = 0.65; // Lowered from 0.75 - 71% is now sufficient
-	const MIN_FACE_SCORE = 0.6; // Lowered from 0.7
-	const VERIFICATION_DELAY_MS = 5000; // Must hold face still for 5 seconds
-	const BLINK_CONFIDENCE_THRESHOLD = 0.40; // Lowered from 0.50
-	const GAZE_STABILITY_THRESHOLD = 0.75; // Lowered from 0.85
-	const MIN_ANTISPOOF = 0.4; // Lowered from 0.5
-	const MIN_LIVENESS = 0.5; // Lowered from acceptable thresholds
+	// ─── Random Tasks ──────────────────────────────────────────────────────
+	let tasks: LivenessTask[] = $state<LivenessTask[]>([]);
+	let currentTaskIndex = $state(0);
+	let completedTasks = $state<LivenessTask[]>([]);
+	let taskConfidence = $state<Record<LivenessTask, number>>({
+		blink: 0,
+		look_left: 0,
+		look_right: 0,
+		nod_up: 0,
+		nod_down: 0,
+		smile: 0,
+	});
+
+	// ─── Thresholds ────────────────────────────────────────────────────────
+	const MATCH_THRESHOLD = 0.65;
+	const MIN_FACE_SCORE = 0.6;
+	const VERIFICATION_DELAY_MS = 5000;
+	const TASK_CONFIRM_FRAMES = 8;
+	const MIN_ANTISPOOF = 0.4;
+	const MIN_LIVENESS = 0.5;
+
+	// ─── No Face Timeout ──────────────────────────────────────────────────
+	const NO_FACE_TIMEOUT_MS = 2.5 * 60 * 1000;
+	let noFaceStartTime: number | null = null;
+	let faceLostAlertShown = $state(false);
+	let faceLostTime: number | null = null;
 
 	let videoEl = $state<HTMLVideoElement | null>(null);
 	let canvasEl = $state<HTMLCanvasElement | null>(null);
@@ -47,9 +70,150 @@
 	let loopHandle: number | null = null;
 	let lastResult: any = null;
 	let stabilityStartTime: number | null = null;
-	let lastBlinkTime: number | null = null;
+	let taskFrameCount = 0;
 	let previousEarScore: number | null = null;
-	let steadyFrameCount = 0;
+	let lastBlinkTime: number | null = null;
+
+	// ─── Task Configuration ──────────────────────────────────────────────
+	const taskConfig: Record<LivenessTask, { label: string; icon: any; instruction: string }> = {
+		blink: { label: 'Blink', icon: EyeClosed, instruction: 'Close both eyes and open' },
+		look_left: { label: 'Look Left', icon: ArrowLeft, instruction: 'Turn your head to the left' },
+		look_right: { label: 'Look Right', icon: ArrowRight, instruction: 'Turn your head to the right' },
+		nod_up: { label: 'Nod Up', icon: ChevronUp, instruction: 'Nod your head up' },
+		nod_down: { label: 'Nod Down', icon: ChevronDown, instruction: 'Nod your head down' },
+		smile: { label: 'Smile', icon: Smile, instruction: 'Smile at the camera' },
+	};
+
+	const TASK_POOL: LivenessTask[] = ['blink', 'look_left', 'look_right', 'nod_up', 'nod_down', 'smile'];
+
+	function selectRandomTasks(count: number = 2): LivenessTask[] {
+		const shuffled = [...TASK_POOL].sort(() => Math.random() - 0.5);
+		return shuffled.slice(0, count);
+	}
+
+	function getTaskIcon(task: LivenessTask): any {
+		return taskConfig[task]?.icon || MousePointerClick;
+	}
+
+	function getTaskLabel(task: LivenessTask): string {
+		return taskConfig[task]?.label || task;
+	}
+
+	function getTaskInstruction(task: LivenessTask): string {
+		return taskConfig[task]?.instruction || '';
+	}
+
+	// ─── Task Detection ──────────────────────────────────────────────────
+	function detectTask(task: LivenessTask, face: any): number {
+		switch (task) {
+			case 'blink':
+				return detectBlink(face);
+			case 'look_left':
+				return detectHeadPose(face, 'left');
+			case 'look_right':
+				return detectHeadPose(face, 'right');
+			case 'nod_up':
+				return detectHeadPose(face, 'up');
+			case 'nod_down':
+				return detectHeadPose(face, 'down');
+			case 'smile':
+				return detectSmile(face);
+			default:
+				return 0;
+		}
+	}
+
+	function detectBlink(face: any): number {
+		if (!face.mesh || face.mesh.length < 400) return 0;
+
+		const LEFT_EYE_IDX = [33, 160, 158, 133, 153, 144];
+		const RIGHT_EYE_IDX = [263, 387, 385, 362, 380, 373];
+		const EAR_CLOSED_MAX = 0.25;
+
+		const mesh = face.mesh as number[][];
+		const leftEyePoints = LEFT_EYE_IDX.map(i => mesh[i]).filter(Boolean);
+		const rightEyePoints = RIGHT_EYE_IDX.map(i => mesh[i]).filter(Boolean);
+
+		if (leftEyePoints.length < 6 || rightEyePoints.length < 6) return 0;
+
+		const dist = (a: number[], b: number[]): number => Math.hypot(a[0] - b[0], a[1] - b[1]);
+		const ear = (points: number[][]): number => {
+			const v = dist(points[1], points[5]) + dist(points[2], points[4]);
+			const h = 2 * dist(points[0], points[3]);
+			return h > 0 ? v / h : 1;
+		};
+
+		const leftEar = ear(leftEyePoints);
+		const rightEar = ear(rightEyePoints);
+		const avgEar = (leftEar + rightEar) / 2;
+
+		const isBlinking = avgEar < EAR_CLOSED_MAX;
+		
+		if (isBlinking) {
+			lastBlinkTime = Date.now();
+			return 0.9;
+		}
+		
+		// If recently blinked, give partial credit
+		if (lastBlinkTime && Date.now() - lastBlinkTime < 2000) {
+			return 0.5;
+		}
+		
+		return 0;
+	}
+
+	function detectHeadPose(face: any, direction: 'left' | 'right' | 'up' | 'down'): number {
+		if (!face.rotation) return 0;
+
+		const yaw = face.rotation.angle?.yaw ?? face.rotation.yaw ?? 0;
+		const pitch = face.rotation.angle?.pitch ?? face.rotation.pitch ?? 0;
+
+		switch (direction) {
+			case 'left':
+				return yaw < -15 ? 0.9 : yaw < -5 ? 0.6 : 0;
+			case 'right':
+				return yaw > 15 ? 0.9 : yaw > 5 ? 0.6 : 0;
+			case 'up':
+				return pitch < -10 ? 0.9 : pitch < -3 ? 0.6 : 0;
+			case 'down':
+				return pitch > 10 ? 0.9 : pitch > 3 ? 0.6 : 0;
+			default:
+				return 0;
+		}
+	}
+
+	function detectSmile(face: any): number {
+		if (!face.mesh || face.mesh.length < 200) return 0;
+
+		const MOUTH_TOP_IDX = 13;
+		const MOUTH_BOT_IDX = 14;
+		const CHIN_IDX = 152;
+		const FOREHEAD_IDX = 10;
+
+		const mesh = face.mesh as number[][];
+		const mTop = mesh[MOUTH_TOP_IDX];
+		const mBot = mesh[MOUTH_BOT_IDX];
+		const chin = mesh[CHIN_IDX];
+		const fore = mesh[FOREHEAD_IDX];
+
+		if (!mTop || !mBot || !chin || !fore) return 0;
+
+		const dist = (a: number[], b: number[]): number => Math.hypot(a[0] - b[0], a[1] - b[1]);
+		const mouthH = dist(mTop, mBot);
+		const faceH = dist(fore, chin);
+		const ratio = faceH > 0 ? mouthH / faceH : 0;
+
+		// Check for smile using expression/emotion if available
+		const expression = face.expression || {};
+		const emotion = face.emotion || {};
+		const smileScore = Math.max(
+			expression.smile || 0,
+			emotion.happy || 0,
+			ratio > 0.04 ? 0.7 : 0
+		);
+
+		return smileScore;
+	}
 
 	function themeColor(varName: string, fallback: string, alpha = 1) {
 		if (typeof window === 'undefined') return fallback;
@@ -74,7 +238,6 @@
 
 		ctx.clearRect(0, 0, w, h);
 
-		// Darken background
 		ctx.save();
 		ctx.fillStyle = themeColor('--background', 'rgba(0,0,0,0.7)', 0.7);
 		ctx.fillRect(0, 0, w, h);
@@ -84,14 +247,12 @@
 		ctx.fill();
 		ctx.restore();
 
-		// Oval border
 		ctx.beginPath();
 		ctx.ellipse(cx, cy, rx, ry, 0, 0, Math.PI * 2);
 		ctx.strokeStyle = multiple ? destructive : detectedFace ? primary : border;
 		ctx.lineWidth = detectedFace ? 2.5 : 1.5;
 		ctx.stroke();
 
-		// Corner markers
 		const cornerOffset = 16;
 		const corners: [number, number, [number, number]][] = [
 			[cx - rx, cy - ry, [1,  1]],
@@ -110,7 +271,6 @@
 			ctx.stroke();
 		}
 
-		// Badge
 		const badgeY = h * 0.08;
 		ctx.save();
 		const badgeText = multiple ? '⚠ Multiple faces' : detectedFace ? '✓ Face detected' : 'Searching…';
@@ -135,6 +295,66 @@
 		ctx.textBaseline = 'middle';
 		ctx.fillText(badgeText, cx, badgeY);
 		ctx.restore();
+
+		// ─── Face Lost Alert Overlay ──────────────────────────────────────
+		if (faceLostAlertShown) {
+			ctx.save();
+			ctx.fillStyle = 'rgba(239, 68, 68, 0.15)';
+			ctx.fillRect(0, 0, w, h);
+			
+			ctx.fillStyle = 'rgba(239, 68, 68, 0.9)';
+			ctx.font = 'bold 18px system-ui';
+			ctx.textAlign = 'center';
+			ctx.textBaseline = 'middle';
+			ctx.fillText('⚠️ Face Lost', cx, cy - 30);
+			
+			ctx.fillStyle = 'rgba(255, 255, 255, 0.8)';
+			ctx.font = '14px system-ui';
+			ctx.fillText('Please look back at the camera', cx, cy + 20);
+			
+			if (faceLostTime) {
+				const elapsed = (Date.now() - faceLostTime) / 1000;
+				const remaining = Math.max(0, (NO_FACE_TIMEOUT_MS - elapsed * 1000) / 1000);
+				ctx.fillStyle = 'rgba(255, 255, 255, 0.6)';
+				ctx.font = '12px system-ui';
+				ctx.fillText(`${Math.ceil(remaining)}s remaining before timeout`, cx, cy + 55);
+			}
+			ctx.restore();
+		}
+
+		// ─── Task Instruction Overlay ──────────────────────────────────────
+		if (phase === 'stabilizing' && tasks.length > 0 && currentTaskIndex < tasks.length) {
+			const currentTask = tasks[currentTaskIndex];
+			const isCompleted = completedTasks.includes(currentTask);
+			
+			ctx.save();
+			const pillY = h * 0.92;
+			const pillH = 40;
+			const label = isCompleted 
+				? `✅ ${getTaskLabel(currentTask)} done!` 
+				: getTaskInstruction(currentTask);
+			
+			ctx.font = '500 14px system-ui';
+			const textW = ctx.measureText(label).width;
+			const pillW = Math.min(textW + 44, w * 0.9);
+			const pillX = cx - pillW / 2;
+			
+			ctx.fillStyle = isCompleted 
+				? 'rgba(0, 201, 167, 0.2)' 
+				: 'rgba(0, 0, 0, 0.7)';
+			ctx.strokeStyle = isCompleted ? '#00c9a7' : 'rgba(255,255,255,0.3)';
+			ctx.lineWidth = 1.5;
+			ctx.beginPath();
+			ctx.roundRect(pillX, pillY - pillH / 2, pillW, pillH, pillH / 2);
+			ctx.fill();
+			ctx.stroke();
+			
+			ctx.fillStyle = isCompleted ? '#00c9a7' : '#ffffff';
+			ctx.textAlign = 'center';
+			ctx.textBaseline = 'middle';
+			ctx.fillText(label, cx, pillY);
+			ctx.restore();
+		}
 	}
 
 	async function start() {
@@ -168,11 +388,25 @@
 				ctx = canvasEl.getContext('2d');
 			}
 
+			// Select random tasks
+			tasks = selectRandomTasks(2);
+			currentTaskIndex = 0;
+			completedTasks = [];
+			taskConfidence = {
+				blink: 0,
+				look_left: 0,
+				look_right: 0,
+				nod_up: 0,
+				nod_down: 0,
+				smile: 0,
+			};
+
 			phase = 'scanning';
 			statusText = 'Position your face in the oval';
 			faceDetected = false;
-			detectedGestures.clear();
-			gesturesDone = [];
+			faceLostAlertShown = false;
+			faceLostTime = null;
+			noFaceStartTime = Date.now();
 			runDetectionLoop();
 		} catch (err) {
 			phase = 'error';
@@ -187,42 +421,6 @@
 		} catch {
 			lastResult = null;
 		}
-	}
-
-	function detectBlink(face: any): boolean {
-		if (!face.mesh || face.mesh.length < 400) return false;
-
-		// Eye aspect ratio calculation
-		const LEFT_EYE_IDX = [33, 160, 158, 133, 153, 144];
-		const RIGHT_EYE_IDX = [263, 387, 385, 362, 380, 373];
-		const EAR_CLOSED_MAX = 0.25;
-
-		const mesh = face.mesh as number[][];
-		const leftEyePoints = LEFT_EYE_IDX.map(i => mesh[i]).filter(Boolean);
-		const rightEyePoints = RIGHT_EYE_IDX.map(i => mesh[i]).filter(Boolean);
-
-		if (leftEyePoints.length < 6 || rightEyePoints.length < 6) return false;
-
-		const dist = (a: number[], b: number[]): number => Math.hypot(a[0] - b[0], a[1] - b[1]);
-		const ear = (points: number[][]): number => {
-			const v = dist(points[1], points[5]) + dist(points[2], points[4]);
-			const h = 2 * dist(points[0], points[3]);
-			return h > 0 ? v / h : 1;
-		};
-
-		const leftEar = ear(leftEyePoints);
-		const rightEar = ear(rightEyePoints);
-		const avgEar = (leftEar + rightEar) / 2;
-
-		// Blink detected: eyes close and then open again
-		if (previousEarScore !== null && previousEarScore > EAR_CLOSED_MAX && avgEar < EAR_CLOSED_MAX) {
-			previousEarScore = avgEar;
-			lastBlinkTime = Date.now();
-			return true;
-		}
-
-		previousEarScore = avgEar;
-		return false;
 	}
 
 	async function runDetectionLoop() {
@@ -242,84 +440,103 @@
 
 		if (!face) {
 			faceDetected = false;
-			statusText = 'No face detected — center your face in the oval';
 			drawOverlay(false, false);
 			stabilityStartTime = null;
-			steadyFrameCount = 0;
+			
+			if (!faceLostAlertShown) {
+				faceLostAlertShown = true;
+				faceLostTime = Date.now();
+				statusText = '⚠️ Face lost! Please look back at the camera.';
+			}
+			
+			const elapsedSinceNoFace = noFaceStartTime ? Date.now() - noFaceStartTime : 0;
+			if (elapsedSinceNoFace >= NO_FACE_TIMEOUT_MS) {
+				phase = 'failed';
+				statusText = 'Verification timed out. Face not detected for 2.5 minutes.';
+				stopCamera();
+				return;
+			}
 		} else if (faces.length > 1) {
 			faceDetected = false;
 			statusText = 'Multiple faces detected — make sure you are alone';
 			drawOverlay(false, true);
 			stabilityStartTime = null;
-			steadyFrameCount = 0;
+			noFaceStartTime = Date.now();
+			if (faceLostAlertShown) {
+				faceLostAlertShown = false;
+				faceLostTime = null;
+			}
 		} else if ((face.faceScore ?? 0) < MIN_FACE_SCORE) {
 			faceDetected = true;
 			statusText = 'Move closer and look directly at the camera';
 			drawOverlay(true, false);
 			stabilityStartTime = null;
-			steadyFrameCount = 0;
+			noFaceStartTime = Date.now();
+			if (faceLostAlertShown) {
+				faceLostAlertShown = false;
+				faceLostTime = null;
+			}
 		} else if (face.embedding) {
 			faceDetected = true;
 			drawOverlay(true, false);
-
-			// Detect liveness gestures
-			const blinkConfidence = gestureConfidence('blink', face);
-			if (blinkConfidence >= BLINK_CONFIDENCE_THRESHOLD && (!lastBlinkTime || Date.now() - lastBlinkTime > 500)) {
-				if (!detectedGestures.has('blink')) {
-					detectedGestures.add('blink');
-					gesturesDone.push('blink');
-				}
-				lastBlinkTime = Date.now();
+			noFaceStartTime = Date.now();
+			
+			if (faceLostAlertShown) {
+				faceLostAlertShown = false;
+				faceLostTime = null;
+				statusText = 'Face detected!';
 			}
 
-			// Also detect manual blink via EAR for redundancy
-			if (detectBlink(face)) {
-				if (!detectedGestures.has('blink')) {
-					detectedGestures.add('blink');
-					gesturesDone.push('blink');
+			// ─── Task Detection ──────────────────────────────────────────────
+			if (phase === 'stabilizing' && tasks.length > 0 && currentTaskIndex < tasks.length) {
+				const currentTask = tasks[currentTaskIndex];
+				const confidence = detectTask(currentTask, face);
+				taskConfidence[currentTask] = confidence;
+
+				const isCompleted = completedTasks.includes(currentTask);
+
+				if (!isCompleted && confidence >= 0.7) {
+					taskFrameCount++;
+					if (taskFrameCount >= TASK_CONFIRM_FRAMES) {
+						completedTasks.push(currentTask);
+						currentTaskIndex++;
+						taskFrameCount = 0;
+						
+						if (currentTaskIndex < tasks.length) {
+							statusText = getTaskInstruction(tasks[currentTaskIndex]);
+						}
+					}
+				} else if (confidence < 0.5) {
+					taskFrameCount = Math.max(0, taskFrameCount - 1);
+				}
+
+				// Update status text with task instruction
+				if (!isCompleted && currentTaskIndex < tasks.length) {
+					statusText = getTaskInstruction(currentTask);
+				} else if (currentTaskIndex < tasks.length) {
+					statusText = getTaskInstruction(tasks[currentTaskIndex]);
 				}
 			}
 
-			// Stable gaze = face score + anti-spoof
-			const antispoofScore = face.real ?? face.antispoof ?? 0;
-			if ((face.faceScore ?? 0) > GAZE_STABILITY_THRESHOLD && antispoofScore > 0.4) {
-				steadyFrameCount++;
-				if (steadyFrameCount > 3 && !detectedGestures.has('stable_gaze')) {
-					detectedGestures.add('stable_gaze');
-					gesturesDone.push('stable_gaze');
-				}
-			} else {
-				steadyFrameCount = 0;
+			// ─── All tasks completed ─────────────────────────────────────────
+			if (completedTasks.length >= tasks.length && tasks.length > 0) {
+				const antispoofScore = face.real ?? face.antispoof ?? 0;
+				const livenessScore = 0.9; // All tasks completed
+				await checkMatch(face.embedding, antispoofScore, livenessScore);
+				return;
 			}
 
-			// Start stabilizing timer on first good face
+			// ─── Start stabilizing ───────────────────────────────────────────
 			if (phase === 'scanning' && !stabilityStartTime) {
 				phase = 'stabilizing';
-				statusText = 'Hold still…';
+				statusText = getTaskInstruction(tasks[0] || 'Hold still…');
 				stabilityStartTime = Date.now();
-			}
-
-			// Once stability time is reached AND liveness gestures detected, verify
-			if (phase === 'stabilizing' && Date.now() - stabilityStartTime! >= VERIFICATION_DELAY_MS) {
-				if (detectedGestures.has('blink') && detectedGestures.has('stable_gaze')) {
-					const antispoofScore = face.real ?? face.antispoof ?? 0;
-					const livenessScore = detectedGestures.has('blink') ? 0.9 : 0.6;
-					await checkMatch(face.embedding, antispoofScore, livenessScore);
-					return;
-				} else {
-					// Keep looping for liveness detection
-					const missing = [];
-					if (!detectedGestures.has('blink')) missing.push('blink');
-					if (!detectedGestures.has('stable_gaze')) missing.push('steady gaze');
-					statusText = `Verifying liveness — ${missing.join(' and ')}…`;
-				}
 			}
 		} else {
 			faceDetected = false;
 			statusText = 'Processing face...';
 			drawOverlay(false, false);
 			stabilityStartTime = null;
-			steadyFrameCount = 0;
 		}
 
 		loopHandle = requestAnimationFrame(runDetectionLoop);
@@ -335,7 +552,7 @@
 				throw new Error('Spoof check failed — please use your own live camera feed.');
 			}
 			if (livenessScore < MIN_LIVENESS) {
-				throw new Error('Liveness check failed — please blink and look directly at the camera.');
+				throw new Error('Liveness check failed — please complete the tasks.');
 			}
 
 			const descRes = await fetch('/api/face/descriptor');
@@ -388,11 +605,14 @@
 		errorMessage = '';
 		similarityPercent = null;
 		faceDetected = false;
-		detectedGestures.clear();
-		gesturesDone = [];
-		stabilityStartTime = null;
-		previousEarScore = null;
 		verificationProgress = 0;
+		noFaceStartTime = null;
+		faceLostAlertShown = false;
+		faceLostTime = null;
+		tasks = [];
+		completedTasks = [];
+		currentTaskIndex = 0;
+		taskFrameCount = 0;
 		stopped = false;
 		start();
 	}
@@ -406,6 +626,7 @@
 	onDestroy(stopCamera);
 </script>
 
+<!-- ─── Template ────────────────────────────────────────────────────────── -->
 <div class="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4">
 	<div class="relative w-full max-w-md rounded-2xl border border-border bg-card p-6 shadow-xl">
 		<button
@@ -421,14 +642,13 @@
 			<h2 class="text-lg font-semibold">Verify your identity</h2>
 			{#if phase === 'scanning' || phase === 'stabilizing'}
 				<span class="rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-primary">
-					{phase === 'stabilizing' ? 'Verifying' : 'Scanning'}
+					{phase === 'stabilizing' ? `Task ${completedTasks.length + 1}/${tasks.length}` : 'Scanning'}
 				</span>
 			{/if}
 		</div>
-		<p class="mb-4 text-sm text-muted-foreground">Look directly at the camera and hold still.</p>
+		<p class="mb-4 text-sm text-muted-foreground">Look directly at the camera and follow the instructions.</p>
 
 		<div class="relative mb-4 aspect-video overflow-hidden rounded-lg bg-black">
-			<!-- svelte-ignore a11y_media_has_caption -->
 			<video bind:this={videoEl} class="h-full w-full -scale-x-100 object-cover" muted playsinline></video>
 			<canvas bind:this={canvasEl} class="pointer-events-none absolute inset-0 h-full w-full"></canvas>
 
@@ -456,6 +676,23 @@
 					</div>
 				</div>
 			{/if}
+
+			<!-- Task Progress Overlay -->
+			{#if phase === 'stabilizing' && tasks.length > 0}
+				<div class="absolute bottom-3 left-1/2 -translate-x-1/2 flex items-center gap-2 bg-black/60 backdrop-blur-sm px-3 py-1.5 rounded-full">
+					{#each tasks as task, index}
+						<div class="flex items-center gap-1">
+							{#if completedTasks.includes(task)}
+								<CheckCircle2 class="size-4 text-primary" />
+							{:else if index === currentTaskIndex}
+								<svelte:component this={getTaskIcon(task)} class="size-4 text-white animate-pulse" />
+							{:else}
+								<div class="size-2 rounded-full bg-white/20" />
+							{/if}
+						</div>
+					{/each}
+				</div>
+			{/if}
 		</div>
 
 		<!-- Progress bar during stabilizing phase -->
@@ -468,45 +705,56 @@
 			</div>
 		{/if}
 
-		<!-- Liveness indicators -->
+		<!-- Face Lost Alert -->
+		{#if faceLostAlertShown}
+			<div class="mb-3 flex items-center gap-2 rounded-lg border border-destructive/50 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+				<AlertCircle class="size-4 shrink-0" />
+				<span>
+					<strong>Face lost!</strong> Please look back at the camera.
+					{#if faceLostTime}
+						{(() => {
+							const elapsed = (Date.now() - faceLostTime) / 1000;
+							const remaining = Math.max(0, (NO_FACE_TIMEOUT_MS - elapsed * 1000) / 1000);
+							return remaining > 0 ? ` (${Math.ceil(remaining)}s remaining)` : '';
+						})()}
+					{/if}
+				</span>
+			</div>
+		{/if}
+
+		<!-- Task Status -->
 		{#if phase === 'scanning' || phase === 'stabilizing'}
 			<div class="mb-3 space-y-2">
-				<!-- Face detection status -->
 				<div class="flex items-center justify-center gap-2 text-sm font-medium">
 					{#if faceDetected}
 						<CheckCircle2 class="size-4 text-primary" />
 						<span class="text-primary">Face detected</span>
 					{:else}
 						<ScanFace class="size-4 text-muted-foreground" />
-						<span class="text-muted-foreground">Looking for face…</span>
+						<span class="text-muted-foreground">{faceLostAlertShown ? 'Face lost!' : 'Looking for face…'}</span>
 					{/if}
 				</div>
 
-				<!-- Gesture step indicators (like enrollment modal) -->
-				{#if phase === 'stabilizing'}
-					<div class="flex justify-center gap-2">
-						<div
-							class="h-1.5 rounded-full transition-all duration-300 {detectedGestures.has('blink')
-								? 'w-6 bg-primary'
-								: 'w-1.5 bg-muted'}"
-						></div>
-						<div
-							class="h-1.5 rounded-full transition-all duration-300 {detectedGestures.has('stable_gaze')
-								? 'w-6 bg-primary'
-								: 'w-1.5 bg-muted'}"
-						></div>
+				{#if phase === 'stabilizing' && tasks.length > 0 && currentTaskIndex < tasks.length}
+					<div class="flex items-center justify-center gap-3">
+						<svelte:component this={getTaskIcon(tasks[currentTaskIndex])} class="size-6 text-primary" />
+						<span class="text-sm font-medium text-muted-foreground">
+							{completedTasks.includes(tasks[currentTaskIndex]) 
+								? '✅ Done!' 
+								: getTaskInstruction(tasks[currentTaskIndex])}
+						</span>
 					</div>
+				{/if}
 
-					<!-- Gesture icons -->
-					<div class="flex items-center justify-center gap-4">
-						<div class="flex flex-col items-center gap-1">
-							<Eye class={`size-4 ${detectedGestures.has('blink') ? 'text-primary' : 'text-muted-foreground'}`} />
-							<span class="text-xs font-medium">{detectedGestures.has('blink') ? '✓ Blink' : 'Blink'}</span>
-						</div>
-						<div class="flex flex-col items-center gap-1">
-							<CheckCircle2 class={`size-4 ${detectedGestures.has('stable_gaze') ? 'text-primary' : 'text-muted-foreground'}`} />
-							<span class="text-xs font-medium">{detectedGestures.has('stable_gaze') ? '✓ Steady' : 'Steady'}</span>
-						</div>
+				{#if completedTasks.length > 0}
+					<div class="flex justify-center gap-1 text-xs text-muted-foreground">
+						<span>Completed:</span>
+						{#each completedTasks as task, index}
+							<span class="flex items-center gap-0.5">
+								{getTaskLabel(task)}
+								{#if index < completedTasks.length - 1}•{/if}
+							</span>
+						{/each}
 					</div>
 				{/if}
 			</div>

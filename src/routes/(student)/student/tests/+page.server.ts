@@ -5,6 +5,7 @@ import { getPrismaClient } from '$lib/server/db/index.js'
 import { requireStudent } from '$lib/server/auth/guards'
 import { createSession } from '$lib/server/assessment/engine'
 
+const TERMINAL_STATUSES = ['SUBMITTED', 'TIMED_OUT', 'DISQUALIFIED'] as const
 
 export const load: PageServerLoad = async ({ locals }) => {
   const student = await requireStudent(locals.user)
@@ -13,10 +14,6 @@ export const load: PageServerLoad = async ({ locals }) => {
   const now = new Date()
 
   // ─── Get current active semester ──────────────────────────────────────
-  // Strategy: 
-  // 1. First try to find a semester that is current AND within its date range
-  // 2. If none, find the most recent semester that is marked as current
-  // 3. If none, find the most recent semester overall
   let currentSemester = await prisma.semester.findFirst({
     where: {
       isCurrent: true,
@@ -27,7 +24,6 @@ export const load: PageServerLoad = async ({ locals }) => {
     include: { session: true },
   })
 
-  // If no semester is within date range, use the most recent current semester
   if (!currentSemester) {
     currentSemester = await prisma.semester.findFirst({
       where: { isCurrent: true, registrationEnabled: true },
@@ -36,7 +32,6 @@ export const load: PageServerLoad = async ({ locals }) => {
     })
   }
 
-  // Final fallback: any active semester
   if (!currentSemester) {
     currentSemester = await prisma.semester.findFirst({
       where: { registrationEnabled: true },
@@ -50,7 +45,6 @@ export const load: PageServerLoad = async ({ locals }) => {
     where: {
       studentId: student.id,
       status: 'APPROVED',
-      // Use the current semester if found, otherwise get all
       ...(currentSemester && {
         semesterId: currentSemester.id,
         sessionId: currentSemester.sessionId,
@@ -65,7 +59,6 @@ export const load: PageServerLoad = async ({ locals }) => {
   const registeredCourseIds = registrations.map((r) => r.courseId)
   const studentLevelId = student.currentLevelId
 
-  // ─── If no registrations, return early ────────────────────────────────
   if (registeredCourseIds.length === 0) {
     return {
       faceEnrolled: false,
@@ -83,7 +76,6 @@ export const load: PageServerLoad = async ({ locals }) => {
     }
   }
 
-  // ─── Build where clause for assessments ──────────────────────────────
   const whereClause: any = {
     type: 'TEST',
     status: { in: ['PUBLISHED', 'SCHEDULED', 'ACTIVE', 'ENDED', 'CANCELLED'] },
@@ -99,7 +91,6 @@ export const load: PageServerLoad = async ({ locals }) => {
     },
   }
 
-  // If we have a current semester, filter by it
   if (currentSemester) {
     whereClause.course = {
       offerings: {
@@ -151,30 +142,42 @@ export const load: PageServerLoad = async ({ locals }) => {
       const inProgressSession = a.sessions.find(
         (s) => s.status === 'IN_PROGRESS' || s.status === 'PAUSED'
       )
+      // Most recent attempt that actually finished (submitted, timed out, or
+      // disqualified) — used to link the "already completed" notice straight
+      // to that attempt's result rather than leaving the student stuck.
+      const latestTerminalSession = a.sessions.find((s) =>
+        TERMINAL_STATUSES.includes(s.status as (typeof TERMINAL_STATUSES)[number])
+      )
 
       const opensInFuture = a.status === 'SCHEDULED' || (a.startTime ? now < a.startTime : false)
       const closed =
         a.status === 'ENDED' || a.status === 'CANCELLED' || (a.endTime ? now > a.endTime : false)
       const cancelled = a.status === 'CANCELLED'
 
+      // A student who has used up every attempt has "completed" the test
+      // for our purposes, whether that used-up attempt was a normal submit,
+      // a timeout, or a disqualification. This is distinct from "closed"
+      // (the window shut with no attempt made at all).
+      const completed = attemptsRemaining === 0 && Boolean(latestTerminalSession)
+
       let displayStatus:
         | 'CANCELLED'
         | 'IN_PROGRESS'
         | 'UPCOMING'
         | 'ENDED'
-        | 'ATTEMPTS_USED'
+        | 'COMPLETED'
         | 'OPEN'
 
       if (cancelled) {
         displayStatus = 'CANCELLED'
       } else if (inProgressSession) {
         displayStatus = 'IN_PROGRESS'
+      } else if (completed) {
+        displayStatus = 'COMPLETED'
       } else if (opensInFuture) {
         displayStatus = 'UPCOMING'
       } else if (closed) {
         displayStatus = 'ENDED'
-      } else if (attemptsRemaining === 0) {
-        displayStatus = 'ATTEMPTS_USED'
       } else {
         displayStatus = 'OPEN'
       }
@@ -203,12 +206,18 @@ export const load: PageServerLoad = async ({ locals }) => {
         opensInFuture,
         closed,
         cancelled,
+        completed,
         displayStatus,
         status: a.status,
         requireFaceVerify: a.requireFaceVerify,
         fullscreenRequired: a.fullscreenRequired,
         canStart,
         inProgressSessionId: inProgressSession?.id ?? null,
+        // Frontend uses this to route "View Result" on a disabled/completed
+        // card straight to the finished attempt, instead of only disabling
+        // the Start button with no way forward.
+        completedSessionId: latestTerminalSession?.id ?? null,
+        completedSessionStatus: latestTerminalSession?.status ?? null,
         course: a.course
           ? {
               code: a.course.code,
@@ -231,8 +240,8 @@ export const load: PageServerLoad = async ({ locals }) => {
 }
 
 export const actions: Actions = {
-start: async ({ request, locals, getClientAddress }) => {
-      const student = await requireStudent(locals.user)
+  start: async ({ request, locals, getClientAddress }) => {
+    const student = await requireStudent(locals.user)
 
     const form = await request.formData()
     const assessmentId = form.get('assessmentId')?.toString()
@@ -291,7 +300,7 @@ start: async ({ request, locals, getClientAddress }) => {
         where: { id: assessmentId },
         include: {
           eligibility: true,
-          sessions: { where: { studentId: student.id } },
+          sessions: { where: { studentId: student.id }, orderBy: { attemptNumber: 'desc' } },
           course: true,
         },
       }),
@@ -336,6 +345,7 @@ start: async ({ request, locals, getClientAddress }) => {
       })
     }
 
+    // Resume an attempt already in progress rather than starting a new one.
     const existingActive = assessment.sessions.find(
       (s) => s.status === 'IN_PROGRESS' || s.status === 'PAUSED'
     )
@@ -343,15 +353,23 @@ start: async ({ request, locals, getClientAddress }) => {
       throw redirect(303, `/student/tests/${existingActive.id}`)
     }
 
+    // Attempts exhausted: this test has already been written. Send the
+    // student to their most recent finished attempt's result instead of
+    // just failing with an error and leaving them nowhere to go.
     const attemptsUsed = assessment.sessions.length
     if (attemptsUsed >= assessment.maxAttempts) {
+      const latestTerminalSession = assessment.sessions.find((s) =>
+        TERMINAL_STATUSES.includes(s.status as (typeof TERMINAL_STATUSES)[number])
+      )
+      if (latestTerminalSession) {
+        throw redirect(303, `/student/tests/${latestTerminalSession.id}/result`)
+      }
       return fail(400, { startError: 'You have used all attempts for this test.' })
     }
 
- const ip = getClientAddress()
-const userAgent = request.headers.get('user-agent') ?? undefined
-const session = await createSession(assessment.id, student.id, { ipAddress: ip, userAgent })
-
+    const ip = getClientAddress()
+    const userAgent = request.headers.get('user-agent') ?? undefined
+    const session = await createSession(assessment.id, student.id, { ipAddress: ip, userAgent })
 
     throw redirect(303, `/student/tests/${session.id}`)
   },

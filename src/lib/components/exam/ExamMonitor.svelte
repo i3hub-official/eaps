@@ -364,63 +364,70 @@
 	</div>
 
 	<!-- Alerts Stack -->
-	{#each alerts.slice(-3) as alert (alert.id)}
-		<div
-			class="flex items-start gap-2 rounded-lg border px-3 py-2 text-xs shadow-lg animate-in fade-in slide-in-from-right-2 duration-200"
-			class:border-destructive/30={alert.severity >= 3}
-			class:bg-destructive/10={alert.severity >= 3}
-			class:text-destructive={alert.severity >= 3}
-			class:border-yellow-500/30={alert.severity === 2}
-			class:bg-yellow-500/10={alert.severity === 2}
-			class:text-yellow-700={alert.severity === 2}
-			class:border-blue-500/30={alert.severity === 1}
-			class:bg-blue-500/10={alert.severity === 1}
-			class:text-blue-700={alert.severity === 1}
-		>
-			{#if alert.type === 'face'}
-				<Eye class="mt-0.5 size-3.5 shrink-0" />
-			{:else if alert.type === 'tab' || alert.type === 'fullscreen'}
-				<Monitor class="mt-0.5 size-3.5 shrink-0" />
-			{:else if alert.type === 'network'}
-				<Wifi class="mt-0.5 size-3.5 shrink-0" />
-			{:else if alert.type === 'idle'}
-				<Clock class="mt-0.5 size-3.5 shrink-0" />
-			{:else}
-				<AlertTriangle class="mt-0.5 size-3.5 shrink-0" />
-			{/if}
-			<span>{alert.message}</span>
-		</div>
-	{/each}
+	<!-- Alerts Stack -->
+{#each alerts.slice(-3) as alert (alert.id)}
+	<div
+		class="flex items-start gap-2 rounded-lg border px-3 py-2 text-xs shadow-lg animate-in fade-in slide-in-from-right-2 duration-200"
+		style:border-color={alert.severity >= 3 
+			? 'hsl(var(--destructive) / 0.3)' 
+			: alert.severity === 2 
+				? 'hsl(43 96% 56% / 0.3)' 
+				: 'hsl(var(--primary) / 0.3)'}
+		style:background-color={alert.severity >= 3 
+			? 'hsl(var(--destructive) / 0.1)' 
+			: alert.severity === 2 
+				? 'hsl(43 96% 56% / 0.1)' 
+				: 'hsl(var(--primary) / 0.1)'}
+		style:color={alert.severity >= 3 
+			? 'hsl(var(--destructive))' 
+			: alert.severity === 2 
+				? 'hsl(43 96% 56% / 0.9)' 
+				: 'hsl(var(--primary))'}
+	>
+		{#if alert.type === 'face'}
+			<Eye class="mt-0.5 size-3.5 shrink-0" />
+		{:else if alert.type === 'tab' || alert.type === 'fullscreen'}
+			<Monitor class="mt-0.5 size-3.5 shrink-0" />
+		{:else if alert.type === 'network'}
+			<Wifi class="mt-0.5 size-3.5 shrink-0" />
+		{:else if alert.type === 'idle'}
+			<Clock class="mt-0.5 size-3.5 shrink-0" />
+		{:else}
+			<AlertTriangle class="mt-0.5 size-3.5 shrink-0" />
+		{/if}
+		<span>{alert.message}</span>
+	</div>
+{/each}
 
 	<!-- Status Indicator Pill -->
+<div
+	class="flex items-center gap-2 rounded-full border-2 px-3 py-1.5 text-xs font-medium shadow-lg"
+	class:border-primary={status === 'ok'}
+	class:bg-primary-10={status === 'ok'}
+	class:text-primary={status === 'ok'}
+	class:border-yellow-500={status === 'warning'}
+	class:bg-yellow-500={status === 'warning'}
+	class:text-yellow-700={status === 'warning'}
+	class:border-destructive={status === 'violation'}
+	class:bg-destructive-10={status === 'violation'}
+	class:text-destructive={status === 'violation'}
+>
 	<div
-		class="flex items-center gap-2 rounded-full border-2 px-3 py-1.5 text-xs font-medium shadow-lg"
-		class:border-primary={status === 'ok'}
-		class:bg-primary/10={status === 'ok'}
-		class:text-primary={status === 'ok'}
-		class:border-yellow-500={status === 'warning'}
-		class:bg-yellow-500/10={status === 'warning'}
-		class:text-yellow-700={status === 'warning'}
-		class:border-destructive={status === 'violation'}
-		class:bg-destructive/10={status === 'violation'}
-		class:text-destructive={status === 'violation'}
-	>
-		<div
-			class="size-2 rounded-full animate-pulse"
-			class:bg-primary={status === 'ok'}
-			class:bg-yellow-500={status === 'warning'}
-			class:bg-destructive={status === 'violation'}
-		></div>
-		<span>
-			{#if status === 'ok'}
-				Monitoring
-			{:else if status === 'warning'}
-				⚠ Warning ({violationCount})
-			{:else}
-				🛑 Violation ({violationCount})
-			{/if}
-		</span>
-	</div>
+		class="size-2 rounded-full animate-pulse"
+		class:bg-primary={status === 'ok'}
+		class:bg-yellow-500={status === 'warning'}
+		class:bg-destructive={status === 'violation'}
+	></div>
+	<span>
+		{#if status === 'ok'}
+			Monitoring
+		{:else if status === 'warning'}
+			⚠ Warning ({violationCount})
+		{:else}
+			🛑 Violation ({violationCount})
+		{/if}
+	</span>
+</div>
 </div>
 
 <style>

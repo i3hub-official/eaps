@@ -2,7 +2,7 @@
 <script lang="ts">
 	import { Topbar } from '$lib/components/dashboard';
 	import { Button } from '$lib/components/ui/button/index.js';
-	import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '$lib/components/ui/card/index.js';
+	import { Card, CardContent, CardHeader, CardTitle } from '$lib/components/ui/card/index.js';
 	import { Badge } from '$lib/components/ui/badge/index.js';
 	import { Progress } from '$lib/components/ui/progress/index.js';
 	import {
@@ -21,7 +21,7 @@
 	} from '$lib/components/ui/select/index.js';
 	import { Input } from '$lib/components/ui/input/index.js';
 	import { Alert, AlertDescription } from '$lib/components/ui/alert/index.js';
-	import { Users, Search, Filter, Download, AlertCircle, CheckCircle, Clock, Building2, RefreshCw } from '@lucide/svelte/icons';
+	import { Users, Search, LoaderCircle, Download, AlertCircle, CheckCircle, Clock, Building2, RefreshCw } from '@lucide/svelte/icons';
 	import { goto, invalidateAll } from '$app/navigation';
 	import { page } from '$app/state';
 
@@ -178,8 +178,8 @@
 						/>
 					</div>
 					<div class="flex gap-2">
-						<Select>
-							<SelectTrigger class="w-[200px]" onchange={(e) => handleCourseChange(e.currentTarget.value)}>
+						<Select type="single">
+							<SelectTrigger class="w-50" onchange={(e) => handleCourseChange(e.currentTarget.value)}>
 								<span class="truncate">
 									{selectedCourse === 'all' 
 										? 'All Courses' 
@@ -221,7 +221,7 @@
 					<TableBody>
 						{#if !data?.studentAttendance?.length}
 							<TableRow>
-								<TableCell colspan="7" class="text-center text-muted-foreground py-8">
+								<TableCell colspan={7} class="text-center text-muted-foreground py-8">
 									{#if data?.courses?.length <= 1}
 										<Building2 class="mx-auto size-8 text-muted-foreground/50 mb-2" />
 										<p>No courses available</p>
@@ -235,7 +235,7 @@
 							</TableRow>
 						{:else if filteredStudents.length === 0}
 							<TableRow>
-								<TableCell colspan="7" class="text-center text-muted-foreground py-8">
+								<TableCell colspan={7} class="text-center text-muted-foreground py-8">
 									<Search class="mx-auto size-8 text-muted-foreground/50 mb-2" />
 									<p>No students match your filters</p>
 									<Button variant="outline" size="sm" class="mt-2" onclick={() => {

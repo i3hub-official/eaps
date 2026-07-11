@@ -1,8 +1,17 @@
 // src/routes/(lecturer)/lecturer/grade/+page.server.ts
 import type { PageServerLoad } from './$types'
-import { redirect } from '@sveltejs/kit'
 import { getPrismaClient } from '$lib/server/db/index.js'
 import { requireLecturer } from '$lib/server/auth/guards.js'
+import { revealName, revealMatricNumber, revealEmail } from '$lib/security/dataProtection'
+
+// Helper to safely decrypt with fallback
+function safeReveal<T>(fn: () => T, fallback: string = ''): T | string {
+	try {
+		return fn()
+	} catch {
+		return fallback
+	}
+}
 
 export const load: PageServerLoad = async ({ locals, url }) => {
 	// Use the guard to ensure user is authenticated as lecturer
@@ -86,7 +95,12 @@ export const load: PageServerLoad = async ({ locals, url }) => {
 						},
 					},
 					student: {
-						select: { matricNumber: true, firstName: true, lastName: true },
+						select: { 
+							matricNumber: true, 
+							firstName: true, 
+							lastName: true,
+							otherNames: true,
+						},
 					},
 				},
 			},
@@ -106,24 +120,51 @@ export const load: PageServerLoad = async ({ locals, url }) => {
 		filtered = submissions.filter(
 			(s) =>
 				s.question.body.toLowerCase().includes(searchLower) ||
-				s.session.student.matricNumber.toLowerCase().includes(searchLower) ||
-				s.session.student.firstName.toLowerCase().includes(searchLower) ||
-				s.session.student.lastName.toLowerCase().includes(searchLower)
+				// Search in decrypted student data
+				(() => {
+					try {
+						const matric = revealMatricNumber(s.session.student.matricNumber).toLowerCase()
+						const firstName = revealName(s.session.student.firstName).toLowerCase()
+						const lastName = revealName(s.session.student.lastName).toLowerCase()
+						return matric.includes(searchLower) || 
+							   firstName.includes(searchLower) || 
+							   lastName.includes(searchLower)
+					} catch {
+						return false
+					}
+				})()
 		)
 	}
 
-	return {
-		user: {
-			id: user.id,
-			firstName: user.firstName,
-			lastName: user.lastName,
-		},
-		submissions: filtered.map((s) => ({
+	// Process submissions with safe decryption
+	const processedSubmissions = filtered.map((s) => {
+		// Safely decrypt student name
+		let studentName = ''
+		try {
+			const firstName = revealName(s.session.student.firstName)
+			const lastName = revealName(s.session.student.lastName)
+			const otherNames = s.session.student.otherNames 
+				? revealName(s.session.student.otherNames) 
+				: ''
+			studentName = `${lastName}, ${firstName} ${otherNames}`.trim()
+		} catch {
+			studentName = 'Unknown Student'
+		}
+
+		// Safely decrypt matric number
+		let studentMatric = ''
+		try {
+			studentMatric = revealMatricNumber(s.session.student.matricNumber)
+		} catch {
+			studentMatric = 'Unknown'
+		}
+
+		return {
 			id: s.id,
 			questionId: s.questionId,
 			sessionId: s.sessionId,
-			studentName: `${s.session.student.firstName} ${s.session.student.lastName}`,
-			studentMatric: s.session.student.matricNumber,
+			studentName,
+			studentMatric,
 			course: `${s.session.assessment.course.code}`,
 			assessment: s.session.assessment.title,
 			questionBody: s.question.body.substring(0, 80) + (s.question.body.length > 80 ? '...' : ''),
@@ -133,7 +174,16 @@ export const load: PageServerLoad = async ({ locals, url }) => {
 			marksAwarded: s.marksAwarded ? Number(s.marksAwarded) : null,
 			isGraded: s.isManualGraded,
 			answeredAt: s.answeredAt,
-		})),
+		}
+	})
+
+	return {
+		user: {
+			id: user.id,
+			firstName: user.firstName,
+			lastName: user.lastName,
+		},
+		submissions: processedSubmissions,
 		courses: [
 			{ id: 'all', label: 'All courses' },
 			...courses.map((c) => ({ id: c.id, label: `${c.code} — ${c.title}` })),

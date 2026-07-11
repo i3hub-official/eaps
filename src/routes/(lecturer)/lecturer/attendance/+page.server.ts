@@ -1,14 +1,12 @@
 // src/routes/(lecturer)/lecturer/attendance/+page.server.ts
 import type { PageServerLoad } from './$types'
-import { redirect } from '@sveltejs/kit'
 import { getPrismaClient } from '$lib/server/db/index.js'
 import { requireLecturer } from '$lib/server/auth/guards.js'
+import { revealName, revealMatricNumber } from '$lib/security/dataProtection'
 
 export const load: PageServerLoad = async ({ locals, url }) => {
-	// Use the guard to ensure user is authenticated as lecturer
 	const user = await requireLecturer(locals.user)
 
-	// If no department ID, return error state
 	if (!user.departmentId) {
 		return {
 			user: {
@@ -33,11 +31,7 @@ export const load: PageServerLoad = async ({ locals, url }) => {
 	const staffId = user.id
 	const departmentId = user.departmentId
 
-	// ─── Filters ──────────────────────────────────────────────────────────────
-
 	const courseFilter = url.searchParams.get('course')
-
-	// ─── Get lecturer's courses ───────────────────────────────────────────────
 
 	const courses = await prisma.course.findMany({
 		where: { departmentId, status: 'ACTIVE' },
@@ -45,9 +39,6 @@ export const load: PageServerLoad = async ({ locals, url }) => {
 		orderBy: { code: 'asc' },
 	})
 
-	// ─── Fetch course registrations for attendance calculation ────────────────
-
-	// Build the where clause for registrations
 	const registrationWhere: any = {
 		status: 'APPROVED',
 	}
@@ -57,7 +48,6 @@ export const load: PageServerLoad = async ({ locals, url }) => {
 	} else if (courses.length > 0) {
 		registrationWhere.course = { departmentId }
 	} else {
-		// No courses, return empty
 		return {
 			user: {
 				id: user.id,
@@ -88,6 +78,7 @@ export const load: PageServerLoad = async ({ locals, url }) => {
 					matricNumber: true,
 					firstName: true,
 					lastName: true,
+					otherNames: true,
 					currentLevel: { select: { name: true } },
 				},
 			},
@@ -100,8 +91,6 @@ export const load: PageServerLoad = async ({ locals, url }) => {
 			{ student: { matricNumber: 'asc' } },
 		],
 	})
-
-	// ─── Calculate attendance for each student ────────────────────────────────
 
 	const studentAttendance = await Promise.all(
 		registrations.map(async (reg) => {
@@ -132,10 +121,28 @@ export const load: PageServerLoad = async ({ locals, url }) => {
 				? Math.round((completedSessions / totalEligibleSessions) * 100)
 				: 0
 
+			// Student PII is stored encrypted at rest (see protectStudentRegistration
+			// in dataProtection.ts). Decrypt only the fields this view needs to
+			// display, and only for students the lecturer is authorized to see
+			// (already scoped above to APPROVED registrations in their own
+			// department's courses).
+			let name: string
+			let matricNumber: string
+			try {
+				name = `${revealName(reg.student.lastName)}, ${revealName(reg.student.firstName)} ${revealName(reg.student.otherNames)}`
+				matricNumber = revealMatricNumber(reg.student.matricNumber)
+			} catch {
+				// A decryption failure (bad/legacy ciphertext, wrong key, etc.)
+				// shouldn't crash the whole attendance list for every other
+				// student — surface a clear placeholder for this row instead.
+				name = 'Unable to decrypt name'
+				matricNumber = 'N/A'
+			}
+
 			return {
 				id: reg.studentId,
-				matricNumber: reg.student.matricNumber,
-				name: `${reg.student.firstName} ${reg.student.lastName}`,
+				matricNumber,
+				name,
 				level: reg.student.currentLevel.name,
 				course: `${reg.course.code}`,
 				courseTitle: reg.course.title,
@@ -149,8 +156,8 @@ export const load: PageServerLoad = async ({ locals, url }) => {
 	return {
 		user: {
 			id: user.id,
-			firstName: user.firstName,
 			lastName: user.lastName,
+			firstName: user.firstName,
 		},
 		studentAttendance,
 		courses: [
