@@ -784,6 +784,8 @@ model QuestionTag {
 
   questions QuestionTagMap[]
   studentPerformance TagPerformance[]
+    assessmentTags AssessmentTag[]
+
 }
 
 model QuestionTagMap {
@@ -859,6 +861,8 @@ model Assessment {
   id                    String           @id @default(cuid())
   createdById           String // staff/lecturer
   courseId              String
+   assessmentId String
+  tagId        String
   type                  AssessmentType
   status                AssessmentStatus @default(DRAFT)
   title                 String
@@ -897,6 +901,18 @@ model Assessment {
   invigilators AssessmentInvigilator[]
   eligibility  AssessmentEligibility[]
   results      AssessmentResult[]
+    tags AssessmentTag[]
+
+}
+
+model AssessmentTag {
+  assessmentId String
+  tagId        String
+ 
+  assessment Assessment @relation(fields: [assessmentId], references: [id], onDelete: Cascade)
+  tag        QuestionTag @relation(fields: [tagId], references: [id], onDelete: Cascade)
+ 
+  @@id([assessmentId, tagId])
 }
 
 // The question pool for an assessment — ordered, with per-question mark override
