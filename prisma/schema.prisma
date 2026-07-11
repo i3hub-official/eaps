@@ -97,7 +97,7 @@ model OtpRecord {
   id        String   @id @default(cuid())
   email     String
   otp       String
-  type      String   // 'STAFF_RESET' | 'STUDENT_RESET' | 'STAFF_2FA'
+  type      String // 'STAFF_RESET' | 'STUDENT_RESET' | 'STAFF_2FA'
   used      Boolean  @default(false)
   expiresAt DateTime
   createdAt DateTime @default(now())
@@ -123,7 +123,7 @@ model PasswordResetToken {
 
 model VerificationToken {
   id         String    @id @default(cuid())
-  userType   String    // "staff" | "student"
+  userType   String // "staff" | "student"
   staffId    String?
   studentId  String?
   tokenHash  String    @unique
@@ -236,14 +236,13 @@ model Department {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  college     College                 @relation(fields: [collegeId], references: [id])
-  programmes  Programme[]
-  staff       Staff[]
-  students    Student[]
-  courses     Course[]
-  eligibility AssessmentEligibility[]
- conversations Conversation[]
-
+  college       College                 @relation(fields: [collegeId], references: [id])
+  programmes    Programme[]
+  staff         Staff[]
+  students      Student[]
+  courses       Course[]
+  eligibility   AssessmentEligibility[]
+  conversations Conversation[]
 
   @@unique([collegeId, shortName])
 }
@@ -294,17 +293,17 @@ model AcademicSession {
 }
 
 model Semester {
-  id         String       @id @default(cuid())
-  sessionId  String
-  type       SemesterType
-  startDate  DateTime
-  endDate    DateTime
-  registrationEnabled Boolean @default(true)
-  regOpenAt  DateTime? // when registration opens
-  regCloseAt DateTime? // when registration closes
-  isCurrent  Boolean      @default(false)
-  createdAt  DateTime     @default(now())
-  updatedAt  DateTime     @updatedAt
+  id                  String       @id @default(cuid())
+  sessionId           String
+  type                SemesterType
+  startDate           DateTime
+  endDate             DateTime
+  registrationEnabled Boolean      @default(true)
+  regOpenAt           DateTime? // when registration opens
+  regCloseAt          DateTime? // when registration closes
+  isCurrent           Boolean      @default(false)
+  createdAt           DateTime     @default(now())
+  updatedAt           DateTime     @updatedAt
 
   session             AcademicSession      @relation(fields: [sessionId], references: [id])
   courseRegistrations CourseRegistration[]
@@ -352,8 +351,7 @@ model CourseOffering {
   semester Semester @relation(fields: [semesterId], references: [id])
   lecturer Staff?   @relation("CourseOfferings", fields: [lecturerId], references: [id])
 
-attendanceSessions AttendanceSession[]
-
+  attendanceSessions AttendanceSession[]
 
   @@unique([courseId, semesterId])
 }
@@ -416,9 +414,9 @@ enum AttendanceStatus {
 model AttendanceSession {
   id               String   @id @default(cuid())
   courseOfferingId String
-  title            String?  // e.g. "Week 3 Lecture", optional label
+  title            String? // e.g. "Week 3 Lecture", optional label
   date             DateTime
-  createdById      String   // lecturer who opened this attendance session
+  createdById      String // lecturer who opened this attendance session
   createdAt        DateTime @default(now())
   updatedAt        DateTime @updatedAt
 
@@ -434,7 +432,7 @@ model AttendanceRecord {
   attendanceSessionId String
   studentId           String
   status              AttendanceStatus @default(ABSENT)
-  markedById          String?          // staff who marked it (null if a future self check-in feature marks it)
+  markedById          String? // staff who marked it (null if a future self check-in feature marks it)
   note                String?
   markedAt            DateTime         @default(now())
 
@@ -456,14 +454,14 @@ model Staff {
   email              String
   emailHash          String      @unique
   passwordHash       String
-  firstNameHash      String      // remove @unique
+  firstNameHash      String // remove @unique
   firstName          String
-  lastNameHash       String      // remove @unique
+  lastNameHash       String // remove @unique
   lastName           String
-  otherNamesHash     String?     // already fine (nullable + not unique)
+  otherNamesHash     String? // already fine (nullable + not unique)
   otherNames         String?
   phone              String?
-  phoneHash          String?  
+  phoneHash          String?
   gender             Gender?
   avatar             String?
   primaryRole        StaffRole // their main role in the system
@@ -488,7 +486,7 @@ model Staff {
   courseOfferings   CourseOffering[]     @relation("CourseOfferings")
   approvedRegs      CourseRegistration[] @relation("RegistrationApprover")
   auditLogs         AuditLog[]
-  passwordResets PasswordResetToken[]
+  passwordResets    PasswordResetToken[]
 
   createdAssessments Assessment[]            @relation("AssessmentAuthor")
   invigilations      AssessmentInvigilator[]
@@ -496,32 +494,32 @@ model Staff {
   releasedResults    AssessmentResult[]      @relation("ResultReleaser")
   resultRevisions    ResultRevision[]
 
-  emailVerifiedAt      DateTime?
-  verificationTokens   VerificationToken[]
+  emailVerifiedAt    DateTime?
+  verificationTokens VerificationToken[]
 
   createdAttendanceSessions AttendanceSession[] @relation("AttendanceCreator")
-markedAttendanceRecords   AttendanceRecord[]  @relation("AttendanceMarker")
- assignedConversations Conversation[] @relation("AssignedConversations")
- sentMessages          Message[]      @relation("SentMessages")
+  markedAttendanceRecords   AttendanceRecord[]  @relation("AttendanceMarker")
+  assignedConversations     Conversation[]      @relation("AssignedConversations")
+  sentMessages              Message[]           @relation("SentMessages")
 
   @@index([emailHash])
   @@index([staffNumber])
-   @@index([firstNameHash])
+  @@index([firstNameHash])
   @@index([lastNameHash])
   @@index([collegeId, departmentId, primaryRole, status, lastLoginAt])
 }
 
 model StaffSession {
-  id           String   @id @default(cuid())
-  staffId      String
-  token        String   @unique
-  refreshToken String?  @unique
-  ipAddress    String?
-  userAgent    String?
-  expiresAt    DateTime
-  createdAt    DateTime @default(now())
+  id                    String    @id @default(cuid())
+  staffId               String
+  token                 String    @unique
+  refreshToken          String?   @unique
+  ipAddress             String?
+  userAgent             String?
+  expiresAt             DateTime
+  createdAt             DateTime  @default(now())
   refreshTokenExpiresAt DateTime?
-  lastActiveAt DateTime @default(now())
+  lastActiveAt          DateTime  @default(now())
 
   staff Staff @relation(fields: [staffId], references: [id], onDelete: Cascade)
 
@@ -533,37 +531,37 @@ model StaffSession {
 // ============================================================
 
 model Student {
-  id                 String        @id @default(cuid())
-  matricNumber       String        @unique
-  jambRegNo           String  @unique
+  id                  String        @id @default(cuid())
+  matricNumber        String        @unique
+  jambRegNo           String        @unique
   receiptNo           String?
   receiptNoHash       String?       @unique
   receiptRef          String?
   receiptRefHash      String?       @unique
   receiptSource       String?
   registrationSession String?
-  email              String        @unique
-  emailHash          String        @unique
-  passwordHash       String
-  firstName          String
-  lastName           String
-  otherNames         String?
-  phone              String?
-  phoneHash          String?       @unique
-  gender             Gender?
-  avatar             String?
-  dateOfBirth        DateTime?
-  departmentId       String
-  programmeId        String
-  currentLevelId     String
-  entryYear          Int // e.g. 2026
-  status             StudentStatus @default(ACTIVE)
+  email               String        @unique
+  emailHash           String        @unique
+  passwordHash        String
+  firstName           String
+  lastName            String
+  otherNames          String?
+  phone               String?
+  phoneHash           String?       @unique
+  gender              Gender?
+  avatar              String?
+  dateOfBirth         DateTime?
+  departmentId        String
+  programmeId         String
+  currentLevelId      String
+  entryYear           Int // e.g. 2026
+  status              StudentStatus @default(ACTIVE)
   // face enrollment — descriptor stored separately for security
-  faceEnrolledAt     DateTime?
-  mustChangePassword Boolean       @default(false)
-  lastLoginAt        DateTime?
-  createdAt          DateTime      @default(now())
-  updatedAt          DateTime      @updatedAt
+  faceEnrolledAt      DateTime?
+  mustChangePassword  Boolean       @default(false)
+  lastLoginAt         DateTime?
+  createdAt           DateTime      @default(now())
+  updatedAt           DateTime      @updatedAt
 
   department   Department @relation(fields: [departmentId], references: [id])
   programme    Programme  @relation(fields: [programmeId], references: [id])
@@ -575,18 +573,19 @@ model Student {
   faceDescriptor      FaceDescriptor?
   notifications       Notification[]
   auditLogs           AuditLog[]
-  eligibility        AssessmentEligibility[]
-  assessmentSessions AssessmentSession[]
-  results            AssessmentResult[]
-  transcriptEntries  TranscriptEntry[]
-  passwordResets PasswordResetToken[]
-  emailVerifiedAt      DateTime?
-  verificationTokens   VerificationToken[]
-  attendanceRecords AttendanceRecord[]
-  tagPerformance TagPerformance[]
+  eligibility         AssessmentEligibility[]
+  assessmentSessions  AssessmentSession[]
+  results             AssessmentResult[]
+  transcriptEntries   TranscriptEntry[]
+  passwordResets      PasswordResetToken[]
+  emailVerifiedAt     DateTime?
+  verificationTokens  VerificationToken[]
+  attendanceRecords   AttendanceRecord[]
+  tagPerformance      TagPerformance[]
 
-conversations Conversation[]
-   sentMessages  Message[]      @relation("SentMessages")
+  conversations Conversation[]
+  sentMessages  Message[]      @relation("SentMessages")
+
   @@index([matricNumber])
   @@index([emailHash])
   @@index([jambRegNo])
@@ -594,17 +593,17 @@ conversations Conversation[]
 }
 
 model StudentSession {
-  id                String   @id @default(cuid())
-  studentId         String
-  token             String   @unique
-  refreshToken      String?  @unique
-  ipAddress         String?
-  userAgent         String?
-  deviceFingerprint String?
-  expiresAt         DateTime
+  id                    String    @id @default(cuid())
+  studentId             String
+  token                 String    @unique
+  refreshToken          String?   @unique
+  ipAddress             String?
+  userAgent             String?
+  deviceFingerprint     String?
+  expiresAt             DateTime
   refreshTokenExpiresAt DateTime?
-  createdAt         DateTime @default(now())
-  lastActiveAt      DateTime @default(now())
+  createdAt             DateTime  @default(now())
+  lastActiveAt          DateTime  @default(now())
 
   student Student @relation(fields: [studentId], references: [id], onDelete: Cascade)
 
@@ -612,16 +611,16 @@ model StudentSession {
 }
 
 model TagPerformance {
-  id          String   @id @default(cuid())
-  studentId   String
-  tagId       String
-  courseId    String?  // null = across all courses
-  attempts    Int      @default(0)
-  correct     Int      @default(0)
-  marksTotal  Decimal  @db.Decimal(8, 2) @default(0)
-  marksEarned Decimal  @db.Decimal(8, 2) @default(0)
+  id             String    @id @default(cuid())
+  studentId      String
+  tagId          String
+  courseId       String? // null = across all courses
+  attempts       Int       @default(0)
+  correct        Int       @default(0)
+  marksTotal     Decimal   @default(0) @db.Decimal(8, 2)
+  marksEarned    Decimal   @default(0) @db.Decimal(8, 2)
   lastAnsweredAt DateTime?
-  updatedAt   DateTime @updatedAt
+  updatedAt      DateTime  @updatedAt
 
   student Student     @relation(fields: [studentId], references: [id], onDelete: Cascade)
   tag     QuestionTag @relation(fields: [tagId], references: [id], onDelete: Cascade)
@@ -782,10 +781,9 @@ model QuestionTag {
   name      String   @unique
   createdAt DateTime @default(now())
 
-  questions QuestionTagMap[]
+  questions          QuestionTagMap[]
   studentPerformance TagPerformance[]
-    assessmentTags AssessmentTag[]
-
+  assessmentTags     AssessmentTag[]
 }
 
 model QuestionTagMap {
@@ -861,8 +859,8 @@ model Assessment {
   id                    String           @id @default(cuid())
   createdById           String // staff/lecturer
   courseId              String
-   assessmentId String
-  tagId        String
+  assessmentId          String
+  tagId                 String
   type                  AssessmentType
   status                AssessmentStatus @default(DRAFT)
   title                 String
@@ -901,17 +899,16 @@ model Assessment {
   invigilators AssessmentInvigilator[]
   eligibility  AssessmentEligibility[]
   results      AssessmentResult[]
-    tags AssessmentTag[]
-
+  tags         AssessmentTag[]
 }
 
 model AssessmentTag {
   assessmentId String
   tagId        String
- 
-  assessment Assessment @relation(fields: [assessmentId], references: [id], onDelete: Cascade)
+
+  assessment Assessment  @relation(fields: [assessmentId], references: [id], onDelete: Cascade)
   tag        QuestionTag @relation(fields: [tagId], references: [id], onDelete: Cascade)
- 
+
   @@id([assessmentId, tagId])
 }
 

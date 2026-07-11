@@ -414,6 +414,8 @@ async function handleSubmit(event: Event) {
 		</Card>
 	{:else}
 		<form method="POST" onsubmit={handleSubmit} class="space-y-6">
+			  <input type="hidden" name="courseId" value={formData.courseId} />
+
 			{#if errors.error}
 				<Alert variant="destructive">
 					<AlertCircle class="size-4" />

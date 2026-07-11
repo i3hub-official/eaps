@@ -1,4 +1,4 @@
-// src/routes/(lecturer)/lecturer/question-bank/create/single-choice/+page.server.ts
+// src/routes/(lecturer)/lecturer/question-bank/create/single-choice/+page.server.ts (CORRECTED)
 import type { PageServerLoad, Actions } from './$types'
 import { fail } from '@sveltejs/kit'
 import { requireLecturer } from '$lib/server/auth/guards.js'
@@ -116,10 +116,4 @@ export const actions: Actions = {
 			return fail(500, { error: 'Failed to create question' })
 		}
 	},
-
-	// NOTE: bulk import is handled by /lecturer/question-bank/import (+server.ts),
-	// called directly via fetch() from the client with toast.promise(). The old
-	// `import` action here was removed — it returned raw JSON that doesn't match
-	// SvelteKit's action envelope, which is what caused "failed" toasts even on
-	// successful imports.
 }
