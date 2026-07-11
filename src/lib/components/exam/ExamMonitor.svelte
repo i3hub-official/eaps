@@ -1,3 +1,4 @@
+<!-- src/lib/components/exam/ExamMonitor.svelte - OPTIMIZED -->
 <script lang="ts">
 	import { onMount, onDestroy } from 'svelte';
 	import AlertTriangle from '@lucide/svelte/icons/alert-triangle';
@@ -14,7 +15,7 @@
 	const NO_FACE_STRIKES_BEFORE_LOG = 2;
 	const FACE_MATCH_THRESHOLD = 0.7;
 
-	// ─── Other Violations ────────────────────────────────────────────────────
+	// ─── Violation Cooldown (prevents spam logging) ────────────────────────────
 	const VIOLATION_COOLDOWN: Record<string, number> = {
 		FOCUS_LOSS: 5000,
 		NETWORK_DROP: 10000,
@@ -64,29 +65,45 @@
 		violationCount++;
 		status = severity >= 3 ? 'violation' : 'warning';
 
+		// Show local alert immediately
+		showAlert(type as AlertType, getViolationMessage(type), severity);
+
+		// Log to server asynchronously (don't block UI)
 		try {
-			const res = await fetch(`/api/assessment/session/${sessionId}/violation`, {
+			await fetch(`/api/assessment/session/${sessionId}/violation`, {
 				method: 'POST',
 				headers: { 'Content-Type': 'application/json' },
 				body: JSON.stringify({ sessionId, type, severity, metadata }),
-			});
-
-			if (!res.ok) {
-				console.error(`[Violation] Failed to log ${type}`);
-			}
+			}).catch(err => console.error(`[Monitor] Failed to log ${type}:`, err));
 		} catch (err) {
-			console.error(`[Violation] Error logging ${type}:`, err);
+			console.error(`[Monitor] Error logging ${type}:`, err);
 		}
+	}
 
-		if (severity >= 3) {
-			showAlert(type as AlertType, 'Critical violation detected', severity);
-		}
+	function getViolationMessage(type: string): string {
+		const messages: Record<string, string> = {
+			FACE_NOT_DETECTED: 'Face not detected — stay in view of camera',
+			FACE_MISMATCH: 'Face does not match enrolled profile',
+			MULTIPLE_FACES: 'Multiple faces detected',
+			DEVTOOLS_OPEN: 'Developer tools detected',
+			FULLSCREEN_EXIT: 'Exam exited fullscreen',
+			TAB_SWITCH: 'You switched to another tab',
+			COPY_ATTEMPT: 'Copy disabled during exam',
+			PASTE_ATTEMPT: 'Paste disabled during exam',
+			KEYBOARD_SHORTCUT: 'Keyboard shortcut blocked',
+			FOCUS_LOSS: 'Window lost focus',
+			IDLE_TIMEOUT: 'Exam paused due to inactivity',
+			NETWORK_DROP: 'Lost internet connection',
+		};
+		return messages[type] || 'Violation detected';
 	}
 
 	function showAlert(type: AlertType, message: string, severity: number) {
 		const id = `${type}-${Date.now()}`;
 		alerts.push({ id, type, message, severity, timestamp: Date.now() });
+		console.log(`[Monitor] Alert: ${message}`);
 
+		// Auto-dismiss after 8 seconds
 		setTimeout(() => {
 			alerts = alerts.filter(a => a.id !== id);
 		}, 8000);
@@ -95,6 +112,7 @@
 	// ─── Face Monitoring ──────────────────────────────────────────────────────
 	async function initFaceMonitoring() {
 		try {
+			console.log('[Monitor] Initializing face detection...');
 			human = await getHuman();
 			if (stopped) return;
 
@@ -112,17 +130,26 @@
 				videoEl.srcObject = stream;
 				await videoEl.play();
 				cameraReady = true;
+				console.log('[Monitor] Camera ready');
 			}
 
-			const descRes = await fetch('/api/face/descriptor');
-			if (descRes.ok) {
-				const data = await descRes.json();
-				enrolledDescriptor = data.descriptor;
+			// Fetch enrolled descriptor once (cached)
+			try {
+				const descRes = await fetch('/api/face/descriptor');
+				if (descRes.ok) {
+					const data = await descRes.json();
+					enrolledDescriptor = data.descriptor;
+					console.log('[Monitor] Enrolled descriptor loaded');
+				}
+			} catch (err) {
+				console.warn('[Monitor] Could not fetch descriptor:', err);
 			}
 
+			// Start continuous face checking
 			faceIntervalHandle = setInterval(runFaceCheck, FACE_CHECK_INTERVAL_MS);
+			console.log('[Monitor] Face detection started');
 		} catch (err) {
-			console.error('[ExamMonitor] Face monitoring init failed:', err);
+			console.error('[Monitor] Face monitoring init failed:', err);
 			showAlert('face', 'Camera unavailable', 1);
 		}
 	}
@@ -134,45 +161,42 @@
 			const result = await human.detect(videoEl);
 			if (stopped) return;
 
+			// ─── No Face Detected ─────────────────────────────────────────────
 			if (!result?.face || result.face.length === 0) {
 				noFaceStrikes++;
-				status = 'warning';
 
-				if (noFaceStrikes >= NO_FACE_STRIKES_BEFORE_LOG && canLog('FACE_NOT_DETECTED')) {
+				if (noFaceStrikes >= NO_FACE_STRIKES_BEFORE_LOG) {
 					status = 'violation';
-					showAlert('face', 'Face not detected — stay in view of camera', 3);
 					await logViolation('FACE_NOT_DETECTED', 3);
+					noFaceStrikes = 0; // Reset after logging
 				}
 				return;
 			}
 
 			noFaceStrikes = 0;
 
+			// ─── Multiple Faces ───────────────────────────────────────────────
 			if (result.face.length > 1) {
-				if (canLog('MULTIPLE_FACES')) {
-					status = 'violation';
-					showAlert('face', 'Multiple faces detected', 3);
-					await logViolation('MULTIPLE_FACES', 3, { count: result.face.length });
-				}
+				status = 'violation';
+				await logViolation('MULTIPLE_FACES', 3, { count: result.face.length });
 				return;
 			}
 
+			// ─── Face Matching ────────────────────────────────────────────────
 			const face = result.face[0];
 			if (enrolledDescriptor && face.embedding) {
 				const similarity = cosineSimilarity(face.embedding, enrolledDescriptor);
 				if (similarity < FACE_MATCH_THRESHOLD) {
-					if (canLog('FACE_MISMATCH')) {
-						status = 'violation';
-						showAlert('face', 'Face does not match enrolled profile', 3);
-						await logViolation('FACE_MISMATCH', 3, { similarity: Math.round(similarity * 100) });
-					}
+					status = 'violation';
+					await logViolation('FACE_MISMATCH', 3, { similarity: Math.round(similarity * 100) });
 					return;
 				}
 			}
 
+			// ─── All Checks Passed ────────────────────────────────────────────
 			status = 'ok';
 		} catch (err) {
-			console.error('[ExamMonitor] Face check error:', err);
+			console.error('[Monitor] Face check error:', err);
 		}
 	}
 
@@ -182,7 +206,6 @@
 
 		if (isFullscreen && !isCurrentlyFullscreen) {
 			status = 'warning';
-			showAlert('fullscreen', 'Exam exited fullscreen', 2);
 			logViolation('FULLSCREEN_EXIT', 2);
 		}
 
@@ -193,7 +216,6 @@
 	function handleVisibilityChange() {
 		if (document.hidden) {
 			status = 'violation';
-			showAlert('tab', 'You switched to another tab', 2);
 			logViolation('TAB_SWITCH', 2);
 		}
 	}
@@ -201,7 +223,6 @@
 	function handleFocusChange() {
 		if (!document.hasFocus()) {
 			status = 'warning';
-			showAlert('tab', 'Window lost focus', 1);
 			logViolation('FOCUS_LOSS', 1);
 		}
 	}
@@ -216,7 +237,6 @@
 			if (!devtoolsOpen && canLog('DEVTOOLS_OPEN')) {
 				devtoolsOpen = true;
 				status = 'violation';
-				showAlert('devtools', 'Developer tools detected', 3);
 				logViolation('DEVTOOLS_OPEN', 3);
 			}
 		} else {
@@ -227,20 +247,15 @@
 	// ─── Copy/Paste Detection ────────────────────────────────────────────────
 	function handleCopy(e: ClipboardEvent) {
 		e.preventDefault();
-		showAlert('clipboard', 'Copy disabled during exam', 1);
 		logViolation('COPY_ATTEMPT', 1);
 	}
 
 	function handlePaste(e: ClipboardEvent) {
 		e.preventDefault();
-		showAlert('clipboard', 'Paste disabled during exam', 1);
 		logViolation('PASTE_ATTEMPT', 1);
 	}
 
 	// ─── Keyboard Shortcut Prevention ────────────────────────────────────────
-	// Note: this only intercepts modifier-key combos and F-keys, so it does
-	// not conflict with the plain A–D / Y / N / R answer shortcuts handled
-	// in the exam page itself.
 	function handleKeyDown(e: KeyboardEvent) {
 		const isMac = /Mac|iPhone|iPad|iPod/.test(navigator.platform);
 		const ctrlOrCmd = isMac ? e.metaKey : e.ctrlKey;
@@ -276,7 +291,6 @@
 		if (idleTimeoutHandle) clearTimeout(idleTimeoutHandle);
 
 		idleTimeoutHandle = setTimeout(() => {
-			showAlert('idle', 'Exam paused due to inactivity', 1);
 			logViolation('IDLE_TIMEOUT', 1);
 		}, IDLE_TIMEOUT_MS);
 	}
@@ -289,12 +303,12 @@
 
 	function handleOffline() {
 		status = 'warning';
-		showAlert('network', 'Lost internet connection', 1);
 		logViolation('NETWORK_DROP', 1);
 	}
 
 	// ─── Initialization ───────────────────────────────────────────────────────
 	async function init() {
+		console.log('[Monitor] Initializing exam monitor...');
 		stopped = false;
 		await initFaceMonitoring();
 
@@ -311,15 +325,18 @@
 		window.addEventListener('online', handleOnline);
 		window.addEventListener('offline', handleOffline);
 
+		// DevTools check every 1 second
 		const devtoolsCheckInterval = setInterval(() => {
 			if (stopped) clearInterval(devtoolsCheckInterval);
 			detectDevTools();
 		}, 1000);
 
 		resetIdleTimer();
+		console.log('[Monitor] Exam monitor initialized');
 	}
 
 	function cleanup() {
+		console.log('[Monitor] Cleaning up...');
 		stopped = true;
 		if (faceIntervalHandle) clearInterval(faceIntervalHandle);
 		if (idleTimeoutHandle) clearTimeout(idleTimeoutHandle);
@@ -343,11 +360,9 @@
 	onDestroy(cleanup);
 </script>
 
-<!-- Monitor Panel (bottom-right): live camera preview + alerts + status pill.
-     The video is a plain inline element (no dialog/modal role, no focus
-     trap), so it can't itself register as a fullscreen exit or a focus-loss
-     violation the way an actual popup would. -->
+<!-- Monitor Panel (bottom-right): live camera preview + alerts + status pill -->
 <div class="fixed bottom-4 right-4 z-40 flex flex-col items-end gap-3">
+	<!-- Camera Feed -->
 	<div
 		class="relative overflow-hidden rounded-lg border-2 shadow-lg"
 		class:border-primary={status === 'ok'}
@@ -355,7 +370,8 @@
 		class:border-destructive={status === 'violation'}
 		style="width:112px;height:84px;"
 	>
-		<video bind:this={videoEl} class="h-full w-full object-cover" muted playsinline autoplay></video>
+		<!-- svelte-ignore a11y_media_has_caption -->
+		<video bind:this={videoEl} class="h-full w-full object-cover" muted playsinline></video>
 		{#if !cameraReady}
 			<div class="absolute inset-0 flex items-center justify-center bg-muted text-[10px] text-muted-foreground">
 				Camera off
@@ -363,71 +379,70 @@
 		{/if}
 	</div>
 
-	<!-- Alerts Stack -->
-	<!-- Alerts Stack -->
-{#each alerts.slice(-3) as alert (alert.id)}
-	<div
-		class="flex items-start gap-2 rounded-lg border px-3 py-2 text-xs shadow-lg animate-in fade-in slide-in-from-right-2 duration-200"
-		style:border-color={alert.severity >= 3 
-			? 'hsl(var(--destructive) / 0.3)' 
-			: alert.severity === 2 
-				? 'hsl(43 96% 56% / 0.3)' 
-				: 'hsl(var(--primary) / 0.3)'}
-		style:background-color={alert.severity >= 3 
-			? 'hsl(var(--destructive) / 0.1)' 
-			: alert.severity === 2 
-				? 'hsl(43 96% 56% / 0.1)' 
-				: 'hsl(var(--primary) / 0.1)'}
-		style:color={alert.severity >= 3 
-			? 'hsl(var(--destructive))' 
-			: alert.severity === 2 
-				? 'hsl(43 96% 56% / 0.9)' 
-				: 'hsl(var(--primary))'}
-	>
-		{#if alert.type === 'face'}
-			<Eye class="mt-0.5 size-3.5 shrink-0" />
-		{:else if alert.type === 'tab' || alert.type === 'fullscreen'}
-			<Monitor class="mt-0.5 size-3.5 shrink-0" />
-		{:else if alert.type === 'network'}
-			<Wifi class="mt-0.5 size-3.5 shrink-0" />
-		{:else if alert.type === 'idle'}
-			<Clock class="mt-0.5 size-3.5 shrink-0" />
-		{:else}
-			<AlertTriangle class="mt-0.5 size-3.5 shrink-0" />
-		{/if}
-		<span>{alert.message}</span>
-	</div>
-{/each}
+	<!-- Alerts Stack (max 3) -->
+	{#each alerts.slice(-3) as alert (alert.id)}
+		<div
+			class="flex items-start gap-2 rounded-lg border px-3 py-2 text-xs shadow-lg animate-in fade-in slide-in-from-right-2 duration-200"
+			style:border-color={alert.severity >= 3 
+				? 'hsl(var(--destructive) / 0.3)' 
+				: alert.severity === 2 
+					? 'hsl(43 96% 56% / 0.3)' 
+					: 'hsl(var(--primary) / 0.3)'}
+			style:background-color={alert.severity >= 3 
+				? 'hsl(var(--destructive) / 0.1)' 
+				: alert.severity === 2 
+					? 'hsl(43 96% 56% / 0.1)' 
+					: 'hsl(var(--primary) / 0.1)'}
+			style:color={alert.severity >= 3 
+				? 'hsl(var(--destructive))' 
+				: alert.severity === 2 
+					? 'hsl(43 96% 56% / 0.9)' 
+					: 'hsl(var(--primary))'}
+		>
+			{#if alert.type === 'face'}
+				<Eye class="mt-0.5 size-3.5 shrink-0" />
+			{:else if alert.type === 'tab' || alert.type === 'fullscreen'}
+				<Monitor class="mt-0.5 size-3.5 shrink-0" />
+			{:else if alert.type === 'network'}
+				<Wifi class="mt-0.5 size-3.5 shrink-0" />
+			{:else if alert.type === 'idle'}
+				<Clock class="mt-0.5 size-3.5 shrink-0" />
+			{:else}
+				<AlertTriangle class="mt-0.5 size-3.5 shrink-0" />
+			{/if}
+			<span>{alert.message}</span>
+		</div>
+	{/each}
 
 	<!-- Status Indicator Pill -->
-<div
-	class="flex items-center gap-2 rounded-full border-2 px-3 py-1.5 text-xs font-medium shadow-lg"
-	class:border-primary={status === 'ok'}
-	class:bg-primary-10={status === 'ok'}
-	class:text-primary={status === 'ok'}
-	class:border-yellow-500={status === 'warning'}
-	class:bg-yellow-500={status === 'warning'}
-	class:text-yellow-700={status === 'warning'}
-	class:border-destructive={status === 'violation'}
-	class:bg-destructive-10={status === 'violation'}
-	class:text-destructive={status === 'violation'}
->
 	<div
-		class="size-2 rounded-full animate-pulse"
-		class:bg-primary={status === 'ok'}
+		class="flex items-center gap-2 rounded-full border-2 px-3 py-1.5 text-xs font-medium shadow-lg"
+		class:border-primary={status === 'ok'}
+		class:bg-primary-10={status === 'ok'}
+		class:text-primary={status === 'ok'}
+		class:border-yellow-500={status === 'warning'}
 		class:bg-yellow-500={status === 'warning'}
-		class:bg-destructive={status === 'violation'}
-	></div>
-	<span>
-		{#if status === 'ok'}
-			Monitoring
-		{:else if status === 'warning'}
-			⚠ Warning ({violationCount})
-		{:else}
-			🛑 Violation ({violationCount})
-		{/if}
-	</span>
-</div>
+		class:text-yellow-700={status === 'warning'}
+		class:border-destructive={status === 'violation'}
+		class:bg-destructive-10={status === 'violation'}
+		class:text-destructive={status === 'violation'}
+	>
+		<div
+			class="size-2 rounded-full animate-pulse"
+			class:bg-primary={status === 'ok'}
+			class:bg-yellow-500={status === 'warning'}
+			class:bg-destructive={status === 'violation'}
+		></div>
+		<span>
+			{#if status === 'ok'}
+				Monitoring
+			{:else if status === 'warning'}
+				⚠ Warning ({violationCount})
+			{:else}
+				🛑 Violation ({violationCount})
+			{/if}
+		</span>
+	</div>
 </div>
 
 <style>

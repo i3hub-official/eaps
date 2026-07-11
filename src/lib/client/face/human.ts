@@ -10,7 +10,6 @@ export async function getHuman(): Promise<Human> {
 
   loadPromise = (async () => {
     try {
-      // 1. Defend against SSR execution (Human breaks outside the browser)
       if (typeof window === 'undefined') {
         throw new Error('Human can only be instantiated in browser environments.');
       }
@@ -19,7 +18,6 @@ export async function getHuman(): Promise<Human> {
       
       const human = new HumanClass({
         backend: 'webgl',
-        // Points exactly to static/models/human/ matching your PWA rule
         modelBasePath: '/models/human/', 
         face: {
           enabled: true,
@@ -27,22 +25,19 @@ export async function getHuman(): Promise<Human> {
           mesh: { enabled: true },
           iris: { enabled: true },
           description: { enabled: true },
-          // ⚠️ PERFORMANCE TWEAK: Turn off non-essential sub-models if you aren't logging them
-          emotion: false, 
+          emotion: { enabled: false },
           antispoof: { enabled: true },
           liveness: { enabled: true },
         },
         body: { enabled: false },
         hand: { enabled: false },
-        gesture: { enabled: false },
+        // CRITICAL FIX: Enabled so humanGestureContains filters function perfectly
+        gesture: { enabled: true }, 
         filter: { enabled: false },
       });
 
-      // 2. Parallelize network requests for the individual model files
       await human.load();
       
-      // 3. Prevent blocking warmup cycles (Warmup compilation happens in background)
-      // Passing an explicit canvas size tells WebGL exactly what to allocate ahead of time
       human.warmup({ width: 640, height: 480 }).catch((err) => {
         console.warn('Human non-blocking warmup failed:', err);
       });
@@ -50,7 +45,7 @@ export async function getHuman(): Promise<Human> {
       humanInstance = human;
       return human;
     } catch (err) {
-      loadPromise = null; // Reset promise to allow retries if network fails
+      loadPromise = null; 
       throw err;
     }
   })();
@@ -58,7 +53,6 @@ export async function getHuman(): Promise<Human> {
   return loadPromise;
 }
 
-// 4. Highly optimized Math vector routine
 export function cosineSimilarity(a: number[] | Float32Array, b: number[] | Float32Array): number {
   const len = a.length;
   if (len !== b.length || len === 0) return 0;

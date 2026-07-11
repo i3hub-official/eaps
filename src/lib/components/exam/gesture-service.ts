@@ -1,54 +1,40 @@
 // src/lib/components/exam/gesture-service.ts
 
-export type GestureId = 'turn_left' | 'turn_right' | 'blink' | 'nod_up' | 'nod_down' | 'open_mouth';
+// 1. Remove 'blink' from types
+export type GestureId = 'turn_left' | 'turn_right' | 'nod_up' | 'nod_down' | 'open_mouth';
 
 export interface GestureDefinition {
-  id:    GestureId;
+  id: GestureId;
   label: string;
-  icon:  'left' | 'right' | 'blink' | 'nod' | 'mouth';
+  icon: 'left' | 'right' | 'nod' | 'mouth'; // Cleaned up 'blink'
 }
 
+// 2. Updated clean gesture pool
 export const ALL_GESTURES: GestureDefinition[] = [
-  { id: 'turn_left',   label: 'Turn your head left',  icon: 'left'  },
-  { id: 'turn_right',  label: 'Turn your head right', icon: 'right' },
-  { id: 'blink',       label: 'Blink both eyes',      icon: 'blink' },
-  { id: 'nod_up',      label: 'Nod your head up',     icon: 'nod'   },
-  { id: 'nod_down',    label: 'Nod your head down',   icon: 'nod'   },
-  { id: 'open_mouth',  label: 'Open your mouth wide', icon: 'mouth' },
+  { id: 'open_mouth', label: 'Open your mouth wide', icon: 'mouth' },
+  { id: 'turn_left', label: 'Turn your head left', icon: 'left' },
+  { id: 'turn_right', label: 'Turn your head right', icon: 'right' },
+  { id: 'nod_up', label: 'Nod your head up', icon: 'nod' },
+  { id: 'nod_down', label: 'Nod your head down', icon: 'nod' },
 ];
 
-const CONFIRM_FRAMES = 5;
-const HIT_RATIO      = 0.70;
-const DECAY_RATE     = 0.10;
+const CONFIRM_FRAMES = 25;
+const HIT_RATIO = 0.85;
+const DECAY_RATE = 0.15;
 
-const YAW_LEFT_THRESH   = -0.20;
-const YAW_RIGHT_THRESH  =  0.20;
-const PITCH_UP_THRESH   = -0.12;
-const PITCH_DOWN_THRESH =  0.12;
-const EAR_CLOSED_MAX    = 0.25;
-const MOUTH_OPEN_RATIO  = 0.045;
+const YAW_LEFT_THRESH = -0.20;
+const YAW_RIGHT_THRESH = 0.20;
+const PITCH_UP_THRESH = -0.12;
+const PITCH_DOWN_THRESH = 0.12;
+const MOUTH_OPEN_RATIO = 0.045;
 
-const LEFT_EYE_IDX  = [33,  160, 158, 133, 153, 144];
-const RIGHT_EYE_IDX = [263, 387, 385, 362, 380, 373];
 const MOUTH_TOP_IDX = 13;
 const MOUTH_BOT_IDX = 14;
-const CHIN_IDX      = 152;
-const FOREHEAD_IDX  = 10;
+const CHIN_IDX = 152;
+const FOREHEAD_IDX = 10;
 
 function dist(a: number[], b: number[]): number {
   return Math.hypot(a[0] - b[0], a[1] - b[1]);
-}
-
-function ear(mesh: number[][], indices: number[]): number {
-  const p = indices.map(i => mesh[i]);
-  if (!p[0] || !p[3]) return 1;
-  const v = dist(p[1], p[5]) + dist(p[2], p[4]);
-  const h = 2 * dist(p[0], p[3]);
-  return h > 0 ? v / h : 1;
-}
-
-function meanEar(mesh: number[][]): number {
-  return (ear(mesh, LEFT_EYE_IDX) + ear(mesh, RIGHT_EYE_IDX)) / 2;
 }
 
 function getYaw(face: any): number {
@@ -70,40 +56,32 @@ function getPitch(face: any): number {
 function detectTurnLeft(face: any): number {
   const yaw = getYaw(face);
   if (yaw < YAW_LEFT_THRESH - 5) return 1.0;
-  if (yaw < YAW_LEFT_THRESH)     return 0.85;
-  if (yaw < 0)                return 0.30;
+  if (yaw < YAW_LEFT_THRESH) return 0.85;
+  if (yaw < 0) return 0.30;
   return 0;
 }
 
 function detectTurnRight(face: any): number {
   const yaw = getYaw(face);
   if (yaw > YAW_RIGHT_THRESH + 5) return 1.0;
-  if (yaw > YAW_RIGHT_THRESH)     return 0.85;
-  if (yaw > 0)                 return 0.30;
-  return 0;
-}
-
-function detectBlink(face: any): number {
-  if (!face.mesh || face.mesh.length < 400) return 0;
-  const avgEar = meanEar(face.mesh as number[][]);
-  if (avgEar < EAR_CLOSED_MAX - 0.08) return 1.0;
-  if (avgEar < EAR_CLOSED_MAX)        return 0.85;
+  if (yaw > YAW_RIGHT_THRESH) return 0.85;
+  if (yaw > 0) return 0.30;
   return 0;
 }
 
 function detectNodUp(face: any): number {
   const pitch = getPitch(face);
   if (pitch < PITCH_UP_THRESH - 5) return 1.0;
-  if (pitch < PITCH_UP_THRESH)     return 0.85;
-  if (pitch < 0)                return 0.30;
+  if (pitch < PITCH_UP_THRESH) return 0.85;
+  if (pitch < 0) return 0.30;
   return 0;
 }
 
 function detectNodDown(face: any): number {
   const pitch = getPitch(face);
   if (pitch > PITCH_DOWN_THRESH + 5) return 1.0;
-  if (pitch > PITCH_DOWN_THRESH)     return 0.85;
-  if (pitch > 0)                  return 0.30;
+  if (pitch > PITCH_DOWN_THRESH) return 0.85;
+  if (pitch > 0) return 0.30;
   return 0;
 }
 
@@ -116,10 +94,10 @@ function detectOpenMouth(face: any): number {
   const fore = mesh[FOREHEAD_IDX];
   if (!mTop || !mBot || !chin || !fore) return 0;
   const mouthH = dist(mTop, mBot);
-  const faceH  = dist(fore, chin);
-  const ratio  = faceH > 0 ? mouthH / faceH : 0;
+  const faceH = dist(fore, chin);
+  const ratio = faceH > 0 ? mouthH / faceH : 0;
   if (ratio > MOUTH_OPEN_RATIO + 0.02) return 1.0;
-  if (ratio > MOUTH_OPEN_RATIO)        return 0.85;
+  if (ratio > MOUTH_OPEN_RATIO) return 0.85;
   return 0;
 }
 
@@ -134,31 +112,23 @@ export function gestureConfidence(
 ): number {
   let raw = 0;
   switch (id) {
-    case 'turn_left':   raw = detectTurnLeft(face);   break;
-    case 'turn_right':  raw = detectTurnRight(face);  break;
-    case 'blink':       raw = detectBlink(face);       break;
-    case 'nod_up':      raw = detectNodUp(face);       break;
-    case 'nod_down':    raw = detectNodDown(face);     break;
-    case 'open_mouth':  raw = detectOpenMouth(face);   break;
+    case 'open_mouth': raw = detectOpenMouth(face); break;
+    case 'turn_left': raw = detectTurnLeft(face); break;
+    case 'turn_right': raw = detectTurnRight(face); break;
+    case 'nod_up': raw = detectNodUp(face); break;
+    case 'nod_down': raw = detectNodDown(face); break;
   }
 
   let boost = 0;
   switch (id) {
     case 'turn_left':
-      boost = humanGestureContains(humanGestures, 'facing left')  ? 0.15 : 0;
+      boost = humanGestureContains(humanGestures, 'facing left') ? 0.15 : 0;
       break;
     case 'turn_right':
       boost = humanGestureContains(humanGestures, 'facing right') ? 0.15 : 0;
       break;
-    case 'blink': {
-      const blinkLeft  = humanGestureContains(humanGestures, 'blink left eye');
-      const blinkRight = humanGestureContains(humanGestures, 'blink right eye');
-      if (blinkLeft && blinkRight) boost = 0.40;
-      else if (blinkLeft || blinkRight) boost = 0.15;
-      break;
-    }
     case 'nod_up':
-      boost = humanGestureContains(humanGestures, 'head up')   ? 0.15 : 0;
+      boost = humanGestureContains(humanGestures, 'head up') ? 0.15 : 0;
       break;
     case 'nod_down':
       boost = humanGestureContains(humanGestures, 'head down') ? 0.15 : 0;
@@ -180,35 +150,36 @@ export class GestureTracker {
 
   constructor(opts: GestureTrackerOptions = {}) {
     this.confirmFrames = opts.confirmFrames ?? CONFIRM_FRAMES;
-    this.hitRatio      = opts.hitRatio      ?? HIT_RATIO;
+    this.hitRatio = opts.hitRatio ?? HIT_RATIO;
   }
 
   reset() {
-    this.window      = [];
+    this.window = [];
     this.holdProgress = 0;
   }
 
-  update(confidence: number): boolean {
-    const hit = confidence >= 0.50;
+  update(confidence: number, otherGesturesConfident: boolean = false): boolean {
+    // FIX: Only treat it as an explicit attack if the conflicting action is completely undeniable (>= 0.85)
+    // This allows natural facial structural changes during head rotations.
+    const hit = confidence >= 0.55 && !otherGesturesConfident;
 
     this.window.push(confidence);
     if (this.window.length > this.confirmFrames) this.window.shift();
 
     if (hit) {
-      this.holdProgress = Math.min(1, this.holdProgress + 1 / this.confirmFrames);
+      this.holdProgress = Math.min(1, this.holdProgress + (1 / this.confirmFrames));
     } else {
-      this.holdProgress = Math.max(0, this.holdProgress - DECAY_RATE);
+      // If a real attack is happening, penalize heavily. Otherwise, decay normally.
+      const penalty = otherGesturesConfident ? DECAY_RATE * 1.5 : DECAY_RATE;
+      this.holdProgress = Math.max(0, this.holdProgress - penalty);
     }
 
-    if (this.window.length < this.confirmFrames) {
-      return false;
-    }
+    if (this.window.length < this.confirmFrames) return false;
 
-    const hits     = this.window.filter(c => c >= 0.50).length;
-    const ratio    = hits / this.confirmFrames;
-    const confirmed = ratio >= this.hitRatio && this.holdProgress >= 0.90;
+    const hits = this.window.filter(c => c >= 0.55).length;
+    const ratio = hits / this.confirmFrames;
 
-    return confirmed;
+    return ratio >= this.hitRatio && this.holdProgress >= 0.95;
   }
 }
 
@@ -218,18 +189,19 @@ export interface GestureTrackerOptions {
 }
 
 export function createTrackerForGesture(id: GestureId): GestureTracker {
-  if (id === 'blink') {
-    return new GestureTracker({ confirmFrames: 2, hitRatio: 1.0 });
-  }
   return new GestureTracker();
 }
 
+/**
+ * Grabs one randomized horizontal head turn, then fills remaining slots up to `count`
+ */
 export function selectGestures(count: number): GestureDefinition[] {
   const pool = [...ALL_GESTURES];
   const selected: GestureDefinition[] = [];
 
+  // Enforce exactly one lateral check to avoid back-to-back turn updates
   const turns = pool.filter(g => g.id === 'turn_left' || g.id === 'turn_right');
-  const turn  = turns[Math.floor(Math.random() * turns.length)];
+  const turn = turns[Math.floor(Math.random() * turns.length)];
   if (turn) {
     selected.push(turn);
     const turnIdx = pool.indexOf(turn);
@@ -242,6 +214,7 @@ export function selectGestures(count: number): GestureDefinition[] {
     pool.splice(idx, 1);
   }
 
+  // Final array shuffle
   for (let i = selected.length - 1; i > 0; i--) {
     const j = Math.floor(Math.random() * (i + 1));
     [selected[i], selected[j]] = [selected[j], selected[i]];
