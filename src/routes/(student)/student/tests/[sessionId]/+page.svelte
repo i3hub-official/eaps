@@ -26,24 +26,22 @@
 
 	type Step = 'lobby' | 'terms' | 'faceverify' | 'kiosk' | 'closed' | 'submitted'
 
-	// Sessions that are already IN_PROGRESS/PAUSED normally skip straight to
-// the kiosk (reconnect/resume). But if the server determined the gap
-// since last activity exceeds the re-verify threshold, route back through
-// face verification first — never straight to the kiosk in that case,
-// even though terms don't need re-accepting.
-function initialStep(): Step {
-	if (['SUBMITTED', 'TIMED_OUT', 'DISQUALIFIED'].includes(data.status)) return 'closed'
-	if (data.status === 'IN_PROGRESS' || data.status === 'PAUSED') {
-		if (data.needsReverify) return 'faceverify'
-		return 'kiosk'
+	// Sessions that are already IN_PROGRESS/PAUSED skip straight to the
+	// kiosk (reconnect/resume) — UNLESS the server flagged needsReverify
+	// (idle too long since last activity), in which case face verification
+	// runs again before re-entering the kiosk. Closed sessions show a
+	// closed screen instead of the flow.
+	function initialStep(): Step {
+		if (['SUBMITTED', 'TIMED_OUT', 'DISQUALIFIED'].includes(data.status)) return 'closed'
+		if (data.status === 'IN_PROGRESS' || data.status === 'PAUSED') {
+			if (data.needsReverify) return 'faceverify'
+			return 'kiosk'
+		}
+		return 'lobby'
 	}
-	return 'lobby'
-}
 
-let step = $state<Step>(initialStep())
-let termsAccepted = $state(Boolean(data.termsAcceptedAt))
-
-
+	let step = $state<Step>(initialStep())
+	let termsAccepted = $state(Boolean(data.termsAcceptedAt))
 	let cameraChecked = $state(false)
 	let cameraError = $state('')
 
@@ -65,7 +63,7 @@ let termsAccepted = $state(Boolean(data.termsAcceptedAt))
 			if (q.type === 'MULTIPLE_CHOICE' || q.type === 'SINGLE_CHOICE' || q.type === 'TRUE_FALSE')
 				return q.selectedOptions.length > 0
 			if (q.type === 'MATCHING') return Object.keys(q.matchAnswer).length > 0
-			return true // ORDERING always has a default order
+			return true
 		}).length
 	)
 
@@ -97,33 +95,28 @@ let termsAccepted = $state(Boolean(data.termsAcceptedAt))
 		step = 'terms'
 	}
 
-	function proceedFromTerms() {
-async function proceedFromTerms() {
-	if (!termsAccepted) {
-		toast.error('You must accept the rules to continue')
-		return
-	}
-
-	// Record consent server-side before moving on — best-effort but awaited,
-	// since this is the actual compliance record, not just a UI gate.
-	try {
-		await fetch(`/api/assessment/session/${data.sessionId}/accept-terms`, { method: 'POST' })
-	} catch {
-		// If this fails, the student can still proceed (don't block the exam
-		// on a logging call), but the acceptance won't be on record — worth
-		// surfacing if this becomes a recurring issue in practice.
-	}
-
-	if (data.assessment.requireFaceVerify && !data.faceVerifiedAt) {
-		if (!data.faceEnrolled) {
-			toast.error('You must enroll your face before taking this assessment')
+	async function proceedFromTerms() {
+		if (!termsAccepted) {
+			toast.error('You must accept the rules to continue')
 			return
 		}
-		step = 'faceverify'
-	} else {
-		enterKiosk()
+
+		try {
+			await fetch(`/api/assessment/session/${data.sessionId}/accept-terms`, { method: 'POST' })
+		} catch {
+			// best-effort; don't block progress on a logging failure
+		}
+
+		if (data.assessment.requireFaceVerify && !data.faceVerifiedAt) {
+			if (!data.faceEnrolled) {
+				toast.error('You must enroll your face before taking this assessment')
+				return
+			}
+			step = 'faceverify'
+		} else {
+			enterKiosk()
+		}
 	}
-}
 
 	async function enterKiosk() {
 		try {
@@ -148,27 +141,23 @@ async function proceedFromTerms() {
 	}
 
 	function onFaceVerifySuccess() {
-	if (data.status === 'IN_PROGRESS' || data.status === 'PAUSED') {
-		// Resume path: session is already started, just re-enter the kiosk
-		// and resume timers — don't call /start again, it would 400.
-		step = 'kiosk'
-		startTimers()
-		if (data.assessment.fullscreenRequired) requestFullscreen()
-	} else {
-		enterKiosk()
+		if (data.status === 'IN_PROGRESS' || data.status === 'PAUSED') {
+			// Resume path: session is already started server-side, so calling
+			// /start again would 400 ("Session already started"). Just
+			// re-enter the kiosk and resume timers.
+			step = 'kiosk'
+			startTimers()
+			if (data.assessment.fullscreenRequired) requestFullscreen()
+		} else {
+			enterKiosk()
+		}
 	}
-}
 
 	function onFaceVerifyCancel() {
 		step = 'terms'
 	}
 
 	// ─── Fullscreen + violation logging ────────────────────────────────────
-	// NOTE: assumes POST /api/assessment/session/[sessionId]/violation exists
-	// (present in the route tree) and accepts { type, severity, metadata }
-	// using the full ViolationType enum — /api/face/violation only accepts
-	// the three face-related types, so it can't be reused here. If the real
-	// endpoint's shape differs, this call needs adjusting.
 	async function logViolation(type: string, severity = 1, metadata: Record<string, unknown> = {}) {
 		try {
 			await fetch(`/api/assessment/session/${data.sessionId}/violation`, {
@@ -224,9 +213,6 @@ async function proceedFromTerms() {
 			}
 		}, 1000)
 
-		// NOTE: assumes POST /api/assessment/session/[sessionId]/timer exists
-		// (present in the route tree) and accepts { remainingSeconds }, mirroring
-		// engine.syncTimer's clientRemainingSeconds parameter.
 		syncInterval = setInterval(async () => {
 			try {
 				const res = await fetch(`/api/assessment/session/${data.sessionId}/timer`, {
@@ -345,7 +331,7 @@ async function proceedFromTerms() {
 			if (document.fullscreenElement) document.exitFullscreen?.().catch(() => {})
 		} catch {
 			isSubmitting = false
-			startTimers() // resume countdown so the student isn't stuck if submit failed
+			startTimers()
 		}
 	}
 

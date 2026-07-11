@@ -127,9 +127,9 @@ export const load: PageServerLoad = async ({ locals }) => {
 			startedAt: a.startedAt,
 			result: a.result ? {
 				grade: a.result.grade,
-				percentage: a.result.percentage,
-				marksObtained: a.result.marksObtained,
-				totalMarks: a.result.totalMarks,
+				percentage: Number(a.result.percentage),
+				marksObtained: Number(a.result.marksObtained),
+				totalMarks: Number(a.result.totalMarks),
 			} : null,
 		})),
 		upcomingAssessments: upcomingAssessments.map(a => ({
