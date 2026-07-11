@@ -199,7 +199,7 @@ export const actions: Actions = {
 			console.log('[TEST-CREATE] Creating assessment with', questionIds.length, 'questions and', tags.length, 'tags')
 
 			const test = await prisma.$transaction(async (tx) => {
-				// Create assessment
+				// Create assessment (without tags, will add after)
 				const created = await tx.assessment.create({
 					data: {
 						createdById: user.id,
@@ -223,14 +223,6 @@ export const actions: Actions = {
 						requireLiveness: false,
 						offlineEnabled: false,
 						maxAttempts: 1,
-						// Add tags if any
-						...(tags.length > 0 && {
-							tags: {
-								create: tags.map((tag) => ({
-									tagId: tag.id,
-								})),
-							},
-						}),
 					},
 				})
 
@@ -246,6 +238,18 @@ export const actions: Actions = {
 				})
 
 				console.log('[TEST-CREATE] Linked', questionIds.length, 'questions')
+
+				// Link tags (after assessment exists)
+				if (tags.length > 0) {
+					await tx.assessmentTag.createMany({
+						data: tags.map((tag) => ({
+							assessmentId: created.id,
+							tagId: tag.id,
+						})),
+					})
+					console.log('[TEST-CREATE] Linked', tags.length, 'tags')
+				}
+
 				return created
 			})
 

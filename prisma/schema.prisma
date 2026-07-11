@@ -857,49 +857,44 @@ model MatchPair {
 
 model Assessment {
   id                    String           @id @default(cuid())
-  createdById           String // staff/lecturer
+  createdById           String
   courseId              String
-  assessmentId          String
-  tagId                 String
   type                  AssessmentType
   status                AssessmentStatus @default(DRAFT)
   title                 String
   instructions          String?
-  totalMarks            Decimal          @db.Decimal(6, 2) // 70 for Exam, 30 for Test
-  passMark              Decimal          @db.Decimal(6, 2) // e.g. 40% of totalMarks
-  durationMinutes       Int // how long each session lasts
-  startTime             DateTime? // when students can begin
-  endTime               DateTime? // after this, no new sessions
-  maxAttempts           Int              @default(1) // PRACTICE: 999
-  questionCount         Int // how many to pick from pool
+  totalMarks            Decimal          @db.Decimal(6, 2)
+  passMark              Decimal          @db.Decimal(6, 2)
+  durationMinutes       Int
+  startTime             DateTime?
+  endTime               DateTime?
+  maxAttempts           Int              @default(1)
+  questionCount         Int
   shuffleQuestions      Boolean          @default(true)
   shuffleOptions        Boolean          @default(true)
-  showResultImmediately Boolean          @default(false) // PRACTICE/ASSIGNMENT: true
-  allowReview           Boolean          @default(false) // can student review answers?
-  requireFaceVerify     Boolean          @default(false) // TEST + EXAM: true
-  requireLiveness       Boolean          @default(false) // EXAM only: true
-  offlineEnabled        Boolean          @default(false) // EXAM only
-  fullscreenRequired    Boolean          @default(false) // TEST + EXAM: true
-  // Assignment-specific
+  showResultImmediately Boolean          @default(false)
+  allowReview           Boolean          @default(false)
+  requireFaceVerify     Boolean          @default(false)
+  requireLiveness       Boolean          @default(false)
+  offlineEnabled        Boolean          @default(false)
+  fullscreenRequired    Boolean          @default(false)
   dueDate               DateTime?
   allowLateSubmission   Boolean          @default(false)
   latePenaltyPercent    Decimal?         @db.Decimal(5, 2)
-  // Exam paper variants (Type A/B/C)
   paperVariants         Int              @default(1)
+  publishedAt           DateTime?
+  createdAt             DateTime         @default(now())
+  updatedAt             DateTime         @updatedAt
 
-  publishedAt DateTime?
-  createdAt   DateTime  @default(now())
-  updatedAt   DateTime  @updatedAt
+  tags AssessmentTag[]  // ← Should have this
 
   createdBy Staff  @relation("AssessmentAuthor", fields: [createdById], references: [id])
   course    Course @relation(fields: [courseId], references: [id])
-
   questions    AssessmentQuestion[]
   sessions     AssessmentSession[]
   invigilators AssessmentInvigilator[]
   eligibility  AssessmentEligibility[]
   results      AssessmentResult[]
-  tags         AssessmentTag[]
 }
 
 model AssessmentTag {

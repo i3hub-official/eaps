@@ -1,6 +1,7 @@
 <!-- src/routes/(lecturer)/lecturer/assessments/create/test/+page.svelte -->
 <script lang="ts">
-import { invalidateAll } from '$app/navigation';
+import { invalidateAll, goto } from '$app/navigation';
+import { toast } from 'svelte-sonner';
 	import { Topbar } from '$lib/components/dashboard';
 	import { Button } from '$lib/components/ui/button/index.js';
 	import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '$lib/components/ui/card/index.js';
@@ -24,11 +25,6 @@ import { invalidateAll } from '$app/navigation';
 	let { data, form } = $props();
 
 	// ─── Presets (settings & schedule) ─────────────────────────────────────
-	// Each preset prefills totalMarks/passMark/durationMinutes/questionCount
-	// and, optionally, a schedule offset. Selecting one just prefills the
-	// fields below — the lecturer can still edit anything afterwards, and
-	// editing a field after picking a preset doesn't get overwritten again
-	// unless they pick a (different) preset explicitly.
 	type Preset = {
 		id: string;
 		label: string;
@@ -41,7 +37,6 @@ import { invalidateAll } from '$app/navigation';
 		shuffleOptions: boolean;
 		requireFaceVerify: boolean;
 		fullscreenRequired: boolean;
-		/** Days from now the window should open, and how long it stays open. */
 		scheduleOffsetDays: number;
 		scheduleWindowDays: number;
 	};
@@ -112,9 +107,6 @@ import { invalidateAll } from '$app/navigation';
 	let selectedPresetId = $state<string | null>(null);
 
 	function toLocalDatetimeInputValue(date: Date): string {
-		// datetime-local inputs need "YYYY-MM-DDTHH:mm" in *local* time,
-		// so we offset by the timezone before slicing rather than using
-		// toISOString() directly (which is UTC and would shift the time).
 		const tzOffsetMs = date.getTimezoneOffset() * 60000;
 		return new Date(date.getTime() - tzOffsetMs).toISOString().slice(0, 16);
 	}
@@ -137,11 +129,11 @@ import { invalidateAll } from '$app/navigation';
 		formData.startDate = toLocalDatetimeInputValue(start);
 		formData.endDate = toLocalDatetimeInputValue(end);
 
-		// Re-validate anything that was already flagged so the preset's
-		// values clear stale errors immediately.
 		if (Object.keys(errors).length > 0) {
 			validateForm();
 		}
+
+		toast.success(`Applied "${preset.label}" preset`);
 	}
 
 	let formData = $state({
@@ -168,11 +160,6 @@ import { invalidateAll } from '$app/navigation';
 	let uploadDialogOpen = $state(false);
 
 	// ─── Question Bank Dialog ──────────────────────────────────────────────
-	// Note: the bank's questions come entirely from `data.bankQuestions`,
-	// loaded server-side in +page.server.ts's load() (scoped to this
-	// lecturer's own active questions across their assigned courses).
-	// There is no separate client-side fetch — the dialog just filters
-	// that already-loaded list.
 	let questionBankOpen = $state(false);
 	let bankSearchQuery = $state('');
 	let bankFilterType = $state('all');
@@ -192,10 +179,6 @@ import { invalidateAll } from '$app/navigation';
 		selectedCourse ? `${selectedCourse.code} — ${selectedCourse.title}` : 'Select a course'
 	);
 
-	// Filters by the currently selected course FIRST — previously this
-	// showed every question across all of the lecturer's courses regardless
-	// of which course was chosen for the test, which meant it was possible
-	// to accidentally attach e.g. MTH212 questions to a CSC301 test.
 	const bankFilteredQuestions = $derived(
 		(data?.bankQuestions || []).filter((q: any) => {
 			const matchesCourse = !formData.courseId || q.courseId === formData.courseId;
@@ -206,17 +189,12 @@ import { invalidateAll } from '$app/navigation';
 		})
 	);
 
-	// Clears any previously selected bank questions whenever the course
-	// changes, since a question selected under one course would otherwise
-	// silently fail the server-side ownership/course check at submit time
-	// with no visible explanation in the UI. Remove this $effect if you'd
-	// rather questions persist across a course change (they'll still be
-	// rejected server-side, just without this proactive UI cleanup).
 	let previousCourseId = formData.courseId;
 	$effect(() => {
 		if (formData.courseId !== previousCourseId) {
 			if (previousCourseId !== '' && formData.selectedQuestions.length > 0) {
 				formData.selectedQuestions = [];
+				toast.info('Selected questions cleared — course changed');
 			}
 			previousCourseId = formData.courseId;
 		}
@@ -248,76 +226,87 @@ import { invalidateAll } from '$app/navigation';
 		formData.selectedQuestions = [];
 	}
 
-	// Opens the bank dialog against already-loaded data.bankQuestions.
-	// Requires a course to be selected first so the filtered list has
-	// something relevant to show (and so selections are unambiguous).
 	function openBankDialog() {
 		if (!formData.courseId) {
 			errors = { ...errors, courseId: 'Select a course before choosing questions from the bank' };
+			toast.error('Select a course before choosing questions from the bank');
 			return;
 		}
 		questionBankOpen = true;
 	}
 
-async function handleFileUpload(event: Event) {
-	const target = event.target as HTMLInputElement;
-	const file = target.files?.[0];
-	if (!file || !formData.courseId) {
-		errors = { file: formData.courseId ? 'Select a file' : 'Select a course first' };
-		return;
-	}
+	async function handleFileUpload(event: Event) {
+		const target = event.target as HTMLInputElement;
+		const file = target.files?.[0];
+		if (!file || !formData.courseId) {
+			const msg = formData.courseId ? 'Select a file' : 'Select a course first';
+			errors = { file: msg };
+			toast.error(msg);
+			return;
+		}
 
-	const validTypes = ['.json', '.txt'];
-	const fileExt = '.' + file.name.split('.').pop()?.toLowerCase();
-	if (!validTypes.includes(fileExt)) {
-		errors = { file: 'Only .json and .txt files are supported' };
-		return;
-	}
+		const validTypes = ['.json', '.txt'];
+		const fileExt = '.' + file.name.split('.').pop()?.toLowerCase();
+		if (!validTypes.includes(fileExt)) {
+			errors = { file: 'Only .json and .txt files are supported' };
+			toast.error('Only .json and .txt files are supported');
+			return;
+		}
 
-	if (file.size > 5 * 1024 * 1024) {
-		errors = { file: 'File size must be less than 5MB' };
-		return;
-	}
+		if (file.size > 5 * 1024 * 1024) {
+			errors = { file: 'File size must be less than 5MB' };
+			toast.error('File size must be less than 5MB');
+			return;
+		}
 
-	isUploading = true;
-	uploadSuccess = null;
-	errors = {};
+		isUploading = true;
+		uploadSuccess = null;
+		errors = {};
 
-	try {
-		const formDataObj = new FormData();
-		formDataObj.append('courseId', formData.courseId);
-		formDataObj.append('file', file);
+		const doUpload = async () => {
+			const formDataObj = new FormData();
+			formDataObj.append('courseId', formData.courseId);
+			formDataObj.append('file', file);
 
-		const response = await fetch('/lecturer/question-bank/import', {
-			method: 'POST',
-			body: formDataObj,
+			const response = await fetch('/lecturer/question-bank/import', {
+				method: 'POST',
+				body: formDataObj,
+			});
+
+			const result = await response.json();
+
+			if ((response.ok || result.success) && result.imported > 0) {
+				uploadSuccess = {
+					imported: result.imported || 0,
+					errors: result.errors,
+				};
+				target.value = '';
+				await invalidateAll();
+				uploadDialogOpen = false;
+				return result;
+			}
+
+			throw new Error(result.error || 'Import failed. Please check your file format.');
+		};
+
+		toast.promise(doUpload(), {
+			loading: 'Importing questions…',
+			success: (result: any) =>
+				`Imported ${result.imported} question(s)${result.errors?.length ? ` — ${result.errors.length} row(s) had errors` : ''}`,
+			error: (err) => {
+				errors = { file: err instanceof Error ? err.message : 'Import failed' };
+				return err instanceof Error ? err.message : 'Import failed';
+			},
 		});
 
-		const result = await response.json();
-
-		// Success if status is OK OR if we have imported > 0
-		if ((response.ok || result.success) && result.imported > 0) {
-			uploadSuccess = {
-				imported: result.imported || 0,
-				errors: result.errors,
-			};
-			target.value = '';
-			
-			// Refresh the page to load the newly imported questions
-			await invalidateAll();
-			
-			// Close the upload dialog
-			uploadDialogOpen = false;
-		} else {
-			// Show the error message from the server
-			errors = { file: result.error || 'Import failed. Please check your file format.' };
+		try {
+			await doUpload();
+		} catch {
+			// error already surfaced via toast.promise above
+		} finally {
+			isUploading = false;
 		}
-	} catch (err) {
-		errors = { file: err instanceof Error ? err.message : 'Import failed' };
-	} finally {
-		isUploading = false;
 	}
-}
 
 	function validateForm() {
 		errors = {};
@@ -339,13 +328,15 @@ async function handleFileUpload(event: Event) {
 
 async function handleSubmit(event: Event) {
 	event.preventDefault();
-	if (!validateForm()) return;
+	if (!validateForm()) {
+		toast.error('Please fix the highlighted fields');
+		return;
+	}
 	isSubmitting = true;
+	errors = {};
 
 	const formElement = event.target as HTMLFormElement;
 	const formDataObj = new FormData(formElement);
-
-	// Add selected questions as a JSON string
 	const questionIdsJson = JSON.stringify(formData.selectedQuestions);
 	formDataObj.append('questionIds', questionIdsJson);
 
@@ -355,26 +346,46 @@ async function handleSubmit(event: Event) {
 			body: formDataObj,
 		});
 
-		const result = await response.json();
+		const result = deserialize(await response.text());
 
-		if (response.ok && result.success) {
-			window.location.href = `/lecturer/assessments/edit/${result.id}`;
-		} else if (response.status === 400 || response.status === 403) {
-			// Handle validation errors
-			if (result.errors) {
-				errors = result.errors;
-			} else {
-				errors = { error: result.error || 'Validation failed' };
-			}
-		} else {
-			errors = { error: result.error || 'Failed to create test' };
+		if (result.type === 'success' && (result.data as any)?.success) {
+			toast.success('Test created successfully');
+			await goto('/lecturer/assessments');
+			return;
 		}
+
+		if (result.type === 'failure') {
+			const data = result.data as any;
+			if (data?.errors) {
+				errors = data.errors;
+				toast.error('Please fix the highlighted fields');
+			} else {
+				errors = { error: data?.error ?? 'Failed to create test' };
+				toast.error(data?.error ?? 'Failed to create test');
+			}
+			return;
+		}
+
+		if (result.type === 'error') {
+			const msg = result.error?.message ?? 'Server error';
+			errors = { error: msg };
+			toast.error(msg);
+			return;
+		}
+
+		// 'redirect' type shouldn't occur here since the action never throws
+		// redirect(), but handle it defensively.
+		await invalidateAll();
 	} catch (err) {
-		errors = { error: err instanceof Error ? err.message : 'Failed to create test' };
+		const msg = err instanceof Error ? err.message : 'Network error';
+		errors = { error: msg };
+		toast.error(msg);
 	} finally {
 		isSubmitting = false;
 	}
 }
+
+
 </script>
 
 <svelte:head>
@@ -779,7 +790,9 @@ async function handleSubmit(event: Event) {
 											</p>
 										</div>
 
-										<div class="flex-1 overflow-y-auto border rounded-lg divide-y">
+										<!-- Capped at ~20 visible rows (26px row height) before scrolling kicks in,
+										     rather than relying solely on the dialog's own flex-1 sizing. -->
+										<div class="max-h-[520px] overflow-y-auto border rounded-lg divide-y">
 											{#if bankFilteredQuestions.length === 0}
 												<div class="text-center text-muted-foreground py-8">
 													<FileText class="mx-auto size-8 text-muted-foreground/50 mb-2" />
@@ -834,7 +847,10 @@ async function handleSubmit(event: Event) {
 								<AlertDescription>{errors.questions}</AlertDescription>
 							</Alert>
 						{/if}
-						<div class="rounded-lg border p-4 min-h-[100px]">
+						<!-- Same 20-row scroll cap applied to the selected-questions summary,
+						     since a lecturer selecting 50+ questions would otherwise grow this
+						     box unbounded. -->
+						<div class="rounded-lg border p-4 min-h-[100px] max-h-[520px] overflow-y-auto">
 							{#if formData.selectedQuestions.length === 0}
 								<div class="text-center text-muted-foreground py-4">
 									<FileText class="mx-auto size-8 text-muted-foreground/50 mb-2" />

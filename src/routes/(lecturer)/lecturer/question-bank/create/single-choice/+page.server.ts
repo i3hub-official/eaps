@@ -3,7 +3,7 @@ import type { PageServerLoad, Actions } from './$types'
 import { fail } from '@sveltejs/kit'
 import { requireLecturer } from '$lib/server/auth/guards.js'
 import { getPrismaClient } from '$lib/server/db/index.js'
-import { Decimal } from 'decimal.js'
+import { Decimal } from 'decimal.js' 
 
 export const load: PageServerLoad = async ({ locals }) => {
 	const user = await requireLecturer(locals.user)
@@ -88,6 +88,7 @@ export const actions: Actions = {
 				)
 			)
 
+			// Create question WITHOUT tags first
 			const question = await prisma.question.create({
 				data: {
 					createdById: user.id,
@@ -105,10 +106,18 @@ export const actions: Actions = {
 							order: idx,
 						})),
 					},
-					tags: { create: tags.map((tag) => ({ tagId: tag.id })) },
 				},
-				include: { tags: { include: { tag: true } } },
 			})
+
+			// Link tags after question is created
+			if (tags.length > 0) {
+				await prisma.questionTagMap.createMany({
+					data: tags.map((tag) => ({
+						questionId: question.id,
+						tagId: tag.id,
+					})),
+				})
+			}
 
 			return { success: true, questionId: question.id }
 		} catch (err) {
