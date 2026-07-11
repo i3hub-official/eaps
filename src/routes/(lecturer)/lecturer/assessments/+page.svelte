@@ -1,4 +1,3 @@
-<!-- src/routes/(lecturer)/lecturer/assessments/+page.svelte -->
 <script lang="ts">
 	import { Topbar } from '$lib/components/dashboard';
 	import { Button } from '$lib/components/ui/button/index.js';
@@ -123,6 +122,126 @@
 		};
 		return colors[status] || 'bg-gray-100 text-gray-800 dark:bg-gray-800/30 dark:text-gray-400';
 	}
+
+	// ─── Schedule display ─────────────────────────────────────────────────────
+	function formatSchedule(date: Date | string | null | undefined) {
+		if (!date) return null;
+		return new Date(date).toLocaleString(undefined, {
+			month: 'short',
+			day: 'numeric',
+			hour: 'numeric',
+			minute: '2-digit',
+		});
+	}
+
+	type ScheduleTone = 'default' | 'warning' | 'success' | 'muted';
+
+	function getScheduleLabel(assessment: {
+		status: string;
+		type: string;
+		startTime: any;
+		endTime: any;
+		dueDate: any;
+	}): { label: string; tone: ScheduleTone } | null {
+		const { status, type, startTime, endTime, dueDate } = assessment;
+
+		if (type === 'ASSIGNMENT' && dueDate) {
+			return { label: `Due ${formatSchedule(dueDate)}`, tone: 'default' };
+		}
+
+		switch (status) {
+			case 'DRAFT':
+				return startTime
+					? { label: `Planned for ${formatSchedule(startTime)}`, tone: 'default' }
+					: null;
+			case 'SCHEDULED':
+				return startTime
+					? { label: `Opens ${formatSchedule(startTime)}`, tone: 'warning' }
+					: { label: 'Awaiting start time', tone: 'warning' };
+			case 'ACTIVE':
+				return endTime
+					? { label: `Closes ${formatSchedule(endTime)}`, tone: 'success' }
+					: { label: 'Open now', tone: 'success' };
+			case 'ENDED':
+				return endTime
+					? { label: `Ended ${formatSchedule(endTime)}`, tone: 'muted' }
+					: { label: 'Ended', tone: 'muted' };
+			case 'PUBLISHED':
+				return startTime
+					? { label: `Starts ${formatSchedule(startTime)}`, tone: 'default' }
+					: { label: 'Published', tone: 'default' };
+			default:
+				return null; // CANCELLED — nothing to schedule
+		}
+	}
+
+	function scheduleToneClass(tone: ScheduleTone) {
+		const map: Record<ScheduleTone, string> = {
+			default: 'text-muted-foreground',
+			warning: 'text-yellow-600 dark:text-yellow-400',
+			success: 'text-green-600 dark:text-green-400',
+			muted: 'text-muted-foreground/70',
+		};
+		return map[tone];
+	}
+
+	// ─── Sorting: Active first, then Scheduled, then Draft, by nearest date ───
+	function getUrgencyDate(assessment: {
+		status: string;
+		type: string;
+		startTime: any;
+		endTime: any;
+		dueDate: any;
+	}): Date | null {
+		const { status, type, startTime, endTime, dueDate } = assessment;
+
+		if (type === 'ASSIGNMENT' && dueDate && status !== 'ENDED' && status !== 'CANCELLED') {
+			return new Date(dueDate);
+		}
+
+		switch (status) {
+			case 'DRAFT':
+				return startTime ? new Date(startTime) : null;
+			case 'SCHEDULED':
+				return startTime ? new Date(startTime) : null;
+			case 'ACTIVE':
+				return endTime ? new Date(endTime) : null;
+			case 'PUBLISHED':
+				return startTime ? new Date(startTime) : null;
+			default:
+				return null; // ENDED, CANCELLED
+		}
+	}
+
+	const STATUS_PRIORITY: Record<string, number> = {
+		ACTIVE: 0,
+		SCHEDULED: 1,
+		DRAFT: 2,
+		PUBLISHED: 3,
+		ENDED: 4,
+		CANCELLED: 5,
+	};
+
+	function sortByUrgency<T extends { status: string; type: string; startTime: any; endTime: any; dueDate: any }>(
+		list: T[]
+	): T[] {
+		return [...list].sort((a, b) => {
+			const priorityA = STATUS_PRIORITY[a.status] ?? 99;
+			const priorityB = STATUS_PRIORITY[b.status] ?? 99;
+
+			if (priorityA !== priorityB) return priorityA - priorityB;
+
+			// Same tier — sort by nearest relevant date, soonest first
+			const dateA = getUrgencyDate(a);
+			const dateB = getUrgencyDate(b);
+			const timeA = dateA ? dateA.getTime() : Infinity;
+			const timeB = dateB ? dateB.getTime() : Infinity;
+
+			return timeA - timeB;
+		});
+	}
+
+	let sortedAssessments = $derived(sortByUrgency(filteredAssessments));
 </script>
 
 <svelte:head>
@@ -378,83 +497,99 @@
 					</CardContent>
 				</Card>
 
-				<!-- ─── Assessments Table ────────────────────────────────────────── -->
-				<Card>
-					<CardContent class="p-0">
-						<Table>
-							<TableHeader>
+<!-- ─── Assessments Table ────────────────────────────────────────── -->
+<Card>
+	<CardContent class="p-0">
+		<div class="overflow-x-auto">
+			<div class="max-h-[600px] overflow-y-auto">
+				<Table>
+					<TableHeader class="sticky top-0 z-10 bg-background">
+						<TableRow>
+							<TableHead>Title</TableHead>
+							<TableHead>Course</TableHead>
+							<TableHead>Type</TableHead>
+							<TableHead>Status</TableHead>
+							<TableHead>Schedule</TableHead>
+							<TableHead class="text-center">Students</TableHead>
+							<TableHead class="text-center">Completion</TableHead>
+							<TableHead class="text-center">Avg Score</TableHead>
+							<TableHead class="text-right">Actions</TableHead>
+						</TableRow>
+					</TableHeader>
+					<TableBody>
+						{#if sortedAssessments.length === 0}
+							<TableRow>
+								<TableCell colspan="9" class="text-center text-muted-foreground py-8">
+									{#if searchQuery || filterType !== 'all' || filterStatus !== 'all'}
+										<Search class="mx-auto size-8 text-muted-foreground/50 mb-2" />
+										<p>No assessments match your filters</p>
+									{:else}
+										<FileText class="mx-auto size-8 text-muted-foreground/50 mb-2" />
+										<p>No assessments created yet</p>
+										<Button href="/lecturer/assessments/create/exam" size="sm" class="mt-2">
+											<Plus class="mr-2 size-4" />
+											Create First Assessment
+										</Button>
+									{/if}
+								</TableCell>
+							</TableRow>
+						{:else}
+							{#each sortedAssessments as assessment}
 								<TableRow>
-									<TableHead>Title</TableHead>
-									<TableHead>Course</TableHead>
-									<TableHead>Type</TableHead>
-									<TableHead>Status</TableHead>
-									<TableHead class="text-center">Students</TableHead>
-									<TableHead class="text-center">Completion</TableHead>
-									<TableHead class="text-center">Avg Score</TableHead>
-									<TableHead class="text-right">Actions</TableHead>
+									<TableCell class="font-medium">{assessment.title}</TableCell>
+									<TableCell>{assessment.courseCode}</TableCell>
+									<TableCell>
+										<Badge variant={getTypeBadge(assessment.type).variant}>
+											{getTypeBadge(assessment.type).label}
+										</Badge>
+									</TableCell>
+									<TableCell>
+										<Badge class={getStatusColor(assessment.status)}>
+											{getStatusBadge(assessment.status).label}
+										</Badge>
+									</TableCell>
+									<TableCell>
+										{#if getScheduleLabel(assessment)}
+											{@const schedule = getScheduleLabel(assessment)}
+											<span class="flex items-center gap-1 text-xs whitespace-nowrap {scheduleToneClass(schedule.tone)}">
+												<Calendar class="size-3 shrink-0" />
+												{schedule.label}
+											</span>
+										{:else}
+											<span class="text-xs text-muted-foreground/50">—</span>
+										{/if}
+									</TableCell>
+									<TableCell class="text-center">{assessment.studentCount || 0}</TableCell>
+									<TableCell class="text-center">
+										<div class="flex flex-col items-center gap-1">
+											<span class="text-sm">{assessment.completionRate || 0}%</span>
+											<Progress value={assessment.completionRate || 0} class="h-1.5 w-12" />
+										</div>
+									</TableCell>
+									<TableCell class="text-center font-medium">
+										{assessment.avgScore || 0}%
+									</TableCell>
+									<TableCell class="text-right">
+										<div class="flex justify-end gap-2">
+											<Button variant="ghost" size="sm" href={`/lecturer/assessments/${assessment.id}`} class="h-8 w-8 p-0">
+												<Eye class="size-4" />
+												<span class="sr-only">View</span>
+											</Button>
+											<Button variant="ghost" size="sm" href={`/lecturer/assessments/edit/${assessment.id}`} class="h-8 w-8 p-0">
+												<Edit class="size-4" />
+												<span class="sr-only">Edit</span>
+											</Button>
+										</div>
+									</TableCell>
 								</TableRow>
-							</TableHeader>
-							<TableBody>
-								{#if filteredAssessments.length === 0}
-									<TableRow>
-										<TableCell colspan="8" class="text-center text-muted-foreground py-8">
-											{#if searchQuery || filterType !== 'all' || filterStatus !== 'all'}
-												<Search class="mx-auto size-8 text-muted-foreground/50 mb-2" />
-												<p>No assessments match your filters</p>
-											{:else}
-												<FileText class="mx-auto size-8 text-muted-foreground/50 mb-2" />
-												<p>No assessments created yet</p>
-												<Button href="/lecturer/assessments/create/exam" size="sm" class="mt-2">
-													<Plus class="mr-2 size-4" />
-													Create First Assessment
-												</Button>
-											{/if}
-										</TableCell>
-									</TableRow>
-								{:else}
-									{#each filteredAssessments as assessment}
-										<TableRow>
-											<TableCell class="font-medium">{assessment.title}</TableCell>
-											<TableCell>{assessment.courseCode}</TableCell>
-											<TableCell>
-												<Badge variant={getTypeBadge(assessment.type).variant}>
-													{getTypeBadge(assessment.type).label}
-												</Badge>
-											</TableCell>
-											<TableCell>
-												<Badge class={getStatusColor(assessment.status)}>
-													{getStatusBadge(assessment.status).label}
-												</Badge>
-											</TableCell>
-											<TableCell class="text-center">{assessment.studentCount || 0}</TableCell>
-											<TableCell class="text-center">
-												<div class="flex flex-col items-center gap-1">
-													<span class="text-sm">{assessment.completionRate || 0}%</span>
-													<Progress value={assessment.completionRate || 0} class="h-1.5 w-12" />
-												</div>
-											</TableCell>
-											<TableCell class="text-center font-medium">
-												{assessment.avgScore || 0}%
-											</TableCell>
-											<TableCell class="text-right">
-												<div class="flex justify-end gap-2">
-													<Button variant="ghost" size="sm" href={`/lecturer/assessments/${assessment.id}`} class="h-8 w-8 p-0">
-														<Eye class="size-4" />
-														<span class="sr-only">View</span>
-													</Button>
-													<Button variant="ghost" size="sm" href={`/lecturer/assessments/edit/${assessment.id}`} class="h-8 w-8 p-0">
-														<Edit class="size-4" />
-														<span class="sr-only">Edit</span>
-													</Button>
-												</div>
-											</TableCell>
-										</TableRow>
-									{/each}
-								{/if}
-							</TableBody>
-						</Table>
-					</CardContent>
-				</Card>
+							{/each}
+						{/if}
+					</TableBody>
+				</Table>
+			</div>
+		</div>
+	</CardContent>
+</Card>
 
 				<!-- ─── Quick Stats ────────────────────────────────────────────────── -->
 				{#if filteredAssessments.length > 0}
@@ -486,76 +621,92 @@
 
 			<!-- ─── Type-specific Tabs ─────────────────────────────────────────── -->
 			{#each ['EXAMINATION', 'TEST', 'ASSIGNMENT', 'PRACTICE'] as type}
-				<TabsContent value={type.toLowerCase()}>
-					<Card>
-						<CardHeader>
-							<CardTitle>{getTypeBadge(type).label}s</CardTitle>
-							<CardDescription>All {getTypeBadge(type).label.toLowerCase()} assessments</CardDescription>
-						</CardHeader>
-						<CardContent>
-							{#if assessments.filter(a => a.type === type).length === 0}
-								<div class="text-center py-8 text-muted-foreground">
-									<FileText class="mx-auto size-8 text-muted-foreground/50 mb-2" />
-									<p>No {getTypeBadge(type).label.toLowerCase()} assessments created yet</p>
-									<Button href={`/lecturer/assessments/create/${type.toLowerCase()}`} size="sm" class="mt-2">
-										<Plus class="mr-2 size-4" />
-										Create {getTypeBadge(type).label}
-									</Button>
-								</div>
-							{:else}
-								<Table>
-									<TableHeader>
+	<TabsContent value={type.toLowerCase()}>
+		<Card>
+			<CardHeader>
+				<CardTitle>{getTypeBadge(type).label}s</CardTitle>
+				<CardDescription>All {getTypeBadge(type).label.toLowerCase()} assessments</CardDescription>
+			</CardHeader>
+			<CardContent class="p-0">
+				{#if assessments.filter(a => a.type === type).length === 0}
+					<div class="text-center py-8 text-muted-foreground">
+						<FileText class="mx-auto size-8 text-muted-foreground/50 mb-2" />
+						<p>No {getTypeBadge(type).label.toLowerCase()} assessments created yet</p>
+						<Button href={`/lecturer/assessments/create/${type.toLowerCase()}`} size="sm" class="mt-2">
+							<Plus class="mr-2 size-4" />
+							Create {getTypeBadge(type).label}
+						</Button>
+					</div>
+				{:else}
+					<div class="overflow-x-auto">
+						<div class="max-h-[600px] overflow-y-auto">
+							<Table>
+								<TableHeader class="sticky top-0 z-10 bg-background">
+									<TableRow>
+										<TableHead>Title</TableHead>
+										<TableHead>Course</TableHead>
+										<TableHead>Status</TableHead>
+										<TableHead>Schedule</TableHead>
+										<TableHead class="text-center">Students</TableHead>
+										<TableHead class="text-center">Completion</TableHead>
+										<TableHead class="text-center">Avg Score</TableHead>
+										<TableHead class="text-right">Actions</TableHead>
+									</TableRow>
+								</TableHeader>
+								<TableBody>
+									{#each sortByUrgency(assessments.filter(a => a.type === type)) as assessment}
 										<TableRow>
-											<TableHead>Title</TableHead>
-											<TableHead>Course</TableHead>
-											<TableHead>Status</TableHead>
-											<TableHead class="text-center">Students</TableHead>
-											<TableHead class="text-center">Completion</TableHead>
-											<TableHead class="text-center">Avg Score</TableHead>
-											<TableHead class="text-right">Actions</TableHead>
+											<TableCell class="font-medium">{assessment.title}</TableCell>
+											<TableCell>{assessment.courseCode}</TableCell>
+											<TableCell>
+												<Badge class={getStatusColor(assessment.status)}>
+													{getStatusBadge(assessment.status).label}
+												</Badge>
+											</TableCell>
+											<TableCell>
+												{#if getScheduleLabel(assessment)}
+													{@const schedule = getScheduleLabel(assessment)}
+													<span class="flex items-center gap-1 text-xs whitespace-nowrap {scheduleToneClass(schedule.tone)}">
+														<Calendar class="size-3 shrink-0" />
+														{schedule.label}
+													</span>
+												{:else}
+													<span class="text-xs text-muted-foreground/50">—</span>
+												{/if}
+											</TableCell>
+											<TableCell class="text-center">{assessment.studentCount || 0}</TableCell>
+											<TableCell class="text-center">
+												<div class="flex flex-col items-center gap-1">
+													<span class="text-sm">{assessment.completionRate || 0}%</span>
+													<Progress value={assessment.completionRate || 0} class="h-1.5 w-12" />
+												</div>
+											</TableCell>
+											<TableCell class="text-center font-medium">
+												{assessment.avgScore || 0}%
+											</TableCell>
+											<TableCell class="text-right">
+												<div class="flex justify-end gap-2">
+													<Button variant="ghost" size="sm" href={`/lecturer/assessments/${assessment.id}`} class="h-8 w-8 p-0">
+														<Eye class="size-4" />
+														<span class="sr-only">View</span>
+													</Button>
+													<Button variant="ghost" size="sm" href={`/lecturer/assessments/edit/${assessment.id}`} class="h-8 w-8 p-0">
+														<Edit class="size-4" />
+														<span class="sr-only">Edit</span>
+													</Button>
+												</div>
+											</TableCell>
 										</TableRow>
-									</TableHeader>
-									<TableBody>
-										{#each assessments.filter(a => a.type === type) as assessment}
-											<TableRow>
-												<TableCell class="font-medium">{assessment.title}</TableCell>
-												<TableCell>{assessment.courseCode}</TableCell>
-												<TableCell>
-													<Badge class={getStatusColor(assessment.status)}>
-														{getStatusBadge(assessment.status).label}
-													</Badge>
-												</TableCell>
-												<TableCell class="text-center">{assessment.studentCount || 0}</TableCell>
-												<TableCell class="text-center">
-													<div class="flex flex-col items-center gap-1">
-														<span class="text-sm">{assessment.completionRate || 0}%</span>
-														<Progress value={assessment.completionRate || 0} class="h-1.5 w-12" />
-													</div>
-												</TableCell>
-												<TableCell class="text-center font-medium">
-													{assessment.avgScore || 0}%
-												</TableCell>
-												<TableCell class="text-right">
-													<div class="flex justify-end gap-2">
-														<Button variant="ghost" size="sm" href={`/lecturer/assessments/${assessment.id}`} class="h-8 w-8 p-0">
-															<Eye class="size-4" />
-															<span class="sr-only">View</span>
-														</Button>
-														<Button variant="ghost" size="sm" href={`/lecturer/assessments/edit/${assessment.id}`} class="h-8 w-8 p-0">
-															<Edit class="size-4" />
-															<span class="sr-only">Edit</span>
-														</Button>
-													</div>
-												</TableCell>
-											</TableRow>
-										{/each}
-									</TableBody>
-								</Table>
-							{/if}
-						</CardContent>
-					</Card>
-				</TabsContent>
-			{/each}
+									{/each}
+								</TableBody>
+							</Table>
+						</div>
+					</div>
+				{/if}
+			</CardContent>
+		</Card>
+	</TabsContent>
+{/each}
 		</Tabs>
 	{/if}
 </div>
