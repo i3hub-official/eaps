@@ -10,10 +10,8 @@
 	import { RadioGroup, RadioGroupItem } from '$lib/components/ui/radio-group/index.js'
 	import { Textarea } from '$lib/components/ui/textarea/index.js'
 	import { Input } from '$lib/components/ui/input/index.js'
-	import { Alert, AlertDescription } from '$lib/components/ui/alert/index.js'
 	import FaceVerifyModal from '$lib/components/exam/FaceVerifyModal.svelte'
 	import Camera from '@lucide/svelte/icons/camera'
-	import Wifi from '@lucide/svelte/icons/wifi'
 	import CheckCircle2 from '@lucide/svelte/icons/check-circle-2'
 	import AlertCircle from '@lucide/svelte/icons/alert-circle'
 	import Clock from '@lucide/svelte/icons/clock'
@@ -21,16 +19,19 @@
 	import ArrowRight from '@lucide/svelte/icons/arrow-right'
 	import ArrowUp from '@lucide/svelte/icons/arrow-up'
 	import ArrowDown from '@lucide/svelte/icons/arrow-down'
+	import ExamMonitor from '$lib/components/exam/ExamMonitor.svelte'
 
 	let { data } = $props()
 
-	type Step = 'lobby' | 'terms' | 'faceverify' | 'kiosk' | 'closed' | 'submitted'
+	type Step = 'lobby' | 'terms' | 'faceverify' | 'kiosk' | 'closed'
 
 	// Sessions that are already IN_PROGRESS/PAUSED skip straight to the
 	// kiosk (reconnect/resume) — UNLESS the server flagged needsReverify
 	// (idle too long since last activity), in which case face verification
-	// runs again before re-entering the kiosk. Closed sessions show a
-	// closed screen instead of the flow.
+	// runs again before re-entering the kiosk. Terminal sessions never reach
+	// this component — the server loader redirects those to /result — but
+	// 'closed' is kept as a defensive fallback in case status flips under us
+	// mid-kiosk (e.g. a background disqualification).
 	function initialStep(): Step {
 		if (['SUBMITTED', 'TIMED_OUT', 'DISQUALIFIED'].includes(data.status)) return 'closed'
 		if (data.status === 'IN_PROGRESS' || data.status === 'PAUSED') {
@@ -50,7 +51,6 @@
 	let currentIndex = $state(0)
 	let remainingSeconds = $state(data.timeRemainingSeconds ?? data.assessment.durationMinutes * 60)
 	let isSubmitting = $state(false)
-	let submitResult = $state<{ percentage?: string; grade?: string; passed?: boolean } | null>(null)
 
 	let timerInterval: ReturnType<typeof setInterval> | null = null
 	let syncInterval: ReturnType<typeof setInterval> | null = null
@@ -203,6 +203,51 @@
 		}
 	}
 
+	// ─── Keyboard shortcuts (kiosk only) ────────────────────────────────────
+	// A–D select options 0–3 for choice questions, Y/N for True/False,
+	// R returns to the previous question. Disabled while focus is inside a
+	// text field so essay/fill-blank typing is never hijacked, and disabled
+	// whenever a modifier key is held so it never fights the browser or the
+	// ExamMonitor's own Ctrl/Cmd shortcut interception.
+	function isTypingTarget(target: EventTarget | null) {
+		if (!(target instanceof HTMLElement)) return false
+		const tag = target.tagName
+		return tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || target.isContentEditable
+	}
+
+	function handleKioskShortcut(e: KeyboardEvent) {
+		if (step !== 'kiosk' || !currentQuestion) return
+		if (isTypingTarget(e.target)) return
+		if (e.ctrlKey || e.metaKey || e.altKey) return
+
+		const key = e.key.toLowerCase()
+
+		const letterIndex = { a: 0, b: 1, c: 2, d: 3 }[key]
+		if (letterIndex !== undefined && currentQuestion.options?.[letterIndex]) {
+			e.preventDefault()
+			const optId = currentQuestion.options[letterIndex].id
+			if (currentQuestion.type === 'MULTIPLE_CHOICE') toggleMultiple(optId)
+			else if (currentQuestion.type === 'SINGLE_CHOICE' || currentQuestion.type === 'TRUE_FALSE')
+				selectSingle(optId)
+			return
+		}
+
+		if (currentQuestion.type === 'TRUE_FALSE' && (key === 'y' || key === 'n')) {
+			e.preventDefault()
+			const wantsTrue = key === 'y'
+			const match = currentQuestion.options.find((o) =>
+				wantsTrue ? /^(true|yes)$/i.test(o.body.trim()) : /^(false|no)$/i.test(o.body.trim())
+			)
+			if (match) selectSingle(match.id)
+			return
+		}
+
+		if (key === 'r') {
+			e.preventDefault()
+			goTo(currentIndex - 1)
+		}
+	}
+
 	// ─── Timers ─────────────────────────────────────────────────────────────
 	function startTimers() {
 		timerInterval = setInterval(() => {
@@ -314,7 +359,7 @@
 		stopTimers()
 
 		try {
-			const res = await toast.promise(
+			await toast.promise(
 				fetch(`/api/assessment/session/${data.sessionId}/submit`, { method: 'POST' }).then((r) => {
 					if (!r.ok) throw new Error('Submission failed')
 					return r.json()
@@ -326,9 +371,16 @@
 				}
 			).unwrap()
 
-			submitResult = res
-			step = 'submitted'
-			if (document.fullscreenElement) document.exitFullscreen?.().catch(() => {})
+			if (document.fullscreenElement) await document.exitFullscreen?.().catch(() => {})
+
+			// Leave the kiosk entirely and land on the result page. replaceState
+			// drops the kiosk route from history so the back button can't
+			// re-enter the exam; invalidateAll forces the result loader to run
+			// fresh rather than reusing anything cached for this URL.
+			await goto(`/student/tests/${data.sessionId}/result`, {
+				replaceState: true,
+				invalidateAll: true,
+			})
 		} catch {
 			isSubmitting = false
 			startTimers()
@@ -340,6 +392,7 @@
 		document.addEventListener('visibilitychange', handleVisibilityChange)
 		document.addEventListener('copy', handleCopy)
 		document.addEventListener('paste', handlePaste)
+		document.addEventListener('keydown', handleKioskShortcut)
 
 		if (step === 'kiosk') {
 			startTimers()
@@ -354,6 +407,7 @@
 			document.removeEventListener('visibilitychange', handleVisibilityChange)
 			document.removeEventListener('copy', handleCopy)
 			document.removeEventListener('paste', handlePaste)
+			document.removeEventListener('keydown', handleKioskShortcut)
 		}
 	})
 </script>
@@ -371,28 +425,7 @@
 				<p class="text-sm text-muted-foreground">
 					This attempt has already been {data.status.toLowerCase().replace('_', ' ')}.
 				</p>
-				<Button href="/student/tests">Back to Tests</Button>
-			</CardContent>
-		</Card>
-	</div>
-
-{:else if step === 'submitted'}
-	<div class="flex min-h-screen items-center justify-center p-6">
-		<Card class="max-w-md">
-			<CardContent class="flex flex-col items-center gap-3 py-10 text-center">
-				<CheckCircle2 class="size-10 text-primary" />
-				<h2 class="text-lg font-semibold">Submitted</h2>
-				{#if submitResult?.percentage !== undefined}
-					<p class="text-2xl font-bold">{submitResult.percentage}%</p>
-					<Badge variant={submitResult.passed ? 'default' : 'destructive'}>
-						Grade {submitResult.grade} · {submitResult.passed ? 'Passed' : 'Not passed'}
-					</Badge>
-				{:else}
-					<p class="text-sm text-muted-foreground">
-						Your result will be available once released by your lecturer.
-					</p>
-				{/if}
-				<Button href="/student/tests" class="mt-2">Back to Tests</Button>
+				<Button href={`/student/tests/${data.sessionId}/result`}>View Result</Button>
 			</CardContent>
 		</Card>
 	</div>
@@ -515,6 +548,9 @@
 						</button>
 					{/each}
 				</div>
+				<p class="mt-4 text-[11px] leading-relaxed text-muted-foreground">
+					Shortcuts: A–D select an option, Y/N for True/False, R returns to the previous question.
+				</p>
 			</aside>
 
 			<!-- Question body -->
@@ -528,9 +564,12 @@
 
 				{#if currentQuestion.type === 'SINGLE_CHOICE' || currentQuestion.type === 'TRUE_FALSE'}
 					<RadioGroup value={currentQuestion.selectedOptions[0] ?? ''} onValueChange={selectSingle} class="space-y-2">
-						{#each currentQuestion.options as opt}
+						{#each currentQuestion.options as opt, i}
 							<label class="flex items-center gap-3 rounded-lg border p-3 cursor-pointer hover:bg-muted/40">
 								<RadioGroupItem value={opt.id} />
+								<span class="flex size-5 shrink-0 items-center justify-center rounded border text-[11px] font-semibold text-muted-foreground">
+									{String.fromCharCode(65 + i)}
+								</span>
 								<span class="text-sm">{opt.body}</span>
 							</label>
 						{/each}
@@ -538,12 +577,15 @@
 
 				{:else if currentQuestion.type === 'MULTIPLE_CHOICE'}
 					<div class="space-y-2">
-						{#each currentQuestion.options as opt}
+						{#each currentQuestion.options as opt, i}
 							<label class="flex items-center gap-3 rounded-lg border p-3 cursor-pointer hover:bg-muted/40">
 								<Checkbox
 									checked={currentQuestion.selectedOptions.includes(opt.id)}
 									onCheckedChange={() => toggleMultiple(opt.id)}
 								/>
+								<span class="flex size-5 shrink-0 items-center justify-center rounded border text-[11px] font-semibold text-muted-foreground">
+									{String.fromCharCode(65 + i)}
+								</span>
 								<span class="text-sm">{opt.body}</span>
 							</label>
 						{/each}
@@ -617,5 +659,7 @@
 				</div>
 			</main>
 		</div>
+
+		<ExamMonitor sessionId={data.sessionId} />
 	</div>
 {/if}

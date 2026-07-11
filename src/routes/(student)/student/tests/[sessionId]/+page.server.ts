@@ -1,6 +1,5 @@
-// src/routes/(student)/student/tests/[sessionId]/+page.server.ts
 import type { PageServerLoad } from './$types'
-import { error } from '@sveltejs/kit'
+import { error, redirect } from '@sveltejs/kit'
 import { requireStudent } from '$lib/server/auth/guards'
 import { getPrismaClient } from '$lib/server/db/index.js'
 
@@ -31,6 +30,13 @@ export const load: PageServerLoad = async ({ locals, params }) => {
 
 	if (!session || session.studentId !== student.id) {
 		throw error(404, 'Session not found')
+	}
+
+	// Already-written test: bounce straight to the result page. This closes
+	// off re-entry into any part of the exam flow (lobby/terms/kiosk) for a
+	// session that has already reached a terminal state.
+	if (['SUBMITTED', 'TIMED_OUT', 'DISQUALIFIED'].includes(session.status)) {
+		throw redirect(303, `/student/tests/${session.id}/result`)
 	}
 
 	const faceDescriptor = await prisma.faceDescriptor.findUnique({
