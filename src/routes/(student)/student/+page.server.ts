@@ -18,7 +18,7 @@ export const load: PageServerLoad = async ({ locals }) => {
 				studentId: student.id,
 				createdAt: {
 					gte: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000), // 30 days
-				},
+				},x
 			},
 			include: {
 				assessment: { include: { course: true } },

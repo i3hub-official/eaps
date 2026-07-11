@@ -18,25 +18,15 @@ type WindowState = {
 }
 
 function getRegistrationWindowState(semester: SemesterWindow): WindowState {
-  if (!semester.registrationEnabled) {
-    return { open: false, reason: 'DISABLED' }
-  }
-
+  if (!semester.registrationEnabled) return { open: false, reason: 'DISABLED' }
   const now = new Date()
-
-  if (semester.regOpenAt && now < semester.regOpenAt) {
-    return { open: false, reason: 'NOT_YET_OPEN' }
-  }
-  if (semester.regCloseAt && now > semester.regCloseAt) {
-    return { open: false, reason: 'CLOSED' }
-  }
-
+  if (semester.regOpenAt && now < semester.regOpenAt) return { open: false, reason: 'NOT_YET_OPEN' }
+  if (semester.regCloseAt && now > semester.regCloseAt) return { open: false, reason: 'CLOSED' }
   return { open: true, reason: 'OPEN' }
 }
 
 export const load: PageServerLoad = async ({ locals }) => {
   const student = await requireStudent(locals.user)
-
   const prisma = await getPrismaClient()
 
   const session = await prisma.academicSession.findFirst({ where: { isCurrent: true } })
@@ -53,13 +43,14 @@ export const load: PageServerLoad = async ({ locals }) => {
       registrationWindowReason: 'CLOSED' as const,
       registrations: [],
       availableCourses: [],
+      colleges: [],
       totalCreditUnits: 0,
     }
   }
 
   const windowState = getRegistrationWindowState(semester)
 
-  const [registrations, availableCourses] = await Promise.all([
+  const [registrations, allCourses, colleges] = await Promise.all([
     prisma.courseRegistration.findMany({
       where: {
         studentId: student.id,
@@ -70,24 +61,27 @@ export const load: PageServerLoad = async ({ locals }) => {
       include: { course: true },
       orderBy: { createdAt: 'asc' },
     }),
-    // Only bother fetching available courses if the window is open —
-    // no point building an "Add Courses" list the student can't act on.
+
     windowState.open
       ? prisma.course.findMany({
           where: {
-            departmentId: student.departmentId,
-            levelId: student.currentLevelId,
             status: 'ACTIVE',
+            levelId: student.currentLevelId,
             offerings: { some: { semesterId: semester.id } },
           },
-          orderBy: { code: 'asc' },
+          include: { department: { include: { college: true } } },
+          orderBy: [{ department: { collegeId: 'asc' } }, { code: 'asc' }],
         })
       : Promise.resolve([]),
+
+    prisma.college.findMany({
+      include: { departments: { orderBy: { name: 'asc' } } },
+      orderBy: { name: 'asc' },
+    }),
   ])
 
   const registeredCourseIds = new Set(registrations.map((r) => r.courseId))
-  const registerableCourses = availableCourses.filter((c) => !registeredCourseIds.has(c.id))
-
+  const availableCourses = allCourses.filter((c) => !registeredCourseIds.has(c.id))
   const totalCreditUnits = registrations.reduce((sum, r) => sum + r.course.creditUnits, 0)
 
   return {
@@ -104,7 +98,6 @@ export const load: PageServerLoad = async ({ locals }) => {
     registrations: registrations.map((r) => ({
       id: r.id,
       status: r.status,
-      type: r.type,
       editCount: r.editCount,
       course: {
         id: r.course.id,
@@ -114,12 +107,22 @@ export const load: PageServerLoad = async ({ locals }) => {
         type: r.course.type,
       },
     })),
-    availableCourses: registerableCourses.map((c) => ({
+    availableCourses: availableCourses.map((c) => ({
       id: c.id,
       code: c.code,
       title: c.title,
       creditUnits: c.creditUnits,
       type: c.type,
+      departmentId: c.departmentId,
+      departmentName: c.department.name,
+      collegeId: c.department.collegeId,
+      collegeName: c.department.college.name,
+      isRecommended: c.departmentId === student.departmentId,
+    })),
+    colleges: colleges.map((col) => ({
+      id: col.id,
+      name: col.name,
+      departments: col.departments.map((d) => ({ id: d.id, name: d.name })),
     })),
     totalCreditUnits,
   }
@@ -128,13 +131,11 @@ export const load: PageServerLoad = async ({ locals }) => {
 export const actions: Actions = {
   register: async ({ request, locals }) => {
     const student = await requireStudent(locals.user)
-
     const form = await request.formData()
     const courseIds = form.getAll('courseIds').map(String).filter(Boolean)
 
-    if (courseIds.length === 0) {
+    if (courseIds.length === 0)
       return fail(400, { registerError: 'Select at least one course to register.' })
-    }
 
     const prisma = await getPrismaClient()
 
@@ -143,9 +144,8 @@ export const actions: Actions = {
       ? await prisma.semester.findFirst({ where: { sessionId: session.id, isCurrent: true } })
       : null
 
-    if (!session || !semester) {
+    if (!session || !semester)
       return fail(400, { registerError: 'There is no active registration period right now.' })
-    }
 
     const windowState = getRegistrationWindowState(semester)
     if (!windowState.open) {
@@ -161,21 +161,15 @@ export const actions: Actions = {
     const eligibleCourses = await prisma.course.findMany({
       where: {
         id: { in: courseIds },
-        departmentId: student.departmentId,
-        levelId: student.currentLevelId,
         status: 'ACTIVE',
+        levelId: student.currentLevelId,
         offerings: { some: { semesterId: semester.id } },
       },
     })
 
-    if (eligibleCourses.length === 0) {
-      return fail(400, { registerError: 'None of the selected courses are available for registration.' })
-    }
+    if (eligibleCourses.length === 0)
+      return fail(400, { registerError: 'None of the selected courses are available.' })
 
-    // The DB's unique constraint is (student, course, session, semester) with
-    // no status in the key — so a previously DROPPED (CANCELLED) or REJECTED
-    // course leaves a row behind that a plain `create` would collide with.
-    // Look those up first so we can reactivate instead of insert.
     const existing = await prisma.courseRegistration.findMany({
       where: {
         studentId: student.id,
@@ -190,6 +184,8 @@ export const actions: Actions = {
     let alreadyActiveCount = 0
     let editLimitCount = 0
 
+    const now = new Date()
+
     for (const course of eligibleCourses) {
       const existingReg = existingByCourseId.get(course.id)
 
@@ -202,7 +198,8 @@ export const actions: Actions = {
             semesterId: semester.id,
             levelId: student.currentLevelId,
             type: 'NORMAL',
-            status: 'PENDING',
+            status: 'APPROVED',
+            approvedAt: now,
           },
         })
         succeededCount++
@@ -216,51 +213,43 @@ export const actions: Actions = {
         }
         await prisma.courseRegistration.update({
           where: { id: existingReg.id },
-          data: { status: 'PENDING', editCount: { increment: 1 } },
+          data: {
+            status: 'APPROVED',
+            approvedAt: now,
+            rejectedAt: null,
+            rejectedNote: null,
+            editCount: { increment: 1 },
+          },
         })
         succeededCount++
         continue
       }
 
-      // PENDING or APPROVED — already active, nothing to do
+      // APPROVED or PENDING — already active
       alreadyActiveCount++
     }
 
     if (succeededCount === 0) {
-      if (editLimitCount > 0) {
+      if (editLimitCount > 0)
         return fail(400, {
           registerError: `Reached the maximum of ${MAX_EDITS} edits for ${editLimitCount} course${editLimitCount > 1 ? 's' : ''}. Contact your exam officer.`,
         })
-      }
       return fail(400, { registerError: 'Those courses are already registered.' })
     }
 
-    const parts = [
-      `Registered ${succeededCount} course${succeededCount > 1 ? 's' : ''} successfully. Awaiting approval.`,
-    ]
-    if (alreadyActiveCount > 0) {
-      parts.push(`${alreadyActiveCount} already registered.`)
-    }
-    if (editLimitCount > 0) {
-      parts.push(`${editLimitCount} could not be re-added (edit limit reached).`)
-    }
+    const parts = [`${succeededCount} course${succeededCount > 1 ? 's' : ''} registered.`]
+    if (alreadyActiveCount > 0) parts.push(`${alreadyActiveCount} already registered.`)
+    if (editLimitCount > 0) parts.push(`${editLimitCount} could not be re-added (edit limit reached).`)
 
-    return {
-      registerSuccess: true,
-      registerMessage: parts.join(' '),
-    }
+    return { registerSuccess: true, registerMessage: parts.join(' ') }
   },
 
   drop: async ({ request, locals }) => {
-    // unchanged — same as your original
     const student = await requireStudent(locals.user)
-
     const form = await request.formData()
     const registrationId = form.get('registrationId')?.toString() ?? ''
 
-    if (!registrationId) {
-      return fail(400, { dropError: 'Missing registration id.' })
-    }
+    if (!registrationId) return fail(400, { dropError: 'Missing registration id.' })
 
     const prisma = await getPrismaClient()
 
@@ -269,13 +258,11 @@ export const actions: Actions = {
       include: { semester: true },
     })
 
-    if (!registration || registration.studentId !== student.id) {
+    if (!registration || registration.studentId !== student.id)
       return fail(404, { dropError: 'Registration not found.' })
-    }
 
-    if (registration.status === 'CANCELLED') {
+    if (registration.status === 'CANCELLED')
       return fail(400, { dropError: 'This course has already been dropped.' })
-    }
 
     const windowState = getRegistrationWindowState(registration.semester)
     if (!windowState.open) {
@@ -286,11 +273,10 @@ export const actions: Actions = {
       return fail(400, { dropError: message })
     }
 
-    if (registration.editCount >= MAX_EDITS) {
+    if (registration.editCount >= MAX_EDITS)
       return fail(400, {
         dropError: `This course has reached the maximum of ${MAX_EDITS} edits. Contact your exam officer to drop it.`,
       })
-    }
 
     if (registration.status === 'PENDING') {
       await prisma.courseRegistration.delete({ where: { id: registrationId } })
@@ -301,6 +287,6 @@ export const actions: Actions = {
       })
     }
 
-    return { dropSuccess: true, dropMessage: 'Course dropped successfully.' }
+    return { dropSuccess: true, dropMessage: 'Course dropped.' }
   },
 }

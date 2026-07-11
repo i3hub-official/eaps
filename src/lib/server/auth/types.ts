@@ -16,6 +16,10 @@ export interface AuthenticatedStudent {
   firstName: string;
   otherNames: string;
   lastName: string;
+  department: string;
+  program: string;
+  currentLevel: string;
+  collegeId: string;
   departmentId: string;
   programmeId: string;
   currentLevelId: string;
