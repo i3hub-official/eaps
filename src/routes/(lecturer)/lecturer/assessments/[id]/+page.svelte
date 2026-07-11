@@ -34,55 +34,54 @@
 		return 'default';
 	}
 
-    function formatSchedule(date: Date | string | null | undefined) {
-	if (!date) return null;
-	return new Date(date).toLocaleString(undefined, {
-		month: 'short',
-		day: 'numeric',
-		hour: 'numeric',
-		minute: '2-digit',
-	});
-}
-
-// Returns a short, status-aware label so lecturers can act on it at a glance
-function getScheduleLabel(assessment: { status: string; type: string; startTime: any; endTime: any; dueDate: any }) {
-	const { status, type, startTime, endTime, dueDate } = assessment;
-
-	if (type === 'ASSIGNMENT' && dueDate) {
-		return { label: `Due ${formatSchedule(dueDate)}`, tone: 'default' as const };
+	function formatSchedule(date: Date | string | null | undefined) {
+		if (!date) return null;
+		return new Date(date).toLocaleString(undefined, {
+			month: 'short',
+			day: 'numeric',
+			hour: 'numeric',
+			minute: '2-digit',
+		});
 	}
 
-	switch (status) {
-		case 'SCHEDULED':
-			return startTime
-				? { label: `Opens ${formatSchedule(startTime)}`, tone: 'warning' as const }
-				: { label: 'Awaiting start time', tone: 'warning' as const };
-		case 'ACTIVE':
-			return endTime
-				? { label: `Closes ${formatSchedule(endTime)}`, tone: 'success' as const }
-				: { label: 'Open now', tone: 'success' as const };
-		case 'ENDED':
-			return endTime
-				? { label: `Ended ${formatSchedule(endTime)}`, tone: 'muted' as const }
-				: { label: 'Ended', tone: 'muted' as const };
-		case 'PUBLISHED':
-			return startTime
-				? { label: `Starts ${formatSchedule(startTime)}`, tone: 'default' as const }
-				: { label: 'Published', tone: 'default' as const };
-		default:
-			return null; // DRAFT, CANCELLED — nothing to schedule
-	}
-}
+	function getScheduleLabel(assessment: { status: string; type: string; startTime: any; endTime: any; dueDate: any }) {
+		const { status, type, startTime, endTime, dueDate } = assessment;
 
-function scheduleToneClass(tone: 'default' | 'warning' | 'success' | 'muted') {
-	const map = {
-		default: 'text-muted-foreground',
-		warning: 'text-yellow-600 dark:text-yellow-400',
-		success: 'text-green-600 dark:text-green-400',
-		muted: 'text-muted-foreground/70',
-	};
-	return map[tone];
-}
+		if (type === 'ASSIGNMENT' && dueDate) {
+			return { label: `Due ${formatSchedule(dueDate)}`, tone: 'default' as const };
+		}
+
+		switch (status) {
+			case 'SCHEDULED':
+				return startTime
+					? { label: `Opens ${formatSchedule(startTime)}`, tone: 'warning' as const }
+					: { label: 'Awaiting start time', tone: 'warning' as const };
+			case 'ACTIVE':
+				return endTime
+					? { label: `Closes ${formatSchedule(endTime)}`, tone: 'success' as const }
+					: { label: 'Open now', tone: 'success' as const };
+			case 'ENDED':
+				return endTime
+					? { label: `Ended ${formatSchedule(endTime)}`, tone: 'muted' as const }
+					: { label: 'Ended', tone: 'muted' as const };
+			case 'PUBLISHED':
+				return startTime
+					? { label: `Starts ${formatSchedule(startTime)}`, tone: 'default' as const }
+					: { label: 'Published', tone: 'default' as const };
+			default:
+				return null;
+		}
+	}
+
+	function scheduleToneClass(tone: 'default' | 'warning' | 'success' | 'muted') {
+		const map = {
+			default: 'text-muted-foreground',
+			warning: 'text-yellow-600 dark:text-yellow-400',
+			success: 'text-green-600 dark:text-green-400',
+			muted: 'text-muted-foreground/70',
+		};
+		return map[tone];
+	}
 </script>
 
 <svelte:head>
@@ -102,7 +101,7 @@ function scheduleToneClass(tone: 'default' | 'warning' | 'success' | 'muted') {
 	{/snippet}
 </Topbar>
 
-<div class="p-6 space-y-6">
+<div class="p-4 sm:p-6 space-y-4 sm:space-y-6">
 	{#if form?.error}
 		<Alert variant="destructive">
 			<AlertCircle class="size-4" />
@@ -112,16 +111,16 @@ function scheduleToneClass(tone: 'default' | 'warning' | 'success' | 'muted') {
 
 	<Card>
 		<CardHeader>
-			<div class="flex items-center justify-between">
-				<div>
-					<CardTitle class="flex items-center gap-2">
-						{a.title}
-						<Badge variant={statusVariant(a.status)}>{a.status}</Badge>
+			<div class="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+				<div class="min-w-0">
+					<CardTitle class="flex flex-wrap items-center gap-2 text-lg sm:text-xl">
+						<span class="truncate">{a.title}</span>
+						<Badge variant={statusVariant(a.status)} class="shrink-0">{a.status}</Badge>
 					</CardTitle>
-					<CardDescription>{a.type} · {a.course.code} · {a.course.level}</CardDescription>
+					<CardDescription class="mt-1">{a.type} · {a.course.code} · {a.course.level}</CardDescription>
 				</div>
 
-				<div class="flex gap-2">
+				<div class="flex flex-wrap gap-2 shrink-0">
 					{#if isPublishedLike}
 						<form
 							method="POST"
@@ -135,8 +134,9 @@ function scheduleToneClass(tone: 'default' | 'warning' | 'success' | 'muted') {
 									await update();
 								};
 							}}
+							class="shrink-0"
 						>
-							<Button type="submit" variant="outline" disabled={isUnpublishing}>
+							<Button type="submit" variant="outline" size="sm" disabled={isUnpublishing}>
 								<XCircle class="mr-2 size-4" />
 								{isUnpublishing ? 'Unpublishing…' : 'Unpublish'}
 							</Button>
@@ -154,8 +154,9 @@ function scheduleToneClass(tone: 'default' | 'warning' | 'success' | 'muted') {
 									await update();
 								};
 							}}
+							class="shrink-0"
 						>
-							<Button type="submit" disabled={isPublishing}>
+							<Button type="submit" size="sm" disabled={isPublishing}>
 								<CheckCircle2 class="mr-2 size-4" />
 								{isPublishing ? 'Publishing…' : 'Publish'}
 							</Button>
@@ -164,17 +165,15 @@ function scheduleToneClass(tone: 'default' | 'warning' | 'success' | 'muted') {
 
 					<Dialog bind:open={deleteDialogOpen}>
 						<DialogTrigger>
-							{#snippet child({ props })}
-								<Button
-									{...props}
-									variant="destructive"
-									disabled={isPublishedLike}
-									title={isPublishedLike ? 'Unpublish before deleting' : ''}
-								>
-									<Trash2 class="mr-2 size-4" />
-									Delete
-								</Button>
-							{/snippet}
+							<Button
+								variant="destructive"
+								size="sm"
+								disabled={isPublishedLike}
+								title={isPublishedLike ? 'Unpublish before deleting' : ''}
+							>
+								<Trash2 class="mr-2 size-4" />
+								Delete
+							</Button>
 						</DialogTrigger>
 						<DialogContent>
 							<DialogHeader>
@@ -210,47 +209,49 @@ function scheduleToneClass(tone: 'default' | 'warning' | 'success' | 'muted') {
 			</div>
 		</CardHeader>
 
-		<CardContent class="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-			<div>
-				<p class="text-xs text-muted-foreground">Total Marks</p>
-				<p class="text-sm font-medium">{a.totalMarks}</p>
-			</div>
-			<div>
-				<p class="text-xs text-muted-foreground">Pass Mark</p>
-				<p class="text-sm font-medium">{a.passMark}</p>
-			</div>
-			<div>
-				<p class="text-xs text-muted-foreground">Duration</p>
-				<p class="text-sm font-medium">{a.durationMinutes} mins</p>
-			</div>
-			<div>
-				<p class="text-xs text-muted-foreground">Questions</p>
-				<p class="text-sm font-medium">{a.questions.length} / {a.questionCount}</p>
-			</div>
-			<div>
-				<p class="text-xs text-muted-foreground flex items-center gap-1">
-					<Clock class="size-3" /> Start
-				</p>
-				<p class="text-sm font-medium">{fmtDate(a.startTime)}</p>
-			</div>
-			<div>
-				<p class="text-xs text-muted-foreground flex items-center gap-1">
-					<Clock class="size-3" /> End
-				</p>
-				<p class="text-sm font-medium">{fmtDate(a.endTime)}</p>
-			</div>
-			<div>
-				<p class="text-xs text-muted-foreground flex items-center gap-1">
-					<Shield class="size-3" /> Security
-				</p>
-				<p class="text-sm font-medium">
-					{a.requireFaceVerify ? 'Face verify' : 'No face verify'} ·
-					{a.fullscreenRequired ? 'Fullscreen' : 'No fullscreen'}
-				</p>
-			</div>
-			<div>
-				<p class="text-xs text-muted-foreground">Attempts</p>
-				<p class="text-sm font-medium">{a.sessionCount} session(s) · max {a.maxAttempts}</p>
+		<CardContent>
+			<div class="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+				<div>
+					<p class="text-xs text-muted-foreground">Total Marks</p>
+					<p class="text-sm font-medium">{a.totalMarks}</p>
+				</div>
+				<div>
+					<p class="text-xs text-muted-foreground">Pass Mark</p>
+					<p class="text-sm font-medium">{a.passMark}</p>
+				</div>
+				<div>
+					<p class="text-xs text-muted-foreground">Duration</p>
+					<p class="text-sm font-medium">{a.durationMinutes} mins</p>
+				</div>
+				<div>
+					<p class="text-xs text-muted-foreground">Questions</p>
+					<p class="text-sm font-medium">{a.questions.length} / {a.questionCount}</p>
+				</div>
+				<div>
+					<p class="text-xs text-muted-foreground flex items-center gap-1">
+						<Clock class="size-3" /> Start
+					</p>
+					<p class="text-sm font-medium">{fmtDate(a.startTime)}</p>
+				</div>
+				<div>
+					<p class="text-xs text-muted-foreground flex items-center gap-1">
+						<Clock class="size-3" /> End
+					</p>
+					<p class="text-sm font-medium">{fmtDate(a.endTime)}</p>
+				</div>
+				<div>
+					<p class="text-xs text-muted-foreground flex items-center gap-1">
+						<Shield class="size-3" /> Security
+					</p>
+					<p class="text-sm font-medium">
+						{a.requireFaceVerify ? 'Face verify' : 'No face verify'} ·
+						{a.fullscreenRequired ? 'Fullscreen' : 'No fullscreen'}
+					</p>
+				</div>
+				<div>
+					<p class="text-xs text-muted-foreground">Attempts</p>
+					<p class="text-sm font-medium">{a.sessionCount} session(s) · max {a.maxAttempts}</p>
+				</div>
 			</div>
 		</CardContent>
 
@@ -271,32 +272,33 @@ function scheduleToneClass(tone: 'default' | 'warning' | 'success' | 'muted') {
 	</Card>
 
 	<Card>
-	<CardHeader>
-		<CardTitle>Questions ({a.questions.length})</CardTitle>
-	</CardHeader>
-	<CardContent class="p-0">
-		<div class="max-h-[520px] overflow-y-auto divide-y">
-			{#if a.questions.length === 0}
-				<div class="text-center text-muted-foreground py-8">
-					<FileText class="mx-auto size-8 text-muted-foreground/50 mb-2" />
-					<p class="text-sm">No questions linked to this assessment</p>
-				</div>
-			{:else}
-				{#each a.questions as q, i}
-					<div class="py-3 px-6 flex items-start gap-3">
-						<span class="text-xs text-muted-foreground w-6 shrink-0 pt-0.5">{i + 1}.</span>
-						<div class="min-w-0 flex-1">
-							<p class="text-sm">{q.body}</p>
-							<div class="flex flex-wrap gap-1 mt-1.5">
-								<Badge variant="outline" class="text-[10px]">{q.type}</Badge>
-								<Badge variant="outline" class="text-[10px]">{q.difficulty}</Badge>
-								<Badge variant="outline" class="text-[10px]">{q.marks} mark{q.marks === 1 ? '' : 's'}</Badge>
+		<CardHeader>
+			<CardTitle>Questions ({a.questions.length})</CardTitle>
+			<CardDescription>Questions linked to this assessment</CardDescription>
+		</CardHeader>
+		<CardContent class="p-0">
+			<div class="max-h-[520px] overflow-y-auto divide-y">
+				{#if a.questions.length === 0}
+					<div class="text-center text-muted-foreground py-8">
+						<FileText class="mx-auto size-8 text-muted-foreground/50 mb-2" />
+						<p class="text-sm">No questions linked to this assessment</p>
+					</div>
+				{:else}
+					{#each a.questions as q, i}
+						<div class="py-3 px-4 sm:px-6 flex items-start gap-3">
+							<span class="text-xs text-muted-foreground w-6 shrink-0 pt-0.5 text-right">{i + 1}.</span>
+							<div class="min-w-0 flex-1">
+								<p class="text-sm break-words">{q.body}</p>
+								<div class="flex flex-wrap gap-1 mt-1.5">
+									<Badge variant="outline" class="text-[10px]">{q.type}</Badge>
+									<Badge variant="outline" class="text-[10px]">{q.difficulty}</Badge>
+									<Badge variant="outline" class="text-[10px]">{q.marks} mark{q.marks === 1 ? '' : 's'}</Badge>
+								</div>
 							</div>
 						</div>
-					</div>
-				{/each}
-			{/if}
-		</div>
-	</CardContent>
-</Card>
+					{/each}
+				{/if}
+			</div>
+		</CardContent>
+	</Card>
 </div>

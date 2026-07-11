@@ -114,7 +114,7 @@
 	{/snippet}
 </Topbar>
 
-<div class="p-6">
+<div class="p-4 sm:p-6">
 	{#if error}
 		<Alert variant="destructive" class="mb-6">
 			<AlertCircle class="size-4" />
@@ -157,21 +157,18 @@
 							<Label for="courseId">Course *</Label>
 							<Popover.Root bind:open={courseOpen}>
 								<Popover.Trigger bind:ref={courseTriggerRef}>
-									{#snippet child({ props })}
-										<Button
-											{...props}
-											variant="outline"
-											class={cn(
-												"w-full justify-between h-12 text-base font-normal",
-												errors.courseId && "border-destructive"
-											)}
-											role="combobox"
-											aria-expanded={courseOpen}
-										>
-											<span class="truncate">{selectedCourseLabel}</span>
-											<ChevronsUpDownIcon class="ml-2 size-4 shrink-0 opacity-50" />
-										</Button>
-									{/snippet}
+									<Button
+										variant="outline"
+										role="combobox"
+										aria-expanded={courseOpen}
+										class={cn(
+											"w-full justify-between h-12 text-base font-normal",
+											errors.courseId && "border-destructive"
+										)}
+									>
+										<span class="truncate">{selectedCourseLabel}</span>
+										<ChevronsUpDownIcon class="ml-2 size-4 shrink-0 opacity-50" />
+									</Button>
 								</Popover.Trigger>
 								<Popover.Content class="w-[--radix-popover-trigger-width] p-0">
 									<Command.Root>
@@ -360,9 +357,11 @@
 				</Card>
 
 				<!-- Submit -->
-				<div class="md:col-span-2 flex items-center justify-end gap-4">
-					<Button variant="outline" href="/lecturer/assessments">Cancel</Button>
-					<Button type="submit" disabled={isSubmitting}>
+				<div class="md:col-span-2 flex flex-col sm:flex-row items-center justify-end gap-4">
+					<Button variant="outline" href="/lecturer/assessments" class="w-full sm:w-auto">
+						Cancel
+					</Button>
+					<Button type="submit" disabled={isSubmitting} class="w-full sm:w-auto">
 						{#if isSubmitting}
 							<span class="animate-spin mr-2">⏳</span>
 						{/if}
