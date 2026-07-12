@@ -282,6 +282,8 @@
 		}
 	}
 
+	const syncIntervalMs = 20_000 + Math.random() * 5_000;
+
 	// ─── Timers ─────────────────────────────────────────────────────────────
 	function startTimers() {
 		timerInterval = setInterval(() => {
@@ -308,7 +310,7 @@
 			} catch {
 				// best-effort sync; local countdown keeps running regardless
 			}
-		}, 20_000)
+		}, syncIntervalMs)
 	}
 
 	function stopTimers() {

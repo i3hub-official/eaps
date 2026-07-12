@@ -1,4 +1,4 @@
-<!-- src/lib/components/exam/ExamMonitor.svelte - COMPLETE WITH ALL RESTRICTIONS + BLUR ON FACE LOSS -->
+<!-- src/lib/components/exam/ExamMonitor.svelte - WITH AI FACIAL ANALYSIS -->
 <script lang="ts">
 	import { onMount, onDestroy } from 'svelte';
 	import AlertTriangle from '@lucide/svelte/icons/alert-triangle';
@@ -20,34 +20,70 @@
 	const NO_FACE_STRIKES_BEFORE_LOG = 2;
 	const FACE_MATCH_THRESHOLD = 0.7;
 
-	// Note on FACE_MISMATCH:
-	// - Has 8s cooldown to prevent spam logging if wrong person is detected
-	// - But face blur happens IMMEDIATELY (no cooldown on blur)
-	// - Smart students can't bypass by repeatedly putting their face away
-	// - System recovers quickly (8s) to catch repeated attempts
+	// ─── AI Analysis Thresholds ──────────────────────────────────────────────
+	const AI_THRESHOLDS = {
+		// Eye tracking
+		EYE_GAZE_THRESHOLD: 0.35,          // 35% off-center gaze (looking away)
+		EYE_CLOSURE_THRESHOLD: 0.5,         // 50% eye closure (looking down/closed)
+		RAPID_BLINK_THRESHOLD: 25,          // >25 blinks per minute (suspicious)
+		SUSTAINED_GAZE_THRESHOLD: 4000,     // 4 seconds looking away
+		LOOKING_DOWN_THRESHOLD: 0.6,        // 60% looking down (phone/notes)
+		
+		// Head pose
+		HEAD_TILT_THRESHOLD: 20,             // 20 degrees tilt
+		HEAD_TURN_THRESHOLD: 15,             // 15 degrees turn
+		SUSTAINED_HEAD_TURN: 3000,           // 3 seconds head turned
+		HEAD_NOD_THRESHOLD: 10,              // 10 degrees nod
+		
+		// Mouth
+		MOUTH_OPEN_THRESHOLD: 0.5,           // 50% mouth open (talking)
+		MOUTH_MOVEMENT_THRESHOLD: 0.25,      // 25% mouth movement
+		SUSTAINED_MOUTH_OPEN: 2000,          // 2 seconds mouth open
+		WHISPER_DETECTION: true,
+		
+		// Gestures
+		SUSPICIOUS_GESTURE_THRESHOLD: 0.5,   // 50% gesture confidence
+		HAND_OVER_MOUTH_THRESHOLD: 0.4,      // 40% hand over mouth
+		
+		// Facial expressions
+		EXPRESSION_CHANGE_THRESHOLD: 0.4,    // 40% expression change
+		STRESS_SIGNAL_THRESHOLD: 0.6,        // 60% stress indicators
+	};
 
-	// ─── Violation Cooldown (prevents spam logging) ────────────────────────────
-	// Shorter cooldowns for quick detection of tech-savvy cheaters
+	// ─── Violation Cooldown ──────────────────────────────────────────────────
 	const VIOLATION_COOLDOWN: Record<string, number> = {
-		FACE_NOT_DETECTED: 6000,      // Quick detection when face disappears
-		FACE_MISMATCH: 8000,          // Cooldown for face mismatch (not owner's face)
-		MULTIPLE_FACES: 5000,         // Quick detection of multiple people
-		TAB_SWITCH: 8000,             // Quick detection of tab switching (was 15s)
-		FULLSCREEN_EXIT: 10000,       // Quick detection of fullscreen exit (was 15s)
-		DEVTOOLS_OPEN: 20000,         // Keep longer for dev tools (persistent threat)
-		COPY_ATTEMPT: 5000,           // Quick detection of copy attempts (was 10s)
-		PASTE_ATTEMPT: 5000,          // Quick detection of paste attempts (was 10s)
-		KEYBOARD_SHORTCUT: 3000,      // Very quick detection (was 5s)
-		FOCUS_LOSS: 4000,             // Quick detection (was 5s)
-		NETWORK_DROP: 8000,           // Quick detection (was 10s)
-		SCREEN_RECORDING: 20000,      // Keep longer (persistent threat)
-		EXTERNAL_MONITOR: 20000,      // Keep longer (persistent threat)
-		VIRTUAL_CAMERA: 20000,        // Keep longer (persistent threat)
-		SUSPICIOUS_MOUSE: 15000,      // Moderate cooldown for mouse analysis (was 30s)
-		AUDIO_DETECTION: 10000,       // Moderate cooldown for audio (was 15s)
-		RAPID_FACE_CHANGE: 12000,     // Moderate cooldown (was 15s)
-		BACKGROUND_CHANGE: 8000,      // Quick detection (was 15s)
-		IDLE_TIMEOUT: 300000,         // 5 minutes (no change - legitimate timeout)
+		// Existing violations
+		FACE_NOT_DETECTED: 6000,
+		FACE_MISMATCH: 8000,
+		MULTIPLE_FACES: 5000,
+		TAB_SWITCH: 8000,
+		FULLSCREEN_EXIT: 10000,
+		DEVTOOLS_OPEN: 20000,
+		COPY_ATTEMPT: 5000,
+		PASTE_ATTEMPT: 5000,
+		KEYBOARD_SHORTCUT: 3000,
+		FOCUS_LOSS: 4000,
+		NETWORK_DROP: 8000,
+		SCREEN_RECORDING: 20000,
+		EXTERNAL_MONITOR: 20000,
+		VIRTUAL_CAMERA: 20000,
+		SUSPICIOUS_MOUSE: 15000,
+		AUDIO_DETECTION: 10000,
+		RAPID_FACE_CHANGE: 12000,
+		BACKGROUND_CHANGE: 8000,
+		IDLE_TIMEOUT: 300000,
+		
+		// AI violations
+		SUSPICIOUS_GAZE: 10000,
+		RAPID_BLINKING: 10000,
+		HEAD_TURNING: 10000,
+		SUSPICIOUS_MOUTH: 10000,
+		LOOKING_DOWN: 10000,
+		SUSPICIOUS_GESTURE: 10000,
+		SUSTAINED_HEAD_TURN: 15000,
+		SUSTAINED_GAZE: 15000,
+		STRESS_SIGNALS: 20000,
+		HAND_OVER_MOUTH: 12000,
 	};
 
 	type Status = 'ok' | 'warning' | 'violation';
@@ -64,7 +100,13 @@
 		| 'camera'
 		| 'mouse'
 		| 'audio'
-		| 'background';
+		| 'background'
+		| 'gaze'
+		| 'blink'
+		| 'head'
+		| 'mouth'
+		| 'gesture'
+		| 'stress';
 
 	let status = $state<Status>('ok');
 	let alerts = $state<Array<{ id: string; type: AlertType; message: string; severity: number; timestamp: number }>>([]);
@@ -87,27 +129,55 @@
 	const lastLoggedAt: Record<string, number> = {};
 
 	// Other violation tracking
+	// ─── Violation Batching ─────────────────────────────────────────────────────
+// Violations are queued client-side and flushed together every 5s instead
+// of one HTTP request per event — at high concurrent user counts, this
+// turns bursty per-violation traffic into a steady, much lower request
+// rate against the server.
+let violationQueue: Array<{ type: string; severity: number; metadata?: Record<string, unknown> }> = [];
+let flushIntervalHandle: ReturnType<typeof setInterval> | null = null;
+const FLUSH_INTERVAL_MS = 5000;
+
 	let isFullscreen = false;
 	let devtoolsOpen = false;
 	let idleTimeoutHandle: ReturnType<typeof setTimeout> | null = null;
 	let devtoolsCheckInterval: ReturnType<typeof setInterval> | null = null;
-	const IDLE_TIMEOUT_MS = 5 * 60 * 1000; // 5 minutes
+	const IDLE_TIMEOUT_MS = 5 * 60 * 1000;
+
+	// ─── AI Analysis State ──────────────────────────────────────────────────────
+	// Eye tracking
+	let gazeHistory: Array<{ x: number; y: number; timestamp: number }> = [];
+	let blinkCount = 0;
+	let lastBlinkTime = Date.now();
+	let sustainedGazeStart: number | null = null;
+	let lookingDownStart: number | null = null;
+	
+	// Head pose
+	let headPoseHistory: Array<{ yaw: number; pitch: number; roll: number; timestamp: number }> = [];
+	let sustainedHeadTurnStart: number | null = null;
+	
+	// Mouth
+	let mouthOpenHistory: Array<{ open: number; timestamp: number }> = [];
+	let mouthMovementStart: number | null = null;
+	
+	// Gestures
+	let gestureHistory: Array<{ type: string; confidence: number; timestamp: number }> = [];
+	
+	// Facial expressions
+	let expressionHistory: Array<{ expression: string; confidence: number; timestamp: number }> = [];
+	let stressSignalCount = 0;
 
 	// ─── Additional Restriction State ────────────────────────────────────────────
-	// Screen Recording
 	let recordingCheckInterval: ReturnType<typeof setInterval> | null = null;
 	const RECORDING_CHECK_INTERVAL_MS = 10000;
 
-	// External Monitor
 	let externalMonitorCheckInterval: ReturnType<typeof setInterval> | null = null;
 	const EXTERNAL_MONITOR_CHECK_INTERVAL_MS = 15000;
 
-	// Virtual Camera
 	let virtualCameraCheckInterval: ReturnType<typeof setInterval> | null = null;
 	const VIRTUAL_CAMERA_CHECK_INTERVAL_MS = 15000;
 	let knownDeviceLabels: string[] = [];
 
-	// Suspicious Mouse Movement
 	let mousePositions: Array<{ x: number; y: number; timestamp: number }> = [];
 	let suspiciousMouseLogInterval: ReturnType<typeof setInterval> | null = null;
 	const MOUSE_SAMPLE_LIMIT = 500;
@@ -115,7 +185,6 @@
 	const LINEAR_THRESHOLD = 0.7;
 	const MAX_SPEED_THRESHOLD = 800;
 
-	// Audio Detection
 	let audioContext: AudioContext | null = null;
 	let analyser: AnalyserNode | null = null;
 	let audioStream: MediaStream | null = null;
@@ -123,16 +192,14 @@
 	const AUDIO_VOLUME_THRESHOLD = -15;
 	const AUDIO_CHECK_INTERVAL_MS = 5000;
 
-	// Rapid Face Change
 	let previousEmbedding: number[] | null = null;
 	let embeddingHistory: Array<{ embedding: number[]; timestamp: number }> = [];
 	const RAPID_CHANGE_THRESHOLD = 0.3;
 	const MAX_EMBEDDING_HISTORY = 10;
 
-	// Background Change
 	let previousFrameData: ImageData | null = null;
 	let backgroundCheckCounter = 0;
-	const BACKGROUND_CHECK_INTERVAL = 2; // Check every N face checks
+	const BACKGROUND_CHECK_INTERVAL = 2;
 	const BACKGROUND_CHANGE_THRESHOLD = 0.4;
 
 	// ─── Blocked Keys ────────────────────────────────────────────────────────────
@@ -150,28 +217,59 @@
 	}
 
 	async function logViolation(type: string, severity: number, metadata?: Record<string, unknown>) {
-		if (!canLog(type)) return;
+	if (!canLog(type)) return;
 
-		violationCount++;
-		status = severity >= 3 ? 'violation' : 'warning';
+	violationCount++;
+	status = severity >= 3 ? 'violation' : 'warning';
 
-		// Show local alert immediately
-		showAlert(type as AlertType, getViolationMessage(type), severity);
+	// Show local alert immediately — UI feedback should never wait on a
+	// network round trip.
+	showAlert(type as AlertType, getViolationMessage(type), severity);
 
-		// Log to server asynchronously (don't block UI)
-		try {
-			await fetch(`/api/assessment/session/${sessionId}/violation`, {
-				method: 'POST',
-				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify({ sessionId, type, severity, metadata }),
-			}).catch(err => console.error(`[Monitor] Failed to log ${type}:`, err));
-		} catch (err) {
-			console.error(`[Monitor] Error logging ${type}:`, err);
-		}
+	// Queue for batched delivery rather than posting immediately.
+	violationQueue.push({ type, severity, metadata });
+
+	// Critical violations (severity 3) flush immediately rather than
+	// waiting up to 5s — auto-disqualification logic depends on the
+	// server seeing these promptly, and a student shouldn't be able to
+	// close the tab within the flush window to dodge a critical log.
+	if (severity >= 3) {
+		await flushViolations();
 	}
+}
+
+async function flushViolations() {
+	if (violationQueue.length === 0) return;
+	const batch = violationQueue;
+	violationQueue = [];
+
+	try {
+		const res = await fetch(`/api/assessment/session/${sessionId}/violations/batch`, {
+			method: 'POST',
+			headers: { 'Content-Type': 'application/json' },
+			body: JSON.stringify({ violations: batch }),
+		});
+		if (!res.ok) throw new Error(`Batch flush failed: ${res.status}`);
+
+		const result = await res.json().catch(() => null);
+		if (result?.autoSubmitted) {
+			console.log('[Monitor] Session was auto-disqualified by the server.');
+			// The kiosk page itself is responsible for reacting to a closed
+			// session (e.g. redirecting to a "session ended" screen) — this
+			// monitor only needs to stop generating further violations.
+			stopped = true;
+		}
+	} catch (err) {
+		console.error('[Monitor] Batch flush failed, re-queueing:', err);
+		// Put the failed batch back at the front so it's retried on the
+		// next flush rather than silently lost.
+		violationQueue = [...batch, ...violationQueue];
+	}
+}
 
 	function getViolationMessage(type: string): string {
 		const messages: Record<string, string> = {
+			// Existing
 			FACE_NOT_DETECTED: 'Face not detected — stay in view of camera',
 			FACE_MISMATCH: 'Face does not match enrolled profile',
 			MULTIPLE_FACES: 'Multiple faces detected',
@@ -191,6 +289,18 @@
 			AUDIO_DETECTION: 'Suspicious audio detected',
 			RAPID_FACE_CHANGE: 'Rapid face change detected',
 			BACKGROUND_CHANGE: 'Background change detected',
+			
+			// AI violations
+			SUSPICIOUS_GAZE: 'Suspicious eye gaze detected - looking away from screen',
+			RAPID_BLINKING: 'Rapid blinking detected - possible cheating attempt',
+			HEAD_TURNING: 'Head turned away from screen',
+			SUSPICIOUS_MOUTH: 'Suspicious mouth movement detected',
+			LOOKING_DOWN: 'Looking down at desk/phone detected',
+			SUSPICIOUS_GESTURE: 'Suspicious hand gesture detected',
+			SUSTAINED_HEAD_TURN: 'Head turned away for extended period',
+			SUSTAINED_GAZE: 'Looking away from screen for extended period',
+			STRESS_SIGNALS: 'Stress signals detected - possible cheating',
+			HAND_OVER_MOUTH: 'Hand over mouth detected - possible communication',
 		};
 		return messages[type] || 'Violation detected';
 	}
@@ -200,7 +310,6 @@
 		alerts.push({ id, type, message, severity, timestamp: Date.now() });
 		console.log(`[Monitor] Alert: ${message}`);
 
-		// Auto-dismiss after 8 seconds
 		setTimeout(() => {
 			alerts = alerts.filter(a => a.id !== id);
 		}, 8000);
@@ -213,7 +322,6 @@
 			blurMessage = message;
 			console.log('[Monitor] Screen blurred:', message);
 			
-			// Also log as violation if severe
 			if (message.includes('not detected') || message.includes('covered')) {
 				logViolation('FACE_NOT_DETECTED', 3);
 			}
@@ -242,6 +350,326 @@
 		}
 	}
 
+	// ─── AI Analysis Functions ──────────────────────────────────────────────────
+
+	// ─── Eye Tracking Analysis ─────────────────────────────────────────────────
+	async function analyzeEyes(face: any) {
+		if (!face.landmarks) return;
+
+		try {
+			// Get eye landmarks
+			const leftEye = face.landmarks.getLeftEye();
+			const rightEye = face.landmarks.getRightEye();
+			
+			if (!leftEye || !rightEye) return;
+
+			// Calculate eye openness
+			const leftOpenness = calculateEyeOpenness(leftEye);
+			const rightOpenness = calculateEyeOpenness(rightEye);
+			const avgOpenness = (leftOpenness + rightOpenness) / 2;
+
+			// Detect blinks (eyes closed)
+			if (avgOpenness < AI_THRESHOLDS.EYE_CLOSURE_THRESHOLD) {
+				const now = Date.now();
+				if (now - lastBlinkTime > 100) { // Prevent double counting
+					blinkCount++;
+					lastBlinkTime = now;
+				}
+			}
+
+			// Check rapid blinking
+			const timeWindow = 60000; // 1 minute
+			const now = Date.now();
+			const recentBlinks = blinkCount;
+			
+			if (recentBlinks > AI_THRESHOLDS.RAPID_BLINK_THRESHOLD && canLog('RAPID_BLINKING')) {
+				await logViolation('RAPID_BLINKING', 2, { 
+					blinkRate: recentBlinks,
+					timeWindow: '1min'
+				});
+				blinkCount = 0;
+			}
+
+			// Detect gaze direction
+			if (face.gaze) {
+				const gazeX = face.gaze.x || 0;
+				const gazeY = face.gaze.y || 0;
+				
+				// Track gaze history
+				gazeHistory.push({ x: gazeX, y: gazeY, timestamp: now });
+				if (gazeHistory.length > 100) gazeHistory.shift();
+
+				// Check if looking away from screen
+				const lookingAway = Math.abs(gazeX) > AI_THRESHOLDS.EYE_GAZE_THRESHOLD || 
+								   Math.abs(gazeY) > AI_THRESHOLDS.EYE_GAZE_THRESHOLD;
+
+				if (lookingAway) {
+					if (!sustainedGazeStart) sustainedGazeStart = now;
+					
+					// Check sustained gaze away
+					if (now - sustainedGazeStart > AI_THRESHOLDS.SUSTAINED_GAZE_THRESHOLD && canLog('SUSTAINED_GAZE')) {
+						await logViolation('SUSTAINED_GAZE', 2, { 
+							duration: now - sustainedGazeStart,
+							gazeX, gazeY
+						});
+						sustainedGazeStart = null;
+					}
+				} else {
+					sustainedGazeStart = null;
+				}
+
+				// Check looking down (phone/notes)
+				if (gazeY < -AI_THRESHOLDS.LOOKING_DOWN_THRESHOLD) {
+					if (!lookingDownStart) lookingDownStart = now;
+					
+					if (now - lookingDownStart > 2000 && canLog('LOOKING_DOWN')) {
+						await logViolation('LOOKING_DOWN', 2, { duration: now - lookingDownStart });
+						lookingDownStart = null;
+					}
+				} else {
+					lookingDownStart = null;
+				}
+			}
+		} catch (err) {
+			console.error('[Monitor] Eye analysis error:', err);
+		}
+	}
+
+	function calculateEyeOpenness(eyePoints: any[]): number {
+		if (!eyePoints || eyePoints.length < 6) return 1;
+		
+		// Calculate eye aspect ratio
+		const p1 = eyePoints[1];
+		const p2 = eyePoints[2];
+		const p3 = eyePoints[3];
+		const p4 = eyePoints[5];
+		const p5 = eyePoints[4];
+		
+		const vertical1 = distance(p1, p2);
+		const vertical2 = distance(p3, p4);
+		const horizontal = distance(p5, eyePoints[0]);
+		
+		return (vertical1 + vertical2) / (2 * horizontal);
+	}
+
+	function distance(p1: any, p2: any): number {
+		return Math.sqrt(Math.pow(p2.x - p1.x, 2) + Math.pow(p2.y - p1.y, 2));
+	}
+
+	// ─── Head Pose Analysis ────────────────────────────────────────────────────
+	async function analyzeHeadPose(face: any) {
+		if (!face.rotation) return;
+
+		try {
+			const yaw = face.rotation.yaw || 0;
+			const pitch = face.rotation.pitch || 0;
+			const roll = face.rotation.roll || 0;
+			const now = Date.now();
+
+			// Track head pose
+			headPoseHistory.push({ yaw, pitch, roll, timestamp: now });
+			if (headPoseHistory.length > 50) headPoseHistory.shift();
+
+			// Check head turn (looking sideways)
+			const headTurned = Math.abs(yaw) > AI_THRESHOLDS.HEAD_TURN_THRESHOLD;
+			
+			if (headTurned) {
+				if (!sustainedHeadTurnStart) sustainedHeadTurnStart = now;
+				
+				if (canLog('HEAD_TURNING')) {
+					await logViolation('HEAD_TURNING', 2, { yaw, pitch, roll });
+				}
+				
+				// Check sustained head turn
+				if (now - sustainedHeadTurnStart > AI_THRESHOLDS.SUSTAINED_HEAD_TURN && canLog('SUSTAINED_HEAD_TURN')) {
+					await logViolation('SUSTAINED_HEAD_TURN', 3, { 
+						duration: now - sustainedHeadTurnStart,
+						yaw, pitch, roll
+					});
+					sustainedHeadTurnStart = null;
+				}
+			} else {
+				sustainedHeadTurnStart = null;
+			}
+
+			// Check extreme head tilt
+			if (Math.abs(roll) > AI_THRESHOLDS.HEAD_TILT_THRESHOLD && canLog('HEAD_TURNING')) {
+				await logViolation('HEAD_TURNING', 2, { roll, type: 'tilt' });
+			}
+		} catch (err) {
+			console.error('[Monitor] Head pose analysis error:', err);
+		}
+	}
+
+	// ─── Mouth Analysis ────────────────────────────────────────────────────────
+	async function analyzeMouth(face: any) {
+		if (!face.landmarks) return;
+
+		try {
+			const mouth = face.landmarks.getMouth();
+			if (!mouth) return;
+
+			const mouthOpen = calculateMouthOpenness(mouth);
+			const now = Date.now();
+
+			mouthOpenHistory.push({ open: mouthOpen, timestamp: now });
+			if (mouthOpenHistory.length > 30) mouthOpenHistory.shift();
+
+			// Check if mouth is open (talking)
+			if (mouthOpen > AI_THRESHOLDS.MOUTH_OPEN_THRESHOLD) {
+				if (!mouthMovementStart) mouthMovementStart = now;
+				
+				if (canLog('SUSPICIOUS_MOUTH')) {
+					await logViolation('SUSPICIOUS_MOUTH', 2, { 
+						mouthOpen, 
+						duration: now - mouthMovementStart 
+					});
+				}
+				
+				// Check sustained mouth open (talking for too long)
+				if (now - mouthMovementStart > AI_THRESHOLDS.SUSTAINED_MOUTH_OPEN && canLog('SUSPICIOUS_MOUTH')) {
+					await logViolation('SUSPICIOUS_MOUTH', 2, { 
+						duration: now - mouthMovementStart,
+						type: 'sustained_talking'
+					});
+					mouthMovementStart = null;
+				}
+			} else {
+				mouthMovementStart = null;
+			}
+		} catch (err) {
+			console.error('[Monitor] Mouth analysis error:', err);
+		}
+	}
+
+	function calculateMouthOpenness(mouthPoints: any[]): number {
+		if (!mouthPoints || mouthPoints.length < 6) return 0;
+		
+		const top = mouthPoints[2];
+		const bottom = mouthPoints[5];
+		const left = mouthPoints[0];
+		const right = mouthPoints[3];
+		
+		const vertical = distance(top, bottom);
+		const horizontal = distance(left, right);
+		
+		return vertical / (horizontal + 0.001);
+	}
+
+	// ─── Gesture Analysis ──────────────────────────────────────────────────────
+	async function analyzeGestures(face: any, video: HTMLVideoElement) {
+		if (!face.landmarks) return;
+
+		try {
+			// Check for hand over mouth
+			const mouth = face.landmarks.getMouth();
+			if (mouth) {
+				const mouthCenter = {
+					x: (mouth[0].x + mouth[3].x) / 2,
+					y: (mouth[0].y + mouth[3].y) / 2
+				};
+
+				// Get face bounding box for hand detection
+				const faceBounds = face.box;
+				if (faceBounds) {
+					// Check if anything is covering the mouth area
+					// This is a simplified approach - in production you'd use hand detection
+					const hasHandOverMouth = await detectHandOverMouth(video, faceBounds);
+					
+					if (hasHandOverMouth && canLog('HAND_OVER_MOUTH')) {
+						await logViolation('HAND_OVER_MOUTH', 2, { 
+							confidence: 0.7 
+						});
+					}
+				}
+			}
+		} catch (err) {
+			console.error('[Monitor] Gesture analysis error:', err);
+		}
+	}
+
+	async function detectHandOverMouth(video: HTMLVideoElement, faceBounds: any): Promise<boolean> {
+		try {
+			const canvas = document.createElement('canvas');
+			canvas.width = video.videoWidth;
+			canvas.height = video.videoHeight;
+			const ctx = canvas.getContext('2d')!;
+			ctx.drawImage(video, 0, 0);
+			
+			// Get region around mouth
+			const mouthRegion = ctx.getImageData(
+				faceBounds.x - faceBounds.width * 0.2,
+				faceBounds.y + faceBounds.height * 0.5,
+				faceBounds.width * 0.4,
+				faceBounds.height * 0.3
+			);
+			
+			// Check for skin tone or texture changes (simplified)
+			// In production, use proper hand detection model
+			const data = mouthRegion.data;
+			let skinPixels = 0;
+			let totalPixels = data.length / 4;
+			
+			for (let i = 0; i < data.length; i += 4) {
+				const r = data[i];
+				const g = data[i + 1];
+				const b = data[i + 2];
+				
+				// Simple skin color detection
+				if (r > 80 && g > 40 && b > 20 && 
+					r > g && r > b && 
+					Math.abs(r - g) > 15) {
+					skinPixels++;
+				}
+			}
+			
+			return (skinPixels / totalPixels) > 0.3;
+		} catch (err) {
+			return false;
+		}
+	}
+
+	// ─── Facial Expression Analysis ────────────────────────────────────────────
+	async function analyzeExpression(face: any) {
+		if (!face.expressions) return;
+
+		try {
+			const expressions = face.expressions;
+			const now = Date.now();
+			
+			// Check for stress signals
+			let stressScore = 0;
+			
+			// Common stress indicators in facial expressions
+			if (expressions.anger > 0.3) stressScore += 0.3;
+			if (expressions.fear > 0.3) stressScore += 0.3;
+			if (expressions.sadness > 0.3) stressScore += 0.2;
+			if (expressions.surprise > 0.4) stressScore += 0.2;
+			
+			// Track stress signals
+			if (stressScore > AI_THRESHOLDS.STRESS_SIGNAL_THRESHOLD) {
+				stressSignalCount++;
+				
+				if (stressSignalCount > 3 && canLog('STRESS_SIGNALS')) {
+					await logViolation('STRESS_SIGNALS', 2, { 
+						stressScore,
+						expressions: {
+							anger: expressions.anger,
+							fear: expressions.fear,
+							sadness: expressions.sadness,
+							surprise: expressions.surprise
+						}
+					});
+					stressSignalCount = 0;
+				}
+			} else {
+				stressSignalCount = Math.max(0, stressSignalCount - 1);
+			}
+		} catch (err) {
+			console.error('[Monitor] Expression analysis error:', err);
+		}
+	}
+
 	// ─── Face Monitoring ──────────────────────────────────────────────────────
 	async function initFaceMonitoring() {
 		try {
@@ -266,7 +694,6 @@
 				console.log('[Monitor] Camera ready');
 			}
 
-			// Fetch enrolled descriptor once (cached)
 			try {
 				const descRes = await fetch('/api/face/descriptor');
 				if (descRes.ok) {
@@ -278,7 +705,6 @@
 				console.warn('[Monitor] Could not fetch descriptor:', err);
 			}
 
-			// Start continuous face checking
 			faceIntervalHandle = setInterval(runFaceCheck, FACE_CHECK_INTERVAL_MS);
 			console.log('[Monitor] Face detection started');
 		} catch (err) {
@@ -295,12 +721,10 @@
 			const result = await human.detect(videoEl);
 			if (stopped) return;
 
-			// ─── Check for Covered Camera (Solid Color) ───────────────────────
-			// Detect if camera is blocked by checking for uniform color (black, white, etc)
+			// ─── Check for Covered Camera ───────────────────────────────────────
 			const isCameraCovered = await detectCoveredCamera(videoEl);
 			if (isCameraCovered) {
 				noFaceStrikes++;
-				// INSTANT blur - no waiting
 				blurScreen('Camera appears to be covered or blocked');
 				
 				if (noFaceStrikes >= NO_FACE_STRIKES_BEFORE_LOG && canLog('FACE_NOT_DETECTED')) {
@@ -314,14 +738,12 @@
 			// ─── No Face Detected ─────────────────────────────────────────────
 			if (!result?.face || result.face.length === 0) {
 				noFaceStrikes++;
-				
-				// INSTANT blur - no strikes needed, blur immediately
 				blurScreen('Face not detected - please ensure you are visible');
 
 				if (noFaceStrikes >= NO_FACE_STRIKES_BEFORE_LOG && canLog('FACE_NOT_DETECTED')) {
 					status = 'violation';
 					await logViolation('FACE_NOT_DETECTED', 3);
-					noFaceStrikes = 0; // Reset after logging
+					noFaceStrikes = 0;
 				}
 				return;
 			}
@@ -340,8 +762,9 @@
 				return;
 			}
 
-			// ─── Face Matching ────────────────────────────────────────────────
 			const face = result.face[0];
+
+			// ─── Face Matching ────────────────────────────────────────────────
 			if (enrolledDescriptor && face.embedding) {
 				const similarity = cosineSimilarity(face.embedding, enrolledDescriptor);
 				if (similarity < FACE_MATCH_THRESHOLD) {
@@ -351,9 +774,18 @@
 					return;
 				}
 
-				// ─── Rapid Face Change Detection ───────────────────────────────
 				await detectRapidFaceChange(face.embedding);
 			}
+
+			// ─── AI Analysis ──────────────────────────────────────────────────
+			// Run all AI analyses in parallel for performance
+			await Promise.all([
+				analyzeEyes(face),
+				analyzeHeadPose(face),
+				analyzeMouth(face),
+				analyzeGestures(face, videoEl!),
+				analyzeExpression(face)
+			]);
 
 			// ─── Background Change Detection ─────────────────────────────────
 			backgroundCheckCounter++;
@@ -366,12 +798,10 @@
 			status = 'ok';
 		} catch (err) {
 			console.error('[Monitor] Face check error:', err);
-			// Don't blur on transient errors
 		}
 	}
 
 	// ─── Covered Camera Detection ──────────────────────────────────────────────
-	// Detects if camera is blocked by checking for uniform color
 	async function detectCoveredCamera(video: HTMLVideoElement): Promise<boolean> {
 		try {
 			const canvas = document.createElement('canvas');
@@ -382,12 +812,10 @@
 			const imageData = ctx.getImageData(0, 0, 160, 120);
 			const data = imageData.data;
 
-			// Calculate color variance across the frame
 			let r = 0, g = 0, b = 0;
 			let rVar = 0, gVar = 0, bVar = 0;
 			const pixelCount = data.length / 4;
 
-			// Get average colors
 			for (let i = 0; i < data.length; i += 4) {
 				r += data[i];
 				g += data[i + 1];
@@ -397,7 +825,6 @@
 			g /= pixelCount;
 			b /= pixelCount;
 
-			// Get variance
 			for (let i = 0; i < data.length; i += 4) {
 				rVar += Math.pow(data[i] - r, 2);
 				gVar += Math.pow(data[i + 1] - g, 2);
@@ -407,12 +834,11 @@
 			gVar /= pixelCount;
 			bVar /= pixelCount;
 
-			// If variance is very low, camera is covered (uniform color)
 			const totalVariance = rVar + gVar + bVar;
-			const isCovered = totalVariance < 100; // Threshold for "uniform" color
+			const isCovered = totalVariance < 100;
 
 			if (isCovered) {
-				console.log('[Monitor] Covered camera detected. Variance:', totalVariance, 'Colors:', Math.round(r), Math.round(g), Math.round(b));
+				console.log('[Monitor] Covered camera detected. Variance:', totalVariance);
 			}
 
 			return isCovered;
@@ -427,7 +853,6 @@
 		if (previousEmbedding) {
 			const changeRate = cosineSimilarity(embedding, previousEmbedding);
 			
-			// If face changed dramatically and quickly
 			if (changeRate < RAPID_CHANGE_THRESHOLD && canLog('RAPID_FACE_CHANGE')) {
 				status = 'violation';
 				await logViolation('RAPID_FACE_CHANGE', 3, { changeRate });
@@ -438,7 +863,6 @@
 		previousEmbedding = embedding;
 		embeddingHistory.push({ embedding, timestamp: Date.now() });
 		
-		// Keep only last N embeddings
 		if (embeddingHistory.length > MAX_EMBEDDING_HISTORY) {
 			embeddingHistory = embeddingHistory.slice(-MAX_EMBEDDING_HISTORY);
 		}
@@ -448,7 +872,7 @@
 	async function detectBackgroundChange(video: HTMLVideoElement) {
 		try {
 			const canvas = document.createElement('canvas');
-			canvas.width = 64;  // Small for performance
+			canvas.width = 64;
 			canvas.height = 48;
 			const ctx = canvas.getContext('2d')!;
 			ctx.drawImage(video, 0, 0, 64, 48);
@@ -459,8 +883,6 @@
 				const data1 = previousFrameData.data;
 				const data2 = imageData.data;
 				
-				// Compare only background areas (not face region)
-				// This is simplified - real impl would use segmentation
 				for (let i = 0; i < data1.length; i += 4) {
 					const diff = Math.abs(data1[i] - data2[i]) + 
 								   Math.abs(data1[i+1] - data2[i+1]) + 
@@ -486,17 +908,14 @@
 		if (stopped) return;
 		
 		try {
-			// Check for OBS/other virtual cameras
 			const devices = await navigator.mediaDevices.enumerateDevices();
 			const videoDevices = devices.filter(d => d.kind === 'videoinput');
 			
-			// Store known device labels for comparison
 			if (knownDeviceLabels.length === 0) {
 				knownDeviceLabels = videoDevices.map(d => d.label.toLowerCase());
 				return;
 			}
 
-			// Check for new devices that might be screen recording
 			const virtualKeywords = ['obs', 'virtual', 'snap', 'manycam', 'webcamoid', 'screen', 'capture'];
 			for (const device of videoDevices) {
 				const label = device.label.toLowerCase();
@@ -518,7 +937,6 @@
 		if (stopped) return;
 
 		try {
-			// Check screen count using getScreenDetails if available
 			if ('getScreenDetails' in window && typeof (window as any).getScreenDetails === 'function') {
 				const screens = await (window as any).getScreenDetails();
 				if (screens && screens.screens && screens.screens.length > 1) {
@@ -532,12 +950,10 @@
 				}
 			}
 
-			// Alternative: Check if window dimensions exceed primary display
 			const primaryScreenWidth = window.screen.width;
 			const currentWidth = window.outerWidth;
 			const currentHeight = window.outerHeight;
 			
-			// Check for unusually large window (could be external monitor)
 			if (currentWidth > primaryScreenWidth * 1.1) {
 				if (canLog('EXTERNAL_MONITOR')) {
 					status = 'warning';
@@ -589,7 +1005,6 @@
 			timestamp: Date.now()
 		});
 
-		// Keep only last N positions
 		if (mousePositions.length > MOUSE_SAMPLE_LIMIT) {
 			mousePositions = mousePositions.slice(-MOUSE_SAMPLE_LIMIT);
 		}
@@ -599,7 +1014,6 @@
 		if (stopped || mousePositions.length < 50 || isScreenBlurred) return;
 
 		try {
-			// Check for linear movement (bots/scripts)
 			let linearCount = 0;
 			let totalSpeed = 0;
 			let maxSpeed = 0;
@@ -611,7 +1025,6 @@
 				const curr = mousePositions[i];
 				const next = mousePositions[i + 1];
 
-				// Calculate slopes
 				const dx1 = curr.x - prev.x;
 				const dy1 = curr.y - prev.y;
 				const dx2 = next.x - curr.x;
@@ -620,7 +1033,6 @@
 				const slope1 = dx1 !== 0 ? dy1 / dx1 : Infinity;
 				const slope2 = dx2 !== 0 ? dy2 / dx2 : Infinity;
 				
-				// Check if slopes are similar (linear movement)
 				const slopeDiff = Math.abs(slope1 - slope2);
 				if (slopeDiff < 0.1) {
 					linearCount++;
@@ -630,7 +1042,6 @@
 					consecutiveLinear = 0;
 				}
 
-				// Calculate speed
 				const dx = curr.x - prev.x;
 				const dy = curr.y - prev.y;
 				const dt = curr.timestamp - prev.timestamp;
@@ -642,23 +1053,19 @@
 			const avgSpeed = totalSpeed / (mousePositions.length - 1);
 			const linearPercentage = linearCount / (mousePositions.length - 2);
 
-			// Detect suspicious patterns
 			let suspicious = false;
 			let reason = '';
 
-			// Too linear (bot-like movement)
 			if (linearPercentage > LINEAR_THRESHOLD && canLog('SUSPICIOUS_MOUSE')) {
 				suspicious = true;
 				reason = `linear_movement_${Math.round(linearPercentage * 100)}%`;
 			}
 
-			// Too fast (automated)
 			if (maxSpeed > MAX_SPEED_THRESHOLD && canLog('SUSPICIOUS_MOUSE')) {
 				suspicious = true;
 				reason = `excessive_speed_${Math.round(maxSpeed)}px/s`;
 			}
 
-			// Extremely long straight line (drawing/scripting)
 			if (maxConsecutiveLinear > 30 && canLog('SUSPICIOUS_MOUSE')) {
 				suspicious = true;
 				reason = `long_straight_line_${maxConsecutiveLinear}_points`;
@@ -673,7 +1080,6 @@
 					reason
 				});
 				
-				// Reset after logging to prevent duplicate alerts
 				mousePositions = [];
 			}
 		} catch (err) {
@@ -686,7 +1092,6 @@
 		try {
 			audioContext = new AudioContext();
 			
-			// Resume if suspended (needed for some browsers)
 			if (audioContext.state === 'suspended') {
 				await audioContext.resume();
 			}
@@ -720,7 +1125,6 @@
 			const dataArray = new Uint8Array(analyser.fftSize);
 			analyser.getByteTimeDomainData(dataArray);
 
-			// Calculate RMS volume
 			let sum = 0;
 			for (let i = 0; i < dataArray.length; i++) {
 				const value = (dataArray[i] - 128) / 128;
@@ -730,7 +1134,6 @@
 			const volume = 20 * Math.log10(rms + 0.0001);
 			const dbVolume = Math.max(-100, Math.round(volume));
 
-			// Track loudness over time to avoid false positives
 			if (!audioContext || !('loudnessHistory' in audioContext)) {
 				(audioContext as any).loudnessHistory = [];
 			}
@@ -738,7 +1141,6 @@
 			history.push(dbVolume);
 			if (history.length > 5) history.shift();
 			
-			// Check if average of last 5 readings is above threshold
 			const avg = history.reduce((a, b) => a + b, 0) / history.length;
 			
 			if (avg > AUDIO_VOLUME_THRESHOLD && canLog('AUDIO_DETECTION')) {
@@ -748,10 +1150,9 @@
 					averageVolume: Math.round(avg),
 					threshold: AUDIO_VOLUME_THRESHOLD
 				});
-				history.length = 0; // Reset after logging
+				history.length = 0;
 			}
 
-			// Detect background noise level
 			if (dbVolume < -50) {
 				console.log('[Monitor] Very low audio detected:', dbVolume);
 			}
@@ -828,12 +1229,10 @@
 		const isMac = /Mac|iPhone|iPad|iPod/.test(navigator.platform);
 		const ctrlOrCmd = isMac ? e.metaKey : e.ctrlKey;
 
-		// ─── Block specific keys when screen is blurred ──────────────────────
 		if (isScreenBlurred) {
 			const key = e.key.toLowerCase();
 			const code = e.code;
 			
-			// Block A, B, C, D, N, Y, R, P, T, F
 			if (BLOCKED_KEYS.includes(key) || BLOCKED_KEY_CODES.includes(code)) {
 				e.preventDefault();
 				e.stopPropagation();
@@ -841,7 +1240,6 @@
 				return;
 			}
 			
-			// Also block all typing input
 			if (key.length === 1 && key.match(/[a-zA-Z0-9]/)) {
 				e.preventDefault();
 				e.stopPropagation();
@@ -933,7 +1331,6 @@
 	// ─── Global Error Handler ──────────────────────────────────────────────────
 	function handleGlobalError(err: ErrorEvent) {
 		console.error('[Monitor] Global error caught:', err);
-		// Don't stop monitoring on errors
 	}
 
 	// ─── Cleanup Functions ────────────────────────────────────────────────────
@@ -984,19 +1381,13 @@
 
 	// ─── Initialization ───────────────────────────────────────────────────────
 	async function init() {
-		console.log('[Monitor] Initializing exam monitor...');
+		console.log('[Monitor] Initializing exam monitor with AI analysis...');
 		stopped = false;
 
-		// Check student verification
 		await checkStudentVerification();
-
-		// Initialize face monitoring
 		await initFaceMonitoring();
-
-		// Initialize audio detection
 		await initAudioDetection();
 
-		// Set up event listeners
 		document.addEventListener('visibilitychange', handleVisibilityChange);
 		window.addEventListener('focus', handleFocusChange);
 		window.addEventListener('blur', handleFocusChange);
@@ -1016,7 +1407,8 @@
 		window.addEventListener('offline', handleOffline);
 		window.addEventListener('error', handleGlobalError);
 
-		// DevTools check every 1 second
+		flushIntervalHandle = setInterval(flushViolations, FLUSH_INTERVAL_MS);
+
 		devtoolsCheckInterval = setInterval(() => {
 			if (stopped) {
 				clearInterval(devtoolsCheckInterval!);
@@ -1025,39 +1417,32 @@
 			detectDevTools();
 		}, 1000);
 
-		// Start additional monitoring intervals
 		recordingCheckInterval = setInterval(detectScreenRecording, RECORDING_CHECK_INTERVAL_MS);
 		externalMonitorCheckInterval = setInterval(detectExternalMonitors, EXTERNAL_MONITOR_CHECK_INTERVAL_MS);
 		virtualCameraCheckInterval = setInterval(detectVirtualCamera, VIRTUAL_CAMERA_CHECK_INTERVAL_MS);
 		suspiciousMouseLogInterval = setInterval(analyzeMouseMovement, MOUSE_ANALYSIS_INTERVAL_MS);
 
 		resetIdleTimer();
-		console.log('[Monitor] Exam monitor initialized with all restrictions');
+		console.log('[Monitor] Exam monitor initialized with AI analysis');
 	}
 
 	function cleanup() {
 		console.log('[Monitor] Cleaning up...');
 		stopped = true;
 		
-		// Clear all intervals
 		cleanupIntervals();
-		
-		// Cleanup audio
 		cleanupAudio();
 
-		// Stop camera
 		if (stream) {
 			stream.getTracks().forEach(t => t.stop());
 			stream = null;
 		}
 
-		// Clear timeout
 		if (idleTimeoutHandle) {
 			clearTimeout(idleTimeoutHandle);
 			idleTimeoutHandle = null;
 		}
 
-		// Remove event listeners
 		document.removeEventListener('visibilitychange', handleVisibilityChange);
 		window.removeEventListener('focus', handleFocusChange);
 		window.removeEventListener('blur', handleFocusChange);
@@ -1076,6 +1461,11 @@
 		window.removeEventListener('online', handleOnline);
 		window.removeEventListener('offline', handleOffline);
 		window.removeEventListener('error', handleGlobalError);
+		if (flushIntervalHandle) {
+	clearInterval(flushIntervalHandle);
+	flushIntervalHandle = null;
+}
+flushViolations(); // best-effort final flush — not awaited, cleanup shouldn't block on it
 
 		console.log('[Monitor] Cleanup complete');
 	}
@@ -1132,7 +1522,6 @@
 			</div>
 		{/if}
 		{#if isStudentVerified && status === 'ok' && !isScreenBlurred}
-			<!-- Verified Badge with Pulsing Ring -->
 			<div class="absolute top-0 right-0 bg-green-500 text-white text-[8px] px-1 py-0.5 rounded-bl rounded-tr flex items-center gap-0.5 z-10">
 				<CheckCircle class="size-2.5" />
 				Verified
@@ -1148,7 +1537,6 @@
 			</div>
 		{/if}
 		{#if isStudentVerified && !isScreenBlurred}
-			<!-- Green Border Indicator for Verified -->
 			<div class="absolute inset-0 pointer-events-none rounded-lg" style="border: 1px solid rgba(34, 197, 94, 0.3); box-shadow: inset 0 0 8px rgba(34, 197, 94, 0.2);"></div>
 		{/if}
 	</div>
@@ -1183,6 +1571,8 @@
 				<Clock class="mt-0.5 size-3.5 shrink-0" />
 			{:else if alert.type === 'recording' || alert.type === 'camera'}
 				<Monitor class="mt-0.5 size-3.5 shrink-0" />
+			{:else if alert.type === 'gaze' || alert.type === 'blink' || alert.type === 'head' || alert.type === 'mouth' || alert.type === 'gesture' || alert.type === 'stress'}
+				<ShieldAlert class="mt-0.5 size-3.5 shrink-0" />
 			{:else}
 				<AlertTriangle class="mt-0.5 size-3.5 shrink-0" />
 			{/if}

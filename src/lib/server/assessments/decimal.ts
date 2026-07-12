@@ -1,4 +1,4 @@
-// src/lib/server/assessment/decimal.ts
+// src/lib/server/assessments/decimal.ts
 // Shared Decimal helpers for marks/grade computation.
 // Keeps rounding + conversion rules consistent across the assessment engine.
 
