@@ -3,6 +3,7 @@
 	import { Topbar } from '$lib/components/dashboard';
 	import { Card } from '$lib/components/ui/card/index.js';
 	import { Badge } from '$lib/components/ui/badge/index.js';
+	import { Button } from '$lib/components/ui/button/index.js';
 	import * as Table from '$lib/components/ui/table/index.js';
 	import * as Tabs from '$lib/components/ui/tabs/index.js';
 	import Award from '@lucide/svelte/icons/award';
@@ -10,6 +11,9 @@
 	import CheckCircle2 from '@lucide/svelte/icons/check-circle-2';
 	import XCircle from '@lucide/svelte/icons/x-circle';
 	import History from '@lucide/svelte/icons/history';
+	import Sparkles from '@lucide/svelte/icons/sparkles';
+	import Loader2 from '@lucide/svelte/icons/loader-2';
+	import BookOpen from '@lucide/svelte/icons/book-open';
 
 	let { data } = $props();
 
@@ -51,6 +55,32 @@
 			</div>
 		</Card>
 	{/if}
+
+	<!-- AI study insight — streamed separately so a slow/unavailable LLM call
+	     never holds up the transcript above, which is real data the student
+	     is actively waiting on. -->
+	{#await data.recommendations}
+		<Card class="flex items-center gap-3 p-6">
+			<Loader2 class="size-4 animate-spin text-muted-foreground" />
+			<p class="text-sm text-muted-foreground">Generating your study insight…</p>
+		</Card>
+	{:then recommendations}
+		{#if recommendations}
+			<Card class="flex flex-col gap-2 p-6">
+				<div class="flex items-center gap-2">
+					<div class="flex size-8 items-center justify-center rounded-md bg-primary/10 text-primary">
+						<Sparkles class="size-4" />
+					</div>
+					<h3 class="font-semibold">Study Insight</h3>
+					<Badge variant="outline" class="font-normal">AI-generated</Badge>
+				</div>
+				<p class="whitespace-pre-line text-sm leading-relaxed text-muted-foreground">{recommendations}</p>
+			</Card>
+		{/if}
+	{:catch}
+		<!-- Silently omit the card — a failed insight isn't worth alarming
+		     the student about, and it's already logged server-side. -->
+	{/await}
 
 	<Tabs.Root value="transcript" class="flex flex-1 flex-col gap-4">
 		<Tabs.List>
@@ -164,6 +194,11 @@
 							</div>
 							<p class="font-medium leading-snug">{r.title}</p>
 							<p class="text-xs text-muted-foreground">Released {formatDate(r.releasedAt)}</p>
+							{#if r.allowReview}
+								<Button href={`/student/results/${r.id}/review`} variant="link" size="sm" class="h-auto w-fit p-0 text-xs">
+									<BookOpen class="mr-1 size-3" /> Review Questions
+								</Button>
+							{/if}
 						</div>
 
 						<div class="flex items-center gap-3">

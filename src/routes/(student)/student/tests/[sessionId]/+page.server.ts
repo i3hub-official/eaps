@@ -2,6 +2,7 @@ import type { PageServerLoad } from './$types'
 import { error, redirect } from '@sveltejs/kit'
 import { requireStudent } from '$lib/server/auth/guards'
 import { getPrismaClient } from '$lib/server/db/index.js'
+import { shuffleArray } from '$lib/utils/shuffle'
 
 // A resumed IN_PROGRESS/PAUSED session skips lobby/terms and returns
 // straight to the kiosk — UNLESS the last known activity (lastSyncAt,
@@ -45,31 +46,113 @@ export const load: PageServerLoad = async ({ locals, params }) => {
 
 	const answerMap = new Map(session.answers.map((a) => [a.questionId, a]))
 
-	const questions = session.questionOrder.map((sqo) => {
-		const q = sqo.question
-		const orderIds = (sqo.optionOrder as string[]) ?? []
-		const optionsById = new Map(q.options.map((o) => [o.id, o]))
-		const orderedOptions = orderIds.length
-			? (orderIds.map((id) => optionsById.get(id)).filter(Boolean) as typeof q.options)
-			: q.options
+	type ExamOption = { id: string; body: string; imageUrl: string | null }
 
-		const existing = answerMap.get(q.id)
+	// Explicit shape for each question sent to the client. Annotating the
+	// map callback below with this return type means TypeScript locks in
+	// this shape no matter what — so an unrelated type error elsewhere in
+	// the callback (e.g. a Prisma model name that doesn't match your
+	// schema) can never again cause the whole `questions` array to
+	// collapse to `{}[]` and break every `q.foo` access downstream in
+	// +page.svelte.
+	type ExamQuestion = {
+		position: number
+		questionId: string
+		type: string
+		body: string
+		imageUrl: string | null
+		marks: number
+		options: ExamOption[]
+		leftItems: string[] | undefined
+		selectedOptions: string[]
+		textAnswer: string
+		orderAnswer: string[]
+		matchAnswer: Record<string, string>
+	}
 
-		return {
-			position: sqo.position,
-			questionId: q.id,
-			type: q.type,
-			body: q.body,
-			imageUrl: q.imageUrl,
-			marks: Number(q.marks),
-			options: orderedOptions.map((o) => ({ id: o.id, body: o.body, imageUrl: o.imageUrl })),
-			leftItems: q.type === 'MATCHING' ? orderedOptions.map((o) => o.body) : undefined,
-			selectedOptions: (existing?.selectedOptions as string[] | null) ?? [],
-			textAnswer: existing?.textAnswer ?? '',
-			orderAnswer: (existing?.orderAnswer as string[] | null) ?? orderedOptions.map((o) => o.id),
-			matchAnswer: (existing?.matchAnswer as Record<string, string> | null) ?? {},
+	// NOTE on question-level shuffling: the *order of questions themselves*
+	// (session.questionOrder, sorted by `position`) is assigned once, when
+	// these rows are first created for the session — that's almost certainly
+	// in a "start test" / "create session" server action elsewhere in the
+	// codebase, not in this loader. If that code assigns `position`
+	// sequentially instead of over a shuffled question list, that's where to
+	// fix it, e.g.:
+	//
+	//   const shuffledQuestions = shuffleArray(bankQuestions)
+	//   await prisma.sessionQuestionOrder.createMany({
+	//     data: shuffledQuestions.map((q, i) => ({
+	//       sessionId: session.id,
+	//       questionId: q.id,
+	//       position: i,
+	//       optionOrder: shuffleArray(q.options.map((o) => o.id)),
+	//     })),
+	//   })
+	//
+	// This loader only *reads* whatever order was stored at creation time.
+	//
+	// What we CAN fix here defensively: option order. Previously, if
+	// `optionOrder` was ever missing or stale (e.g. legacy rows, or a bug
+	// upstream), the code silently fell back to the raw (unshuffled)
+	// `q.options` array — meaning "correct answer is always listed first"
+	// could leak through in practice. Below we self-heal: if the stored
+	// order doesn't match the current option set, shuffle once and persist
+	// it, so the fix is permanent and the order stays stable across reloads
+	// and resumes rather than re-shuffling on every request.
+	// Persisting a healed option order is best-effort and isolated in its own
+	// function with its own try/catch: if the model name below doesn't match
+	// your schema, or the write fails for any other reason, that failure is
+	// contained here — it can't affect the type or the value of `questions`,
+	// and the shuffled order the student sees this request is still correct
+	// even if it isn't saved (it'll just self-heal again on the next load).
+	async function persistHealedOptionOrder(sqoId: string, orderIds: string[]) {
+		try {
+			// Rename `sessionQuestionOrder` to match your actual Prisma model
+			// name for the session-question join table if it differs.
+			await prisma.sessionQuestionOrder.update({
+				where: { id: sqoId },
+				data: { optionOrder: orderIds },
+			})
+		} catch (err) {
+			console.error('Failed to persist healed option order for', sqoId, err)
 		}
-	})
+	}
+
+	const questions: ExamQuestion[] = await Promise.all(
+		session.questionOrder.map(async (sqo): Promise<ExamQuestion> => {
+			const q = sqo.question
+			let orderIds = (sqo.optionOrder as string[] | null) ?? []
+
+			const validIds = new Set(q.options.map((o) => o.id))
+			const isStale = orderIds.length !== q.options.length || orderIds.some((id) => !validIds.has(id))
+
+			if (isStale) {
+				orderIds = shuffleArray(q.options.map((o) => o.id))
+				await persistHealedOptionOrder(sqo.id, orderIds)
+			}
+
+			const optionsById = new Map(q.options.map((o) => [o.id, o]))
+			const orderedOptions = orderIds
+				.map((id) => optionsById.get(id))
+				.filter((o): o is NonNullable<typeof o> => Boolean(o))
+
+			const existing = answerMap.get(q.id)
+
+			return {
+				position: sqo.position,
+				questionId: q.id,
+				type: q.type,
+				body: q.body,
+				imageUrl: q.imageUrl,
+				marks: Number(q.marks),
+				options: orderedOptions.map((o) => ({ id: o.id, body: o.body, imageUrl: o.imageUrl })),
+				leftItems: q.type === 'MATCHING' ? orderedOptions.map((o) => o.body) : undefined,
+				selectedOptions: (existing?.selectedOptions as string[] | null) ?? [],
+				textAnswer: existing?.textAnswer ?? '',
+				orderAnswer: (existing?.orderAnswer as string[] | null) ?? orderedOptions.map((o) => o.id),
+				matchAnswer: (existing?.matchAnswer as Record<string, string> | null) ?? {},
+			}
+		})
+	)
 
 	// Determine whether a resumed session needs face re-verification.
 	let needsReverify = false

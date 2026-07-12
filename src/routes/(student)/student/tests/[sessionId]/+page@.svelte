@@ -1,17 +1,26 @@
-<!-- src/routes/(student)/student/tests/[sessionId]/+page.svelte -->
+<!-- src/routes/(student)/student/tests/[sessionId]/+page@.svelte -->
+<!--
+	The "@" in the filename is SvelteKit's layout-reset syntax: it tells
+	SvelteKit to skip every layout between here and the root layout —
+	specifically the (student) dashboard layout (sidebar/topbar chrome) that
+	this route would otherwise inherit. The exam kiosk needs to stand alone,
+	full-bleed, with nothing from the dashboard shell around it. The
+	+page.server.ts loader is unaffected by this rename and keeps working
+	exactly as before.
+-->
 <script lang="ts">
 	import { onMount, onDestroy } from 'svelte'
 	import { goto } from '$app/navigation'
 	import { toast } from 'svelte-sonner'
 	import { Button } from '$lib/components/ui/button/index.js'
 	import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '$lib/components/ui/card/index.js'
-	import { Badge } from '$lib/components/ui/badge/index.js'
 	import { Checkbox } from '$lib/components/ui/checkbox/index.js'
 	import { RadioGroup, RadioGroupItem } from '$lib/components/ui/radio-group/index.js'
 	import { Textarea } from '$lib/components/ui/textarea/index.js'
 	import { Input } from '$lib/components/ui/input/index.js'
+	import { Slider } from '$lib/components/ui/slider/index.js'
 	import FaceVerifyModal from '$lib/components/exam/FaceVerifyModal.svelte'
-	import Camera from '@lucide/svelte/icons/camera'
+	import DeviceCheckPanel from '$lib/components/exam/DeviceCheckPanel.svelte'
 	import CheckCircle2 from '@lucide/svelte/icons/check-circle-2'
 	import AlertCircle from '@lucide/svelte/icons/alert-circle'
 	import Clock from '@lucide/svelte/icons/clock'
@@ -20,8 +29,14 @@
 	import ArrowUp from '@lucide/svelte/icons/arrow-up'
 	import ArrowDown from '@lucide/svelte/icons/arrow-down'
 	import ExamMonitor from '$lib/components/exam/ExamMonitor.svelte'
+	import type { PageData } from './$types'
 
-	let { data } = $props()
+	// Explicit annotation here (rather than relying on $props() to pick up
+	// the generated type on its own) is a safety net: it guarantees
+	// `data.questions` — and therefore the `questions` state below — keeps
+	// its real shape (selectedOptions, textAnswer, etc.) instead of ever
+	// silently widening to `{}` if type inference from the loader breaks.
+	let { data }: { data: PageData } = $props()
 
 	type Step = 'lobby' | 'terms' | 'faceverify' | 'kiosk' | 'closed'
 
@@ -43,14 +58,23 @@
 
 	let step = $state<Step>(initialStep())
 	let termsAccepted = $state(Boolean(data.termsAcceptedAt))
-	let cameraChecked = $state(false)
-	let cameraError = $state('')
+	let devicePassed = $state(false)
+
+	// ─── Question palette number size (small / normal / big) ───────────────
+	// 0 = small, 1 = normal, 2 = big
+	let numberSize = $state<number>(1)
+	const NUMBER_SIZE_CLASSES = [
+		'size-6 text-[10px]',
+		'size-8 text-xs',
+		'size-11 text-sm',
+	]
 
 	// ─── Kiosk state ─────────────────────────────────────────────────────────
 	let questions = $state(data.questions.map((q) => ({ ...q })))
 	let currentIndex = $state(0)
 	let remainingSeconds = $state(data.timeRemainingSeconds ?? data.assessment.durationMinutes * 60)
 	let isSubmitting = $state(false)
+	let showSubmitConfirm = $state(false)
 
 	let timerInterval: ReturnType<typeof setInterval> | null = null
 	let syncInterval: ReturnType<typeof setInterval> | null = null
@@ -66,6 +90,7 @@
 			return true
 		}).length
 	)
+	const allAnswered = $derived(answeredCount === questions.length)
 
 	function formatTime(totalSeconds: number) {
 		const m = Math.floor(totalSeconds / 60)
@@ -73,23 +98,9 @@
 		return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`
 	}
 
-	// ─── Camera check (lobby) ──────────────────────────────────────────────
-	async function checkCamera() {
-		cameraError = ''
-		try {
-			const stream = await navigator.mediaDevices.getUserMedia({ video: true })
-			stream.getTracks().forEach((t) => t.stop())
-			cameraChecked = true
-			toast.success('Camera access confirmed')
-		} catch {
-			cameraError = 'Camera access denied or unavailable. Enable camera permissions to continue.'
-			toast.error(cameraError)
-		}
-	}
-
 	function proceedToTerms() {
-		if (!cameraChecked) {
-			toast.error('Confirm camera access before continuing')
+		if (!devicePassed) {
+			toast.error('All device checks (camera, microphone, location) must pass before continuing')
 			return
 		}
 		step = 'terms'
@@ -134,7 +145,12 @@
 			}
 			step = 'kiosk'
 			startTimers()
-			if (data.assessment.fullscreenRequired) requestFullscreen()
+			// Always enter fullscreen for the kiosk — this is a general
+			// distraction-free requirement, independent of whether the
+			// assessment specifically flags fullscreenRequired (that flag
+			// still separately controls whether exiting fullscreen gets
+			// logged as a violation — see handleFullscreenChange).
+			requestFullscreen()
 		} catch (err) {
 			toast.error(err instanceof Error ? err.message : 'Failed to start session')
 		}
@@ -147,7 +163,7 @@
 			// re-enter the kiosk and resume timers.
 			step = 'kiosk'
 			startTimers()
-			if (data.assessment.fullscreenRequired) requestFullscreen()
+			requestFullscreen()
 		} else {
 			enterKiosk()
 		}
@@ -177,6 +193,10 @@
 	}
 
 	function handleFullscreenChange() {
+		// Only log a violation if this specific assessment requires
+		// fullscreen — the kiosk still *tries* to go fullscreen for every
+		// assessment (see enterKiosk), but only flags exiting it as
+		// suspicious when the lecturer has explicitly turned that on.
 		if (step === 'kiosk' && !document.fullscreenElement && data.assessment.fullscreenRequired) {
 			logViolation('FULLSCREEN_EXIT', 2)
 			toast.warning('You exited fullscreen mode — this has been logged')
@@ -204,11 +224,15 @@
 	}
 
 	// ─── Keyboard shortcuts (kiosk only) ────────────────────────────────────
-	// A–D select options 0–3 for choice questions, Y/N for True/False,
-	// R returns to the previous question. Disabled while focus is inside a
-	// text field so essay/fill-blank typing is never hijacked, and disabled
-	// whenever a modifier key is held so it never fights the browser or the
-	// ExamMonitor's own Ctrl/Cmd shortcut interception.
+	// A–D select options 0–3 for choice questions (True/False only ever has
+	// two options, so A/B already covers it — no separate Y/N answer
+	// shortcut is needed, which frees up Y/N for submit/next below).
+	// N: next question · P: previous question
+	// Y: open the submit confirmation (or confirm submit if it's already open)
+	// R: decline ("No") the submit confirmation
+	// Disabled while focus is inside a text field so essay/fill-blank typing
+	// is never hijacked, and disabled whenever a modifier key is held so it
+	// never fights the browser or the ExamMonitor's own shortcut interception.
 	function isTypingTarget(target: EventTarget | null) {
 		if (!(target instanceof HTMLElement)) return false
 		const tag = target.tagName
@@ -222,6 +246,20 @@
 
 		const key = e.key.toLowerCase()
 
+		// While the submit confirmation is open, only Y (confirm) and R
+		// (decline) do anything, so a stray keypress can't accidentally
+		// navigate away or submit early.
+		if (showSubmitConfirm) {
+			if (key === 'y') {
+				e.preventDefault()
+				confirmSubmit()
+			} else if (key === 'r') {
+				e.preventDefault()
+				showSubmitConfirm = false
+			}
+			return
+		}
+
 		const letterIndex = { a: 0, b: 1, c: 2, d: 3 }[key]
 		if (letterIndex !== undefined && currentQuestion.options?.[letterIndex]) {
 			e.preventDefault()
@@ -232,19 +270,15 @@
 			return
 		}
 
-		if (currentQuestion.type === 'TRUE_FALSE' && (key === 'y' || key === 'n')) {
+		if (key === 'n') {
 			e.preventDefault()
-			const wantsTrue = key === 'y'
-			const match = currentQuestion.options.find((o) =>
-				wantsTrue ? /^(true|yes)$/i.test(o.body.trim()) : /^(false|no)$/i.test(o.body.trim())
-			)
-			if (match) selectSingle(match.id)
-			return
-		}
-
-		if (key === 'r') {
+			goTo(currentIndex + 1)
+		} else if (key === 'p') {
 			e.preventDefault()
 			goTo(currentIndex - 1)
+		} else if (key === 'y') {
+			e.preventDefault()
+			openSubmitConfirm()
 		}
 	}
 
@@ -353,6 +387,16 @@
 		if (index >= 0 && index < questions.length) currentIndex = index
 	}
 
+	// ─── Submit confirmation ────────────────────────────────────────────────
+	function openSubmitConfirm() {
+		showSubmitConfirm = true
+	}
+
+	function confirmSubmit() {
+		showSubmitConfirm = false
+		handleSubmit(false)
+	}
+
 	async function handleSubmit(auto = false) {
 		if (isSubmitting) return
 		isSubmitting = true
@@ -396,7 +440,7 @@
 
 		if (step === 'kiosk') {
 			startTimers()
-			if (data.assessment.fullscreenRequired && !document.fullscreenElement) requestFullscreen()
+			if (!document.fullscreenElement) requestFullscreen()
 		}
 	})
 
@@ -446,23 +490,9 @@
 					<div class="flex justify-between py-1"><span class="text-muted-foreground">Total marks</span><span class="font-medium">{data.assessment.totalMarks}</span></div>
 				</div>
 
-				<div class="rounded-lg border p-4">
-					<div class="flex items-center justify-between">
-						<div class="flex items-center gap-2 text-sm font-medium">
-							<Camera class="size-4" /> Camera check
-						</div>
-						{#if cameraChecked}
-							<Badge><CheckCircle2 class="mr-1 size-3" /> Ready</Badge>
-						{:else}
-							<Button size="sm" variant="outline" onclick={checkCamera}>Test camera</Button>
-						{/if}
-					</div>
-					{#if cameraError}
-						<p class="mt-2 text-xs text-destructive">{cameraError}</p>
-					{/if}
-				</div>
+				<DeviceCheckPanel bind:allPassed={devicePassed} />
 
-				<Button class="w-full" onclick={proceedToTerms} disabled={!cameraChecked}>
+				<Button class="w-full" onclick={proceedToTerms} disabled={!devicePassed}>
 					Continue
 				</Button>
 			</CardContent>
@@ -528,6 +558,14 @@
 		<div class="flex flex-1">
 			<!-- Question palette -->
 			<aside class="hidden w-48 shrink-0 border-r p-4 md:block">
+				<div class="mb-4">
+					<p class="mb-1 text-[11px] font-medium text-muted-foreground">Number size</p>
+					<Slider type="single" min={0} max={2} step={1} bind:value={numberSize} class="w-full" />
+					<div class="mt-1 flex justify-between text-[10px] text-muted-foreground">
+						<span>Small</span><span>Normal</span><span>Big</span>
+					</div>
+				</div>
+
 				<div class="grid grid-cols-5 gap-2">
 					{#each questions as q, i}
 						{@const answered =
@@ -541,7 +579,7 @@
 						<button
 							type="button"
 							onclick={() => goTo(i)}
-							class="flex size-8 items-center justify-center rounded-md border text-xs font-semibold
+							class="flex items-center justify-center rounded-md border font-semibold {NUMBER_SIZE_CLASSES[numberSize]}
 								{i === currentIndex ? 'border-primary bg-primary text-primary-foreground' : answered ? 'border-primary/40 bg-primary/10' : 'border-border'}"
 						>
 							{i + 1}
@@ -549,7 +587,7 @@
 					{/each}
 				</div>
 				<p class="mt-4 text-[11px] leading-relaxed text-muted-foreground">
-					Shortcuts: A–D select an option, Y/N for True/False, R returns to the previous question.
+					Shortcuts: A–D select an option, N next, P previous, Y submit, R cancel.
 				</p>
 			</aside>
 
@@ -642,24 +680,61 @@
 					</div>
 				{/if}
 
-				<div class="mt-auto flex items-center justify-between pt-4">
+				<div class="mt-auto flex items-center justify-between gap-2 pt-4">
 					<Button variant="outline" onclick={() => goTo(currentIndex - 1)} disabled={currentIndex === 0}>
-						<ArrowLeft class="mr-2 size-4" /> Previous
+						<ArrowLeft class="mr-2 size-4" /> Previous <span class="ml-1 text-[10px] opacity-60">(P)</span>
 					</Button>
 
-					{#if currentIndex === questions.length - 1}
-						<Button onclick={() => handleSubmit(false)} disabled={isSubmitting}>
-							{isSubmitting ? 'Submitting…' : 'Submit Test'}
-						</Button>
-					{:else}
-						<Button onclick={() => goTo(currentIndex + 1)}>
-							Next <ArrowRight class="ml-2 size-4" />
-						</Button>
-					{/if}
+					<div class="flex items-center gap-2">
+						<!-- Visible whenever every question is answered, on ANY page —
+						     not only on the last one. Also kept visible on the last
+						     page even if not everything is answered yet, so the
+						     student is never stuck without a way to submit. -->
+						{#if allAnswered || currentIndex === questions.length - 1}
+							<Button onclick={openSubmitConfirm} disabled={isSubmitting}>
+								{isSubmitting ? 'Submitting…' : 'Submit Test'} <span class="ml-1 text-[10px] opacity-70">(Y)</span>
+							</Button>
+						{/if}
+						{#if currentIndex < questions.length - 1}
+							<Button variant={allAnswered ? 'outline' : 'default'} onclick={() => goTo(currentIndex + 1)}>
+								Next <ArrowRight class="ml-2 size-4" /> <span class="ml-1 text-[10px] opacity-60">(N)</span>
+							</Button>
+						{/if}
+					</div>
 				</div>
 			</main>
 		</div>
 
-		<ExamMonitor sessionId={data.sessionId} />
+		<!-- ExamMonitor moved to the top-right corner, below the sticky header.
+		     z-30 keeps it under the submit-confirm dialog (z-40) and any
+		     face-verify modal (z-50), so nothing collides with it visually. -->
+		<div class="pointer-events-none fixed right-4 top-20 z-30">
+			<div class="pointer-events-auto">
+				<ExamMonitor sessionId={data.sessionId} />
+			</div>
+		</div>
+
+		{#if showSubmitConfirm}
+			<div class="fixed inset-0 z-40 flex items-center justify-center bg-black/60 p-4">
+				<div class="w-full max-w-sm rounded-2xl border border-border bg-card p-6 shadow-xl">
+					<h3 class="text-base font-semibold">Submit your test?</h3>
+					<p class="mt-1 text-sm text-muted-foreground">
+						You've answered {answeredCount} of {questions.length} question{questions.length === 1 ? '' : 's'}.
+						{#if answeredCount < questions.length}
+							Unanswered questions will be marked as blank.
+						{/if}
+						This can't be undone.
+					</p>
+					<div class="mt-5 flex gap-2">
+						<Button variant="outline" class="flex-1" onclick={() => (showSubmitConfirm = false)}>
+							No <span class="ml-1 text-[10px] opacity-60">(R)</span>
+						</Button>
+						<Button class="flex-1" onclick={confirmSubmit} disabled={isSubmitting}>
+							{isSubmitting ? 'Submitting…' : 'Yes, submit'} <span class="ml-1 text-[10px] opacity-70">(Y)</span>
+						</Button>
+					</div>
+				</div>
+			</div>
+		{/if}
 	</div>
 {/if}

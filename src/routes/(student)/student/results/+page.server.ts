@@ -2,7 +2,11 @@
 import type { PageServerLoad } from './$types'
 import { getPrismaClient } from '$lib/server/db/index.js'
 import { requireStudent } from '$lib/server/auth/guards'
+import { env } from '$env/dynamic/private'
+import Groq from 'groq-sdk'
 import type { Prisma } from '@prisma/client'
+
+const MODEL = 'llama-3.3-70b-versatile'
 
 type TranscriptEntryWithRelations = Prisma.TranscriptEntryGetPayload<{
   include: { course: true; session: true }
@@ -101,6 +105,60 @@ export const load: PageServerLoad = async ({ locals }) => {
   )
   const cgpa = overallCreditUnits > 0 ? (overallGradePoints / overallCreditUnits).toFixed(2) : null
 
+  // ── AI study insight (streamed) ──────────────────────────────────────────
+  // Adapted from a Groq-based recommendation feature in another project.
+  // Deliberately NOT awaited here — it's assigned as a pending promise, and
+  // +page.svelte resolves it with `{#await data.recommendations}`. That way
+  // a slow/failed LLM call never blocks the transcript itself from
+  // rendering, since everything above this point is real, already-fetched
+  // data the student is waiting on.
+  async function getRecommendations(): Promise<string | null> {
+    if (!env.GROQ_API_KEY) {
+      // Not configured — fail quietly rather than breaking the page.
+      // Add GROQ_API_KEY to your .env and `npm install groq-sdk` to enable.
+      return null
+    }
+    try {
+      const groq = new Groq({ apiKey: env.GROQ_API_KEY })
+
+      const allCourses = sessionSummaries.flatMap((s) => s.courses)
+      const failed = allCourses.filter((c) => c.grade === 'F')
+      const low = allCourses.filter((c) => c.grade === 'D' || c.grade === 'E')
+      const strong = allCourses.filter((c) => c.grade === 'A')
+
+      if (allCourses.length === 0) return null // nothing finalized yet — nothing to say
+
+      const res = await groq.chat.completions.create({
+        model: MODEL,
+        max_tokens: 800,
+        messages: [
+          { role: 'system', content: 'You are a warm, knowledgeable academic advisor at a Nigerian university.' },
+          {
+            role: 'user',
+            content: `
+You are an academic advisor at MOUAU (Michael Okpara University of Agriculture, Umudike).
+CGPA: ${cgpa ?? 'Not yet available'} / 5.00
+Failed courses: ${failed.map((c) => `${c.courseCode} (${c.courseTitle})`).join(', ') || 'None'}
+Low-scoring (D/E): ${low.map((c) => `${c.courseCode} (${c.courseTitle})`).join(', ') || 'None'}
+Strong (A): ${strong.map((c) => `${c.courseCode} (${c.courseTitle})`).join(', ') || 'None'}
+Sessions completed: ${sessionSummaries.length}
+
+Provide personalised, actionable study recommendations:
+1. Overall assessment (2-3 sentences)
+2. Priority areas to improve (bullet points)
+3. Study strategies for weak areas (bullet points)
+4. Encouragement and next steps (2-3 sentences)
+Address the student directly. Be warm and specific.`.trim(),
+          },
+        ],
+      })
+      return res.choices[0]?.message?.content ?? null
+    } catch (err) {
+      console.error('[Groq] recommendation failed:', err)
+      return null
+    }
+  }
+
   return {
     cgpa,
     sessionSummaries,
@@ -118,6 +176,10 @@ export const load: PageServerLoad = async ({ locals }) => {
       passed: r.passed,
       releasedAt: r.releasedAt,
       isRevised: r.isRevised,
+      // Lets the "Review Questions" link only show up where it's actually
+      // allowed — see /student/results/[resultId]/review.
+      allowReview: r.assessment.allowReview,
     })),
+    recommendations: getRecommendations(),
   }
 }
