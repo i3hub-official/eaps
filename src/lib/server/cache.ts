@@ -9,112 +9,112 @@
 // Requires REDIS_URL in your environment and the `redis` package installed
 // (`pnpm add redis`).
 
-import { createClient } from 'redis'
-import { env } from '$env/dynamic/private'
+// import { createClient } from 'redis'
+// import { env } from '$env/dynamic/private'
 
-const redis = createClient({ url: env.REDIS_URL })
+// const redis = createClient({ url: env.REDIS_URL })
 
-redis.on('error', (err) => {
-	console.error('[cache] Redis client error:', err)
-})
+// redis.on('error', (err) => {
+// 	console.error('[cache] Redis client error:', err)
+// })
 
-let connectPromise: Promise<void> | null = null
+// let connectPromise: Promise<void> | null = null
 
-async function ensureConnected(): Promise<boolean> {
-	if (redis.isOpen) return true
-	try {
-		if (!connectPromise) {
-			connectPromise = redis.connect().then(() => undefined)
-		}
-		await connectPromise
-		return true
-	} catch (err) {
-		console.error('[cache] Redis connection failed:', err)
-		connectPromise = null
-		return false
-	}
-}
-
-export const serverCache = {
-	/**
-	 * Returns the cached value, or null on a miss OR on any Redis failure.
-	 * Callers should always treat null as "go fetch from the source of
-	 * truth" — this cache fails open, never fails the request.
-	 */
-	async get<T>(key: string): Promise<T | null> {
-		const ok = await ensureConnected()
-		if (!ok) return null
-		try {
-			const raw = await redis.get(key)
-			return raw ? (JSON.parse(raw) as T) : null
-		} catch (err) {
-			console.error(`[cache] get(${key}) failed:`, err)
-			return null
-		}
-	},
-
-	/**
-	 * Best-effort write. A failed cache write must never fail the request
-	 * that triggered it — the caller already has the fresh value; the
-	 * cache is purely an optimization for subsequent reads.
-	 */
-	async set(key: string, value: unknown, ttlMs: number): Promise<void> {
-		const ok = await ensureConnected()
-		if (!ok) return
-		try {
-			await redis.set(key, JSON.stringify(value), { PX: ttlMs })
-		} catch (err) {
-			console.error(`[cache] set(${key}) failed:`, err)
-		}
-	},
-
-	/** Explicit invalidation — call this whenever the cached data changes
-	 * at the source (e.g. session status transitions) before its TTL
-	 * would naturally expire. */
-	async del(key: string): Promise<void> {
-		const ok = await ensureConnected()
-		if (!ok) return
-		try {
-			await redis.del(key)
-		} catch (err) {
-			console.error(`[cache] del(${key}) failed:`, err)
-		}
-	},
-}
-
-
-
-
-// type CacheEntry<T> = {
-//   value: T;
-//   expiresAt: number;
-// };
-
-// class MemoryCache {
-//   private cache = new Map<string, CacheEntry<any>>();
-
-//   set<T>(key: string, value: T, ttlMs: number): void {
-//     this.cache.set(key, {
-//       value,
-//       expiresAt: Date.now() + ttlMs,
-//     });
-//   }
-
-//   get<T>(key: string): T | null {
-//     const entry = this.cache.get(key);
-//     if (!entry) return null;
-
-//     if (Date.now() > entry.expiresAt) {
-//       this.cache.delete(key); // Evict expired data
-//       return null;
-//     }
-
-//     return entry.value as T;
-//   }
-
-//   invalidate(key: string): void {
-//     this.cache.delete(key);
-//   }
+// async function ensureConnected(): Promise<boolean> {
+// 	if (redis.isOpen) return true
+// 	try {
+// 		if (!connectPromise) {
+// 			connectPromise = redis.connect().then(() => undefined)
+// 		}
+// 		await connectPromise
+// 		return true
+// 	} catch (err) {
+// 		console.error('[cache] Redis connection failed:', err)
+// 		connectPromise = null
+// 		return false
+// 	}
 // }
 
-// export const serverCache = new MemoryCache();
+// export const serverCache = {
+// 	/**
+// 	 * Returns the cached value, or null on a miss OR on any Redis failure.
+// 	 * Callers should always treat null as "go fetch from the source of
+// 	 * truth" — this cache fails open, never fails the request.
+// 	 */
+// 	async get<T>(key: string): Promise<T | null> {
+// 		const ok = await ensureConnected()
+// 		if (!ok) return null
+// 		try {
+// 			const raw = await redis.get(key)
+// 			return raw ? (JSON.parse(raw) as T) : null
+// 		} catch (err) {
+// 			console.error(`[cache] get(${key}) failed:`, err)
+// 			return null
+// 		}
+// 	},
+
+// 	/**
+// 	 * Best-effort write. A failed cache write must never fail the request
+// 	 * that triggered it — the caller already has the fresh value; the
+// 	 * cache is purely an optimization for subsequent reads.
+// 	 */
+// 	async set(key: string, value: unknown, ttlMs: number): Promise<void> {
+// 		const ok = await ensureConnected()
+// 		if (!ok) return
+// 		try {
+// 			await redis.set(key, JSON.stringify(value), { PX: ttlMs })
+// 		} catch (err) {
+// 			console.error(`[cache] set(${key}) failed:`, err)
+// 		}
+// 	},
+
+// 	/** Explicit invalidation — call this whenever the cached data changes
+// 	 * at the source (e.g. session status transitions) before its TTL
+// 	 * would naturally expire. */
+// 	async del(key: string): Promise<void> {
+// 		const ok = await ensureConnected()
+// 		if (!ok) return
+// 		try {
+// 			await redis.del(key)
+// 		} catch (err) {
+// 			console.error(`[cache] del(${key}) failed:`, err)
+// 		}
+// 	},
+// }
+
+
+
+
+type CacheEntry<T> = {
+  value: T;
+  expiresAt: number;
+};
+
+class MemoryCache {
+  private cache = new Map<string, CacheEntry<any>>();
+
+  set<T>(key: string, value: T, ttlMs: number): void {
+    this.cache.set(key, {
+      value,
+      expiresAt: Date.now() + ttlMs,
+    });
+  }
+
+  get<T>(key: string): T | null {
+    const entry = this.cache.get(key);
+    if (!entry) return null;
+
+    if (Date.now() > entry.expiresAt) {
+      this.cache.delete(key); // Evict expired data
+      return null;
+    }
+
+    return entry.value as T;
+  }
+
+  invalidate(key: string): void {
+    this.cache.delete(key);
+  }
+}
+
+export const serverCache = new MemoryCache();
