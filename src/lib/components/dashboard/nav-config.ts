@@ -92,7 +92,8 @@ export const navByRole: Record<Role, NavSection[]> = {
 			label: 'Content',
 			items: [
 				{ label: 'Question bank', href: '/lecturer/question-bank', icon: Database },
-				{ label: 'Grade submissions', href: '/lecturer/grade', icon: ClipboardList }
+				{ label: 'Grade submissions', href: '/lecturer/grade', icon: ClipboardList },
+				{ label: 'Reports', href: '/lecturer/report', icon: BarChart3 }
 			]
 		},
 		{

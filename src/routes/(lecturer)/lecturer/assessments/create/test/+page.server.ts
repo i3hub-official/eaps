@@ -114,15 +114,6 @@ export const actions: Actions = {
 			console.error('[TEST-CREATE] Failed to parse questionIds:', err)
 		}
 
-		console.log('[TEST-CREATE] Form submission:', {
-			courseId,
-			title,
-			totalMarks,
-			questionCount,
-			selectedQuestions: questionIds.length,
-			tags: tagNames.length,
-		})
-
 		const errors: Record<string, string> = {}
 		if (!courseId) errors.courseId = 'Course is required'
 		if (!title) errors.title = 'Title is required'
