@@ -7,7 +7,7 @@ import { requireStudent } from '$lib/server/auth/guards'
 import {
   checkStudentEligibility,
   createSession,
-} from '$lib/server/assessment/engine'
+} from '$lib/server/assessments/engine'
 import { audit } from '$lib/server/audit'
 
 export const POST: RequestHandler = async (event) => {

@@ -2,7 +2,7 @@
 import { json, error } from '@sveltejs/kit'
 import type { RequestHandler } from './$types'
 import { requireStudent } from '$lib/server/auth/guards'
-import { submitSession } from '$lib/server/assessment/engine'
+import { submitSession } from '$lib/server/assessments/engine'
 import { getPrismaClient } from '$lib/server/db/index.js'
 import { audit } from '$lib/server/audit'
 

@@ -36,12 +36,10 @@
     let gestureIndex = $state(0);
     let gesturesDone = $state(0);
     let holdProgress = $state(0);
-    
-    let tracker: GestureTracker | null = null; 
+    let tracker: GestureTracker | null = null;
     const GESTURE_COUNT = 3;
 
     let descriptors: number[][] = [];
-    let confidenceDisplay = $state(0);
 
     let videoEl = $state<HTMLVideoElement | null>(null);
     let canvasEl = $state<HTMLCanvasElement | null>(null);
@@ -51,7 +49,6 @@
     let loopHandle: number | null = null;
     let stopped = false;
     let lastResult: any = null;
-    let frameCount = 0;
 
     function themeColor(varName: string, fallback: string, alpha = 1) {
         if (typeof window === 'undefined') return fallback;
@@ -66,14 +63,13 @@
         const h = canvasEl.height;
         const cx = w / 2;
         const cy = h / 2;
-        
         const rx = w * 0.22;
         const ry = h * 0.48;
 
-        const primary = themeColor('--primary', '#00c9a7');
+        const primary     = themeColor('--primary', '#00c9a7');
         const destructive = themeColor('--destructive', '#ef4444');
-        const border = themeColor('--border', 'rgba(255,255,255,0.18)');
-        const card = themeColor('--card', '#0f1115');
+        const border      = themeColor('--border', 'rgba(255,255,255,0.18)');
+        const card        = themeColor('--card', '#0f1115');
 
         ctx.clearRect(0, 0, w, h);
 
@@ -99,7 +95,7 @@
             [cx - rx, cy + ry, [1, -1]],
             [cx + rx, cy + ry, [-1,-1]],
         ];
-        ctx.strokeStyle = multiple ? destructive : detectedFace ? primary : themeColor('--primary', 'rgba(0,201,167,0.6)', 0.6);
+        ctx.strokeStyle = multiple ? destructive : primary;
         ctx.lineWidth = 2.5;
         ctx.lineCap = 'round';
         for (const [x, y, [dx, dy]] of corners) {
@@ -218,20 +214,19 @@
             faceDetected = true;
             const face = faces[0];
             const box = face.box;
-            const faceW = Array.isArray(box) ? box[2] : box.bottomRight[0] - box.topLeft[0];
-            const faceH = Array.isArray(box) ? box[3] : box.bottomRight[1] - box.topLeft[1];
-            const faceCX = Array.isArray(box) ? box[0] + box[2] / 2 : (box.topLeft[0] + box.bottomRight[0]) / 2;
-            const faceCY = Array.isArray(box) ? box[1] + box[3] / 2 : (box.topLeft[1] + box.bottomRight[1]) / 2;
+            const faceW   = Array.isArray(box) ? box[2] : box.bottomRight[0] - box.topLeft[0];
+            const faceH   = Array.isArray(box) ? box[3] : box.bottomRight[1] - box.topLeft[1];
+            const faceCX  = Array.isArray(box) ? box[0] + box[2] / 2 : (box.topLeft[0] + box.bottomRight[0]) / 2;
+            const faceCY  = Array.isArray(box) ? box[1] + box[3] / 2 : (box.topLeft[1] + box.bottomRight[1]) / 2;
 
-            const w = canvasEl.width;
-            const h = canvasEl.height;
+            const w  = canvasEl.width;
+            const h  = canvasEl.height;
             const cx = w / 2;
             const cy = h / 2;
-            
             const rx = w * 0.22;
             const ry = h * 0.48;
 
-            const centred = Math.abs(faceCX - cx) < rx * 0.5 && Math.abs(faceCY - cy) < ry * 0.5;
+            const centred     = Math.abs(faceCX - cx) < rx * 0.5 && Math.abs(faceCY - cy) < ry * 0.5;
             const largeEnough = faceW > w * 0.12 && faceH > h * 0.18;
 
             if (centred && largeEnough) {
@@ -248,8 +243,6 @@
                     descriptors = [];
                     tracker = new GestureTracker();
                     holdProgress = 0;
-                    confidenceDisplay = 0;
-                    frameCount = 0;
                     phase = 'gesture';
                     statusText = selected[0]?.label || '';
                     loopHandle = requestAnimationFrame(gestureLoop);
@@ -267,18 +260,20 @@
     }
 
     async function gestureLoop() {
-        if (stopped || phase !== 'gesture' || !tracker) return;
-        frameCount++;
+        if (stopped || phase !== 'gesture') return;
+
+        // Guard: if tracker was lost, rebuild it rather than throwing.
+        if (!tracker) tracker = new GestureTracker();
+
         await detect();
         if (stopped || phase !== 'gesture') return;
 
-        const faces = lastResult?.face ?? [];
+        const faces    = lastResult?.face ?? [];
         const gestures = lastResult?.gesture ?? [];
 
         if (faces.length === 0) {
             tracker.reset();
             holdProgress = 0;
-            confidenceDisplay = 0;
             statusText = 'Keep your face in the oval';
             drawOverlay(false, false, 0, selected[gestureIndex]?.label);
             loopHandle = requestAnimationFrame(gestureLoop);
@@ -287,7 +282,6 @@
         if (faces.length > 1) {
             tracker.reset();
             holdProgress = 0;
-            confidenceDisplay = 0;
             statusText = 'Only one person allowed';
             drawOverlay(false, true, 0);
             loopHandle = requestAnimationFrame(gestureLoop);
@@ -295,31 +289,27 @@
         }
 
         const face = faces[0];
-        const g = selected[gestureIndex];
+        const g    = selected[gestureIndex];
         if (!g) {
             await finishCapture();
             return;
         }
 
         const confidence = gestureConfidence(g.id, face, gestures);
-        confidenceDisplay = confidence;
 
-        const anyOtherGestureActive = ALL_GESTURES
+        // Only cancel if a conflicting gesture is very confidently detected —
+        // a slightly raised threshold prevents accidental resets from noise.
+        const conflicting = ALL_GESTURES
             .filter(alt => alt.id !== g.id)
             .some(alt => gestureConfidence(alt.id, face, gestures) >= 0.85);
 
-        const confirmed = tracker.update(confidence, anyOtherGestureActive);
-        holdProgress = tracker.holdProgress;
-
-        if (frameCount % 10 === 0) {
-            console.log(`[Gesture] ${g.label}: confidence=${confidence.toFixed(2)}, holdProgress=${holdProgress.toFixed(2)}`);
-        }
+        const confirmed  = tracker.update(confidence, conflicting);
+        holdProgress     = tracker.holdProgress;
 
         drawOverlay(true, false, holdProgress, g.label);
         statusText = g.label;
 
         if (confirmed) {
-            console.log(`[Gesture] ✅ ${g.label} confirmed!`);
             if (face.embedding) descriptors.push(Array.from(face.embedding as number[]));
             gesturesDone = gestureIndex + 1;
 
@@ -329,10 +319,9 @@
             }
 
             gestureIndex++;
-            tracker = new GestureTracker();
+            tracker      = new GestureTracker();
             holdProgress = 0;
-            confidenceDisplay = 0;
-            statusText = selected[gestureIndex]?.label || '';
+            statusText   = selected[gestureIndex]?.label || '';
         }
 
         loopHandle = requestAnimationFrame(gestureLoop);
@@ -341,12 +330,12 @@
     async function finishCapture() {
         stopped = true;
         phase = 'processing';
-        statusText = 'Processing…';
+        statusText = 'Saving your face profile…';
 
         try {
             if (descriptors.length === 0) throw new Error('No face captures collected. Please try again.');
 
-            const dim = descriptors[0].length;
+            const dim      = descriptors[0].length;
             const averaged = new Array(dim).fill(0);
             for (const d of descriptors) {
                 for (let i = 0; i < dim; i++) averaged[i] += d[i] / descriptors.length;
@@ -381,17 +370,15 @@
     }
 
     function retry() {
-        errorMessage = '';
-        descriptors = [];
-        gestureIndex = 0;
-        gesturesDone = 0;
-        holdProgress = 0;
+        errorMessage    = '';
+        descriptors     = [];
+        gestureIndex    = 0;
+        gesturesDone    = 0;
+        holdProgress    = 0;
         posHoldProgress = 0;
-        posHoldStart = null;
-        faceDetected = false;
-        confidenceDisplay = 0;
-        frameCount = 0;
-        stopped = false;
+        posHoldStart    = null;
+        faceDetected    = false;
+        stopped         = false;
         start();
     }
 
@@ -399,6 +386,15 @@
         stopCamera();
         onCancel?.();
     }
+
+    // Icon component lookup — avoids branching in the template on a field
+    // that may not exist on GestureDefinition at runtime.
+    const gestureIconMap: Record<string, any> = {
+        left:  ArrowLeft,
+        right: ArrowRight,
+        nod:   ChevronUp,
+        mouth: SmilePlus,
+    };
 
     onMount(start);
     onDestroy(stopCamera);
@@ -415,6 +411,7 @@
             <X class="size-5" />
         </button>
 
+        <!-- Header -->
         <div class="mb-1 flex items-center gap-2">
             <h2 class="text-lg font-semibold">Face enrollment</h2>
             {#if phase === 'gesture'}
@@ -423,17 +420,21 @@
                 </span>
             {/if}
         </div>
+
+        <!-- Subtitle — fixed copy, not reactive status -->
         <p class="mb-4 text-sm text-muted-foreground">
             We'll use this to verify your identity before tests and exams.
         </p>
 
+        <!-- Camera viewport -->
         <div class="relative mb-4 aspect-video overflow-hidden rounded-lg bg-black">
             <video bind:this={videoEl} class="h-full w-full -scale-x-100 object-cover" muted playsinline></video>
             <canvas bind:this={canvasEl} class="pointer-events-none absolute inset-0 h-full w-full"></canvas>
 
             {#if phase === 'loading-model' || phase === 'requesting-camera' || phase === 'processing'}
-                <div class="absolute inset-0 flex items-center justify-center bg-black/50">
+                <div class="absolute inset-0 flex flex-col items-center justify-center gap-2 bg-black/50">
                     <Loader2 class="size-8 animate-spin text-white" />
+                    <p class="text-xs text-white/60">{statusText}</p>
                 </div>
             {/if}
 
@@ -442,34 +443,31 @@
                     <CheckCircle2 class="size-12 text-primary" />
                 </div>
             {/if}
-
-            {#if phase === 'gesture' && confidenceDisplay > 0}
-                <div class="absolute top-2 left-2 text-xs text-white bg-black/60 px-2 py-1 rounded">
-                    Confidence: {(confidenceDisplay * 100).toFixed(0)}%
-                </div>
-            {/if}
         </div>
+
+        <!-- Phase-specific feedback -->
 
         {#if phase === 'positioning'}
             <div class="mb-3 flex items-center justify-center gap-2 text-sm font-medium">
                 {#if faceDetected}
                     <CheckCircle2 class="size-4 text-primary" />
-                    <span class="text-primary">Face detected</span>
+                    <span class="text-primary">Face aligned — hold still</span>
                 {:else}
-                    <ScanFace class="size-4 text-muted-foreground" />
-                    <span class="text-muted-foreground">Looking for face…</span>
+                    <ScanFace class="size-4 animate-pulse text-muted-foreground" />
+                    <span class="text-muted-foreground">{statusText}</span>
                 {/if}
             </div>
-            {#if faceDetected && posHoldProgress > 0}
-                <div class="mb-4 h-1 w-full overflow-hidden rounded-full bg-muted">
+            {#if posHoldProgress > 0}
+                <div class="mb-3 h-1 w-full overflow-hidden rounded-full bg-muted">
                     <div class="h-full bg-primary transition-all" style="width: {posHoldProgress * 100}%"></div>
                 </div>
             {/if}
         {/if}
 
         {#if phase === 'gesture'}
+            <!-- Step dots -->
             <div class="mb-3 flex items-center justify-center gap-2">
-                {#each selected as _, i}
+                {#each selected as _g, i (i)}
                     <div
                         class="h-1.5 rounded-full transition-all duration-300 {i === gestureIndex
                             ? 'w-6 bg-primary'
@@ -479,19 +477,18 @@
                     ></div>
                 {/each}
             </div>
-            <div class="mb-2 flex items-center justify-center gap-2 text-primary">
-                {#if selected[gestureIndex]?.icon === 'left'}
-                    <ArrowLeft class="size-5" />
-                {:else if selected[gestureIndex]?.icon === 'right'}
-                    <ArrowRight class="size-5" />
-                {:else if selected[gestureIndex]?.icon === 'nod'}
-                    <ChevronUp class="size-5" />
-                {:else if selected[gestureIndex]?.icon === 'mouth'}
-                    <SmilePlus class="size-5" />
+
+            <!-- Gesture instruction pill with icon -->
+            <div class="mb-3 flex items-center justify-center gap-2 rounded-lg border border-border bg-muted/40 px-3 py-2 text-sm font-medium">
+                {#if selected[gestureIndex]?.icon && gestureIconMap[selected[gestureIndex].icon]}
+                    {@const GestureIcon = gestureIconMap[selected[gestureIndex].icon]}
+                    <GestureIcon class="size-4 text-primary" />
                 {/if}
+                <span class="text-foreground">{selected[gestureIndex]?.label ?? ''}</span>
             </div>
+
             {#if holdProgress > 0}
-                <div class="mb-4 h-1 w-full overflow-hidden rounded-full bg-muted">
+                <div class="mb-3 h-1 w-full overflow-hidden rounded-full bg-muted">
                     <div class="h-full bg-primary transition-all" style="width: {holdProgress * 100}%"></div>
                 </div>
             {/if}
@@ -502,10 +499,9 @@
                 <AlertCircle class="mt-0.5 size-4 shrink-0" />
                 <span>{errorMessage}</span>
             </div>
-        {:else}
-            <p class="mb-4 text-center text-sm text-muted-foreground">{statusText}</p>
         {/if}
 
+        <!-- Actions -->
         <div class="flex gap-2">
             {#if phase === 'error'}
                 <Button variant="outline" class="flex-1" onclick={handleCancel}>Cancel</Button>

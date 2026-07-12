@@ -3,7 +3,7 @@ import { fail, redirect } from '@sveltejs/kit'
 import type { Actions, PageServerLoad } from './$types'
 import { getPrismaClient } from '$lib/server/db/index.js'
 import { requireStudent } from '$lib/server/auth/guards'
-import { createSession } from '$lib/server/assessment/engine'
+import { createSession } from '$lib/server/assessments/engine'
 
 const TERMINAL_STATUSES = ['SUBMITTED', 'TIMED_OUT', 'DISQUALIFIED'] as const
 

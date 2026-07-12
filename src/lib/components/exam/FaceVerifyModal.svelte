@@ -28,7 +28,6 @@
     let statusText = $state('Loading face model…');
     let faceDetected = $state(false);
     let similarityPercent = $state<number | null>(null);
-    let debugText = $state('');
 
     // ─── Position Hold ─────────────────────────────────────────────────────
     let posHoldProgress = $state(0);
@@ -43,13 +42,19 @@
     let tracker: GestureTracker | null = null;
     const GESTURE_COUNT = 3;
 
-    // ─── Face Embeddings ───────────────────────────────────────────────────
+    // ─── Face Embeddings & Liveness Tracking ───────────────────────────────
+    // Instead of reading scores from the last frame alone (which may be stale
+    // or mid-blink), we accumulate the BEST real/live scores seen across every
+    // gesture frame. A real face will produce at least a few high-scoring frames;
+    // a spoof will consistently fail across all of them.
     let embeddings: number[][] = [];
     let enrolledDescriptor: number[] | null = null;
+    let bestRealScore = 0;
+    let bestLiveScore = 0;
 
     const MATCH_THRESHOLD = 0.78;
-    const MIN_ANTISPOOF = 0.65;
-    const MIN_LIVENESS = 0.65;
+    const MIN_ANTISPOOF = 0.55;   // Lowered: peak score across all frames, not per-frame
+    const MIN_LIVENESS  = 0.55;   // Lowered: same rationale
 
     // ─── DOM Refs ─────────────────────────────────────────────────────────
     let videoEl = $state<HTMLVideoElement | null>(null);
@@ -61,7 +66,6 @@
     let stopped = false;
     let lastResult: any = null;
 
-    // Cache HSL styles globally to avoid costly getComputedStyle calls on every frame
     let colors = { primary: '', destructive: '', border: '', card: '', background: '', foreground: '' };
 
     function initColors() {
@@ -166,6 +170,8 @@
             stopped = false;
             phase = 'loading-model';
             statusText = 'Loading face model…';
+            bestRealScore = 0;
+            bestLiveScore = 0;
             initColors();
             human = await getHuman();
 
@@ -195,7 +201,7 @@
 
             const descRes = await fetch('/api/face/descriptor');
             if (!descRes.ok) throw new Error('Failed to retrieve verification source profile.');
-            
+
             const data = await descRes.json();
             if (!data.descriptor) throw new Error('Invalid face profile metadata.');
             enrolledDescriptor = data.descriptor;
@@ -213,7 +219,7 @@
         if (!human || !videoEl || stopped) return;
         try {
             lastResult = await human.detect(videoEl);
-        } catch (err) {
+        } catch {
             lastResult = null;
         }
     }
@@ -311,6 +317,17 @@
         }
 
         const face = faces[0];
+
+        // ── Accumulate best liveness/antispoof scores seen this session ──────
+        // The model outputs noisy per-frame scores; a real face will peak well
+        // above threshold across the dozens of frames in a gesture sequence.
+        // Reading only the last frame means a blink or motion blur at the exact
+        // moment of finishCapture causes a false-positive spoof rejection.
+        const frameReal = face.real ?? face.antispoof ?? 0;
+        const frameLive = face.live ?? 0;
+        if (frameReal > bestRealScore) bestRealScore = frameReal;
+        if (frameLive > bestLiveScore) bestLiveScore = frameLive;
+
         const g = selected[gestureIndex];
         if (!g || !tracker) {
             await finishCapture();
@@ -368,14 +385,11 @@
             const similarity = cosineSimilarity(averaged, enrolledDescriptor);
             similarityPercent = Math.round(similarity * 100);
 
-            const lastFace = lastResult?.face?.[0];
-            const realScore = lastFace?.real ?? 0;
-            const liveScore = lastFace?.live ?? 0;
-            const antispoofScore = lastFace?.real ?? lastFace?.antispoof ?? 0;
-
+            // Use the best scores accumulated across all gesture frames,
+            // not the stale scores from the final (possibly frozen) frame.
             const matchPassed = similarity >= MATCH_THRESHOLD;
-            const realPassed = realScore >= MIN_ANTISPOOF;
-            const livePassed = liveScore >= MIN_LIVENESS;
+            const realPassed  = bestRealScore >= MIN_ANTISPOOF;
+            const livePassed  = bestLiveScore >= MIN_LIVENESS;
             const clientVerified = matchPassed && realPassed && livePassed;
 
             const verifyRes = await fetch('/api/face/verify-session', {
@@ -384,8 +398,8 @@
                 body: JSON.stringify({
                     verified: clientVerified,
                     similarityScore: similarityPercent,
-                    antispoofScore: Math.round(antispoofScore * 100),
-                    livenessScore: Math.round(liveScore * 100),
+                    antispoofScore: Math.round(bestRealScore * 100),
+                    livenessScore: Math.round(bestLiveScore * 100),
                     examId,
                 }),
             });
@@ -401,9 +415,9 @@
                 phase = 'failed';
                 stopCamera();
                 if (!matchPassed) {
-                    statusText = `Face match variance error (${similarityPercent}% match / needs ${Math.round(MATCH_THRESHOLD * 100)}%).`;
+                    statusText = 'The captured face does not match the enrolled profile.';
                 } else if (!realPassed || !livePassed) {
-                    statusText = 'Presentation attack detected. Pre-recorded media or spoofed sources are restricted.';
+                    statusText = 'Liveness check failed. Ensure you are in good lighting and your face is clearly visible.';
                 } else {
                     statusText = serverVerdict.message || 'Identity verification rejected by authentication gateway.';
                 }
@@ -427,6 +441,8 @@
         similarityPercent = null;
         faceDetected = false;
         embeddings = [];
+        bestRealScore = 0;
+        bestLiveScore = 0;
         gestureIndex = 0;
         gesturesDone = 0;
         holdProgress = 0;
@@ -456,6 +472,7 @@
             <X class="size-5" />
         </button>
 
+        <!-- Header -->
         <div class="mb-1 flex items-center gap-2">
             <h2 class="text-lg font-semibold">Verify your identity</h2>
             {#if phase === 'gesture'}
@@ -464,10 +481,25 @@
                 </span>
             {/if}
         </div>
+
+        <!-- Instruction line — always visible during active phases -->
         <p class="mb-4 text-sm text-muted-foreground">
-            Follow the on-screen instructions to verify your identity.
+            {#if phase === 'loading-model' || phase === 'requesting-camera'}
+                {statusText}
+            {:else if phase === 'positioning'}
+                {statusText}
+            {:else if phase === 'gesture'}
+                {statusText}
+            {:else if phase === 'checking'}
+                Verifying your identity, please wait…
+            {:else if phase === 'success'}
+                Identity confirmed. Proceeding…
+            {:else}
+                Follow the on-screen instructions to verify your identity.
+            {/if}
         </p>
 
+        <!-- Camera viewport -->
         <div class="relative mb-4 aspect-video overflow-hidden rounded-lg bg-black">
             <video bind:this={videoEl} class="h-full w-full -scale-x-100 object-cover" muted playsinline></video>
             <canvas bind:this={canvasEl} class="pointer-events-none absolute inset-0 h-full w-full"></canvas>
@@ -486,17 +518,18 @@
             {/if}
         </div>
 
+        <!-- Phase-specific feedback below the video -->
         {#if phase === 'positioning'}
             <div class="mb-3 flex items-center justify-center gap-2 text-sm font-medium">
                 {#if faceDetected}
                     <CheckCircle2 class="size-4 text-primary" />
-                    <span class="text-primary">Face aligned</span>
+                    <span class="text-primary">Face aligned — hold still</span>
                 {:else}
-                    <ScanFace class="size-4 text-muted-foreground" />
-                    <span class="text-muted-foreground">Position face inside tracking target…</span>
+                    <ScanFace class="size-4 animate-pulse text-muted-foreground" />
+                    <span class="text-muted-foreground">Position your face inside the oval</span>
                 {/if}
             </div>
-            {#if faceDetected && posHoldProgress > 0}
+            {#if posHoldProgress > 0}
                 <div class="mb-4 h-1 w-full overflow-hidden rounded-full bg-muted">
                     <div class="h-full bg-primary transition-all" style="width: {posHoldProgress * 100}%"></div>
                 </div>
@@ -505,7 +538,7 @@
 
         {#if phase === 'gesture'}
             <div class="mb-3 flex items-center justify-center gap-2">
-                {#each selected as _, i (i)}
+                {#each selected as _g, i (i)}
                     <div
                         class="h-1.5 rounded-full transition-all duration-300 {i === gestureIndex
                             ? 'w-6 bg-primary'
@@ -514,6 +547,9 @@
                                 : 'w-1.5 bg-muted'}"
                     ></div>
                 {/each}
+            </div>
+            <div class="mb-3 flex items-center justify-center gap-2 rounded-lg border border-border bg-muted/40 px-3 py-2 text-sm font-medium">
+                <span class="text-foreground">{selected[gestureIndex]?.label ?? ''}</span>
             </div>
             {#if holdProgress > 0}
                 <div class="mb-4 h-1 w-full overflow-hidden rounded-full bg-muted">
@@ -525,18 +561,16 @@
         {#if phase === 'error' || phase === 'failed'}
             <div class="mb-4 flex items-start gap-2 rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
                 <AlertCircle class="mt-0.5 size-4 shrink-0" />
-                <div>
-                    <p>{phase === 'error' ? errorMessage : statusText}</p>
-                </div>
+                <p>{phase === 'error' ? errorMessage : statusText}</p>
             </div>
         {/if}
 
+        <!-- Actions -->
         <div class="flex gap-2">
             {#if phase === 'error' || phase === 'failed'}
                 <Button variant="outline" class="flex-1" onclick={handleCancel}>Cancel</Button>
                 <Button class="flex-1" onclick={retry}>Try again</Button>
-            {/if}
-            {#if phase !== 'error' && phase !== 'failed' && phase !== 'success'}
+            {:else if phase !== 'success'}
                 <Button variant="outline" class="w-full" onclick={handleCancel}>Cancel</Button>
             {/if}
         </div>

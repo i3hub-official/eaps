@@ -2,7 +2,7 @@
 import { json, error } from '@sveltejs/kit'
 import type { RequestHandler } from './$types'
 import { requireStudent } from '$lib/server/auth/guards'
-import { startSession } from '$lib/server/assessment/engine'
+import { startSession } from '$lib/server/assessments/engine'
 import { getPrismaClient } from '$lib/server/db/index.js'
 
 export const POST: RequestHandler = async ({ locals, params }) => {

@@ -5,7 +5,7 @@
 // hitting the lazy expiry check in saveAnswer/syncTimer.
 
 import { getPrismaClient } from '$lib/server/db/index.js'
-import { submitSession } from '$lib/server/assessment/engine'
+import { submitSession } from '$lib/server/assessments/engine'
 import { audit } from '$lib/server/audit'
 
 export interface ExpireSessionsResult {

@@ -1,4 +1,4 @@
-// src/lib/server/assessment/engine.ts
+// src/lib/server/assessments/engine.ts
 // Core assessment engine: session creation, randomisation,
 // answer saving, auto-grading, marks computation
 

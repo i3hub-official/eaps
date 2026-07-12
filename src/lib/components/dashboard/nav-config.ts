@@ -28,7 +28,6 @@ import Layers from '@lucide/svelte/icons/layers';
 import ScrollText from '@lucide/svelte/icons/scroll-text';
 import Settings from '@lucide/svelte/icons/settings';
 import ScanFace from '@lucide/svelte/icons/scan-face';
-import LogOut from '@lucide/svelte/icons/log-out';
 
 export type NavItem = { label: string; href: string; icon: Component<any> };
 export type NavSection = { label?: string; items: NavItem[] };
@@ -179,13 +178,4 @@ export const navByRole: Record<Role, NavSection[]> = {
 			]
 		}
 	]
-};
-
-// Logout is not a plain navigable route — it's a POST form action — so it's kept
-// separate from navByRole and rendered as a <form> in app-sidebar.svelte, not an <a>.
-// Sharing the label/icon here still keeps all nav-adjacent config in one place.
-export const logoutNavItem: { label: string; action: string; icon: Component<any> } = {
-	label: 'Sign out',
-	action: '/logout',
-	icon: LogOut
 };
