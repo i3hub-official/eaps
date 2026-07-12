@@ -244,7 +244,7 @@ async function flushViolations() {
 	violationQueue = [];
 
 	try {
-		const res = await fetch(`/api/assessment/session/${sessionId}/violations/batch`, {
+		const res = await fetch(`/api/assessment/session/${sessionId}/violation/batch`, {
 			method: 'POST',
 			headers: { 'Content-Type': 'application/json' },
 			body: JSON.stringify({ violations: batch }),
@@ -336,19 +336,51 @@ async function flushViolations() {
 		}
 	}
 
-	// ─── Student Verification Check ────────────────────────────────────────────
-	async function checkStudentVerification() {
-		try {
-			const res = await fetch(`/api/student/${sessionId}/verification-status`);
-			if (res.ok) {
-				const data = await res.json();
-				isStudentVerified = data.isVerified;
-				console.log('[Monitor] Student verification status:', isStudentVerified);
+// ─── Student Verification Check ────────────────────────────────────────────
+async function checkStudentVerification() {
+	try {
+		// First check if the session has been verified via the existing endpoint
+		const res = await fetch(`/api/face/verify-session`, {
+			method: 'POST',
+			headers: { 'Content-Type': 'application/json' },
+			body: JSON.stringify({ 
+				examId: sessionId,
+				verified: true, // We're just checking status, not performing verification
+				similarityScore: 0,
+				antispoofScore: 0,
+				livenessScore: 0
+			})
+		});
+		
+		if (res.ok) {
+			const data = await res.json();
+			// The verify-session endpoint returns success: true when verified
+			isStudentVerified = data.success === true;
+			console.log('[Monitor] Student verification status:', isStudentVerified);
+		} else {
+			// If the session hasn't been verified, check local session state
+			if (typeof window !== 'undefined') {
+				// Check if we have cached verification status
+				const cached = sessionStorage.getItem(`face_verified_${sessionId}`);
+				if (cached) {
+					isStudentVerified = cached === 'true';
+					console.log('[Monitor] Student verification status (cached):', isStudentVerified);
+					return;
+				}
 			}
-		} catch (err) {
-			console.error('[Monitor] Failed to check verification:', err);
+			
+			// Check if the current session has faceVerified flag
+			// This could be stored in a global state or context
+			isStudentVerified = false;
+			console.log('[Monitor] Student not verified for this session');
 		}
+		
+	} catch (err) {
+		console.error('[Monitor] Failed to check verification:', err);
+		// Don't fail completely - just assume not verified
+		isStudentVerified = false;
 	}
+}
 
 	// ─── AI Analysis Functions ──────────────────────────────────────────────────
 

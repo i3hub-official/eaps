@@ -1,3 +1,4 @@
+<!-- src/lib/components/exam/FaceVerifyModal.svelte -->
 <script lang="ts">
     import { onMount, onDestroy } from 'svelte';
     import { Button } from '$lib/components/ui/button/index.js';
@@ -34,7 +35,7 @@
     let posHoldStart: number | null = null;
     const POS_HOLD_MS = 2000;
 
-    // ─── Gesture Phase ─────────────────────────────────────────────────────
+    // ─── Gesture Phase (liveness challenge only — see finishCapture) ───────
     let selected: GestureDefinition[] = [];
     let gestureIndex = $state(0);
     let gesturesDone = $state(0);
@@ -42,13 +43,22 @@
     let tracker: GestureTracker | null = null;
     const GESTURE_COUNT = 3;
 
-    // ─── Face Embeddings & Liveness Tracking ───────────────────────────────
-    // Instead of reading scores from the last frame alone (which may be stale
-    // or mid-blink), we accumulate the BEST real/live scores seen across every
-    // gesture frame. A real face will produce at least a few high-scoring frames;
-    // a spoof will consistently fail across all of them.
-    let embeddings: number[][] = [];
+    // ─── Identity capture (neutral frames only) ─────────────────────────────
+    // Sampled during the positioning hold, while the face is centred,
+    // front-facing, and at rest — matching exactly how FaceEnrollModal now
+    // builds its reference descriptor. Comparing neutral-to-neutral is what
+    // fixed the enroll↔verify mismatches: embeddings taken mid-gesture
+    // (turned head, open mouth) are measurably lower quality and were
+    // previously being averaged into both sides of the comparison.
+    let neutralSamples: number[][] = [];
+    let lastSampledBucket = -1;
     let enrolledDescriptor: number[] | null = null;
+
+    // ─── Liveness/Anti-spoof Tracking (still driven by gestures) ───────────
+    // Accumulate the BEST real/live scores seen across every gesture frame
+    // rather than reading the last frame alone (which may be stale or
+    // mid-blink). A real face will produce at least a few high-scoring
+    // frames; a spoof will consistently fail across all of them.
     let bestRealScore = 0;
     let bestLiveScore = 0;
 
@@ -269,11 +279,19 @@
                 statusText = posHoldProgress < 1 ? 'Hold still…' : 'Starting liveness check…';
                 drawOverlay(true, false, posHoldProgress);
 
+                // Sample the identity embedding roughly every 10% of the hold
+                // — same neutral-frame approach as enrollment, so both sides
+                // of the comparison are built from comparable, low-noise data.
+                const bucket = Math.floor(posHoldProgress * 10);
+                if (bucket !== lastSampledBucket && face.embedding) {
+                    lastSampledBucket = bucket;
+                    neutralSamples.push(Array.from(face.embedding as number[]));
+                }
+
                 if (posHoldProgress >= 1) {
                     selected = selectGestures(GESTURE_COUNT);
                     gestureIndex = 0;
                     gesturesDone = 0;
-                    embeddings = [];
                     tracker = new GestureTracker();
                     holdProgress = 0;
                     phase = 'gesture';
@@ -318,11 +336,10 @@
 
         const face = faces[0];
 
-        // ── Accumulate best liveness/antispoof scores seen this session ──────
-        // The model outputs noisy per-frame scores; a real face will peak well
-        // above threshold across the dozens of frames in a gesture sequence.
-        // Reading only the last frame means a blink or motion blur at the exact
-        // moment of finishCapture causes a false-positive spoof rejection.
+        // Accumulate best liveness/antispoof scores seen this session — this
+        // stays driven by gesture frames since it's proving the person is
+        // live and responsive, which is exactly what mid-gesture frames are
+        // good for (unlike identity matching, which needs neutral frames).
         const frameReal = face.real ?? face.antispoof ?? 0;
         const frameLive = face.live ?? 0;
         if (frameReal > bestRealScore) bestRealScore = frameReal;
@@ -345,10 +362,9 @@
         drawOverlay(true, false, holdProgress, g.label);
         statusText = g.label;
 
+        // NOTE: no embedding capture here on purpose — see neutralSamples
+        // above. This gesture only needs to be performed, not photographed.
         if (confirmed) {
-            if (face.embedding) {
-                embeddings.push(Array.from(face.embedding as number[]));
-            }
             gesturesDone = gestureIndex + 1;
 
             if (gesturesDone >= selected.length) {
@@ -370,23 +386,24 @@
         statusText = 'Verifying security attributes…';
 
         try {
-            if (embeddings.length === 0 || !enrolledDescriptor) {
+            if (neutralSamples.length === 0 || !enrolledDescriptor) {
                 throw new Error('Biometric vector capture incomplete.');
             }
 
-            const dim = embeddings[0].length;
+            const dim = neutralSamples[0].length;
             const averaged = new Array(dim).fill(0);
-            for (const emb of embeddings) {
+            for (const emb of neutralSamples) {
                 for (let i = 0; i < dim; i++) {
-                    averaged[i] += emb[i] / embeddings.length;
+                    averaged[i] += emb[i] / neutralSamples.length;
                 }
             }
 
             const similarity = cosineSimilarity(averaged, enrolledDescriptor);
             similarityPercent = Math.round(similarity * 100);
 
-            // Use the best scores accumulated across all gesture frames,
-            // not the stale scores from the final (possibly frozen) frame.
+            // Use the best liveness scores accumulated across all gesture
+            // frames, not the stale scores from the final (possibly frozen)
+            // frame.
             const matchPassed = similarity >= MATCH_THRESHOLD;
             const realPassed  = bestRealScore >= MIN_ANTISPOOF;
             const livePassed  = bestLiveScore >= MIN_LIVENESS;
@@ -440,7 +457,8 @@
         errorMessage = '';
         similarityPercent = null;
         faceDetected = false;
-        embeddings = [];
+        neutralSamples = [];
+        lastSampledBucket = -1;
         bestRealScore = 0;
         bestLiveScore = 0;
         gestureIndex = 0;

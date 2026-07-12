@@ -1,3 +1,4 @@
+<!-- src/lib/components/exam/FaceEnrollModal.svelte -->
 <script lang="ts">
     import { onMount, onDestroy } from 'svelte';
     import { Button } from '$lib/components/ui/button/index.js';
@@ -39,7 +40,17 @@
     let tracker: GestureTracker | null = null;
     const GESTURE_COUNT = 3;
 
-    let descriptors: number[][] = [];
+    // ─── Identity capture (neutral frames only) ─────────────────────────────
+    // These come exclusively from the positioning-hold phase, while the face
+    // is centred, front-facing, and at rest — the pose/expression a
+    // recognition embedding is actually calibrated for. Gestures (below) are
+    // a liveness challenge only: proving a live person responded, never
+    // contributing to the identity vector. Mixing the two was the original
+    // bug — averaging in embeddings captured mid-turn/mid-smile measurably
+    // degrades match quality, which is why enrollment "succeeded" but later
+    // verification and monitoring kept rejecting a genuine match.
+    let neutralSamples: number[][] = [];
+    let lastSampledBucket = -1;
 
     let videoEl = $state<HTMLVideoElement | null>(null);
     let canvasEl = $state<HTMLCanvasElement | null>(null);
@@ -236,11 +247,20 @@
                 statusText = posHoldProgress < 1 ? 'Hold still…' : 'Starting gestures…';
                 drawOverlay(true, false, posHoldProgress);
 
+                // Sample the identity embedding roughly every 10% of the hold
+                // while the face is centred, front-facing, and at rest — this
+                // is the neutral pose a recognition embedding is calibrated
+                // for, and it's what enrollment's quality actually depends on.
+                const bucket = Math.floor(posHoldProgress * 10);
+                if (bucket !== lastSampledBucket && face.embedding) {
+                    lastSampledBucket = bucket;
+                    neutralSamples.push(Array.from(face.embedding as number[]));
+                }
+
                 if (posHoldProgress >= 1) {
                     selected = selectGestures(GESTURE_COUNT);
                     gestureIndex = 0;
                     gesturesDone = 0;
-                    descriptors = [];
                     tracker = new GestureTracker();
                     holdProgress = 0;
                     phase = 'gesture';
@@ -309,8 +329,10 @@
         drawOverlay(true, false, holdProgress, g.label);
         statusText = g.label;
 
+        // NOTE: no embedding capture here on purpose. This gesture only
+        // needs to be *performed* — it proves liveness. The identity vector
+        // was already collected above, during the neutral positioning hold.
         if (confirmed) {
-            if (face.embedding) descriptors.push(Array.from(face.embedding as number[]));
             gesturesDone = gestureIndex + 1;
 
             if (gesturesDone >= selected.length) {
@@ -333,12 +355,12 @@
         statusText = 'Saving your face profile…';
 
         try {
-            if (descriptors.length === 0) throw new Error('No face captures collected. Please try again.');
+            if (neutralSamples.length === 0) throw new Error('No face captures collected. Please try again.');
 
-            const dim      = descriptors[0].length;
+            const dim      = neutralSamples[0].length;
             const averaged = new Array(dim).fill(0);
-            for (const d of descriptors) {
-                for (let i = 0; i < dim; i++) averaged[i] += d[i] / descriptors.length;
+            for (const d of neutralSamples) {
+                for (let i = 0; i < dim; i++) averaged[i] += d[i] / neutralSamples.length;
             }
 
             const res = await fetch('/api/face/enroll', {
@@ -371,7 +393,8 @@
 
     function retry() {
         errorMessage    = '';
-        descriptors     = [];
+        neutralSamples  = [];
+        lastSampledBucket = -1;
         gestureIndex    = 0;
         gesturesDone    = 0;
         holdProgress    = 0;

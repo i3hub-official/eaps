@@ -749,6 +749,8 @@ model Student {
   lastLoginAt         DateTime?
   createdAt           DateTime      @default(now())
   updatedAt           DateTime      @updatedAt
+  faceDescriptorId    String?
+
 
   department   Department @relation(fields: [departmentId], references: [id])
   programme    Programme  @relation(fields: [programmeId], references: [id])
@@ -770,7 +772,8 @@ model Student {
   tagPerformance      TagPerformance[]
   conversations       Conversation[]
   sentMessages        Message[]               @relation("SentMessages")
-  faceDescriptorId    String?
+    preference StudentPreference?
+
 
   // Auth: identifier-first login
   @@index([emailHash])
@@ -1372,4 +1375,23 @@ model Message {
   @@index([conversationId, createdAt])
   // Unread count per conversation
   @@index([conversationId, readAt])
+}
+
+model StudentPreference {
+  id        String   @id @default(cuid())
+  studentId String   @unique
+
+  // Example shape stored in `data`:
+  // {
+  //   "resultsViewMode": "card",       // ViewMode for Assessment Results tab
+  //   "transcriptViewMode": "list"     // ViewMode for By Assessment Type section
+  // }
+  data      Json     @default("{}")
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  student   Student  @relation(fields: [studentId], references: [id], onDelete: Cascade)
+
+  @@map("student_preferences")
 }

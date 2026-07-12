@@ -5,10 +5,12 @@
 	import { Separator } from '$lib/components/ui/separator/index.js';
 	import { Button } from '$lib/components/ui/button/index.js';
 	import { page } from '$app/state';
+	import { goto } from '$app/navigation';
 	import SessionClock from './session-clock.svelte';
 	import Bell from '@lucide/svelte/icons/bell';
 	import LogOut from '@lucide/svelte/icons/log-out';
 	import Settings from '@lucide/svelte/icons/settings';
+	import ChevronLeft from '@lucide/svelte/icons/chevron-left';
 	import type { Snippet } from 'svelte';
 
 	let {
@@ -16,14 +18,26 @@
 		description,
 		userName,
 		userInitials,
-		actions
+		actions,
+		backHref
 	}: {
 		title: string;
 		description?: string;
 		userName?: string;
 		userInitials?: string;
 		actions?: Snippet;
+		// When set, shows a back button before the title. Pass a URL to
+		// navigate there directly, or `true` to just call history.back().
+		backHref?: string | true;
 	} = $props();
+
+	function handleBack() {
+		if (backHref === true) {
+			history.back();
+		} else if (backHref) {
+			goto(backHref);
+		}
+	}
 
 	// `page.data.user` can arrive in two shapes depending on the portal:
 	//  - student layout pre-shapes it as { name, initials }
@@ -57,6 +71,17 @@
 	<div class="flex min-w-0 items-center gap-2 sm:gap-3">
 		<Sidebar.Trigger class="shrink-0" />
 		<Separator orientation="vertical" class="hidden h-5! sm:block" />
+		{#if backHref}
+			<Button
+				variant="ghost"
+				size="icon"
+				class="shrink-0"
+				aria-label="Go back"
+				onclick={handleBack}
+			>
+				<ChevronLeft class="size-4.5" />
+			</Button>
+		{/if}
 		<div class="flex min-w-0 flex-col">
 			<h1 class="truncate text-sm font-semibold leading-tight sm:text-base">{title}</h1>
 			{#if description}

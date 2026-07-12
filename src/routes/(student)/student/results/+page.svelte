@@ -18,8 +18,19 @@
 	import ClipboardList from '@lucide/svelte/icons/clipboard-list';
 	import PenLine from '@lucide/svelte/icons/pen-line';
 	import GraduationCap from '@lucide/svelte/icons/graduation-cap';
+	import LayoutGrid from '@lucide/svelte/icons/layout-grid';
+	import List from '@lucide/svelte/icons/list';
+	import Square from '@lucide/svelte/icons/square';
 
 	let { data } = $props();
+
+	type ViewMode = 'grid' | 'list' | 'card';
+
+	const VIEW_OPTIONS: { value: ViewMode; icon: typeof LayoutGrid; label: string }[] = [
+		{ value: 'card', icon: Square, label: 'Card view' },
+		{ value: 'grid', icon: LayoutGrid, label: 'Grid view' },
+		{ value: 'list', icon: List, label: 'List view' }
+	];
 
 	function formatDate(d: string | Date | null) {
 		if (!d) return null;
@@ -71,7 +82,32 @@
 	// in the OTHER outer tab.
 	let activeResultsType = $state(groupedResults[0]?.type);
 	let activeTranscriptType = $state(groupedResults[0]?.type);
+
+	// View mode is independent per section — a student might want a dense
+	// list for the transcript's by-type breakdown but a big card view for
+	// the assessment results tab where "Review Questions" is a key action.
+	let transcriptViewMode = $state<ViewMode>('card');
+	let resultsViewMode = $state<ViewMode>('card');
 </script>
+
+{#snippet viewToggle(mode: ViewMode, setMode: (m: ViewMode) => void)}
+	<div class="flex items-center gap-0.5 rounded-md border p-0.5">
+		{#each VIEW_OPTIONS as opt (opt.value)}
+			{@const Icon = opt.icon}
+			<button
+				type="button"
+				aria-label={opt.label}
+				aria-pressed={mode === opt.value}
+				onclick={() => setMode(opt.value)}
+				class="flex size-7 items-center justify-center rounded transition-colors {mode === opt.value
+					? 'bg-primary text-primary-foreground'
+					: 'text-muted-foreground hover:bg-muted hover:text-foreground'}"
+			>
+				<Icon class="size-3.5" />
+			</button>
+		{/each}
+	</div>
+{/snippet}
 
 <Topbar title="Results" />
 
@@ -218,7 +254,10 @@
 
 			{#if groupedResults.length > 0}
 				<div>
-					<h3 class="mb-3 text-sm font-semibold text-muted-foreground">By Assessment Type</h3>
+					<div class="mb-3 flex items-center justify-between gap-3">
+						<h3 class="text-sm font-semibold text-muted-foreground">By Assessment Type</h3>
+						{@render viewToggle(transcriptViewMode, (m) => (transcriptViewMode = m))}
+					</div>
 					<Tabs.Root bind:value={activeTranscriptType}>
 						<Tabs.List>
 							{#each groupedResults as group (group.type)}
@@ -231,38 +270,86 @@
 
 						{#each groupedResults as group (group.type)}
 							<Tabs.Content value={group.type}>
-								<Card class="overflow-hidden p-0">
-									<Table.Root>
-										<Table.Header>
-											<Table.Row>
-												<Table.Head>Course</Table.Head>
-												<Table.Head>Title</Table.Head>
-												<Table.Head>Score</Table.Head>
-												<Table.Head>%</Table.Head>
-												<Table.Head>Grade</Table.Head>
-												<Table.Head>Released</Table.Head>
-											</Table.Row>
-										</Table.Header>
-										<Table.Body>
-											{#each group.results as r (r.id)}
+								{#if transcriptViewMode === 'card'}
+									<div class="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+										{#each group.results as r (r.id)}
+											<Card class="flex flex-col gap-3 p-4">
+												<div class="flex items-start justify-between gap-2">
+													{#if r.course}
+														<Badge variant="secondary" class="font-normal">{r.course.code}</Badge>
+													{:else}
+														<span></span>
+													{/if}
+													{#if r.grade}
+														<Badge variant={gradeVariant[r.grade] ?? 'outline'} class="text-base">{r.grade}</Badge>
+													{/if}
+												</div>
+
+												<p class="text-sm font-medium leading-snug">{r.title}</p>
+
+												<div class="flex items-end justify-between">
+													<div>
+														<p class="text-lg font-semibold">{r.marksObtained}/{r.totalMarks}</p>
+														<p class="text-xs text-muted-foreground">{r.percentage}%</p>
+													</div>
+													<p class="text-xs text-muted-foreground">
+														Released {formatDate(r.releasedAt) ?? '—'}
+													</p>
+												</div>
+											</Card>
+										{/each}
+									</div>
+								{:else if transcriptViewMode === 'grid'}
+									<div class="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
+										{#each group.results as r (r.id)}
+											<Card class="flex flex-col gap-1.5 p-3">
+												<div class="flex items-center justify-between gap-1">
+													<Badge variant="secondary" class="font-normal text-[10px]">
+														{r.course?.code ?? '—'}
+													</Badge>
+													{#if r.grade}
+														<Badge variant={gradeVariant[r.grade] ?? 'outline'} class="text-[10px]">{r.grade}</Badge>
+													{/if}
+												</div>
+												<p class="truncate text-xs font-medium leading-snug" title={r.title}>{r.title}</p>
+												<p class="text-sm font-semibold">{r.percentage}%</p>
+											</Card>
+										{/each}
+									</div>
+								{:else}
+									<Card class="overflow-hidden p-0">
+										<Table.Root>
+											<Table.Header>
 												<Table.Row>
-													<Table.Cell class="font-medium">{r.course?.code ?? '—'}</Table.Cell>
-													<Table.Cell class="text-muted-foreground">{r.title}</Table.Cell>
-													<Table.Cell>{r.marksObtained}/{r.totalMarks}</Table.Cell>
-													<Table.Cell>{r.percentage}%</Table.Cell>
-													<Table.Cell>
-														{#if r.grade}
-															<Badge variant={gradeVariant[r.grade] ?? 'outline'}>{r.grade}</Badge>
-														{:else}
-															—
-														{/if}
-													</Table.Cell>
-													<Table.Cell class="text-xs text-muted-foreground">{formatDate(r.releasedAt) ?? '—'}</Table.Cell>
+													<Table.Head>Course</Table.Head>
+													<Table.Head>Title</Table.Head>
+													<Table.Head>Score</Table.Head>
+													<Table.Head>%</Table.Head>
+													<Table.Head>Grade</Table.Head>
+													<Table.Head>Released</Table.Head>
 												</Table.Row>
-											{/each}
-										</Table.Body>
-									</Table.Root>
-								</Card>
+											</Table.Header>
+											<Table.Body>
+												{#each group.results as r (r.id)}
+													<Table.Row>
+														<Table.Cell class="font-medium">{r.course?.code ?? '—'}</Table.Cell>
+														<Table.Cell class="text-muted-foreground">{r.title}</Table.Cell>
+														<Table.Cell>{r.marksObtained}/{r.totalMarks}</Table.Cell>
+														<Table.Cell>{r.percentage}%</Table.Cell>
+														<Table.Cell>
+															{#if r.grade}
+																<Badge variant={gradeVariant[r.grade] ?? 'outline'}>{r.grade}</Badge>
+															{:else}
+																—
+															{/if}
+														</Table.Cell>
+														<Table.Cell class="text-xs text-muted-foreground">{formatDate(r.releasedAt) ?? '—'}</Table.Cell>
+													</Table.Row>
+												{/each}
+											</Table.Body>
+										</Table.Root>
+									</Card>
+								{/if}
 							</Tabs.Content>
 						{/each}
 					</Tabs.Root>
@@ -288,52 +375,142 @@
 				</Card>
 			{:else}
 				<Tabs.Root bind:value={activeResultsType}>
-					<Tabs.List>
-						{#each groupedResults as group (group.type)}
-							{@const Icon = typeIcon[group.type]}
-							<Tabs.Trigger value={group.type}>
-								<Icon class="mr-1.5 size-3.5" />
-								{typeLabel[group.type] ?? group.type}
-								<Badge variant="secondary" class="ml-2 font-normal">{group.results.length}</Badge>
-							</Tabs.Trigger>
-						{/each}
-					</Tabs.List>
+					<div class="flex flex-wrap items-center justify-between gap-3">
+						<Tabs.List>
+							{#each groupedResults as group (group.type)}
+								{@const Icon = typeIcon[group.type]}
+								<Tabs.Trigger value={group.type}>
+									<Icon class="mr-1.5 size-3.5" />
+									{typeLabel[group.type] ?? group.type}
+									<Badge variant="secondary" class="ml-2 font-normal">{group.results.length}</Badge>
+								</Tabs.Trigger>
+							{/each}
+						</Tabs.List>
+						{@render viewToggle(resultsViewMode, (m) => (resultsViewMode = m))}
+					</div>
 
 					{#each groupedResults as group (group.type)}
-						<Tabs.Content value={group.type} class="flex flex-col gap-3">
-							{#each group.results as r (r.id)}
-								<Card class="flex flex-col gap-2 p-4 sm:flex-row sm:items-center sm:justify-between">
-									<div class="flex flex-col gap-1">
-										<div class="flex flex-wrap items-center gap-2">
-											{#if r.course}
-												<Badge variant="secondary" class="font-normal">{r.course.code}</Badge>
-											{/if}
+						<Tabs.Content value={group.type}>
+							{#if resultsViewMode === 'card'}
+								<div class="flex flex-col gap-3">
+									{#each group.results as r (r.id)}
+										<Card class="flex flex-col gap-2 p-4 sm:flex-row sm:items-center sm:justify-between">
+											<div class="flex flex-col gap-1">
+												<div class="flex flex-wrap items-center gap-2">
+													{#if r.course}
+														<Badge variant="secondary" class="font-normal">{r.course.code}</Badge>
+													{/if}
+													{#if r.isRevised}
+														<span class="flex items-center gap-1 text-xs text-muted-foreground">
+															<History class="size-3" /> Revised
+														</span>
+													{/if}
+												</div>
+												<p class="font-medium leading-snug">{r.title}</p>
+												<p class="text-xs text-muted-foreground">Released {formatDate(r.releasedAt)}</p>
+												{#if r.allowReview}
+													<Button href={`/student/results/${r.id}/review`} variant="link" size="sm" class="h-auto w-fit p-0 text-xs">
+														<BookOpen class="mr-1 size-3" /> Review Questions
+													</Button>
+												{/if}
+											</div>
+
+											<div class="flex items-center gap-3">
+												<div class="text-right">
+													<p class="font-semibold">{r.marksObtained}/{r.totalMarks}</p>
+													<p class="text-xs text-muted-foreground">{r.percentage}%</p>
+												</div>
+												{#if r.grade}
+													<Badge variant={gradeVariant[r.grade] ?? 'outline'} class="text-base">{r.grade}</Badge>
+												{/if}
+											</div>
+										</Card>
+									{/each}
+								</div>
+							{:else if resultsViewMode === 'grid'}
+								<div class="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+									{#each group.results as r (r.id)}
+										<Card class="flex flex-col gap-2 p-4">
+											<div class="flex items-start justify-between gap-2">
+												{#if r.course}
+													<Badge variant="secondary" class="font-normal">{r.course.code}</Badge>
+												{:else}
+													<span></span>
+												{/if}
+												{#if r.grade}
+													<Badge variant={gradeVariant[r.grade] ?? 'outline'} class="text-base">{r.grade}</Badge>
+												{/if}
+											</div>
+											<p class="text-sm font-medium leading-snug">{r.title}</p>
 											{#if r.isRevised}
 												<span class="flex items-center gap-1 text-xs text-muted-foreground">
 													<History class="size-3" /> Revised
 												</span>
 											{/if}
-										</div>
-										<p class="font-medium leading-snug">{r.title}</p>
-										<p class="text-xs text-muted-foreground">Released {formatDate(r.releasedAt)}</p>
-										{#if r.allowReview}
-											<Button href={`/student/results/${r.id}/review`} variant="link" size="sm" class="h-auto w-fit p-0 text-xs">
-												<BookOpen class="mr-1 size-3" /> Review Questions
-											</Button>
-										{/if}
-									</div>
-
-									<div class="flex items-center gap-3">
-										<div class="text-right">
-											<p class="font-semibold">{r.marksObtained}/{r.totalMarks}</p>
-											<p class="text-xs text-muted-foreground">{r.percentage}%</p>
-										</div>
-										{#if r.grade}
-											<Badge variant={gradeVariant[r.grade] ?? 'outline'} class="text-base">{r.grade}</Badge>
-										{/if}
-									</div>
+											<div class="flex items-end justify-between pt-1">
+												<div>
+													<p class="text-lg font-semibold">{r.marksObtained}/{r.totalMarks}</p>
+													<p class="text-xs text-muted-foreground">{r.percentage}%</p>
+												</div>
+												<p class="text-xs text-muted-foreground">{formatDate(r.releasedAt) ?? '—'}</p>
+											</div>
+											{#if r.allowReview}
+												<Button href={`/student/results/${r.id}/review`} variant="link" size="sm" class="h-auto w-fit p-0 text-xs">
+													<BookOpen class="mr-1 size-3" /> Review Questions
+												</Button>
+											{/if}
+										</Card>
+									{/each}
+								</div>
+							{:else}
+								<Card class="overflow-hidden p-0">
+									<Table.Root>
+										<Table.Header>
+											<Table.Row>
+												<Table.Head>Course</Table.Head>
+												<Table.Head>Title</Table.Head>
+												<Table.Head>Score</Table.Head>
+												<Table.Head>%</Table.Head>
+												<Table.Head>Grade</Table.Head>
+												<Table.Head>Released</Table.Head>
+												<Table.Head></Table.Head>
+											</Table.Row>
+										</Table.Header>
+										<Table.Body>
+											{#each group.results as r (r.id)}
+												<Table.Row>
+													<Table.Cell class="font-medium">{r.course?.code ?? '—'}</Table.Cell>
+													<Table.Cell class="text-muted-foreground">
+														{r.title}
+														{#if r.isRevised}
+															<span class="ml-1.5 inline-flex items-center gap-1 text-xs text-muted-foreground">
+																<History class="size-3" /> Revised
+															</span>
+														{/if}
+													</Table.Cell>
+													<Table.Cell>{r.marksObtained}/{r.totalMarks}</Table.Cell>
+													<Table.Cell>{r.percentage}%</Table.Cell>
+													<Table.Cell>
+														{#if r.grade}
+															<Badge variant={gradeVariant[r.grade] ?? 'outline'}>{r.grade}</Badge>
+														{:else}
+															—
+														{/if}
+													</Table.Cell>
+													<Table.Cell class="text-xs text-muted-foreground">{formatDate(r.releasedAt) ?? '—'}</Table.Cell>
+													<Table.Cell>
+														{#if r.allowReview}
+															<Button href={`/student/results/${r.id}/review`} variant="link" size="sm" class="h-auto p-0 text-xs">
+																<BookOpen class="mr-1 size-3" /> Review
+															</Button>
+														{/if}
+													</Table.Cell>
+												</Table.Row>
+											{/each}
+										</Table.Body>
+									</Table.Root>
 								</Card>
-							{/each}
+							{/if}
 						</Tabs.Content>
 					{/each}
 				</Tabs.Root>
