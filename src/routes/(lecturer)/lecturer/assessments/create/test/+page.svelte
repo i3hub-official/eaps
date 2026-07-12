@@ -1,7 +1,7 @@
 <!-- src/routes/(lecturer)/lecturer/assessments/create/test/+page.svelte -->
 <script lang="ts">
 import { invalidateAll, goto } from '$app/navigation';
-import { deserialize, enhance } from '$app/forms'; 
+import { deserialize } from '$app/forms'; 
 import { toast } from 'svelte-sonner';
 	import { Topbar } from '$lib/components/dashboard';
 	import { Button } from '$lib/components/ui/button/index.js';
@@ -9,23 +9,22 @@ import { toast } from 'svelte-sonner';
 	import { Input } from '$lib/components/ui/input/index.js';
 	import { Label } from '$lib/components/ui/label/index.js';
 	import { Textarea } from '$lib/components/ui/textarea/index.js';
-	import { Switch } from '$lib/components/ui/switch/index.js';
 	import { Checkbox } from '$lib/components/ui/checkbox/index.js';
 	import * as Command from '$lib/components/ui/command/index.js';
 	import * as Popover from '$lib/components/ui/popover/index.js';
 	import { Alert, AlertDescription } from '$lib/components/ui/alert/index.js';
 	import { Badge } from '$lib/components/ui/badge/index.js';
 	import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from '$lib/components/ui/dialog/index.js';
-	import { Tabs, TabsContent, TabsList, TabsTrigger } from '$lib/components/ui/tabs/index.js';
 	import CheckIcon from '@lucide/svelte/icons/check';
 	import ChevronsUpDownIcon from '@lucide/svelte/icons/chevrons-up-down';
-	import { ArrowLeft, AlertCircle, HelpCircle, Calendar, Shield, Building2, Plus, Search, X, Upload, FileText, Database, Sparkles } from '@lucide/svelte/icons';
+	import LoaderIcon from '@lucide/svelte/icons/loader';
+	import { ArrowLeft, AlertCircle, HelpCircle, Calendar, Shield, Building2, Search, X, Upload, FileText, Database, Sparkles } from '@lucide/svelte/icons';
 	import { cn } from '$lib/utils.js';
 	import { tick } from 'svelte';
 
 	let { data, form } = $props();
 
-	// ─── Presets (settings & schedule) ─────────────────────────────────────
+	// ─── Presets ────────────────────────────────────────────────────────────
 	type Preset = {
 		id: string;
 		label: string;
@@ -114,7 +113,6 @@ import { toast } from 'svelte-sonner';
 
 	function applyPreset(preset: Preset) {
 		selectedPresetId = preset.id;
-
 		formData.totalMarks = preset.totalMarks;
 		formData.passMark = preset.passMark;
 		formData.durationMinutes = preset.durationMinutes;
@@ -130,10 +128,7 @@ import { toast } from 'svelte-sonner';
 		formData.startDate = toLocalDatetimeInputValue(start);
 		formData.endDate = toLocalDatetimeInputValue(end);
 
-		if (Object.keys(errors).length > 0) {
-			validateForm();
-		}
-
+		if (Object.keys(errors).length > 0) validateForm();
 		toast.success(`Applied "${preset.label}" preset`);
 	}
 
@@ -204,9 +199,7 @@ import { toast } from 'svelte-sonner';
 	// ─── Handlers ────────────────────────────────────────────────────────────
 	function closeAndFocusCourse() {
 		courseOpen = false;
-		tick().then(() => {
-			courseTriggerRef?.focus();
-		});
+		tick().then(() => courseTriggerRef?.focus());
 	}
 
 	function toggleQuestionSelection(questionId: string) {
@@ -219,8 +212,7 @@ import { toast } from 'svelte-sonner';
 	}
 
 	function selectAllBankQuestions() {
-		const allIds = bankFilteredQuestions.map((q: any) => q.id);
-		formData.selectedQuestions = allIds;
+		formData.selectedQuestions = bankFilteredQuestions.map((q: any) => q.id);
 	}
 
 	function clearAllBankQuestions() {
@@ -277,10 +269,7 @@ import { toast } from 'svelte-sonner';
 			const result = await response.json();
 
 			if ((response.ok || result.success) && result.imported > 0) {
-				uploadSuccess = {
-					imported: result.imported || 0,
-					errors: result.errors,
-				};
+				uploadSuccess = { imported: result.imported || 0, errors: result.errors };
 				target.value = '';
 				await invalidateAll();
 				uploadDialogOpen = false;
@@ -303,7 +292,7 @@ import { toast } from 'svelte-sonner';
 		try {
 			await doUpload();
 		} catch {
-			// error already surfaced via toast.promise above
+			// surfaced via toast.promise
 		} finally {
 			isUploading = false;
 		}
@@ -327,67 +316,116 @@ import { toast } from 'svelte-sonner';
 		return Object.keys(errors).length === 0;
 	}
 
-async function handleSubmit(event: Event) {
-	event.preventDefault();
-	if (!validateForm()) {
-		toast.error('Please fix the highlighted fields');
-		return;
-	}
-	isSubmitting = true;
-	errors = {};
-
-	const formElement = event.target as HTMLFormElement;
-	const formDataObj = new FormData(formElement);
-	const questionIdsJson = JSON.stringify(formData.selectedQuestions);
-	formDataObj.append('questionIds', questionIdsJson);
-
-	try {
-		const response = await fetch('/lecturer/assessments/create/test', {
-			method: 'POST',
-			body: formDataObj,
-		});
-
-		const result = deserialize(await response.text());
-
-		if (result.type === 'success' && (result.data as any)?.success) {
-			toast.success('Test created successfully');
-			await goto('/lecturer/assessments');
+	async function handleSubmit(event: Event) {
+		event.preventDefault();
+		if (!validateForm()) {
+			toast.error('Please fix the highlighted fields');
 			return;
 		}
+		isSubmitting = true;
+		errors = {};
 
-		if (result.type === 'failure') {
-			const data = result.data as any;
-			if (data?.errors) {
-				errors = data.errors;
-				toast.error('Please fix the highlighted fields');
-			} else {
-				errors = { error: data?.error ?? 'Failed to create test' };
-				toast.error(data?.error ?? 'Failed to create test');
+		const formElement = event.target as HTMLFormElement;
+		const formDataObj = new FormData(formElement);
+
+		// Boolean toggles — always sourced from reactive state
+		formDataObj.set('shuffleQuestions', formData.shuffleQuestions ? 'on' : 'off');
+		formDataObj.set('shuffleOptions', formData.shuffleOptions ? 'on' : 'off');
+		formDataObj.set('requireFaceVerify', formData.requireFaceVerify ? 'on' : 'off');
+		formDataObj.set('fullscreenRequired', formData.fullscreenRequired ? 'on' : 'off');
+		formDataObj.set('questionIds', JSON.stringify(formData.selectedQuestions));
+
+		try {
+			const response = await fetch('/lecturer/assessments/create/test', {
+				method: 'POST',
+				body: formDataObj,
+			});
+
+			const result = deserialize(await response.text());
+
+			if (result.type === 'success' && (result.data as any)?.success) {
+				toast.success('Test created successfully');
+				await goto('/lecturer/assessments');
+				return;
 			}
-			return;
-		}
 
-		if (result.type === 'error') {
-			const msg = result.error?.message ?? 'Server error';
+			if (result.type === 'failure') {
+				const d = result.data as any;
+				if (d?.errors) {
+					errors = d.errors;
+					toast.error('Please fix the highlighted fields');
+				} else {
+					errors = { error: d?.error ?? 'Failed to create test' };
+					toast.error(d?.error ?? 'Failed to create test');
+				}
+				return;
+			}
+
+			if (result.type === 'error') {
+				const msg = result.error?.message ?? 'Server error';
+				errors = { error: msg };
+				toast.error(msg);
+				return;
+			}
+
+			await invalidateAll();
+		} catch (err) {
+			const msg = err instanceof Error ? err.message : 'Network error';
 			errors = { error: msg };
 			toast.error(msg);
-			return;
+		} finally {
+			isSubmitting = false;
 		}
-
-		// 'redirect' type shouldn't occur here since the action never throws
-		// redirect(), but handle it defensively.
-		await invalidateAll();
-	} catch (err) {
-		const msg = err instanceof Error ? err.message : 'Network error';
-		errors = { error: msg };
-		toast.error(msg);
-	} finally {
-		isSubmitting = false;
 	}
-}
-
-
 </script>
+
+<style>
+	/* Track — rendered as a <button type="button"> */
+	.toggle-track {
+		display: inline-flex;
+		align-items: center;
+		width: 2.75rem;   /* 44px */
+		height: 1.5rem;   /* 24px */
+		border-radius: 9999px;
+		border: none;
+		padding: 2px;
+		cursor: pointer;
+		transition: background-color 200ms ease;
+		flex-shrink: 0;
+		outline-offset: 2px;
+	}
+	.toggle-track:focus-visible {
+		outline: 2px solid currentColor;
+	}
+
+	/* Thumb */
+	.toggle-track::after {
+		content: '';
+		display: block;
+		width: 1.25rem;   /* 20px */
+		height: 1.25rem;
+		border-radius: 9999px;
+		background: white;
+		box-shadow: 0 1px 3px rgba(0,0,0,0.3);
+		transition: transform 200ms ease;
+	}
+
+	/* OFF state — red track, thumb on the left */
+	.toggle-track.is-off {
+		background-color: #ef4444; /* red-500 */
+	}
+	.toggle-track.is-off::after {
+		transform: translateX(0);
+	}
+
+	/* ON state — green track, thumb on the right */
+	.toggle-track.is-on {
+		background-color: #22c55e; /* green-500 */
+	}
+	.toggle-track.is-on::after {
+		transform: translateX(1.25rem); /* 20px */
+	}
+</style>
 
 <svelte:head>
 	<title>Create Test — MOUAU e-Test</title>
@@ -426,7 +464,7 @@ async function handleSubmit(event: Event) {
 		</Card>
 	{:else}
 		<form method="POST" onsubmit={handleSubmit} class="space-y-6">
-			  <input type="hidden" name="courseId" value={formData.courseId} />
+			<input type="hidden" name="courseId" value={formData.courseId} />
 
 			{#if errors.error}
 				<Alert variant="destructive">
@@ -435,7 +473,7 @@ async function handleSubmit(event: Event) {
 				</Alert>
 			{/if}
 
-			<!-- Presets: settings & schedule -->
+			<!-- Presets -->
 			<Card>
 				<CardHeader>
 					<CardTitle class="flex items-center gap-2">
@@ -791,8 +829,6 @@ async function handleSubmit(event: Event) {
 											</p>
 										</div>
 
-										<!-- Capped at ~20 visible rows (26px row height) before scrolling kicks in,
-										     rather than relying solely on the dialog's own flex-1 sizing. -->
 										<div class="max-h-[520px] overflow-y-auto border rounded-lg divide-y">
 											{#if bankFilteredQuestions.length === 0}
 												<div class="text-center text-muted-foreground py-8">
@@ -806,9 +842,7 @@ async function handleSubmit(event: Event) {
 												</div>
 											{:else}
 												{#each bankFilteredQuestions as q (q.id)}
-													<label
-														class="flex items-start gap-3 p-3 hover:bg-muted/40 cursor-pointer"
-													>
+													<label class="flex items-start gap-3 p-3 hover:bg-muted/40 cursor-pointer">
 														<Checkbox
 															checked={formData.selectedQuestions.includes(q.id)}
 															onCheckedChange={() => toggleQuestionSelection(q.id)}
@@ -848,9 +882,6 @@ async function handleSubmit(event: Event) {
 								<AlertDescription>{errors.questions}</AlertDescription>
 							</Alert>
 						{/if}
-						<!-- Same 20-row scroll cap applied to the selected-questions summary,
-						     since a lecturer selecting 50+ questions would otherwise grow this
-						     box unbounded. -->
 						<div class="rounded-lg border p-4 min-h-[100px] max-h-[520px] overflow-y-auto">
 							{#if formData.selectedQuestions.length === 0}
 								<div class="text-center text-muted-foreground py-4">
@@ -885,7 +916,7 @@ async function handleSubmit(event: Event) {
 					</CardContent>
 				</Card>
 
-				<!-- Scheduling & Security (Merged) -->
+				<!-- Scheduling & Security -->
 				<Card>
 					<CardHeader>
 						<CardTitle>Scheduling & Security</CardTitle>
@@ -909,37 +940,88 @@ async function handleSubmit(event: Event) {
 							</p>
 						</div>
 
-						<div class="pt-4 border-t space-y-3">
-							<div class="flex items-center justify-between space-x-2">
+						<div class="pt-4 border-t space-y-4">
+							<!--
+								Custom toggle pill — a plain <button type="button"> flips the
+								boolean in formData directly. No <label>/<input> wrapper needed,
+								so there is zero risk of click events bubbling into the form or
+								triggering sonner toasts via reactive side-effects.
+							-->
+
+							<!-- Shuffle Questions -->
+							<div class="flex items-center justify-between">
 								<div>
-									<Label for="shuffleQuestions" class="font-medium">Shuffle Questions</Label>
-									<p class="text-xs text-muted-foreground">Randomize question order</p>
+									<p class="text-sm font-medium leading-none">Shuffle Questions</p>
+									<p class="text-xs text-muted-foreground mt-1">Randomize question order</p>
 								</div>
-								<Switch id="shuffleQuestions" name="shuffleQuestions" bind:checked={formData.shuffleQuestions} />
+								<button
+									type="button"
+									role="switch"
+									aria-checked={formData.shuffleQuestions}
+									onclick={() => {
+										formData.shuffleQuestions = !formData.shuffleQuestions;
+										if (formData.shuffleQuestions) toast.success('Shuffle questions enabled');
+										else toast.error('Shuffle questions disabled');
+									}}
+									class="toggle-track {formData.shuffleQuestions ? 'is-on' : 'is-off'}"
+								></button>
 							</div>
 
-							<div class="flex items-center justify-between space-x-2">
+							<!-- Shuffle Options -->
+							<div class="flex items-center justify-between">
 								<div>
-									<Label for="shuffleOptions" class="font-medium">Shuffle Options</Label>
-									<p class="text-xs text-muted-foreground">Randomize option order</p>
+									<p class="text-sm font-medium leading-none">Shuffle Options</p>
+									<p class="text-xs text-muted-foreground mt-1">Randomize option order</p>
 								</div>
-								<Switch id="shuffleOptions" name="shuffleOptions" bind:checked={formData.shuffleOptions} />
+								<button
+									type="button"
+									role="switch"
+									aria-checked={formData.shuffleOptions}
+									onclick={() => {
+										formData.shuffleOptions = !formData.shuffleOptions;
+										if (formData.shuffleOptions) toast.success('Shuffle options enabled');
+										else toast.error('Shuffle options disabled');
+									}}
+									class="toggle-track {formData.shuffleOptions ? 'is-on' : 'is-off'}"
+								></button>
 							</div>
 
-							<div class="flex items-center justify-between space-x-2">
+							<!-- Face Verification -->
+							<div class="flex items-center justify-between">
 								<div>
-									<Label for="requireFaceVerify" class="font-medium">Face Verification</Label>
-									<p class="text-xs text-muted-foreground">Require face verification</p>
+									<p class="text-sm font-medium leading-none">Face Verification</p>
+									<p class="text-xs text-muted-foreground mt-1">Require face verification</p>
 								</div>
-								<Switch id="requireFaceVerify" name="requireFaceVerify" bind:checked={formData.requireFaceVerify} />
+								<button
+									type="button"
+									role="switch"
+									aria-checked={formData.requireFaceVerify}
+									onclick={() => {
+										formData.requireFaceVerify = !formData.requireFaceVerify;
+										if (formData.requireFaceVerify) toast.success('Face verification enabled');
+										else toast.error('Face verification disabled');
+									}}
+									class="toggle-track {formData.requireFaceVerify ? 'is-on' : 'is-off'}"
+								></button>
 							</div>
 
-							<div class="flex items-center justify-between space-x-2">
+							<!-- Fullscreen Required -->
+							<div class="flex items-center justify-between">
 								<div>
-									<Label for="fullscreenRequired" class="font-medium">Fullscreen Required</Label>
-									<p class="text-xs text-muted-foreground">Must be in fullscreen mode</p>
+									<p class="text-sm font-medium leading-none">Fullscreen Required</p>
+									<p class="text-xs text-muted-foreground mt-1">Must be in fullscreen mode</p>
 								</div>
-								<Switch id="fullscreenRequired" name="fullscreenRequired" bind:checked={formData.fullscreenRequired} />
+								<button
+									type="button"
+									role="switch"
+									aria-checked={formData.fullscreenRequired}
+									onclick={() => {
+										formData.fullscreenRequired = !formData.fullscreenRequired;
+										if (formData.fullscreenRequired) toast.success('Fullscreen required enabled');
+										else toast.error('Fullscreen required disabled');
+									}}
+									class="toggle-track {formData.fullscreenRequired ? 'is-on' : 'is-off'}"
+								></button>
 							</div>
 						</div>
 
@@ -965,7 +1047,7 @@ async function handleSubmit(event: Event) {
 					<Button variant="outline" href="/lecturer/assessments">Cancel</Button>
 					<Button type="submit" disabled={isSubmitting}>
 						{#if isSubmitting}
-							<span class="animate-spin mr-2">⏳</span>
+							<LoaderIcon class="mr-2 size-4 animate-spin" />
 						{/if}
 						Create Test
 					</Button>

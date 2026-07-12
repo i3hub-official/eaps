@@ -673,6 +673,110 @@ ${APP_URL}
   return { html, text }
 }
 
+// ─── Staff Invitation (Pre-onboarding) Email ─────────────────────────────────
+// Sent when an admin pre-onboards a staff member, before any Staff row
+// exists. Contains the identification token needed to complete onboarding
+// at /onboarding/staff — distinct from buildWelcomeStaffEmail, which is
+// sent AFTER a staff account already exists.
+
+export function buildStaffInvitationEmail(
+  email: string,
+  roleDisplayName: string,
+  collegeName: string,
+  departmentName: string,
+  courseList: string[],
+  token: string,
+  expiryHours: number,
+  origin: string = APP_URL,
+): { html: string; text: string } {
+  const onboardLink = `${origin}/onboarding/staff?token=${encodeURIComponent(token)}`
+  const coursesText = courseList.length > 0 ? courseList.join(', ') : '(none assigned yet)'
+
+  const text = `
+Hello,
+
+You've been pre-onboarded as staff at ${APP_NAME} (${APP_SHORT}).
+
+Role: ${roleDisplayName}
+College: ${collegeName}
+Department: ${departmentName}
+Courses: ${coursesText}
+
+To complete your account setup, use the link below. This link contains your
+identification token and will expire in ${expiryHours} hours.
+
+${onboardLink}
+
+If you were not expecting this invitation, you can safely ignore this email.
+
+---
+${APP_NAME} (${APP_SHORT}) - Evaluation Assessment Protocol System
+${APP_URL}
+  `.trim()
+
+  const html = `
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; line-height: 1.6; color: #1a1a1a; max-width: 600px; margin: 0 auto; padding: 20px; }
+    .header { border-bottom: 2px solid #1a56db; padding-bottom: 16px; margin-bottom: 24px; }
+    .logo { font-size: 24px; font-weight: bold; color: #1a56db; }
+    .subtitle { font-size: 14px; color: #6b7280; font-weight: normal; }
+    .detail-box { background: #f3f4f6; border-radius: 8px; padding: 16px; margin: 16px 0; }
+    .detail-row { display: flex; justify-content: space-between; padding: 4px 0; font-size: 14px; gap: 12px; }
+    .detail-label { color: #6b7280; white-space: nowrap; }
+    .detail-value { font-weight: 600; color: #1a1a1a; text-align: right; word-break: break-word; }
+    .button { display: inline-block; background: #1a56db; color: white; padding: 12px 24px; border-radius: 6px; text-decoration: none; font-weight: 600; margin: 16px 0; }
+    .footer { border-top: 1px solid #e5e7eb; padding-top: 16px; margin-top: 32px; font-size: 14px; color: #6b7280; }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <div class="logo">${APP_NAME} <span class="subtitle">(${APP_SHORT})</span></div>
+  </div>
+
+  <h1>You've Been Invited to Join ${APP_SHORT}</h1>
+
+  <p>You've been pre-onboarded as staff. Here are the details on file:</p>
+
+  <div class="detail-box">
+    <div class="detail-row"><span class="detail-label">Role</span><span class="detail-value">${roleDisplayName}</span></div>
+    <div class="detail-row"><span class="detail-label">College</span><span class="detail-value">${collegeName}</span></div>
+    <div class="detail-row"><span class="detail-label">Department</span><span class="detail-value">${departmentName}</span></div>
+    <div class="detail-row"><span class="detail-label">Courses</span><span class="detail-value">${coursesText}</span></div>
+  </div>
+
+  <p>Click below to complete your account setup. This link contains your identification token.</p>
+
+  <p style="text-align: center;">
+    <a href="${onboardLink}" class="button">Complete my onboarding</a>
+  </p>
+
+  <p>This link will expire in <strong>${expiryHours} hours</strong>.</p>
+
+  <p style="font-size: 13px; color: #6b7280;">
+    If you were not expecting this invitation, you can safely ignore this email.
+  </p>
+
+  <div class="footer">
+    <p>
+      ${APP_NAME} (${APP_SHORT}) - Evaluation Assessment Protocol System<br>
+      <a href="${APP_URL}" style="color: #1a56db;">${APP_URL}</a>
+    </p>
+    <p style="font-size: 12px; color: #9ca3af;">
+      This is an automated message, please do not reply to this email.
+    </p>
+  </div>
+</body>
+</html>
+  `.trim()
+
+  return { html, text }
+}
+
 // ─── Send Emails ─────────────────────────────────────────────────────────────
 
 export async function sendResetEmail(
@@ -755,6 +859,30 @@ export async function sendLoginAlertEmail(
   return sendMail({
     to: email,
     subject: `New sign-in to your ${APP_SHORT} account`,
+    html,
+    text,
+  })
+}
+
+// ─── Staff Invitation Email ─────────────────────────────────────────────────
+
+export async function sendStaffInvitationEmail(
+  email: string,
+  roleDisplayName: string,
+  collegeName: string,
+  departmentName: string,
+  courseList: string[],
+  token: string,
+  expiryHours: number,
+  origin?: string,
+): Promise<{ success: boolean; error?: string; id?: string }> {
+  const { html, text } = buildStaffInvitationEmail(
+    email, roleDisplayName, collegeName, departmentName, courseList, token, expiryHours, origin
+  )
+
+  return sendMail({
+    to: email,
+    subject: `You're invited to join ${APP_SHORT}`,
     html,
     text,
   })

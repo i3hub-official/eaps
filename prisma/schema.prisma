@@ -200,6 +200,13 @@ enum ConversationStatus {
   CLOSED
 }
 
+enum InvitationStatus {
+  PENDING
+  ACCEPTED
+  EXPIRED
+  REVOKED
+}
+
 // ============================================================
 // RBAC
 // ============================================================
@@ -340,9 +347,10 @@ model College {
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
-  university  University   @relation(fields: [universityId], references: [id])
-  departments Department[]
-  staff       Staff[]
+  university       University        @relation(fields: [universityId], references: [id])
+  departments      Department[]
+  staff            Staff[]
+  staffInvitations StaffInvitation[]
 
   @@unique([universityId, shortName])
   // List all colleges for a university (course dialog dropdown)
@@ -360,13 +368,14 @@ model Department {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  college       College                 @relation(fields: [collegeId], references: [id])
-  programmes    Programme[]
-  staff         Staff[]
-  students      Student[]
-  courses       Course[]
-  eligibility   AssessmentEligibility[]
-  conversations Conversation[]
+  college          College                 @relation(fields: [collegeId], references: [id])
+  programmes       Programme[]
+  staff            Staff[]
+  students         Student[]
+  courses          Course[]
+  eligibility      AssessmentEligibility[]
+  conversations    Conversation[]
+  staffInvitations StaffInvitation[]
 
   @@unique([collegeId, shortName])
   // List departments per college (cascade filter in course dialog)
@@ -461,13 +470,14 @@ model Course {
   createdAt    DateTime     @default(now())
   updatedAt    DateTime     @updatedAt
 
-  department        Department           @relation(fields: [departmentId], references: [id])
-  level             Level                @relation(fields: [levelId], references: [id])
+  department        Department              @relation(fields: [departmentId], references: [id])
+  level             Level                   @relation(fields: [levelId], references: [id])
   offerings         CourseOffering[]
   registrations     CourseRegistration[]
   questions         Question[]
   assessments       Assessment[]
   transcriptEntries TranscriptEntry[]
+  invitations       StaffInvitationCourse[]
 
   // Hot path: fetch all active courses for a level (course registration load)
   @@index([levelId, status])
@@ -630,6 +640,8 @@ model Staff {
   markedAttendanceRecords   AttendanceRecord[]  @relation("AttendanceMarker")
   assignedConversations     Conversation[]      @relation("AssignedConversations")
   sentMessages              Message[]           @relation("SentMessages")
+  sentInvitations           StaffInvitation[]   @relation("InvitationSender")
+  acceptedInvitation        StaffInvitation?    @relation("InvitationAcceptedStaff")
 
   // Auth: identifier-first login
   @@index([emailHash])
@@ -659,6 +671,47 @@ model StaffSession {
 
   // Invalidate all sessions for a staff member (logout everywhere / suspension)
   @@index([staffId, expiresAt])
+}
+
+model StaffInvitation {
+  id              String           @id @default(cuid())
+  email           String
+  primaryRole     StaffRole
+  collegeId       String
+  departmentId    String
+  // Levels this invitee is eligible to teach, e.g. [100, 200] — mirrors the
+  // lecturer-pool eligibility concept from the seed script (levels +
+  // maxCourseLoad), kept here as reference/filter metadata rather than a
+  // permanent Staff field, since specific course assignment is what
+  // actually matters once onboarding completes.
+  levels          Int[]
+  tokenHash       String           @unique
+  status          InvitationStatus @default(PENDING)
+  invitedById     String
+  expiresAt       DateTime
+  acceptedAt      DateTime?
+  acceptedStaffId String?          @unique
+  createdAt       DateTime         @default(now())
+  updatedAt       DateTime         @updatedAt
+
+  college       College                 @relation(fields: [collegeId], references: [id])
+  department    Department              @relation(fields: [departmentId], references: [id])
+  invitedBy     Staff                   @relation("InvitationSender", fields: [invitedById], references: [id])
+  acceptedStaff Staff?                  @relation("InvitationAcceptedStaff", fields: [acceptedStaffId], references: [id])
+  courses       StaffInvitationCourse[]
+
+  @@index([email])
+  @@index([status])
+}
+
+model StaffInvitationCourse {
+  invitationId String
+  courseId     String
+
+  invitation StaffInvitation @relation(fields: [invitationId], references: [id], onDelete: Cascade)
+  course     Course          @relation(fields: [courseId], references: [id])
+
+  @@id([invitationId, courseId])
 }
 
 // ============================================================
