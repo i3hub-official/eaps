@@ -1,26 +1,48 @@
 // src/lib/server/auth/index.ts
-// Core auth utilities shared across all portals
+import { hash, verify } from '@node-rs/argon2'
 
-import bcrypt from 'bcryptjs'
 import { randomBytes } from 'crypto'
 import { getPrismaClient } from '$lib/server/db/index.js'
 import { searchHashFor } from '$lib/security/dataProtection'
-
 
 // ─── Constants ───────────────────────────────────────────────────────────────
 
 const SESSION_TTL_DAYS = 7
 const REFRESH_TTL_DAYS = 30
-const BCRYPT_ROUNDS = 12
+
+const ARGON2_OPTIONS = {
+  algorithm: 2, // Argon2id — resistant to both GPU cracking and side-channel attacks
+  memoryCost: 65536, // 64 MB
+  timeCost: 3,
+  parallelism: 4,
+}
 
 // ─── Passwords ───────────────────────────────────────────────────────────────
 
 export async function hashPassword(plain: string): Promise<string> {
-  return bcrypt.hash(plain, BCRYPT_ROUNDS)
+  return hash(plain, ARGON2_OPTIONS)
 }
 
-export async function verifyPassword(plain: string, hash: string): Promise<boolean> {
-  return bcrypt.compare(plain, hash)
+export async function verifyPassword(plain: string, storedHash: string): Promise<boolean> {
+  return verify(storedHash, plain, ARGON2_OPTIONS)
+}
+
+export function needsRehashCheck(storedHash: string): boolean {
+  // @node-rs/argon2 has no built-in needsRehash, so parse the PHC-format
+  // hash string ourselves and compare its params to ARGON2_OPTIONS.
+  // Format: $argon2id$v=19$m=65536,t=3,p=4$salt$hash
+  const match = storedHash.match(/^\$argon2id\$v=\d+\$m=(\d+),t=(\d+),p=(\d+)\$/)
+  if (!match) return true // unrecognized format — force a rehash
+
+  const memoryCost = Number(match[1])
+  const timeCost = Number(match[2])
+  const parallelism = Number(match[3])
+
+  return (
+    memoryCost !== ARGON2_OPTIONS.memoryCost ||
+    timeCost !== ARGON2_OPTIONS.timeCost ||
+    parallelism !== ARGON2_OPTIONS.parallelism
+  )
 }
 
 export function validatePasswordStrength(password: string): string | null {
@@ -48,7 +70,7 @@ function sessionExpiry(days: number): Date {
 
 export async function createStaffSession(
   staffId: string,
-  meta: { ipAddress?: string; userAgent?: string } = {}
+  meta: { ipAddress?: string; userAgent?: string } = {},
 ) {
   const prisma = await getPrismaClient()
   const token = generateToken()
@@ -96,7 +118,6 @@ export async function getStaffByToken(token: string) {
   if (!session || session.expiresAt < new Date()) return null
   if (session.staff.status !== 'ACTIVE') return null
 
-  // flatten permissions + role names into sets for O(1) lookup
   const permissions = new Set<string>()
   const roles = new Set<string>()
   for (const ra of session.staff.roleAssignments) {
@@ -106,11 +127,9 @@ export async function getStaffByToken(token: string) {
     }
   }
 
-  // bump lastActiveAt (fire-and-forget)
-  prisma.staffSession.update({
-    where: { id: session.id },
-    data: { lastActiveAt: new Date() },
-  }).catch(() => {})
+  prisma.staffSession
+    .update({ where: { id: session.id }, data: { lastActiveAt: new Date() } })
+    .catch(() => {})
 
   return { staff: session.staff, session, permissions, roles }
 }
@@ -157,7 +176,7 @@ export async function invalidateAllStaffSessions(staffId: string) {
 
 export async function createStudentSession(
   studentId: string,
-  meta: { ipAddress?: string; userAgent?: string; deviceFingerprint?: string } = {}
+  meta: { ipAddress?: string; userAgent?: string; deviceFingerprint?: string } = {},
 ) {
   const prisma = await getPrismaClient()
   const token = generateToken()
@@ -197,11 +216,9 @@ export async function getStudentByToken(token: string) {
   if (!session || session.expiresAt < new Date()) return null
   if (session.student.status !== 'ACTIVE') return null
 
-  // bump lastActiveAt (fire-and-forget)
-  prisma.studentSession.update({
-    where: { id: session.id },
-    data: { lastActiveAt: new Date() },
-  }).catch(() => {})
+  prisma.studentSession
+    .update({ where: { id: session.id }, data: { lastActiveAt: new Date() } })
+    .catch(() => {})
 
   return { student: session.student, session }
 }
@@ -257,6 +274,8 @@ export const cookieOptions = {
   path: '/',
   maxAge: COOKIE_MAX_AGE,
 }
+
+// ─── User lookups ─────────────────────────────────────────────────────────────
 
 export async function findStaffByEmail(email: string) {
   const prisma = await getPrismaClient()

@@ -8,7 +8,6 @@
     import ScanFace from '@lucide/svelte/icons/scan-face';
     import ArrowLeft from '@lucide/svelte/icons/arrow-left';
     import ArrowRight from '@lucide/svelte/icons/arrow-right';
-    import Eye from '@lucide/svelte/icons/eye';
     import ChevronUp from '@lucide/svelte/icons/chevron-up';
     import SmilePlus from '@lucide/svelte/icons/smile-plus';
     import { getHuman } from '$lib/client/face/human.js';
@@ -20,7 +19,7 @@
         type GestureDefinition
     } from './gesture-service.js';
 
-    let { onSuccess, onCancel }: { onSuccess?: () => void; onCancel?: () => void } = $props();
+    let { onSuccess, onCancel } = $props<{ onSuccess?: () => void; onCancel?: () => void }>();
 
     type Phase = 'loading-model' | 'requesting-camera' | 'positioning' | 'gesture' | 'processing' | 'success' | 'error';
 
@@ -33,12 +32,11 @@
     let posHoldStart: number | null = null;
     const POS_HOLD_MS = 2000;
 
-    let selected: GestureDefinition[] = [];
+    let selected = $state<GestureDefinition[]>([]);
     let gestureIndex = $state(0);
     let gesturesDone = $state(0);
     let holdProgress = $state(0);
     
-    // Core Tracker reference (kept out of aggressive deep proxy tracking)
     let tracker: GestureTracker | null = null; 
     const GESTURE_COUNT = 3;
 
@@ -303,18 +301,15 @@
             return;
         }
 
-    // ─── Hardened Anti-Contamination Gesture Detection ──────────────────
-const confidence = gestureConfidence(g.id, face, gestures);
-confidenceDisplay = confidence;
+        const confidence = gestureConfidence(g.id, face, gestures);
+        confidenceDisplay = confidence;
 
-// FIX: Raise this from 0.60 to 0.85 to ignore small geometric drift during tracking shifts
-const anyOtherGestureActive = ALL_GESTURES
-    .filter(alt => alt.id !== g.id)
-    .some(alt => gestureConfidence(alt.id, face, gestures) >= 0.85);
+        const anyOtherGestureActive = ALL_GESTURES
+            .filter(alt => alt.id !== g.id)
+            .some(alt => gestureConfidence(alt.id, face, gestures) >= 0.85);
 
-// Pass the updated flag to your tracker
-const confirmed = tracker.update(confidence, anyOtherGestureActive);
-holdProgress = tracker.holdProgress;
+        const confirmed = tracker.update(confidence, anyOtherGestureActive);
+        holdProgress = tracker.holdProgress;
 
         if (frameCount % 10 === 0) {
             console.log(`[Gesture] ${g.label}: confidence=${confidence.toFixed(2)}, holdProgress=${holdProgress.toFixed(2)}`);
@@ -489,8 +484,6 @@ holdProgress = tracker.holdProgress;
                     <ArrowLeft class="size-5" />
                 {:else if selected[gestureIndex]?.icon === 'right'}
                     <ArrowRight class="size-5" />
-                {:else if selected[gestureIndex]?.icon === 'blink'}
-                    <Eye class="size-5" />
                 {:else if selected[gestureIndex]?.icon === 'nod'}
                     <ChevronUp class="size-5" />
                 {:else if selected[gestureIndex]?.icon === 'mouth'}

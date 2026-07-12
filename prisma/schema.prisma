@@ -1,7 +1,4 @@
-// ============================================================
-// MOUAU eTEST — Prisma Schema
-// Domain 1: Auth & Users + Academic Structure
-// ============================================================
+// prisma/schema.prisma
 
 generator client {
   provider = "prisma-client-js"
@@ -89,20 +86,135 @@ enum CourseType {
   CARRYOVER_ELIGIBLE
 }
 
+enum RegistrationStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  CANCELLED
+}
+
+enum RegistrationType {
+  NORMAL
+  CARRY_OVER
+  EXTRA
+}
+
+enum AttendanceStatus {
+  PRESENT
+  ABSENT
+  EXCUSED
+  LATE
+}
+
+enum AssessmentType {
+  PRACTICE
+  ASSIGNMENT
+  TEST
+  EXAMINATION
+}
+
+enum AssessmentStatus {
+  DRAFT
+  PUBLISHED
+  SCHEDULED
+  ACTIVE
+  ENDED
+  CANCELLED
+}
+
+enum QuestionType {
+  SINGLE_CHOICE
+  MULTIPLE_CHOICE
+  TRUE_FALSE
+  FILL_BLANK
+  MATCHING
+  ESSAY
+  ORDERING
+}
+
+enum DifficultyLevel {
+  EASY
+  MEDIUM
+  HARD
+  EXPERT
+}
+
+enum SessionStatus {
+  PENDING
+  IN_PROGRESS
+  PAUSED
+  SUBMITTED
+  TIMED_OUT
+  DISQUALIFIED
+}
+
+enum SubmissionMode {
+  MANUAL
+  AUTO_TIME
+  AUTO_VIOLATION
+  FORCE
+}
+
+enum GradeLabel {
+  A
+  B
+  C
+  D
+  E
+  F
+}
+
+enum ViolationType {
+  FULLSCREEN_EXIT
+  TAB_SWITCH
+  COPY_ATTEMPT
+  PASTE_ATTEMPT
+  DEVTOOLS_OPEN
+  FACE_NOT_DETECTED
+  FACE_MISMATCH
+  MULTIPLE_FACES
+  IDLE_TIMEOUT
+  NETWORK_DROP
+  SCREEN_CAPTURE
+  FOCUS_LOSS
+  KEYBOARD_SHORTCUT
+  CLOCK_TAMPER
+}
+
+enum NotificationType {
+  REGISTRATION_REMINDER
+  MISSING_COURSE_ALERT
+  EXAM_SCHEDULE
+  FACE_ENROLLMENT_REMINDER
+  PAYMENT_REMINDER
+  RESULT_RELEASED
+  EXAM_STARTING
+  VIOLATION_ALERT
+  PENDING_APPROVAL
+  GENERAL
+}
+
+enum ConversationStatus {
+  OPEN
+  RESOLVED
+  CLOSED
+}
+
 // ============================================================
-// RBAC — Security,Roles & Permission
+// RBAC
 // ============================================================
 
 model OtpRecord {
   id        String   @id @default(cuid())
   email     String
   otp       String
-  type      String // 'STAFF_RESET' | 'STUDENT_RESET' | 'STAFF_2FA'
+  type      String
   used      Boolean  @default(false)
   expiresAt DateTime
   createdAt DateTime @default(now())
 
-  @@index([email, type])
+  // Lookup: find valid OTP for a given email+type, filter out used/expired
+  @@index([email, type, used, expiresAt])
 }
 
 model PasswordResetToken {
@@ -110,7 +222,7 @@ model PasswordResetToken {
   userType   String
   staffId    String?
   studentId  String?
-  tokenHash  String    @unique
+  tokenHash  String    @unique // primary lookup — always by tokenHash
   expiresAt  DateTime
   consumedAt DateTime?
   createdAt  DateTime  @default(now())
@@ -118,15 +230,17 @@ model PasswordResetToken {
   staff   Staff?   @relation(fields: [staffId], references: [id], onDelete: Cascade)
   student Student? @relation(fields: [studentId], references: [id], onDelete: Cascade)
 
-  @@index([userType, staffId, studentId])
+  // Cleanup queries: find all tokens for a user to invalidate old ones
+  @@index([staffId])
+  @@index([studentId])
 }
 
 model VerificationToken {
   id         String    @id @default(cuid())
-  userType   String // "staff" | "student"
+  userType   String
   staffId    String?
   studentId  String?
-  tokenHash  String    @unique
+  tokenHash  String    @unique // primary lookup
   expiresAt  DateTime
   consumedAt DateTime?
   createdAt  DateTime  @default(now())
@@ -134,25 +248,29 @@ model VerificationToken {
   staff   Staff?   @relation(fields: [staffId], references: [id], onDelete: Cascade)
   student Student? @relation(fields: [studentId], references: [id], onDelete: Cascade)
 
-  @@index([userType, staffId, studentId])
+  @@index([staffId])
+  @@index([studentId])
 }
 
 model Permission {
   id          String   @id @default(cuid())
-  name        String   @unique // e.g. "exam:create", "result:release"
+  name        String   @unique // always looked up by name
   description String?
-  group       String // e.g. "Examination", "Result", "Student"
+  group       String
   createdAt   DateTime @default(now())
 
   rolePermissions RolePermission[]
+
+  // Group listing for admin UI
+  @@index([group])
 }
 
 model Role {
   id          String   @id @default(cuid())
-  name        String   @unique // mirrors StaffRole values
+  name        String   @unique // always looked up by name
   displayName String
   description String?
-  isSystem    Boolean  @default(true) // system roles cannot be deleted
+  isSystem    Boolean  @default(true)
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
@@ -170,6 +288,8 @@ model RolePermission {
   permission Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
 
   @@unique([roleId, permissionId])
+  // permissionId alone for reverse lookup (which roles have this permission?)
+  @@index([permissionId])
 }
 
 model StaffRoleAssignment {
@@ -186,6 +306,8 @@ model StaffRoleAssignment {
   assigner Staff? @relation("RoleAssigner", fields: [assignedBy], references: [id])
 
   @@unique([staffId, roleId])
+  // Auth guard: fetch all active roles for a staff member
+  @@index([staffId, isActive])
 }
 
 // ============================================================
@@ -200,7 +322,7 @@ model University {
   website   String?
   email     String?
   phone     String?
-  logo      String? // file path/url
+  logo      String?
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -223,6 +345,8 @@ model College {
   staff       Staff[]
 
   @@unique([universityId, shortName])
+  // List all colleges for a university (course dialog dropdown)
+  @@index([universityId])
 }
 
 model Department {
@@ -245,6 +369,8 @@ model Department {
   conversations Conversation[]
 
   @@unique([collegeId, shortName])
+  // List departments per college (cascade filter in course dialog)
+  @@index([collegeId])
 }
 
 model Programme {
@@ -262,13 +388,13 @@ model Programme {
   students   Student[]
 
   @@unique([departmentId, shortName])
+  @@index([departmentId, isActive])
 }
 
-// Represents a level (100, 200, ... 700) — no hardcoded values
 model Level {
   id        String   @id @default(cuid())
-  name      Int      @unique // 100, 200, 300, ...
-  label     String // "100 Level", "Postgraduate", etc.
+  name      Int      @unique // 100, 200, 300 — always looked up by name
+  label     String
   createdAt DateTime @default(now())
 
   courseRegistrations CourseRegistration[]
@@ -279,7 +405,7 @@ model Level {
 
 model AcademicSession {
   id        String                @id @default(cuid())
-  name      String                @unique // e.g. "2024/2025"
+  name      String                @unique
   startDate DateTime
   endDate   DateTime
   status    AcademicSessionStatus @default(UPCOMING)
@@ -290,6 +416,10 @@ model AcademicSession {
   semesters           Semester[]
   courseRegistrations CourseRegistration[]
   transcriptEntries   TranscriptEntry[]
+
+  // Hot path: findFirst({ where: { isCurrent: true } }) — called on every page load
+  @@index([isCurrent])
+  @@index([status])
 }
 
 model Semester {
@@ -299,8 +429,8 @@ model Semester {
   startDate           DateTime
   endDate             DateTime
   registrationEnabled Boolean      @default(true)
-  regOpenAt           DateTime? // when registration opens
-  regCloseAt          DateTime? // when registration closes
+  regOpenAt           DateTime?
+  regCloseAt          DateTime?
   isCurrent           Boolean      @default(false)
   createdAt           DateTime     @default(now())
   updatedAt           DateTime     @updatedAt
@@ -310,6 +440,8 @@ model Semester {
   courses             CourseOffering[]
 
   @@unique([sessionId, type])
+  // Hot path: findFirst({ where: { sessionId, isCurrent: true } }) — every page load
+  @@index([sessionId, isCurrent])
 }
 
 // ============================================================
@@ -320,7 +452,7 @@ model Course {
   id           String       @id @default(cuid())
   departmentId String
   levelId      String
-  code         String       @unique // e.g. "CSC301"
+  code         String       @unique
   title        String
   creditUnits  Int          @default(2)
   type         CourseType   @default(COMPULSORY)
@@ -336,14 +468,18 @@ model Course {
   questions         Question[]
   assessments       Assessment[]
   transcriptEntries TranscriptEntry[]
+
+  // Hot path: fetch all active courses for a level (course registration load)
+  @@index([levelId, status])
+  // Filter by department within a level (recommended courses)
+  @@index([departmentId, levelId, status])
 }
 
-// A specific offering of a course in a semester (who teaches it, exam details)
 model CourseOffering {
   id         String   @id @default(cuid())
   courseId   String
   semesterId String
-  lecturerId String? // primary lecturer
+  lecturerId String?
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt
 
@@ -354,24 +490,15 @@ model CourseOffering {
   attendanceSessions AttendanceSession[]
 
   @@unique([courseId, semesterId])
+  // Fetch all offerings for a semester (used in course query via relation filter)
+  @@index([semesterId])
+  // Lecturer's offerings list
+  @@index([lecturerId, semesterId])
 }
 
 // ============================================================
 // COURSE REGISTRATION
 // ============================================================
-
-enum RegistrationStatus {
-  PENDING
-  APPROVED
-  REJECTED
-  CANCELLED
-}
-
-enum RegistrationType {
-  NORMAL // current level courses
-  CARRY_OVER // retaking a failed course
-  EXTRA // additional course (with approval)
-}
 
 model CourseRegistration {
   id           String             @id @default(cuid())
@@ -382,7 +509,7 @@ model CourseRegistration {
   levelId      String
   type         RegistrationType   @default(NORMAL)
   status       RegistrationStatus @default(PENDING)
-  editCount    Int                @default(0) // max 3
+  editCount    Int                @default(0)
   approvedBy   String?
   approvedAt   DateTime?
   rejectedAt   DateTime?
@@ -398,25 +525,26 @@ model CourseRegistration {
   approver Staff?          @relation("RegistrationApprover", fields: [approvedBy], references: [id])
 
   @@unique([studentId, courseId, sessionId, semesterId])
+  // Hot path: student's registrations for a semester (page load + drop action)
+  @@index([studentId, sessionId, semesterId, status])
+  // Admin: all registrations for a semester (approval queue)
+  @@index([semesterId, status, createdAt])
+  // Admin: all registrations for a course
+  @@index([courseId, semesterId, status])
+  // Approver lookup
+  @@index([approvedBy])
 }
 
 // ============================================================
 // ATTENDANCE
 // ============================================================
 
-enum AttendanceStatus {
-  PRESENT
-  ABSENT
-  EXCUSED
-  LATE
-}
-
 model AttendanceSession {
   id               String   @id @default(cuid())
   courseOfferingId String
-  title            String? // e.g. "Week 3 Lecture", optional label
+  title            String?
   date             DateTime
-  createdById      String // lecturer who opened this attendance session
+  createdById      String
   createdAt        DateTime @default(now())
   updatedAt        DateTime @updatedAt
 
@@ -425,6 +553,8 @@ model AttendanceSession {
   records        AttendanceRecord[]
 
   @@index([courseOfferingId, date])
+  // Lecturer's own sessions
+  @@index([createdById, date])
 }
 
 model AttendanceRecord {
@@ -432,7 +562,7 @@ model AttendanceRecord {
   attendanceSessionId String
   studentId           String
   status              AttendanceStatus @default(ABSENT)
-  markedById          String? // staff who marked it (null if a future self check-in feature marks it)
+  markedById          String?
   note                String?
   markedAt            DateTime         @default(now())
 
@@ -441,7 +571,8 @@ model AttendanceRecord {
   markedBy          Staff?            @relation("AttendanceMarker", fields: [markedById], references: [id])
 
   @@unique([attendanceSessionId, studentId])
-  @@index([studentId])
+  // Student's attendance history across all courses
+  @@index([studentId, status])
 }
 
 // ============================================================
@@ -454,17 +585,17 @@ model Staff {
   email              String
   emailHash          String      @unique
   passwordHash       String
-  firstNameHash      String // remove @unique
+  firstNameHash      String
   firstName          String
-  lastNameHash       String // remove @unique
+  lastNameHash       String
   lastName           String
-  otherNamesHash     String? // already fine (nullable + not unique)
+  otherNamesHash     String?
   otherNames         String?
   phone              String?
   phoneHash          String?
   gender             Gender?
   avatar             String?
-  primaryRole        StaffRole // their main role in the system
+  primaryRole        StaffRole
   collegeId          String?
   departmentId       String?
   status             StaffStatus @default(ACTIVE)
@@ -476,11 +607,9 @@ model Staff {
   college    College?    @relation(fields: [collegeId], references: [id])
   department Department? @relation(fields: [departmentId], references: [id])
 
-  // RBAC
   roleAssignments StaffRoleAssignment[]
   assignedRoles   StaffRoleAssignment[] @relation("RoleAssigner")
 
-  // Relations to other domains (added as we build)
   authoredQuestions Question[]           @relation("QuestionAuthor")
   sessions          StaffSession[]
   courseOfferings   CourseOffering[]     @relation("CourseOfferings")
@@ -502,17 +631,22 @@ model Staff {
   assignedConversations     Conversation[]      @relation("AssignedConversations")
   sentMessages              Message[]           @relation("SentMessages")
 
+  // Auth: identifier-first login
   @@index([emailHash])
   @@index([staffNumber])
+  // Name search
   @@index([firstNameHash])
   @@index([lastNameHash])
-  @@index([collegeId, departmentId, primaryRole, status, lastLoginAt])
+  // Admin staff list filtered by college/dept/role/status
+  @@index([collegeId, departmentId, primaryRole, status])
+  // Last active / activity dashboards
+  @@index([status, lastLoginAt])
 }
 
 model StaffSession {
   id                    String    @id @default(cuid())
   staffId               String
-  token                 String    @unique
+  token                 String    @unique // primary auth lookup
   refreshToken          String?   @unique
   ipAddress             String?
   userAgent             String?
@@ -523,7 +657,8 @@ model StaffSession {
 
   staff Staff @relation(fields: [staffId], references: [id], onDelete: Cascade)
 
-  @@index([token])
+  // Invalidate all sessions for a staff member (logout everywhere / suspension)
+  @@index([staffId, expiresAt])
 }
 
 // ============================================================
@@ -554,9 +689,8 @@ model Student {
   departmentId        String
   programmeId         String
   currentLevelId      String
-  entryYear           Int // e.g. 2026
+  entryYear           Int
   status              StudentStatus @default(ACTIVE)
-  // face enrollment — descriptor stored separately for security
   faceEnrolledAt      DateTime?
   mustChangePassword  Boolean       @default(false)
   lastLoginAt         DateTime?
@@ -567,10 +701,9 @@ model Student {
   programme    Programme  @relation(fields: [programmeId], references: [id])
   currentLevel Level      @relation("CurrentLevel", fields: [currentLevelId], references: [id])
 
-  // Relations to other domains (added as we build)
   sessions            StudentSession[]
   courseRegistrations CourseRegistration[]
-  faceDescriptor      FaceDescriptor?
+  faceDescriptor      FaceDescriptor?         @relation(fields: [faceDescriptorId], references: [id])
   notifications       Notification[]
   auditLogs           AuditLog[]
   eligibility         AssessmentEligibility[]
@@ -582,20 +715,28 @@ model Student {
   verificationTokens  VerificationToken[]
   attendanceRecords   AttendanceRecord[]
   tagPerformance      TagPerformance[]
+  conversations       Conversation[]
+  sentMessages        Message[]               @relation("SentMessages")
+  faceDescriptorId    String?
 
-  conversations Conversation[]
-  sentMessages  Message[]      @relation("SentMessages")
-
-  @@index([matricNumber])
+  // Auth: identifier-first login
   @@index([emailHash])
+  @@index([matricNumber])
   @@index([jambRegNo])
-  @@index([departmentId, programmeId, entryYear, currentLevelId, phone, status])
+  // Admin student list filtered by dept/level/status
+  @@index([departmentId, currentLevelId, status])
+  // Cohort queries (entry year reports)
+  @@index([entryYear, departmentId, status])
+  // Face enrollment reminder jobs
+  @@index([faceEnrolledAt, status])
+  // Last active / activity dashboards
+  @@index([status, lastLoginAt])
 }
 
 model StudentSession {
   id                    String    @id @default(cuid())
   studentId             String
-  token                 String    @unique
+  token                 String    @unique // primary auth lookup
   refreshToken          String?   @unique
   ipAddress             String?
   userAgent             String?
@@ -607,14 +748,15 @@ model StudentSession {
 
   student Student @relation(fields: [studentId], references: [id], onDelete: Cascade)
 
-  @@index([token])
+  // Invalidate all sessions for a student (logout everywhere / suspension)
+  @@index([studentId, expiresAt])
 }
 
 model TagPerformance {
   id             String    @id @default(cuid())
   studentId      String
   tagId          String
-  courseId       String? // null = across all courses
+  courseId       String?
   attempts       Int       @default(0)
   correct        Int       @default(0)
   marksTotal     Decimal   @default(0) @db.Decimal(8, 2)
@@ -634,33 +776,19 @@ model TagPerformance {
 // ============================================================
 
 model FaceDescriptor {
-  id                String   @id @default(cuid())
-  studentId         String   @unique
-  encryptedData     String // AES-256-GCM encrypted face embedding
-  iv                String // encryption IV
-  enrolledAt        DateTime @default(now())
-  updatedAt         DateTime @updatedAt
+  id                String    @id @default(cuid())
+  studentId         String    @unique // always looked up by studentId
+  encryptedData     String
+  iv                String
+  enrolledAt        DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
   enrolledIpAddress String?
-
-  student Student @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  students          Student[]
 }
 
 // ============================================================
-// NOTIFICATIONS (stub — expanded in notifications domain)
+// NOTIFICATIONS
 // ============================================================
-
-enum NotificationType {
-  REGISTRATION_REMINDER
-  MISSING_COURSE_ALERT
-  EXAM_SCHEDULE
-  FACE_ENROLLMENT_REMINDER
-  PAYMENT_REMINDER
-  RESULT_RELEASED
-  EXAM_STARTING
-  VIOLATION_ALERT
-  PENDING_APPROVAL
-  GENERAL
-}
 
 model Notification {
   id        String           @id @default(cuid())
@@ -671,26 +799,33 @@ model Notification {
   body      String
   isRead    Boolean          @default(false)
   readAt    DateTime?
-  link      String? // optional deep-link
+  link      String?
   createdAt DateTime         @default(now())
 
   student Student? @relation(fields: [studentId], references: [id], onDelete: Cascade)
+
+  // Student inbox: unread first, then by date
+  @@index([studentId, isRead, createdAt])
+  // Staff inbox
+  @@index([staffId, isRead, createdAt])
+  // Job: send scheduled notification type to all unread recipients
+  @@index([type, isRead])
 }
 
 // ============================================================
-// AUDIT LOG (global — used by all domains)
+// AUDIT LOG
 // ============================================================
 
 model AuditLog {
   id         String   @id @default(cuid())
-  actorType  String // "staff" | "student" | "system"
+  actorType  String
   staffId    String?
   studentId  String?
-  action     String // e.g. "EXAM_SUBMITTED", "RESULT_RELEASED"
-  entity     String // table/domain name
+  action     String
+  entity     String
   entityId   String?
-  beforeData Json? // snapshot before change
-  afterData  Json? // snapshot after change
+  beforeData Json?
+  afterData  Json?
   ipAddress  String?
   userAgent  String?
   createdAt  DateTime @default(now())
@@ -701,81 +836,16 @@ model AuditLog {
   @@index([actorType, staffId])
   @@index([actorType, studentId])
   @@index([entity, entityId])
+  // Time-range queries for audit reports
   @@index([createdAt])
-}
-
-// ============================================================
-// MOUAU eTEST — Domain 2: Assessments + Question Bank
-// Append this to prisma/schema.prisma (after Domain 1)
-// ============================================================
-
-// ============================================================
-// ENUMS
-// ============================================================
-
-enum AssessmentType {
-  PRACTICE // unlimited attempts, instant feedback
-  ASSIGNMENT // due dates, submission, grading
-  TEST // 30 marks, face verification
-  EXAMINATION // 70 marks, highest security
-}
-
-enum AssessmentStatus {
-  DRAFT
-  PUBLISHED
-  SCHEDULED // published, not yet open
-  ACTIVE // currently accepting sessions
-  ENDED // past end time
-  CANCELLED
-}
-
-enum QuestionType {
-  SINGLE_CHOICE // one correct answer
-  MULTIPLE_CHOICE // multiple correct answers
-  TRUE_FALSE
-  FILL_BLANK
-  MATCHING
-  ESSAY
-  ORDERING
-}
-
-enum DifficultyLevel {
-  EASY
-  MEDIUM
-  HARD
-  EXPERT
-}
-
-enum SessionStatus {
-  PENDING // created, not yet started
-  IN_PROGRESS
-  PAUSED // network drop / tab switch
-  SUBMITTED
-  TIMED_OUT // auto-submitted at time expiry
-  DISQUALIFIED
-}
-
-enum SubmissionMode {
-  MANUAL // student clicked submit
-  AUTO_TIME // server auto-submitted on timeout
-  AUTO_VIOLATION // auto-submitted due to violations
-  FORCE // admin forced submission
-}
-
-enum GradeLabel {
-  A
-  B
-  C
-  D
-  E
-  F
+  // Filter by action within an entity (e.g. all RESULT_RELEASED on Assessment)
+  @@index([entity, action, createdAt])
 }
 
 // ============================================================
 // QUESTION BANK
 // ============================================================
 
-// Tags for searchability
 model QuestionTag {
   id        String   @id @default(cuid())
   name      String   @unique
@@ -794,23 +864,25 @@ model QuestionTagMap {
   tag      QuestionTag @relation(fields: [tagId], references: [id], onDelete: Cascade)
 
   @@id([questionId, tagId])
+  // Reverse: all questions for a tag (bank search by tag)
+  @@index([tagId])
 }
 
 model Question {
   id          String          @id @default(cuid())
-  createdById String // staff who created it
-  courseId    String? // optional — can be global bank
+  createdById String
+  courseId    String?
   type        QuestionType
   difficulty  DifficultyLevel @default(MEDIUM)
-  body        String // question text (supports markdown)
-  explanation String? // shown after answer in practice/assignment
+  body        String
+  explanation String?
   imageUrl    String?
   audioUrl    String?
   videoUrl    String?
   marks       Decimal         @default(1) @db.Decimal(6, 2)
   isActive    Boolean         @default(true)
   version     Int             @default(1)
-  parentId    String? // if this is a revised version
+  parentId    String?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -826,9 +898,15 @@ model Question {
   assessmentQs  AssessmentQuestion[]
   answers       StudentAnswer[]
   sessionOrders SessionQuestionOrder[]
+
+  // Bank search: active questions for a course filtered by type/difficulty
+  @@index([courseId, isActive, type, difficulty])
+  // Lecturer's own questions
+  @@index([createdById, isActive])
+  // Version chain lookup
+  @@index([parentId])
 }
 
-// For SINGLE_CHOICE, MULTIPLE_CHOICE, TRUE_FALSE
 model QuestionOption {
   id         String  @id @default(cuid())
   questionId String
@@ -838,9 +916,11 @@ model QuestionOption {
   order      Int     @default(0)
 
   question Question @relation(fields: [questionId], references: [id], onDelete: Cascade)
+
+  // Load all options for a question ordered
+  @@index([questionId, order])
 }
 
-// For MATCHING questions: left side → right side
 model MatchPair {
   id         String @id @default(cuid())
   questionId String
@@ -849,10 +929,12 @@ model MatchPair {
   order      Int    @default(0)
 
   question Question @relation(fields: [questionId], references: [id], onDelete: Cascade)
+
+  @@index([questionId, order])
 }
 
 // ============================================================
-// ASSESSMENTS (Exam / Test / Assignment / Practice)
+// ASSESSMENTS
 // ============================================================
 
 model Assessment {
@@ -886,15 +968,21 @@ model Assessment {
   createdAt             DateTime         @default(now())
   updatedAt             DateTime         @updatedAt
 
-  tags AssessmentTag[]  // ← Should have this
-
-  createdBy Staff  @relation("AssessmentAuthor", fields: [createdById], references: [id])
-  course    Course @relation(fields: [courseId], references: [id])
+  tags         AssessmentTag[]
+  createdBy    Staff                   @relation("AssessmentAuthor", fields: [createdById], references: [id])
+  course       Course                  @relation(fields: [courseId], references: [id])
   questions    AssessmentQuestion[]
   sessions     AssessmentSession[]
   invigilators AssessmentInvigilator[]
   eligibility  AssessmentEligibility[]
   results      AssessmentResult[]
+
+  // Student dashboard: active/scheduled assessments for a course
+  @@index([courseId, status])
+  // Lecturer's assessments
+  @@index([createdById, status])
+  // Scheduler job: find assessments whose window just opened/closed
+  @@index([status, startTime, endTime])
 }
 
 model AssessmentTag {
@@ -905,29 +993,30 @@ model AssessmentTag {
   tag        QuestionTag @relation(fields: [tagId], references: [id], onDelete: Cascade)
 
   @@id([assessmentId, tagId])
+  @@index([tagId])
 }
 
-// The question pool for an assessment — ordered, with per-question mark override
 model AssessmentQuestion {
   id            String   @id @default(cuid())
   assessmentId  String
   questionId    String
-  order         Int      @default(0) // for drag-reorder in builder
-  marksOverride Decimal? @db.Decimal(6, 2) // if null, use question.marks
+  order         Int      @default(0)
+  marksOverride Decimal? @db.Decimal(6, 2)
 
   assessment Assessment @relation(fields: [assessmentId], references: [id], onDelete: Cascade)
   question   Question   @relation(fields: [questionId], references: [id])
 
   @@unique([assessmentId, questionId])
+  // Load question pool for an assessment in order
+  @@index([assessmentId, order])
 }
 
-// Who is eligible — by department, level, or individual student
 model AssessmentEligibility {
   id           String  @id @default(cuid())
   assessmentId String
   departmentId String?
   levelId      String?
-  studentId    String? // for individual overrides
+  studentId    String?
 
   assessment Assessment  @relation(fields: [assessmentId], references: [id], onDelete: Cascade)
   department Department? @relation(fields: [departmentId], references: [id])
@@ -935,9 +1024,11 @@ model AssessmentEligibility {
   student    Student?    @relation(fields: [studentId], references: [id])
 
   @@unique([assessmentId, departmentId, levelId, studentId])
+  // Check if a student is eligible: match by dept+level or individual override
+  @@index([assessmentId, departmentId, levelId])
+  @@index([assessmentId, studentId])
 }
 
-// Invigilators assigned to an exam session
 model AssessmentInvigilator {
   id           String   @id @default(cuid())
   assessmentId String
@@ -948,10 +1039,12 @@ model AssessmentInvigilator {
   staff      Staff      @relation(fields: [staffId], references: [id])
 
   @@unique([assessmentId, staffId])
+  // Staff: which exams am I invigilating?
+  @@index([staffId])
 }
 
 // ============================================================
-// ASSESSMENT SESSIONS (one per student per attempt)
+// ASSESSMENT SESSIONS
 // ============================================================
 
 model AssessmentSession {
@@ -962,24 +1055,16 @@ model AssessmentSession {
   status        SessionStatus @default(PENDING)
   paperVariant  String?
 
-  // timing
-  startedAt   DateTime?
-  submittedAt DateTime?
-  expiresAt   DateTime?
-
-  // consent — recorded the moment the student accepts the rules screen,
-  // before any face verification or kiosk access. Kept separate from
-  // faceVerifiedAt since consent and identity are distinct compliance
-  // events under NDPR (biometric data requires consent before capture).
+  startedAt       DateTime?
+  submittedAt     DateTime?
+  expiresAt       DateTime?
   termsAcceptedAt DateTime?
 
-  // submission
   submissionMode    SubmissionMode?
   ipAddress         String?
   deviceFingerprint String?
   userAgent         String?
 
-  // face verification result
   faceVerifiedAt DateTime?
   faceScore      Float?
 
@@ -991,32 +1076,37 @@ model AssessmentSession {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  assessment Assessment        @relation(fields: [assessmentId], references: [id])
-  student    Student           @relation(fields: [studentId], references: [id])
-  answers    StudentAnswer[]
-  violations Violation[]
-  result     AssessmentResult?
-
+  assessment    Assessment             @relation(fields: [assessmentId], references: [id])
+  student       Student                @relation(fields: [studentId], references: [id])
+  answers       StudentAnswer[]
+  violations    Violation[]
+  result        AssessmentResult?
   questionOrder SessionQuestionOrder[]
 
   @@unique([assessmentId, studentId, attemptNumber])
+  // Invigilator/admin: all sessions for an assessment by status
   @@index([assessmentId, status])
-  @@index([studentId])
+  // Student: my sessions
+  @@index([studentId, status])
+  // Resume: find an in-progress session for a student
+  @@index([studentId, assessmentId, status])
+  // Auto-submit job: sessions that have expired but not yet submitted
+  @@index([status, expiresAt])
 }
 
-// The randomised question order for a session
-// Stored so student sees same order if they rejoin
 model SessionQuestionOrder {
   id          String @id @default(cuid())
   sessionId   String
   questionId  String
-  position    Int // 1-based position in this student's paper
-  optionOrder Json // array of option IDs in shuffled order
+  position    Int
+  optionOrder Json
 
   session  AssessmentSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
   question Question          @relation(fields: [questionId], references: [id])
 
   @@unique([sessionId, position])
+  // Jump to a specific question in a session
+  @@index([sessionId, questionId])
 }
 
 // ============================================================
@@ -1027,18 +1117,15 @@ model StudentAnswer {
   id              String    @id @default(cuid())
   sessionId       String
   questionId      String
-  // for choice questions: array of selected option IDs
   selectedOptions Json?
-  // for fill blank / essay / ordering
   textAnswer      String?
-  orderAnswer     Json? // array of item IDs in student's order
-  matchAnswer     Json? // { leftId: rightId } map
-  // scoring (null until graded)
+  orderAnswer     Json?
+  matchAnswer     Json?
   marksAwarded    Decimal?  @db.Decimal(6, 2)
   isCorrect       Boolean?
   isManualGraded  Boolean   @default(false)
   gradedAt        DateTime?
-  gradedById      String? // staff who manually graded
+  gradedById      String?
 
   answeredAt DateTime @default(now())
   updatedAt  DateTime @updatedAt
@@ -1048,45 +1135,31 @@ model StudentAnswer {
   gradedBy Staff?            @relation("AnswerGrader", fields: [gradedById], references: [id])
 
   @@unique([sessionId, questionId])
+  // Grading queue: ungraded essay/manual answers for a session
+  @@index([sessionId, isManualGraded, isCorrect])
+  // Grader's workload
+  @@index([gradedById, gradedAt])
 }
 
 // ============================================================
 // VIOLATIONS
 // ============================================================
 
-enum ViolationType {
-  FULLSCREEN_EXIT
-  TAB_SWITCH
-  COPY_ATTEMPT
-  PASTE_ATTEMPT
-  DEVTOOLS_OPEN
-  FACE_NOT_DETECTED
-  FACE_MISMATCH
-  MULTIPLE_FACES
-  IDLE_TIMEOUT
-  NETWORK_DROP
-  SCREEN_CAPTURE
-  FOCUS_LOSS
-  KEYBOARD_SHORTCUT
-  CLOCK_TAMPER
-}
-
 model Violation {
   id         String        @id @default(cuid())
   sessionId  String
   type       ViolationType
-  severity   Int           @default(1) // 1=warn, 2=serious, 3=critical
-  metadata   Json? // e.g. { faceScore: 0.4 }
-  screenshot String? // file path
+  severity   Int           @default(1)
+  metadata   Json?
+  screenshot String?
   createdAt  DateTime      @default(now())
-
-  // cooldown: prevent duplicate logging within N seconds
-  // (enforced in application layer)
 
   session AssessmentSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
 
   @@index([sessionId, type])
   @@index([sessionId, createdAt])
+  // Auto-disqualify job: sessions with critical violations
+  @@index([sessionId, severity, createdAt])
 }
 
 // ============================================================
@@ -1099,29 +1172,22 @@ model AssessmentResult {
   assessmentId String
   studentId    String
 
-  // raw scores
-  totalMarks    Decimal @db.Decimal(6, 2) // max possible
+  totalMarks    Decimal @db.Decimal(6, 2)
   marksObtained Decimal @db.Decimal(6, 2)
   percentage    Decimal @db.Decimal(5, 2)
 
-  // computed grade (stored permanently — never recalculate)
   grade       GradeLabel
-  gradePoints Decimal    @db.Decimal(3, 1) // 5.0, 4.0, ...
+  gradePoints Decimal    @db.Decimal(3, 1)
   passed      Boolean
 
-  // per-section breakdown (optional JSON for future use)
   breakdown Json?
-
-  // for combined CA + Exam: contributions stored separately
-  // (CA result from Test, Exam result from Examination, combined in TranscriptEntry)
 
   isReleased   Boolean   @default(false)
   releasedAt   DateTime?
   releasedById String?
 
-  // immutability: once released, any change creates a revision
   isRevised     Boolean @default(false)
-  revisedFromId String? // original result ID
+  revisedFromId String?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -1132,27 +1198,32 @@ model AssessmentResult {
   releasedBy Staff?            @relation("ResultReleaser", fields: [releasedById], references: [id])
   revisions  ResultRevision[]
 
-  @@index([assessmentId, studentId])
-  @@index([isReleased])
+  // Student: my results across assessments
+  @@index([studentId, isReleased])
+  // Admin: release queue for an assessment
+  @@index([assessmentId, isReleased])
+  // Result release job
+  @@index([isReleased, releasedAt])
 }
 
-// Every modification to a released result is tracked here
-// Original result row is never changed
 model ResultRevision {
   id          String   @id @default(cuid())
   resultId    String
   revisedById String
   reason      String
-  beforeData  Json // snapshot of result before change
-  afterData   Json // snapshot after change
+  beforeData  Json
+  afterData   Json
   createdAt   DateTime @default(now())
 
   result    AssessmentResult @relation(fields: [resultId], references: [id])
   revisedBy Staff            @relation(fields: [revisedById], references: [id])
+
+  @@index([resultId])
+  @@index([revisedById])
 }
 
 // ============================================================
-// GRADE SCALE (configurable per institution)
+// GRADE SCALE
 // ============================================================
 
 model GradeScale {
@@ -1167,18 +1238,18 @@ model GradeScale {
 }
 
 // ============================================================
-// COMBINED SCORE (CA 30 + Exam 70 = Final 100)
+// TRANSCRIPT
 // ============================================================
 
 model TranscriptEntry {
   id        String @id @default(cuid())
   studentId String
   courseId  String
-  sessionId String // academic session
+  sessionId String
 
-  testMark    Decimal?    @db.Decimal(5, 2) // out of 30
-  examMark    Decimal?    @db.Decimal(5, 2) // out of 70
-  totalMark   Decimal?    @db.Decimal(5, 2) // out of 100
+  testMark    Decimal?    @db.Decimal(5, 2)
+  examMark    Decimal?    @db.Decimal(5, 2)
+  totalMark   Decimal?    @db.Decimal(5, 2)
   percentage  Decimal?    @db.Decimal(5, 2)
   grade       GradeLabel?
   gradePoints Decimal?    @db.Decimal(3, 1)
@@ -1196,18 +1267,17 @@ model TranscriptEntry {
   session AcademicSession @relation(fields: [sessionId], references: [id])
 
   @@unique([studentId, courseId, sessionId])
+  // Student transcript page
   @@index([studentId, sessionId])
+  // Finalization job
+  @@index([studentId, isFinalized])
+  // Course performance analytics
+  @@index([courseId, sessionId, passed])
 }
 
 // ============================================================
-// MESSAGING — Student <-> Staff support conversations
+// MESSAGING
 // ============================================================
-
-enum ConversationStatus {
-  OPEN
-  RESOLVED
-  CLOSED
-}
 
 model Conversation {
   id            String             @id @default(cuid())
@@ -1228,12 +1298,14 @@ model Conversation {
   @@index([studentId, status])
   @@index([departmentId, status])
   @@index([assignedToId, status])
+  // Sort inbox by most recent message
+  @@index([status, lastMessageAt])
 }
 
 model Message {
   id              String    @id @default(cuid())
   conversationId  String
-  senderType      String // "staff" | "student"
+  senderType      String
   senderStaffId   String?
   senderStudentId String?
   body            String
@@ -1245,4 +1317,6 @@ model Message {
   senderStudent Student?     @relation("SentMessages", fields: [senderStudentId], references: [id])
 
   @@index([conversationId, createdAt])
+  // Unread count per conversation
+  @@index([conversationId, readAt])
 }
