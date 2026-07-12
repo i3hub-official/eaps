@@ -33,7 +33,7 @@
     // ─── Position Hold ─────────────────────────────────────────────────────
     let posHoldProgress = $state(0);
     let posHoldStart: number | null = null;
-    const POS_HOLD_MS = 2000; // Hardened to require 2 continuous seconds
+    const POS_HOLD_MS = 2000;
 
     // ─── Gesture Phase ─────────────────────────────────────────────────────
     let selected: GestureDefinition[] = [];
@@ -47,9 +47,8 @@
     let embeddings: number[][] = [];
     let enrolledDescriptor: number[] | null = null;
 
-    // ─── Strict Threshold Configuration ────────────────────────────────────
     const MATCH_THRESHOLD = 0.78;
-    const MIN_ANTISPOOF = 0.65; // Marginally increased for tighter webcam physical bounds
+    const MIN_ANTISPOOF = 0.65;
     const MIN_LIVENESS = 0.65;
 
     // ─── DOM Refs ─────────────────────────────────────────────────────────
@@ -62,11 +61,26 @@
     let stopped = false;
     let lastResult: any = null;
 
-    function themeColor(varName: string, fallback: string, alpha = 1) {
-        if (typeof window === 'undefined') return fallback;
-        const raw = getComputedStyle(document.documentElement).getPropertyValue(varName).trim();
-        if (!raw) return fallback;
-        return alpha < 1 ? `hsl(${raw} / ${alpha})` : `hsl(${raw})`;
+    // Cache HSL styles globally to avoid costly getComputedStyle calls on every frame
+    let colors = { primary: '', destructive: '', border: '', card: '', background: '', foreground: '' };
+
+    function initColors() {
+        if (typeof window === 'undefined') return;
+        const style = getComputedStyle(document.documentElement);
+        const getHsl = (prop: string, fallback: string) => {
+            const val = style.getPropertyValue(prop).trim();
+            return val ? `hsl(${val})` : fallback;
+        };
+        const getHslRaw = (prop: string, fallback: string) => style.getPropertyValue(prop).trim() || fallback;
+
+        colors = {
+            primary: getHsl('--primary', '#00c9a7'),
+            destructive: getHsl('--destructive', '#ef4444'),
+            border: getHsl('--border', 'rgba(255,255,255,0.18)'),
+            card: getHsl('--card', '#0f1115'),
+            background: getHslRaw('--background', '0 0% 0%'),
+            foreground: getHsl('--card-foreground', '#fff')
+        };
     }
 
     function drawOverlay(detectedFace: boolean, multiple: boolean, progress: number, label?: string) {
@@ -75,19 +89,13 @@
         const h = canvasEl.height;
         const cx = w / 2;
         const cy = h / 2;
-        
         const rx = w * 0.22;
         const ry = h * 0.48;
-
-        const primary = themeColor('--primary', '#00c9a7');
-        const destructive = themeColor('--destructive', '#ef4444');
-        const border = themeColor('--border', 'rgba(255,255,255,0.18)');
-        const card = themeColor('--card', '#0f1115');
 
         ctx.clearRect(0, 0, w, h);
 
         ctx.save();
-        ctx.fillStyle = themeColor('--background', 'rgba(0,0,0,0.7)', 0.7);
+        ctx.fillStyle = `hsl(${colors.background} / 0.7)`;
         ctx.fillRect(0, 0, w, h);
         ctx.globalCompositeOperation = 'destination-out';
         ctx.beginPath();
@@ -97,7 +105,7 @@
 
         ctx.beginPath();
         ctx.ellipse(cx, cy, rx, ry, 0, 0, Math.PI * 2);
-        ctx.strokeStyle = multiple ? destructive : detectedFace ? primary : border;
+        ctx.strokeStyle = multiple ? colors.destructive : detectedFace ? colors.primary : colors.border;
         ctx.lineWidth = detectedFace ? 2.5 : 1.5;
         ctx.stroke();
 
@@ -108,7 +116,7 @@
             [cx - rx, cy + ry, [1, -1]],
             [cx + rx, cy + ry, [-1,-1]],
         ];
-        ctx.strokeStyle = multiple ? destructive : detectedFace ? primary : themeColor('--primary', 'rgba(0,201,167,0.6)', 0.6);
+        ctx.strokeStyle = multiple ? colors.destructive : colors.primary;
         ctx.lineWidth = 2.5;
         ctx.lineCap = 'round';
         for (const [x, y, [dx, dy]] of corners) {
@@ -123,7 +131,7 @@
             ctx.save();
             ctx.beginPath();
             ctx.ellipse(cx, cy, rx + 10, ry + 10, 0, -Math.PI / 2, -Math.PI / 2 + progress * Math.PI * 2);
-            ctx.strokeStyle = themeColor('--primary', '#00c9a7', 0.4 + progress * 0.4);
+            ctx.strokeStyle = colors.primary;
             ctx.lineWidth = 4;
             ctx.lineCap = 'round';
             ctx.stroke();
@@ -138,14 +146,14 @@
             const textW = ctx.measureText(label).width;
             const pillW = Math.min(textW + 44, w * 0.85);
             const pillX = cx - pillW / 2;
-            ctx.fillStyle = card;
-            ctx.strokeStyle = border;
+            ctx.fillStyle = colors.card;
+            ctx.strokeStyle = colors.border;
             ctx.lineWidth = 1.5;
             ctx.beginPath();
             ctx.roundRect(pillX, pillY, pillW, pillH, pillH / 2);
             ctx.fill();
             ctx.stroke();
-            ctx.fillStyle = progress > 0 ? primary : themeColor('--card-foreground', '#fff');
+            ctx.fillStyle = progress > 0 ? colors.primary : colors.foreground;
             ctx.textAlign = 'center';
             ctx.textBaseline = 'middle';
             ctx.fillText(label, cx, pillY + pillH / 2);
@@ -158,15 +166,13 @@
             stopped = false;
             phase = 'loading-model';
             statusText = 'Loading face model…';
-            debugText = 'Starting initialization...';
+            initColors();
             human = await getHuman();
-            debugText = 'Model loaded';
 
             if (stopped) return;
 
             phase = 'requesting-camera';
             statusText = 'Requesting camera access…';
-            debugText = 'Getting camera...';
             stream = await navigator.mediaDevices.getUserMedia({
                 video: { facingMode: 'user', width: { ideal: 640 }, height: { ideal: 480 } },
                 audio: false,
@@ -187,35 +193,19 @@
                 ctx = canvasEl.getContext('2d');
             }
 
-            debugText = 'Fetching face descriptor...';
             const descRes = await fetch('/api/face/descriptor');
+            if (!descRes.ok) throw new Error('Failed to retrieve verification source profile.');
             
-            if (!descRes.ok) {
-                if (descRes.status === 404) throw new Error('No enrolled face found. Please enroll first.');
-                if (descRes.status === 401) throw new Error('Authentication failed. Please log in again.');
-                throw new Error(`Server error (${descRes.status}).`);
-            }
-            
-            const responseText = await descRes.text();
-            if (!responseText) throw new Error('Server returned empty response');
-            const data = JSON.parse(responseText);
-            
-            if (!data.descriptor || !Array.isArray(data.descriptor)) {
-                throw new Error('Invalid or missing face profile metadata.');
-            }
-            
+            const data = await descRes.json();
+            if (!data.descriptor) throw new Error('Invalid face profile metadata.');
             enrolledDescriptor = data.descriptor;
 
             phase = 'positioning';
             statusText = 'Centre your face in the oval';
-            debugText = 'Starting positioning phase...';
-            posHoldStart = null;
-            posHoldProgress = 0;
             loopHandle = requestAnimationFrame(positioningLoop);
         } catch (err) {
             phase = 'error';
             errorMessage = err instanceof Error ? err.message : 'Could not access the camera.';
-            console.error('Start error:', err);
         }
     }
 
@@ -224,7 +214,6 @@
         try {
             lastResult = await human.detect(videoEl);
         } catch (err) {
-            console.error('Detection error:', err);
             lastResult = null;
         }
     }
@@ -293,7 +282,6 @@
                 drawOverlay(true, false, 0);
             }
         }
-
         loopHandle = requestAnimationFrame(positioningLoop);
     }
 
@@ -329,15 +317,11 @@
             return;
         }
 
-        // Calculate confidence for targeted gesture
         const confidence = gestureConfidence(g.id, face, gestures);
-
-        // HARDENING DETECTOR: Catch alternative gesture signals during this time window
         const conflictingActionDetected = ALL_GESTURES
             .filter(alt => alt.id !== g.id)
             .some(alt => gestureConfidence(alt.id, face, gestures) > 0.60);
 
-        // Update tracking matrix with cross-gesture validation parameter
         const confirmed = tracker.update(confidence, conflictingActionDetected);
         holdProgress = tracker.holdProgress;
 
@@ -360,19 +344,17 @@
             holdProgress = 0;
             statusText = selected[gestureIndex]?.label || 'Gesture';
         }
-
         loopHandle = requestAnimationFrame(gestureLoop);
     }
 
     async function finishCapture() {
         stopped = true;
         phase = 'checking';
-        statusText = 'Verifying with security server…';
-        debugText = 'Processing biometric metrics...';
+        statusText = 'Verifying security attributes…';
 
         try {
             if (embeddings.length === 0 || !enrolledDescriptor) {
-                throw new Error('Biometric registration vector capture incomplete.');
+                throw new Error('Biometric vector capture incomplete.');
             }
 
             const dim = embeddings[0].length;
@@ -394,11 +376,8 @@
             const matchPassed = similarity >= MATCH_THRESHOLD;
             const realPassed = realScore >= MIN_ANTISPOOF;
             const livePassed = liveScore >= MIN_LIVENESS;
-            
-            // Client evaluation evaluation
             const clientVerified = matchPassed && realPassed && livePassed;
 
-            // CRITICAL HARDENING FIX: Hand off payload structure directly to secure routing API
             const verifyRes = await fetch('/api/face/verify-session', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -411,17 +390,12 @@
                 }),
             });
 
-            if (!verifyRes.ok) {
-                throw new Error(`Security server rejected connection status (${verifyRes.status}).`);
-            }
-
+            if (!verifyRes.ok) throw new Error('Security verification submission rejected.');
             const serverVerdict = await verifyRes.json();
 
-            // CRITICAL SECURITY FIX: Explicit check of backend validation flag status state
             if (clientVerified && serverVerdict.success) {
                 phase = 'success';
                 stopCamera();
-                debugText = 'Verification successful!';
                 setTimeout(() => onSuccess(), 1200);
             } else {
                 phase = 'failed';
@@ -429,7 +403,7 @@
                 if (!matchPassed) {
                     statusText = `Face match variance error (${similarityPercent}% match / needs ${Math.round(MATCH_THRESHOLD * 100)}%).`;
                 } else if (!realPassed || !livePassed) {
-                    statusText = 'Presentation attack detected. Pre-recorded media files or spoofed sources are restricted.';
+                    statusText = 'Presentation attack detected. Pre-recorded media or spoofed sources are restricted.';
                 } else {
                     statusText = serverVerdict.message || 'Identity verification rejected by authentication gateway.';
                 }
@@ -459,7 +433,6 @@
         posHoldProgress = 0;
         posHoldStart = null;
         stopped = false;
-        debugText = '';
         start();
     }
 
@@ -511,12 +484,6 @@
                     <CheckCircle2 class="size-12 text-primary" />
                 </div>
             {/if}
-
-            {#if debugText && (phase === 'positioning' || phase === 'gesture')}
-                <div class="absolute top-2 left-2 text-xs text-white/70 bg-black/60 px-2 py-1 rounded">
-                    {debugText}
-                </div>
-            {/if}
         </div>
 
         {#if phase === 'positioning'}
@@ -538,7 +505,7 @@
 
         {#if phase === 'gesture'}
             <div class="mb-3 flex items-center justify-center gap-2">
-                {#each selected as _, i}
+                {#each selected as _, i (i)}
                     <div
                         class="h-1.5 rounded-full transition-all duration-300 {i === gestureIndex
                             ? 'w-6 bg-primary'
@@ -555,29 +522,21 @@
             {/if}
         {/if}
 
-        {#if phase === 'error'}
+        {#if phase === 'error' || phase === 'failed'}
             <div class="mb-4 flex items-start gap-2 rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
                 <AlertCircle class="mt-0.5 size-4 shrink-0" />
                 <div>
-                    <p>{errorMessage}</p>
+                    <p>{phase === 'error' ? errorMessage : statusText}</p>
                 </div>
             </div>
-        {:else if phase === 'failed'}
-            <div class="mb-4 flex items-start gap-2 rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
-                <AlertCircle class="mt-0.5 size-4 shrink-0" />
-                <div>
-                    <p>{statusText}</p>
-                </div>
-            </div>
-        {:else}
-            <p class="mb-4 text-center text-sm text-muted-foreground">{statusText}</p>
         {/if}
 
         <div class="flex gap-2">
             {#if phase === 'error' || phase === 'failed'}
                 <Button variant="outline" class="flex-1" onclick={handleCancel}>Cancel</Button>
                 <Button class="flex-1" onclick={retry}>Try again</Button>
-            {:else if phase !== 'success'}
+            {/if}
+            {#if phase !== 'error' && phase !== 'failed' && phase !== 'success'}
                 <Button variant="outline" class="w-full" onclick={handleCancel}>Cancel</Button>
             {/if}
         </div>

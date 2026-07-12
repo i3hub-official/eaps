@@ -12,8 +12,8 @@ const SMTP_HOST = env.SMTP_HOST || 'smtp.gmail.com'
 const SMTP_PORT = parseInt(env.SMTP_PORT || '587', 10)
 const SMTP_USER = env.SMTP_USER || ''
 const SMTP_PASS = env.SMTP_PASS || ''
-const EMAIL_FROM = env.EMAIL_FROM || 'noreply@reaiaes.vercel.app'
-const APP_NAME = env.APP_NAME || 'Assessment Evaluation System'
+const EMAIL_FROM = env.EMAIL_FROM || 'noreply@eaps.vercel.app'
+const APP_NAME = env.APP_NAME || 'Evaluation Assessment Protocol System'
 const APP_SHORT = env.APP_SHORT || 'AES'
 const APP_URL = env.APP_URL || 'https://localhost:1209'
 
@@ -76,8 +76,14 @@ export interface MailMessage {
 
 export async function sendMail(msg: MailMessage): Promise<{ success: boolean; error?: string; id?: string }> {
   try {
-    if ((!SMTP_USER || !SMTP_PASS) && process.env.NODE_ENV === 'development') {
-      console.log('[email] 📧 Email would be sent:')
+    // Only ever send real emails in production. In any other environment
+    // (development, test, preview), log what would have been sent instead —
+    // regardless of whether SMTP credentials happen to be configured. This
+    // is a stronger guarantee than the old dev-mock branch below, which
+    // only mocked when SMTP_USER/SMTP_PASS were absent; a dev machine with
+    // real credentials configured would otherwise have sent real mail.
+    if (process.env.NODE_ENV !== 'production') {
+      console.log('[email] 📧 (non-production — not sent) Email would be sent:')
       console.log(`[email] To: ${msg.to}`)
       console.log(`[email] Subject: ${msg.subject}`)
       console.log(`[email] HTML: ${msg.html.substring(0, 200)}...`)
@@ -142,7 +148,7 @@ This link will expire in ${expiryMinutes} minutes.
 If you didn't request this, please ignore this email or contact support.
 
 ---
-${APP_NAME} (${APP_SHORT}) - Assessment Evaluation System
+${APP_NAME} (${APP_SHORT}) - Evaluation Assessment Protocol System
 ${APP_URL}
   `.trim()
 
@@ -189,7 +195,7 @@ ${APP_URL}
 
   <div class="footer">
     <p>
-      ${APP_NAME} (${APP_SHORT}) - Assessment Evaluation System<br>
+      ${APP_NAME} (${APP_SHORT}) - Evaluation Assessment Protocol System<br>
       <a href="${APP_URL}" style="color: #1a56db;">${APP_URL}</a>
     </p>
     <p style="font-size: 12px; color: #9ca3af;">
@@ -227,7 +233,7 @@ Click here to verify: ${verifyLink}
 If you didn't create an account, please ignore this email.
 
 ---
-${APP_NAME} (${APP_SHORT}) - Assessment Evaluation System
+${APP_NAME} (${APP_SHORT}) - Evaluation Assessment Protocol System
 ${APP_URL}
   `.trim()
 
@@ -272,7 +278,7 @@ ${APP_URL}
   
   <div class="footer">
     <p>
-      ${APP_NAME} (${APP_SHORT}) - Assessment Evaluation System<br>
+      ${APP_NAME} (${APP_SHORT}) - Evaluation Assessment Protocol System<br>
       <a href="${APP_URL}" style="color: #1a56db;">${APP_URL}</a>
     </p>
   </div>
@@ -300,7 +306,7 @@ ${message}
 ${actionText && actionLink ? `${actionText}: ${actionLink}` : ''}
 
 ---
-${APP_NAME} (${APP_SHORT}) - Assessment Evaluation System
+${APP_NAME} (${APP_SHORT}) - Evaluation Assessment Protocol System
 ${APP_URL}
   `.trim()
 
@@ -334,8 +340,330 @@ ${APP_URL}
   
   <div class="footer">
     <p>
-      ${APP_NAME} (${APP_SHORT}) - Assessment Evaluation System<br>
+      ${APP_NAME} (${APP_SHORT}) - Evaluation Assessment Protocol System<br>
       <a href="${APP_URL}" style="color: #1a56db;">${APP_URL}</a>
+    </p>
+  </div>
+</body>
+</html>
+  `.trim()
+
+  return { html, text }
+}
+
+// ─── Welcome Emails ───────────────────────────────────────────────────────────
+// Sent once, right after a student self-registers or a staff account is
+// seeded/provisioned — distinct from buildVerificationEmail (which asks the
+// person to confirm their email) and buildResetEmail (password recovery).
+// This is purely a "you're in, here's how to get started" message.
+
+export function buildWelcomeStudentEmail(
+  fullName: string,
+  matricNumber: string,
+  origin: string = APP_URL,
+): { html: string; text: string } {
+  const loginLink = `${origin}/login`
+
+  const text = `
+Hi ${fullName},
+
+Welcome to ${APP_NAME} (${APP_SHORT})!
+
+Your student account has been created successfully.
+
+Matric Number: ${matricNumber}
+
+You can now log in to:
+- Register your courses for the semester
+- Enroll your face for exam verification
+- View upcoming tests and examinations
+- Track your results once released
+
+Log in here: ${loginLink}
+
+If you didn't create this account, please contact the registrar's office.
+
+---
+${APP_NAME} (${APP_SHORT}) - Evaluation Assessment Protocol System
+${APP_URL}
+  `.trim()
+
+  const html = `
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; line-height: 1.6; color: #1a1a1a; max-width: 600px; margin: 0 auto; padding: 20px; }
+    .header { border-bottom: 2px solid #1a56db; padding-bottom: 16px; margin-bottom: 24px; }
+    .logo { font-size: 24px; font-weight: bold; color: #1a56db; }
+    .subtitle { font-size: 14px; color: #6b7280; font-weight: normal; }
+    .detail-box { background: #f3f4f6; border-radius: 8px; padding: 16px; margin: 16px 0; }
+    .detail-row { display: flex; justify-content: space-between; padding: 4px 0; font-size: 14px; }
+    .detail-label { color: #6b7280; }
+    .detail-value { font-weight: 600; color: #1a1a1a; }
+    .checklist { padding-left: 20px; }
+    .checklist li { margin-bottom: 8px; }
+    .button { display: inline-block; background: #1a56db; color: white; padding: 12px 24px; border-radius: 6px; text-decoration: none; font-weight: 600; margin: 16px 0; }
+    .footer { border-top: 1px solid #e5e7eb; padding-top: 16px; margin-top: 32px; font-size: 14px; color: #6b7280; }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <div class="logo">${APP_NAME} <span class="subtitle">(${APP_SHORT})</span></div>
+  </div>
+
+  <h1>Welcome, ${fullName}!</h1>
+
+  <p>Your student account has been created successfully. You're all set to get started.</p>
+
+  <div class="detail-box">
+    <div class="detail-row">
+      <span class="detail-label">Matric Number</span>
+      <span class="detail-value">${matricNumber}</span>
+    </div>
+  </div>
+
+  <p><strong>Here's what you can do next:</strong></p>
+  <ul class="checklist">
+    <li>Register your courses for the semester</li>
+    <li>Enroll your face for exam verification</li>
+    <li>View upcoming tests and examinations</li>
+    <li>Track your results once released</li>
+  </ul>
+
+  <p style="text-align: center;">
+    <a href="${loginLink}" class="button">Log in to your account</a>
+  </p>
+
+  <p style="font-size: 13px; color: #6b7280;">
+    If you didn't create this account, please contact the registrar's office.
+  </p>
+
+  <div class="footer">
+    <p>
+      ${APP_NAME} (${APP_SHORT}) - Evaluation Assessment Protocol System<br>
+      <a href="${APP_URL}" style="color: #1a56db;">${APP_URL}</a>
+    </p>
+    <p style="font-size: 12px; color: #9ca3af;">
+      This is an automated message, please do not reply to this email.
+    </p>
+  </div>
+</body>
+</html>
+  `.trim()
+
+  return { html, text }
+}
+
+export function buildWelcomeStaffEmail(
+  fullName: string,
+  staffNumber: string,
+  roleDisplayName: string,
+  temporaryPassword?: string,
+  origin: string = APP_URL,
+): { html: string; text: string } {
+  const loginLink = `${origin}/login`
+
+  const text = `
+Hi ${fullName},
+
+Welcome to ${APP_NAME} (${APP_SHORT})!
+
+Your staff account has been created successfully.
+
+Staff Number: ${staffNumber}
+Role: ${roleDisplayName}
+${temporaryPassword ? `Temporary Password: ${temporaryPassword}` : ''}
+
+${temporaryPassword ? 'You will be asked to change this password when you first log in.' : ''}
+
+Log in here: ${loginLink}
+
+If you believe this account was created in error, please contact the system administrator.
+
+---
+${APP_NAME} (${APP_SHORT}) - Evaluation Assessment Protocol System
+${APP_URL}
+  `.trim()
+
+  const html = `
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; line-height: 1.6; color: #1a1a1a; max-width: 600px; margin: 0 auto; padding: 20px; }
+    .header { border-bottom: 2px solid #1a56db; padding-bottom: 16px; margin-bottom: 24px; }
+    .logo { font-size: 24px; font-weight: bold; color: #1a56db; }
+    .subtitle { font-size: 14px; color: #6b7280; font-weight: normal; }
+    .detail-box { background: #f3f4f6; border-radius: 8px; padding: 16px; margin: 16px 0; }
+    .detail-row { display: flex; justify-content: space-between; padding: 4px 0; font-size: 14px; }
+    .detail-label { color: #6b7280; }
+    .detail-value { font-weight: 600; color: #1a1a1a; }
+    .credential { background: #fef3c7; border: 1px solid #f59e0b; border-radius: 6px; padding: 12px; margin: 16px 0; font-size: 14px; color: #92400e; }
+    .button { display: inline-block; background: #1a56db; color: white; padding: 12px 24px; border-radius: 6px; text-decoration: none; font-weight: 600; margin: 16px 0; }
+    .footer { border-top: 1px solid #e5e7eb; padding-top: 16px; margin-top: 32px; font-size: 14px; color: #6b7280; }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <div class="logo">${APP_NAME} <span class="subtitle">(${APP_SHORT})</span></div>
+  </div>
+
+  <h1>Welcome, ${fullName}!</h1>
+
+  <p>Your staff account has been created successfully.</p>
+
+  <div class="detail-box">
+    <div class="detail-row">
+      <span class="detail-label">Staff Number</span>
+      <span class="detail-value">${staffNumber}</span>
+    </div>
+    <div class="detail-row">
+      <span class="detail-label">Role</span>
+      <span class="detail-value">${roleDisplayName}</span>
+    </div>
+  </div>
+
+  ${temporaryPassword ? `
+  <div class="credential">
+    <strong>🔑 Temporary Password:</strong> <code>${temporaryPassword}</code><br>
+    You will be asked to change this password the first time you log in.
+  </div>
+  ` : ''}
+
+  <p style="text-align: center;">
+    <a href="${loginLink}" class="button">Log in to your account</a>
+  </p>
+
+  <p style="font-size: 13px; color: #6b7280;">
+    If you believe this account was created in error, please contact the system administrator.
+  </p>
+
+  <div class="footer">
+    <p>
+      ${APP_NAME} (${APP_SHORT}) - Evaluation Assessment Protocol System<br>
+      <a href="${APP_URL}" style="color: #1a56db;">${APP_URL}</a>
+    </p>
+    <p style="font-size: 12px; color: #9ca3af;">
+      This is an automated message, please do not reply to this email.
+    </p>
+  </div>
+</body>
+</html>
+  `.trim()
+
+  return { html, text }
+}
+
+// ─── Login Alert Email ────────────────────────────────────────────────────────
+// Sent on every successful login, fire-and-forget, purely informational —
+// lets the account owner notice a login they don't recognize. Not a
+// verification step and never blocks sign-in.
+
+export function buildLoginAlertEmail(
+  fullName: string,
+  loginTime: Date,
+  ipAddress?: string,
+  userAgent?: string,
+  origin: string = APP_URL,
+): { html: string; text: string } {
+  const resetLink = `${origin}/forgot`
+  const formattedTime = loginTime.toLocaleString('en-NG', {
+    dateStyle: 'medium',
+    timeStyle: 'short',
+  })
+
+  const text = `
+Hi ${fullName},
+
+Your ${APP_NAME} (${APP_SHORT}) account was just signed in to.
+
+Time: ${formattedTime}
+${ipAddress ? `IP Address: ${ipAddress}` : ''}
+${userAgent ? `Device: ${userAgent}` : ''}
+
+If this was you, no action is needed.
+
+If you don't recognize this login, reset your password immediately:
+${resetLink}
+
+---
+${APP_NAME} (${APP_SHORT}) - Evaluation Assessment Protocol System
+${APP_URL}
+  `.trim()
+
+  const html = `
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; line-height: 1.6; color: #1a1a1a; max-width: 600px; margin: 0 auto; padding: 20px; }
+    .header { border-bottom: 2px solid #1a56db; padding-bottom: 16px; margin-bottom: 24px; }
+    .logo { font-size: 24px; font-weight: bold; color: #1a56db; }
+    .subtitle { font-size: 14px; color: #6b7280; font-weight: normal; }
+    .detail-box { background: #f3f4f6; border-radius: 8px; padding: 16px; margin: 16px 0; }
+    .detail-row { display: flex; justify-content: space-between; padding: 4px 0; font-size: 14px; gap: 12px; }
+    .detail-label { color: #6b7280; white-space: nowrap; }
+    .detail-value { font-weight: 600; color: #1a1a1a; text-align: right; word-break: break-word; }
+    .security { background: #fef3c7; border: 1px solid #f59e0b; border-radius: 6px; padding: 12px; margin: 16px 0; font-size: 14px; color: #92400e; }
+    .button { display: inline-block; background: #dc2626; color: white; padding: 12px 24px; border-radius: 6px; text-decoration: none; font-weight: 600; margin: 16px 0; }
+    .footer { border-top: 1px solid #e5e7eb; padding-top: 16px; margin-top: 32px; font-size: 14px; color: #6b7280; }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <div class="logo">${APP_NAME} <span class="subtitle">(${APP_SHORT})</span></div>
+  </div>
+
+  <h1>New Sign-in to Your Account</h1>
+
+  <p>Hi ${fullName},</p>
+
+  <p>Your account was just signed in to.</p>
+
+  <div class="detail-box">
+    <div class="detail-row">
+      <span class="detail-label">Time</span>
+      <span class="detail-value">${formattedTime}</span>
+    </div>
+    ${ipAddress ? `
+    <div class="detail-row">
+      <span class="detail-label">IP Address</span>
+      <span class="detail-value">${ipAddress}</span>
+    </div>
+    ` : ''}
+    ${userAgent ? `
+    <div class="detail-row">
+      <span class="detail-label">Device</span>
+      <span class="detail-value">${userAgent}</span>
+    </div>
+    ` : ''}
+  </div>
+
+  <p>If this was you, no action is needed — you can safely ignore this email.</p>
+
+  <div class="security">
+    <strong>⚠️ Don't recognize this login?</strong><br>
+    Reset your password immediately to secure your account.
+  </div>
+
+  <p style="text-align: center;">
+    <a href="${resetLink}" class="button">Reset my password</a>
+  </p>
+
+  <div class="footer">
+    <p>
+      ${APP_NAME} (${APP_SHORT}) - Evaluation Assessment Protocol System<br>
+      <a href="${APP_URL}" style="color: #1a56db;">${APP_URL}</a>
+    </p>
+    <p style="font-size: 12px; color: #9ca3af;">
+      This is an automated message, please do not reply to this email.
     </p>
   </div>
 </body>
@@ -375,6 +703,58 @@ export async function sendVerificationEmail(
   return sendMail({
     to: email,
     subject: `Verify Your ${APP_SHORT} Account`,
+    html,
+    text,
+  })
+}
+
+export async function sendWelcomeStudentEmail(
+  email: string,
+  fullName: string,
+  matricNumber: string,
+  origin?: string,
+): Promise<{ success: boolean; error?: string; id?: string }> {
+  const { html, text } = buildWelcomeStudentEmail(fullName, matricNumber, origin)
+
+  return sendMail({
+    to: email,
+    subject: `Welcome to ${APP_SHORT}`,
+    html,
+    text,
+  })
+}
+
+export async function sendWelcomeStaffEmail(
+  email: string,
+  fullName: string,
+  staffNumber: string,
+  roleDisplayName: string,
+  temporaryPassword?: string,
+  origin?: string,
+): Promise<{ success: boolean; error?: string; id?: string }> {
+  const { html, text } = buildWelcomeStaffEmail(fullName, staffNumber, roleDisplayName, temporaryPassword, origin)
+
+  return sendMail({
+    to: email,
+    subject: `Welcome to ${APP_SHORT}`,
+    html,
+    text,
+  })
+}
+
+export async function sendLoginAlertEmail(
+  email: string,
+  fullName: string,
+  loginTime: Date,
+  ipAddress?: string,
+  userAgent?: string,
+  origin?: string,
+): Promise<{ success: boolean; error?: string; id?: string }> {
+  const { html, text } = buildLoginAlertEmail(fullName, loginTime, ipAddress, userAgent, origin)
+
+  return sendMail({
+    to: email,
+    subject: `New sign-in to your ${APP_SHORT} account`,
     html,
     text,
   })

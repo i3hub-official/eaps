@@ -43,67 +43,69 @@ function safeDecrypt(fn: () => string, fallback: string): string {
 async function loadSessionFromCookies(
   cookies: Cookies,
 ): Promise<{ user: User | null; session: Session | null }> {
-const staffToken = cookies.get(STAFF_COOKIE)
-
-if (staffToken) {
-  const result = await getStaffByToken(staffToken)
-  if (result) {
-    const { staff, session, permissions, roles } = result
-
-    const user: User = {
-      type: 'staff',
-      id: staff.id,
-      staffNumber: staff.staffNumber,
-      email: safeDecrypt(() => revealEmail(staff.email), ''),
-      firstName: safeDecrypt(() => revealName(staff.firstName), ''),
-      lastName: safeDecrypt(() => revealName(staff.lastName), ''),
-      primaryRole: staff.primaryRole,
-      collegeId: staff.collegeId,
-      departmentId: staff.departmentId,
-      status: staff.status,
-      roles: Array.from(roles) as StaffRole[],
-      permissions: Array.from(permissions),
-    }
-
-    return {
-      user,
-      session: {
-        id: session.id,
-        token: session.token,
-        userType: 'staff',
-        expiresAt: session.expiresAt,
-      },
-    }
-  }
-  cookies.delete(STAFF_COOKIE, { path: cookieOptions.path })
-}
-
+  const staffToken = cookies.get(STAFF_COOKIE)
   const studentToken = cookies.get(STUDENT_COOKIE)
-  if (studentToken) {
-    const result = await getStudentByToken(studentToken)
-    if (result) {
-      const { student, session } = result
 
-      const user: User = {
-        type: 'student',
-        id: student.id,
-        matricNumber: safeDecrypt(() => revealMatricNumber(student.matricNumber),''),
-        email: safeDecrypt(() => revealEmail(student.email), ''),
-        firstName: safeDecrypt(() => revealName(student.firstName), ''),
-        otherNames: safeDecrypt(() => revealName(student.otherNames), ''),
-        lastName: safeDecrypt(() => revealName(student.lastName), ''),
-        department: student.department,
-        program: student.programme,
-        currentLevel: student.currentLevel,
-        collegeId: student.collegeId,
-        departmentId: student.departmentId,
-        programmeId: student.programmeId,
-        currentLevelId: student.currentLevelId,
-        status: student.status,
-      }
+  if (!staffToken && !studentToken) {
+    return { user: null, session: null }
+  }
 
+  // Optimize throughput by resolving tokens concurrently rather than sequentially waterfalling
+  const [staffResult, studentResult] = await Promise.all([
+    staffToken ? getStaffByToken(staffToken) : Promise.resolve(null),
+    studentToken ? getStudentByToken(studentToken) : Promise.resolve(null)
+  ])
+
+  if (staffToken) {
+    if (staffResult) {
+      const { staff, session, permissions, roles } = staffResult
       return {
-        user,
+        user: {
+          type: 'staff',
+          id: staff.id,
+          staffNumber: staff.staffNumber,
+          email: safeDecrypt(() => revealEmail(staff.email), ''),
+          firstName: safeDecrypt(() => revealName(staff.firstName), ''),
+          lastName: safeDecrypt(() => revealName(staff.lastName), ''),
+          primaryRole: staff.primaryRole,
+          collegeId: staff.collegeId,
+          departmentId: staff.departmentId,
+          status: staff.status,
+          roles: Array.from(roles) as StaffRole[],
+          permissions: Array.from(permissions),
+        },
+        session: {
+          id: session.id,
+          token: session.token,
+          userType: 'staff',
+          expiresAt: session.expiresAt,
+        },
+      }
+    }
+    cookies.delete(STAFF_COOKIE, { path: cookieOptions.path })
+  }
+
+  if (studentToken) {
+    if (studentResult) {
+      const { student, session } = studentResult
+      return {
+        user: {
+          type: 'student',
+          id: student.id,
+          matricNumber: safeDecrypt(() => revealMatricNumber(student.matricNumber), ''),
+          email: safeDecrypt(() => revealEmail(student.email), ''),
+          firstName: safeDecrypt(() => revealName(student.firstName), ''),
+          otherNames: safeDecrypt(() => revealName(student.otherNames), ''),
+          lastName: safeDecrypt(() => revealName(student.lastName), ''),
+          department: student.department,
+          program: student.programme,
+          currentLevel: student.currentLevel,
+          collegeId: student.collegeId,
+          departmentId: student.departmentId,
+          programmeId: student.programmeId,
+          currentLevelId: student.currentLevelId,
+          status: student.status,
+        },
         session: {
           id: session.id,
           token: session.token,
@@ -130,24 +132,23 @@ export const handle: Handle = async ({ event, resolve }) => {
   // handle function same as any other thrown redirect.
   enforceGuestOnly(event.url.pathname, user)
 
-  // Attach WS upgrade handler to the Node server on first request
+  // Attach WS upgrade handler to the Node server on first request using early-exit guard clauses
   if (!globalThis.__wsAttached) {
     if (!wss) {
       wss = await createInvigilatorWSS()
     }
-    const server = (event.platform as any)?.server
-      ?? (globalThis as any).__sveltekitDevServer
-
+    
+    const server = (event.platform as any)?.server ?? (globalThis as any).__sveltekitDevServer
     if (server) {
       server.on('upgrade', (req: any, socket: any, head: any) => {
         const url = new URL(req.url ?? '/', 'http://localhost')
-        if (url.pathname.startsWith('/ws/invigilator')) {
-          wss.handleUpgrade(req, socket, head, (ws: any) => {
-            wss.emit('connection', ws, req)
-          })
-        } else {
+        if (!url.pathname.startsWith('/ws/invigilator')) {
           socket.destroy()
+          return
         }
+        wss.handleUpgrade(req, socket, head, (ws: any) => {
+          wss.emit('connection', ws, req)
+        })
       })
       globalThis.__wsAttached = true
     }

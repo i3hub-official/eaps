@@ -19,6 +19,7 @@ import {
 	cookieOptions,
 } from '$lib/server/auth';
 import { protectStudentRegistration } from '$lib/security/dataProtection';
+import { sendWelcomeStudentEmail } from '$lib/server/auth/email';
 
 // ─── MOUAU config (resolved once — both optional fields get typed defaults) ──
 const MOUAU = getUniConfig('MOUAU')!;
@@ -227,16 +228,16 @@ export const actions: Actions = {
 		]);
 
 		if (dupEmail) {
-			return fail(400, { error: 'An account with this email already exists.', values });
+			return fail(400, { error: 'An account with this email, matric number, JAMB number, or phone number already exists.', values });
 		}
 		if (dupMatric) {
-			return fail(400, { error: 'An account with this matric number already exists.', values });
+			return fail(400, { error: 'An account with this email, matric number, JAMB number, or phone number already exists.', values });
 		}
 		if (dupJamb) {
-			return fail(400, { error: 'An account with this JAMB registration number already exists.', values });
+			return fail(400, { error: 'An account with this email, matric number, JAMB number, or phone number already exists.', values });
 		}
 		if (dupPhone) {
-			return fail(400, { error: 'An account with this phone number already exists.', values });
+			return fail(400, { error: 'An account with this email, matric number, JAMB number, or phone number already exists.', values });
 		}
 
 		const passwordHash = await hashPassword(password);
@@ -285,6 +286,13 @@ export const actions: Actions = {
 		const userAgent = request.headers.get('user-agent') ?? undefined;
 		const { token } = await createStudentSession(student.id, { ipAddress: ip, userAgent });
 		cookies.set(STUDENT_COOKIE, token, cookieOptions);
+
+		// Fire-and-forget — a slow or failing welcome email must never block
+		// or fail registration itself, since the account and session are
+		// already fully created by this point.
+		sendWelcomeStudentEmail(email, `${firstName} ${surname}`, matricNumber).catch((err) => {
+			console.error('[register/signup] Failed to send welcome email:', err);
+		});
 
 		// throw redirect(303, '/student');
 		return { success: true };
