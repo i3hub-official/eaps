@@ -20,25 +20,34 @@
 	const NO_FACE_STRIKES_BEFORE_LOG = 2;
 	const FACE_MATCH_THRESHOLD = 0.7;
 
+	// Note on FACE_MISMATCH:
+	// - Has 8s cooldown to prevent spam logging if wrong person is detected
+	// - But face blur happens IMMEDIATELY (no cooldown on blur)
+	// - Smart students can't bypass by repeatedly putting their face away
+	// - System recovers quickly (8s) to catch repeated attempts
+
 	// ─── Violation Cooldown (prevents spam logging) ────────────────────────────
+	// Shorter cooldowns for quick detection of tech-savvy cheaters
 	const VIOLATION_COOLDOWN: Record<string, number> = {
-		FOCUS_LOSS: 5000,
-		NETWORK_DROP: 10000,
-		FACE_NOT_DETECTED: 8000,
-		FULLSCREEN_EXIT: 15000,
-		TAB_SWITCH: 15000,
-		DEVTOOLS_OPEN: 30000,
-		COPY_ATTEMPT: 10000,
-		PASTE_ATTEMPT: 10000,
-		KEYBOARD_SHORTCUT: 5000,
-		SCREEN_RECORDING: 30000,
-		EXTERNAL_MONITOR: 30000,
-		VIRTUAL_CAMERA: 30000,
-		SUSPICIOUS_MOUSE: 30000,
-		AUDIO_DETECTION: 15000,
-		RAPID_FACE_CHANGE: 15000,
-		BACKGROUND_CHANGE: 15000,
-		IDLE_TIMEOUT: 300000, // 5 minutes
+		FACE_NOT_DETECTED: 6000,      // Quick detection when face disappears
+		FACE_MISMATCH: 8000,          // Cooldown for face mismatch (not owner's face)
+		MULTIPLE_FACES: 5000,         // Quick detection of multiple people
+		TAB_SWITCH: 8000,             // Quick detection of tab switching (was 15s)
+		FULLSCREEN_EXIT: 10000,       // Quick detection of fullscreen exit (was 15s)
+		DEVTOOLS_OPEN: 20000,         // Keep longer for dev tools (persistent threat)
+		COPY_ATTEMPT: 5000,           // Quick detection of copy attempts (was 10s)
+		PASTE_ATTEMPT: 5000,          // Quick detection of paste attempts (was 10s)
+		KEYBOARD_SHORTCUT: 3000,      // Very quick detection (was 5s)
+		FOCUS_LOSS: 4000,             // Quick detection (was 5s)
+		NETWORK_DROP: 8000,           // Quick detection (was 10s)
+		SCREEN_RECORDING: 20000,      // Keep longer (persistent threat)
+		EXTERNAL_MONITOR: 20000,      // Keep longer (persistent threat)
+		VIRTUAL_CAMERA: 20000,        // Keep longer (persistent threat)
+		SUSPICIOUS_MOUSE: 15000,      // Moderate cooldown for mouse analysis (was 30s)
+		AUDIO_DETECTION: 10000,       // Moderate cooldown for audio (was 15s)
+		RAPID_FACE_CHANGE: 12000,     // Moderate cooldown (was 15s)
+		BACKGROUND_CHANGE: 8000,      // Quick detection (was 15s)
+		IDLE_TIMEOUT: 300000,         // 5 minutes (no change - legitimate timeout)
 	};
 
 	type Status = 'ok' | 'warning' | 'violation';
@@ -286,16 +295,30 @@
 			const result = await human.detect(videoEl);
 			if (stopped) return;
 
+			// ─── Check for Covered Camera (Solid Color) ───────────────────────
+			// Detect if camera is blocked by checking for uniform color (black, white, etc)
+			const isCameraCovered = await detectCoveredCamera(videoEl);
+			if (isCameraCovered) {
+				noFaceStrikes++;
+				// INSTANT blur - no waiting
+				blurScreen('Camera appears to be covered or blocked');
+				
+				if (noFaceStrikes >= NO_FACE_STRIKES_BEFORE_LOG && canLog('FACE_NOT_DETECTED')) {
+					status = 'violation';
+					await logViolation('FACE_NOT_DETECTED', 3, { reason: 'camera_covered' });
+					noFaceStrikes = 0;
+				}
+				return;
+			}
+
 			// ─── No Face Detected ─────────────────────────────────────────────
 			if (!result?.face || result.face.length === 0) {
 				noFaceStrikes++;
 				
-				// Blur screen immediately on first detection failure
-				if (noFaceStrikes >= 1) {
-					blurScreen('Face not detected - please ensure you are visible');
-				}
+				// INSTANT blur - no strikes needed, blur immediately
+				blurScreen('Face not detected - please ensure you are visible');
 
-				if (noFaceStrikes >= NO_FACE_STRIKES_BEFORE_LOG) {
+				if (noFaceStrikes >= NO_FACE_STRIKES_BEFORE_LOG && canLog('FACE_NOT_DETECTED')) {
 					status = 'violation';
 					await logViolation('FACE_NOT_DETECTED', 3);
 					noFaceStrikes = 0; // Reset after logging
@@ -344,6 +367,58 @@
 		} catch (err) {
 			console.error('[Monitor] Face check error:', err);
 			// Don't blur on transient errors
+		}
+	}
+
+	// ─── Covered Camera Detection ──────────────────────────────────────────────
+	// Detects if camera is blocked by checking for uniform color
+	async function detectCoveredCamera(video: HTMLVideoElement): Promise<boolean> {
+		try {
+			const canvas = document.createElement('canvas');
+			canvas.width = 160;
+			canvas.height = 120;
+			const ctx = canvas.getContext('2d')!;
+			ctx.drawImage(video, 0, 0, 160, 120);
+			const imageData = ctx.getImageData(0, 0, 160, 120);
+			const data = imageData.data;
+
+			// Calculate color variance across the frame
+			let r = 0, g = 0, b = 0;
+			let rVar = 0, gVar = 0, bVar = 0;
+			const pixelCount = data.length / 4;
+
+			// Get average colors
+			for (let i = 0; i < data.length; i += 4) {
+				r += data[i];
+				g += data[i + 1];
+				b += data[i + 2];
+			}
+			r /= pixelCount;
+			g /= pixelCount;
+			b /= pixelCount;
+
+			// Get variance
+			for (let i = 0; i < data.length; i += 4) {
+				rVar += Math.pow(data[i] - r, 2);
+				gVar += Math.pow(data[i + 1] - g, 2);
+				bVar += Math.pow(data[i + 2] - b, 2);
+			}
+			rVar /= pixelCount;
+			gVar /= pixelCount;
+			bVar /= pixelCount;
+
+			// If variance is very low, camera is covered (uniform color)
+			const totalVariance = rVar + gVar + bVar;
+			const isCovered = totalVariance < 100; // Threshold for "uniform" color
+
+			if (isCovered) {
+				console.log('[Monitor] Covered camera detected. Variance:', totalVariance, 'Colors:', Math.round(r), Math.round(g), Math.round(b));
+			}
+
+			return isCovered;
+		} catch (err) {
+			console.error('[Monitor] Covered camera detection error:', err);
+			return false;
 		}
 	}
 
@@ -1040,11 +1115,11 @@
 	<!-- Camera Feed -->
 	<div
 		class="relative overflow-hidden rounded-lg border-2 shadow-lg transition-all duration-300"
-		class:border-primary={status === 'ok' && !isStudentVerified}
-		class:border-yellow-500={status === 'warning'}
-		class:border-destructive={status === 'violation'}
-		class:border-green-500={isStudentVerified && status === 'ok'}
+		class:border-green-500={isStudentVerified && !isScreenBlurred}
 		class:border-red-500={isScreenBlurred}
+		class:border-primary={status === 'ok' && !isStudentVerified && !isScreenBlurred}
+		class:border-yellow-500={status === 'warning' && !isStudentVerified && !isScreenBlurred}
+		class:border-destructive={status === 'violation' && !isStudentVerified && !isScreenBlurred}
 		class:opacity-50={isScreenBlurred}
 		style="width:112px;height:84px;"
 	>
@@ -1057,11 +1132,12 @@
 			</div>
 		{/if}
 		{#if isStudentVerified && status === 'ok' && !isScreenBlurred}
-			<div class="absolute top-0 right-0 bg-green-500 text-white text-[8px] px-1 py-0.5 rounded-bl rounded-tr flex items-center gap-0.5">
+			<!-- Verified Badge with Pulsing Ring -->
+			<div class="absolute top-0 right-0 bg-green-500 text-white text-[8px] px-1 py-0.5 rounded-bl rounded-tr flex items-center gap-0.5 z-10">
 				<CheckCircle class="size-2.5" />
 				Verified
 			</div>
-			<div class="absolute inset-0 ring-2 ring-green-500 ring-offset-2 rounded-lg animate-pulse" />
+			<div class="absolute inset-0 ring-2 ring-green-500 ring-offset-2 rounded-lg animate-pulse pointer-events-none" />
 		{/if}
 		{#if isScreenBlurred}
 			<div class="absolute inset-0 flex items-center justify-center bg-red-500/20">
@@ -1070,6 +1146,10 @@
 					Locked
 				</div>
 			</div>
+		{/if}
+		{#if isStudentVerified && !isScreenBlurred}
+			<!-- Green Border Indicator for Verified -->
+			<div class="absolute inset-0 pointer-events-none rounded-lg" style="border: 1px solid rgba(34, 197, 94, 0.3); box-shadow: inset 0 0 8px rgba(34, 197, 94, 0.2);"></div>
 		{/if}
 	</div>
 
@@ -1116,15 +1196,15 @@
 		class:border-primary={status === 'ok' && !isStudentVerified && !isScreenBlurred}
 		class:bg-primary-10={status === 'ok' && !isStudentVerified && !isScreenBlurred}
 		class:text-primary={status === 'ok' && !isStudentVerified && !isScreenBlurred}
-		class:border-green-500={isStudentVerified && status === 'ok' && !isScreenBlurred}
+		class:border-green-500={isStudentVerified}
 		class:bg-green-500={isStudentVerified && status === 'ok' && !isScreenBlurred}
 		class:text-white={isScreenBlurred || (isStudentVerified && status === 'ok' && !isScreenBlurred)}
-		class:border-yellow-500={status === 'warning' && !isScreenBlurred}
-		class:bg-yellow-500={status === 'warning' && !isScreenBlurred}
-		class:text-yellow-700={status === 'warning' && !isScreenBlurred}
-		class:border-destructive={status === 'violation' && !isScreenBlurred}
-		class:bg-destructive-10={status === 'violation' && !isScreenBlurred}
-		class:text-destructive={status === 'violation' && !isScreenBlurred}
+		class:border-yellow-500={status === 'warning' && !isStudentVerified && !isScreenBlurred}
+		class:bg-yellow-500={status === 'warning' && !isStudentVerified && !isScreenBlurred}
+		class:text-yellow-700={status === 'warning' && !isStudentVerified && !isScreenBlurred}
+		class:border-destructive={status === 'violation' && !isStudentVerified && !isScreenBlurred}
+		class:bg-destructive-10={status === 'violation' && !isStudentVerified && !isScreenBlurred}
+		class:text-destructive={status === 'violation' && !isStudentVerified && !isScreenBlurred}
 		class:border-red-500={isScreenBlurred}
 		class:bg-red-500={isScreenBlurred}
 	>
