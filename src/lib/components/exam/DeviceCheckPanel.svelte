@@ -27,6 +27,20 @@
 
 	let locationStatus = $state<CheckStatus>('idle')
 	let locationError = $state('')
+	
+	// ─── Location Data ─────────────────────────────────────────────────────────
+	let locationData = $state<{
+		latitude: number | null
+		longitude: number | null
+		accuracy: number | null
+		address: string | null
+	}>({
+		latitude: null,
+		longitude: null,
+		accuracy: null,
+		address: null
+	})
+	let isFetchingAddress = $state(false)
 
 	let videoEl = $state<HTMLVideoElement | null>(null)
 	let cameraStream: MediaStream | null = null
@@ -110,23 +124,76 @@
 	}
 
 	// ─── Location ───────────────────────────────────────────────────────────
-	function runLocationCheck() {
+	async function reverseGeocode(lat: number, lng: number): Promise<string | null> {
+		try {
+			// Using OpenStreetMap's Nominatim (free, no API key required)
+			const response = await fetch(
+				`https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}&zoom=18&addressdetails=1`,
+				{
+					headers: {
+						'User-Agent': 'ExamApp/1.0' // Required by Nominatim
+					}
+				}
+			)
+			
+			if (!response.ok) return null
+			
+			const data = await response.json()
+			if (data && data.display_name) {
+				return data.display_name
+			}
+			return null
+		} catch (error) {
+			console.error('Reverse geocoding error:', error)
+			return null
+		}
+	}
+
+	async function runLocationCheck() {
 		locationStatus = 'checking'
 		locationError = ''
+		locationData = {
+			latitude: null,
+			longitude: null,
+			accuracy: null,
+			address: null
+		}
+		
 		if (!navigator.geolocation) {
 			locationStatus = 'failed'
 			locationError = 'Location services are not available on this device'
 			return
 		}
+		
 		navigator.geolocation.getCurrentPosition(
-			() => {
+			async (position) => {
+				const { latitude, longitude, accuracy } = position.coords
+				
+				// Store coordinates
+				locationData.latitude = latitude
+				locationData.longitude = longitude
+				locationData.accuracy = accuracy
+				
+				// Try to get address
+				isFetchingAddress = true
+				const address = await reverseGeocode(latitude, longitude)
+				isFetchingAddress = false
+				
+				if (address) {
+					locationData.address = address
+				}
+				
 				locationStatus = 'passed'
 			},
 			(err) => {
 				locationStatus = 'failed'
 				locationError = err.message || 'Location access denied'
 			},
-			{ enableHighAccuracy: false, timeout: 10_000 }
+			{ 
+				enableHighAccuracy: true, 
+				timeout: 15000,
+				maximumAge: 0
+			}
 		)
 	}
 
@@ -223,6 +290,57 @@
 				<Badge variant="secondary">Checking…</Badge>
 			{/if}
 		</div>
+		
+		{#if locationStatus === 'passed' && locationData.latitude}
+			<div class="mt-3 space-y-1.5 text-sm">
+				<div class="flex items-start gap-2">
+					<span class="font-medium text-muted-foreground min-w-[70px]">Coordinates:</span>
+					<span class="font-mono text-xs">
+						{locationData.latitude.toFixed(6)}, {locationData.longitude.toFixed(6)}
+					</span>
+				</div>
+				
+				{#if locationData.accuracy}
+					<div class="flex items-start gap-2">
+						<span class="font-medium text-muted-foreground min-w-[70px]">Accuracy:</span>
+						<span>
+							{locationData.accuracy < 10 
+								? '±' + locationData.accuracy.toFixed(1) + 'm (Very accurate)' 
+								: locationData.accuracy < 50 
+									? '±' + locationData.accuracy.toFixed(0) + 'm (Accurate)'
+									: '±' + locationData.accuracy.toFixed(0) + 'm (Approximate)'
+							}
+						</span>
+					</div>
+				{/if}
+				
+				{#if isFetchingAddress}
+					<div class="flex items-center gap-2 text-muted-foreground">
+						<Loader2 class="size-3 animate-spin" />
+						<span>Fetching address…</span>
+					</div>
+				{:else if locationData.address}
+					<div class="flex items-start gap-2">
+						<span class="font-medium text-muted-foreground min-w-[70px]">Address:</span>
+						<span class="text-xs leading-relaxed">{locationData.address}</span>
+					</div>
+				{/if}
+				
+				<!-- Google Maps link -->
+				<div class="mt-2">
+					<a 
+						href={`https://www.google.com/maps?q=${locationData.latitude},${locationData.longitude}`}
+						target="_blank"
+						rel="noopener noreferrer"
+						class="inline-flex items-center gap-1 text-xs text-primary hover:underline"
+					>
+						<MapPin class="size-3" />
+						View on Google Maps
+					</a>
+				</div>
+			</div>
+		{/if}
+		
 		{#if locationError}
 			<p class="mt-2 flex items-center gap-1 text-xs text-destructive">
 				<AlertCircle class="size-3" /> {locationError}
