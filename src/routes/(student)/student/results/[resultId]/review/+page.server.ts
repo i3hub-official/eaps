@@ -49,7 +49,11 @@ export const load: PageServerLoad = async ({ locals, params }) => {
 					questionOrder: {
 						orderBy: { position: 'asc' },
 						include: {
-							question: { include: { options: true } },
+							question: {
+								include: {
+									tags: { include: { tag: true } },
+								},
+							},
 						},
 					},
 				},
@@ -75,21 +79,19 @@ export const load: PageServerLoad = async ({ locals, params }) => {
 			assessmentId: r.assessment.id,
 			type: r.assessment.type,
 			title: r.assessment.title,
-			// No answer/correctness data selected anywhere in this query —
-			// options carry only id/body/imageUrl below, never isCorrect.
+			// No answer/correctness data selected anywhere in this query, and
+			// no options at all — this view intentionally shows only the
+			// question text, difficulty, and tags. Answer options (and by
+			// extension which one was correct) are never queried here.
 			questions: (r.session?.questionOrder ?? []).map((sqo) => ({
 				id: sqo.question.id,
 				position: sqo.position,
 				type: sqo.question.type,
+				difficulty: sqo.question.difficulty,
 				body: sqo.question.body,
 				imageUrl: sqo.question.imageUrl,
 				marks: Number(sqo.question.marks),
-				// optionOrder on SessionQuestionOrder holds the shuffled option-id
-				// sequence the student actually saw for THIS question in THIS
-				// session — reordering the options list to match it (falling back
-				// to stored order if optionOrder is missing/stale) preserves "what
-				// they took" rather than re-shuffling on every load.
-				options: reorderOptions(sqo.question.options, sqo.optionOrder),
+				tags: sqo.question.tags.map((qt) => qt.tag.name),
 			})),
 		}))
 		.sort((a, b) => TYPE_ORDER.indexOf(a.type) - TYPE_ORDER.indexOf(b.type))
@@ -101,20 +103,4 @@ export const load: PageServerLoad = async ({ locals, params }) => {
 		activeResultId: params.resultId,
 		tabs,
 	}
-}
-
-function reorderOptions(
-	options: { id: string; body: string; imageUrl: string | null }[],
-	optionOrderJson: unknown,
-): { id: string; body: string; imageUrl: string | null }[] {
-	if (!Array.isArray(optionOrderJson)) return options
-
-	const byId = new Map(options.map((o) => [o.id, o]))
-	const ordered = optionOrderJson
-		.filter((id): id is string => typeof id === 'string' && byId.has(id))
-		.map((id) => byId.get(id)!)
-
-	// Stored order didn't cover every option (schema drift / partial data) —
-	// fall back to DB order rather than silently dropping options.
-	return ordered.length === options.length ? ordered : options
 }

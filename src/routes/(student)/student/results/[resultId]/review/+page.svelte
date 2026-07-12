@@ -64,8 +64,8 @@
 	</div>
 
 	<p class="text-xs text-muted-foreground">
-		These are the exact questions and options from your submitted paper, in the order you saw
-		them. No answers or correctness are shown.
+		These are the questions from your submitted paper, in the order you saw them. Answer options
+		are not shown here.
 	</p>
 
 	{#if data.tabs.length === 0}
@@ -102,22 +102,14 @@
 											>
 										</div>
 										<p class="text-sm">{q.body}</p>
-										{#if q.options.length}
-											<ul class="flex flex-col gap-2">
-												{#each q.options as opt, oi}
-													<li
-														class="flex items-center gap-3 rounded-lg border p-3 text-sm"
-													>
-														<span
-															class="flex size-5 shrink-0 items-center justify-center rounded border text-[11px] font-semibold text-muted-foreground"
-														>
-															{String.fromCharCode(65 + oi)}
-														</span>
-														{opt.body}
-													</li>
-												{/each}
-											</ul>
-										{/if}
+										<div class="flex flex-wrap items-center gap-1.5">
+											<Badge variant="secondary" class="font-normal capitalize">
+												{q.difficulty.toLowerCase()}
+											</Badge>
+											{#each q.tags as tag}
+												<Badge variant="outline" class="font-normal">{tag}</Badge>
+											{/each}
+										</div>
 									</Card>
 								{/each}
 							</div>

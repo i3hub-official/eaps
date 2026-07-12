@@ -15,6 +15,7 @@
 	import CheckCircle2 from '@lucide/svelte/icons/check-circle-2';
 	import AlertCircle from '@lucide/svelte/icons/alert-circle';
 	import MessagesSquare from '@lucide/svelte/icons/messages-square';
+	import ArrowLeft from '@lucide/svelte/icons/arrow-left';
 
 	let { data, form } = $props();
 
@@ -23,6 +24,7 @@
 	let sending = $state(false);
 	let resolving = $state(false);
 	let messageBody = $state('');
+	let threadEl = $state<HTMLDivElement | null>(null);
 
 	let selectedId = $derived($page.url.searchParams.get('c'));
 
@@ -30,6 +32,14 @@
 		if (form?.startSuccess && form.conversationId) {
 			newDialogOpen = false;
 			goto(`?c=${form.conversationId}`, { invalidateAll: true });
+		}
+	});
+
+	// Scroll thread to latest message whenever the selected conversation
+	// changes or a new message lands.
+	$effect(() => {
+		if (data.selected && threadEl) {
+			threadEl.scrollTop = threadEl.scrollHeight;
 		}
 	});
 
@@ -55,9 +65,19 @@
 
 <Topbar title="Messages" />
 
-<main class="flex flex-1 gap-6 overflow-hidden p-6">
+<!--
+	Mobile: single-pane, toggled by whether a conversation is selected.
+	The list pane and thread pane are both full-width and stacked via
+	display swapping (not scroll-snapping) so there's no layout jank.
+	Desktop (md+): both panes shown side by side, as before.
+-->
+<main class="flex flex-1 gap-6 overflow-hidden p-3 md:p-6">
 	<!-- Conversation list -->
-	<Card class="flex w-80 shrink-0 flex-col overflow-hidden p-0">
+	<Card
+		class="flex w-full shrink-0 flex-col overflow-hidden p-0 md:w-80 {selectedId
+			? 'hidden md:flex'
+			: 'flex'}"
+	>
 		<div class="flex items-center justify-between border-b p-4">
 			<h2 class="text-sm font-semibold">Conversations</h2>
 			<Dialog.Root bind:open={newDialogOpen}>
@@ -65,7 +85,7 @@
 					{#snippet child({ props })}
 						<Button {...props} size="sm">
 							<MessageSquarePlus class="size-4" />
-							New
+							<span class="hidden sm:inline">New</span>
 						</Button>
 					{/snippet}
 				</Dialog.Trigger>
@@ -78,7 +98,10 @@
 					</Dialog.Header>
 
 					{#if form?.startError}
-						<div class="flex items-start gap-3 rounded-lg border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive" role="alert">
+						<div
+							class="flex items-start gap-3 rounded-lg border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive"
+							role="alert"
+						>
 							<AlertCircle class="mt-0.5 size-4 shrink-0" />
 							<span>{form.startError}</span>
 						</div>
@@ -98,14 +121,29 @@
 					>
 						<div class="flex flex-col gap-2">
 							<label for="subject" class="text-sm font-medium">Subject</label>
-							<Input id="subject" name="subject" placeholder="e.g. Unable to register for CSC301" required maxlength={150} />
+							<Input
+								id="subject"
+								name="subject"
+								placeholder="e.g. Unable to register for CSC301"
+								required
+								maxlength={150}
+							/>
 						</div>
 						<div class="flex flex-col gap-2">
 							<label for="body" class="text-sm font-medium">Message</label>
-							<Textarea id="body" name="body" placeholder="Describe your issue…" required rows={5} maxlength={4000} />
+							<Textarea
+								id="body"
+								name="body"
+								placeholder="Describe your issue…"
+								required
+								rows={5}
+								maxlength={4000}
+							/>
 						</div>
 						<Dialog.Footer>
-							<Button type="button" variant="ghost" onclick={() => (newDialogOpen = false)}>Cancel</Button>
+							<Button type="button" variant="ghost" onclick={() => (newDialogOpen = false)}
+								>Cancel</Button
+							>
 							<Button type="submit" disabled={starting}>{starting ? 'Sending…' : 'Send'}</Button>
 						</Dialog.Footer>
 					</form>
@@ -122,7 +160,10 @@
 				{#each data.conversations as conv (conv.id)}
 					<a
 						href="?c={conv.id}"
-						class="flex flex-col gap-1 border-b p-4 text-left transition-colors hover:bg-muted {selectedId === conv.id ? 'bg-muted' : ''}"
+						class="flex flex-col gap-1 border-b p-4 text-left transition-colors hover:bg-muted active:bg-muted {selectedId ===
+						conv.id
+							? 'bg-muted'
+							: ''}"
 					>
 						<div class="flex items-center justify-between gap-2">
 							<span class="truncate text-sm font-medium">{conv.subject}</span>
@@ -134,9 +175,11 @@
 							{conv.lastMessageFromStaff ? '' : 'You: '}{preview(conv.lastMessagePreview)}
 						</p>
 						<div class="flex items-center gap-2">
-							<Badge variant={statusVariant[conv.status]} class="text-[10px]">{conv.status}</Badge>
+							<Badge variant={statusVariant[conv.status]} class="text-[10px]">{conv.status}</Badge
+							>
 							{#if conv.assignedToName}
-								<span class="text-[11px] text-muted-foreground">{conv.assignedToName}</span>
+								<span class="truncate text-[11px] text-muted-foreground">{conv.assignedToName}</span
+								>
 							{/if}
 						</div>
 					</a>
@@ -146,10 +189,14 @@
 	</Card>
 
 	<!-- Thread -->
-	<Card class="flex flex-1 flex-col overflow-hidden p-0">
+	<Card
+		class="flex w-full flex-1 flex-col overflow-hidden p-0 {selectedId ? 'flex' : 'hidden md:flex'}"
+	>
 		{#if !data.selected}
 			<div class="flex flex-1 flex-col items-center justify-center gap-3 p-12 text-center">
-				<div class="flex size-10 items-center justify-center rounded-md bg-muted text-muted-foreground">
+				<div
+					class="flex size-10 items-center justify-center rounded-md bg-muted text-muted-foreground"
+				>
 					<MessagesSquare class="size-5" />
 				</div>
 				<div>
@@ -160,15 +207,31 @@
 				</div>
 			</div>
 		{:else}
-			<div class="flex items-center justify-between border-b p-4">
-				<div>
-					<h2 class="text-sm font-semibold">{data.selected.subject}</h2>
-					<p class="text-xs text-muted-foreground">
-						{data.selected.assignedToName ? `Assigned to ${data.selected.assignedToName}` : 'Awaiting assignment'}
-					</p>
+			<div class="flex items-center justify-between gap-3 border-b p-3 md:p-4">
+				<div class="flex min-w-0 items-center gap-2">
+					<!-- Back button: mobile-only, returns to the conversation list -->
+					<Button
+						variant="ghost"
+						size="icon"
+						class="shrink-0 md:hidden"
+						onclick={() => goto('/student/messages')}
+						aria-label="Back to conversations"
+					>
+						<ArrowLeft class="size-4" />
+					</Button>
+					<div class="min-w-0">
+						<h2 class="truncate text-sm font-semibold">{data.selected.subject}</h2>
+						<p class="truncate text-xs text-muted-foreground">
+							{data.selected.assignedToName
+								? `Assigned to ${data.selected.assignedToName}`
+								: 'Awaiting assignment'}
+						</p>
+					</div>
 				</div>
-				<div class="flex items-center gap-2">
-					<Badge variant={statusVariant[data.selected.status]}>{data.selected.status}</Badge>
+				<div class="flex shrink-0 items-center gap-2">
+					<Badge variant={statusVariant[data.selected.status]} class="hidden sm:inline-flex"
+						>{data.selected.status}</Badge
+					>
 					{#if data.selected.status === 'OPEN'}
 						<form
 							method="POST"
@@ -184,7 +247,7 @@
 							<input type="hidden" name="conversationId" value={data.selected.id} />
 							<Button type="submit" variant="outline" size="sm" disabled={resolving}>
 								<CheckCircle2 class="size-3.5" />
-								{resolving ? 'Closing…' : 'Mark resolved'}
+								<span class="hidden sm:inline">{resolving ? 'Closing…' : 'Mark resolved'}</span>
 							</Button>
 						</form>
 					{/if}
@@ -192,24 +255,33 @@
 			</div>
 
 			{#if form?.resolveError}
-				<div class="mx-4 mt-4 flex items-start gap-3 rounded-lg border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive" role="alert">
+				<div
+					class="mx-3 mt-3 flex items-start gap-3 rounded-lg border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive md:mx-4 md:mt-4"
+					role="alert"
+				>
 					<AlertCircle class="mt-0.5 size-4 shrink-0" />
 					<span>{form.resolveError}</span>
 				</div>
 			{/if}
 
-			<div class="flex flex-1 flex-col gap-4 overflow-y-auto p-4">
+			<div
+				bind:this={threadEl}
+				class="flex flex-1 flex-col gap-3 overflow-y-auto p-3 md:gap-4 md:p-4"
+			>
 				{#each data.selected.messages as msg (msg.id)}
 					<div class="flex flex-col gap-1 {msg.senderType === 'student' ? 'items-end' : 'items-start'}">
 						<div
-							class="max-w-md rounded-lg px-4 py-2 text-sm {msg.senderType === 'student'
+							class="max-w-[85%] rounded-lg px-3 py-2 text-sm break-words sm:max-w-md md:px-4 {msg.senderType ===
+							'student'
 								? 'bg-primary text-primary-foreground'
 								: 'bg-muted text-foreground'}"
 						>
 							{msg.body}
 						</div>
 						<span class="px-1 text-[11px] text-muted-foreground">
-							{msg.senderType === 'staff' ? msg.senderName ?? 'Support' : 'You'} · {formatTime(msg.createdAt)}
+							{msg.senderType === 'staff' ? (msg.senderName ?? 'Support') : 'You'} · {formatTime(
+								msg.createdAt
+							)}
 						</span>
 					</div>
 				{/each}
@@ -217,7 +289,10 @@
 
 			{#if data.selected.status === 'OPEN'}
 				{#if form?.sendError}
-					<div class="mx-4 mb-2 flex items-start gap-3 rounded-lg border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive" role="alert">
+					<div
+						class="mx-3 mb-2 flex items-start gap-3 rounded-lg border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive md:mx-4"
+						role="alert"
+					>
 						<AlertCircle class="mt-0.5 size-4 shrink-0" />
 						<span>{form.sendError}</span>
 					</div>
@@ -233,19 +308,25 @@
 							messageBody = '';
 						};
 					}}
-					class="flex items-end gap-2 border-t p-4"
+					class="flex items-end gap-2 border-t p-3 pb-[calc(0.75rem+env(safe-area-inset-bottom))] md:p-4"
 				>
 					<input type="hidden" name="conversationId" value={data.selected.id} />
 					<Textarea
 						name="body"
 						placeholder="Type your message…"
-						rows={2}
+						rows={1}
 						maxlength={4000}
 						required
 						bind:value={messageBody}
-						class="flex-1 resize-none"
+						onkeydown={(e) => {
+							if (e.key === 'Enter' && !e.shiftKey) {
+								e.preventDefault();
+								e.currentTarget.form?.requestSubmit();
+							}
+						}}
+						class="max-h-32 flex-1 resize-none"
 					/>
-					<Button type="submit" size="icon" disabled={sending || !messageBody.trim()}>
+					<Button type="submit" size="icon" class="shrink-0" disabled={sending || !messageBody.trim()}>
 						<Send class="size-4" />
 					</Button>
 				</form>
