@@ -81,6 +81,7 @@ export const navByRole: Record<Role, NavSection[]> = {
 		{
 			label: 'Create',
 			items: [
+				{ label: 'Assessments', href: '/lecturer/assessments', icon: PencilLine },
 				{ label: 'Exam', href: '/lecturer/assessments/create/exam', icon: FilePlus },
 				{ label: 'Test', href: '/lecturer/assessments/create/test', icon: FilePlus },
 				{ label: 'Assignment', href: '/lecturer/assessments/create/assignment', icon: FilePlus },

@@ -642,6 +642,7 @@ model Staff {
   sentMessages              Message[]           @relation("SentMessages")
   sentInvitations           StaffInvitation[]   @relation("InvitationSender")
   acceptedInvitation        StaffInvitation?    @relation("InvitationAcceptedStaff")
+  preferences               StaffPreference? 
 
   // Auth: identifier-first login
   @@index([emailHash])
@@ -1394,4 +1395,19 @@ model StudentPreference {
   student   Student  @relation(fields: [studentId], references: [id], onDelete: Cascade)
 
   @@map("student_preferences")
+}
+
+
+model StaffPreference {
+  id        String   @id @default(cuid())
+  staffId   String   @unique
+
+  data      Json     @default("{}")
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  staff     Staff    @relation(fields: [staffId], references: [id], onDelete: Cascade)
+
+  @@map("staff_preferences")
 }

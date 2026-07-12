@@ -1459,6 +1459,8 @@ async function checkStudentVerification() {
 	}
 
 	function cleanup() {
+		if (typeof document === 'undefined') return; // onDestroy can fire during SSR even though onMount (and init/listener setup) never did
+
 		console.log('[Monitor] Cleaning up...');
 		stopped = true;
 		

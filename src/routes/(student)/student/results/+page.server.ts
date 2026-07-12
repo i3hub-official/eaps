@@ -5,6 +5,8 @@ import { requireStudent } from '$lib/server/auth/guards'
 import { env } from '$env/dynamic/private'
 import Groq from 'groq-sdk'
 import type { Prisma } from '@prisma/client'
+import { getStudentPreferences } from '$lib/server/preferences';
+import type { ViewMode } from '$lib/types/preferences';
 
 const MODEL = 'llama-3.3-70b-versatile'
 
@@ -23,6 +25,7 @@ type SessionGroup = {
 export const load: PageServerLoad = async ({ locals }) => {
   const student = await requireStudent(locals.user)
   const prisma = await getPrismaClient()
+  const prefs  = await getStudentPreferences(student.id);
 
   const [results, transcriptEntries] = await Promise.all([
     // Individual assessment results (per test/exam/assignment/practice attempt).
@@ -181,5 +184,9 @@ Address the student directly. Be warm and specific.`.trim(),
       allowReview: r.assessment.allowReview,
     })),
     recommendations: getRecommendations(),
+    preferences: {
+			assessmentsView: prefs['results.assessmentsView'] as ViewMode | undefined,
+			transcriptView: prefs['results.transcriptView'] as ViewMode | undefined,
+		},
   }
 }

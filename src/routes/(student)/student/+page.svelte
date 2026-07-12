@@ -28,6 +28,7 @@
 		Mail,
 		Phone,
 		MapPin,
+		ScanFace,
 	} from '@lucide/svelte/icons';
 	import { format } from '$lib/utils/date';
 	import { goto, invalidateAll } from '$app/navigation';
@@ -46,6 +47,12 @@
 	let upcomingAssessments = $derived(data?.upcomingAssessments || []);
 	let courseRegistrations = $derived(data?.courseRegistrations || []);
 	let notifications = $derived(data?.notifications || []);
+
+	// Gate: a student with no enrolled face descriptor can't start any
+	// assessment, regardless of type. Checked once here and reused by every
+	// "Start"/"Continue" button on this page instead of repeating the
+	// `!student?.faceEnrolled` check at each call site.
+	let faceEnrolled = $derived(student?.faceEnrolled ?? false);
 
 	// ─── Computed ────────────────────────────────────────────────────────────
 	let fullName = $derived(
@@ -112,13 +119,11 @@
 
 	// ─── Action Handlers ────────────────────────────────────────────────────
 	async function markNotificationRead(notificationId: string) {
-		// Optimistic update
 		const notification = notifications.find((n: any) => n.id === notificationId);
 		if (notification) {
 			notification.isRead = true;
 		}
 
-		// Send to server
 		const formData = new FormData();
 		formData.append('notificationId', notificationId);
 		await fetch('?/markNotificationRead', {
@@ -150,15 +155,13 @@
 	{/snippet}
 </Topbar>
 
-<!-- ─── Main Content ──────────────────────────────────────────────────────── -->
 <div class="p-6">
 	<div class="mb-6 flex flex-col gap-4">
-<FaceEnrollPrompt enrolled={student?.faceEnrolled ?? false} />
+		<FaceEnrollPrompt enrolled={student?.faceEnrolled ?? false} />
 		<FaceVerifyPrompt assessment={nextVerifiableAssessment} />
 	</div>
 
 	{#if data?.loading}
-		<!-- ─── Loading State ────────────────────────────────────────────── -->
 		<div class="grid gap-6 md:grid-cols-2 lg:grid-cols-4">
 			{#each [1, 2, 3, 4] as item (item)}
 				<Card>
@@ -173,7 +176,6 @@
 			{/each}
 		</div>
 	{:else if data?.error}
-		<!-- ─── Error State ──────────────────────────────────────────────── -->
 		<Card class="border-destructive/30 bg-destructive/10">
 			<CardContent class="flex items-center gap-4 py-6">
 				<AlertCircle class="size-8 text-destructive" />
@@ -187,7 +189,6 @@
 			</CardContent>
 		</Card>
 	{:else}
-		<!-- ─── Statistics Cards ──────────────────────────────────────────── -->
 		<div class="grid gap-6 md:grid-cols-2 lg:grid-cols-4">
 			<Card>
 				<CardHeader class="flex flex-row items-center justify-between space-y-0 pb-2">
@@ -246,7 +247,6 @@
 			</Card>
 		</div>
 
-		<!-- ─── Tabs ──────────────────────────────────────────────────────────── -->
 		<Tabs bind:value={activeTab} class="mt-8">
 			<TabsList class="mb-6">
 				<TabsTrigger value="overview">Overview</TabsTrigger>
@@ -255,10 +255,8 @@
 				<TabsTrigger value="profile">Profile</TabsTrigger>
 			</TabsList>
 
-			<!-- ─── Overview Tab ────────────────────────────────────────────── -->
 			<TabsContent value="overview">
 				<div class="grid gap-6 md:grid-cols-3">
-					<!-- Upcoming Assessments -->
 					<Card class="md:col-span-2">
 						<CardHeader>
 							<CardTitle class="text-base">Upcoming Assessments</CardTitle>
@@ -280,9 +278,20 @@
 													<span>{format(new Date(assessment.startTime), 'PPp')}</span>
 												</div>
 											</div>
-											<Button variant="outline" size="sm" href={`/student/assessment/${assessment.id}`}>
-												Start <ArrowRight class="ml-1 size-3" />
-											</Button>
+											{#if !faceEnrolled}
+												<Button
+													variant="outline"
+													size="sm"
+													disabled
+													title="Enroll your face to start assessments"
+												>
+													<ScanFace class="mr-1 size-3" /> Enroll required
+												</Button>
+											{:else}
+												<Button variant="outline" size="sm" href={`/student/assessment/${assessment.id}`}>
+													Start <ArrowRight class="ml-1 size-3" />
+												</Button>
+											{/if}
 										</div>
 									{/each}
 									{#if upcomingAssessments.length > 3}
@@ -299,7 +308,6 @@
 						</CardContent>
 					</Card>
 
-					<!-- Recent Activity -->
 					<Card>
 						<CardHeader>
 							<CardTitle class="text-base">Recent Activity</CardTitle>
@@ -339,7 +347,6 @@
 						</CardContent>
 					</Card>
 
-					<!-- Notifications -->
 					<Card class="md:col-span-3">
 						<CardHeader>
 							<CardTitle class="text-base">Notifications</CardTitle>
@@ -381,7 +388,6 @@
 				</div>
 			</TabsContent>
 
-			<!-- ─── Assessments Tab ────────────────────────────────────────── -->
 			<TabsContent value="assessments">
 				<Card>
 					<CardHeader>
@@ -389,6 +395,12 @@
 						<CardDescription>Complete history of your assessments</CardDescription>
 					</CardHeader>
 					<CardContent>
+						{#if !faceEnrolled}
+							<div class="mb-4 flex items-center gap-3 rounded-lg border border-amber-500/30 bg-amber-500/10 p-3 text-sm text-amber-700 dark:text-amber-400">
+								<ScanFace class="size-4 shrink-0" />
+								<span>Enroll your face to start or continue any assessment.</span>
+							</div>
+						{/if}
 						{#if recentAssessments?.length > 0}
 							<div class="space-y-3">
 								{#each recentAssessments as assessment}
@@ -414,6 +426,10 @@
 													{assessment.result.percentage?.toFixed(1)}% ({assessment.result.marksObtained}/{assessment.result.totalMarks})
 												</p>
 											</div>
+										{:else if !faceEnrolled}
+											<Button variant="outline" size="sm" disabled title="Enroll your face to continue">
+												<ScanFace class="mr-1 size-3" /> Enroll required
+											</Button>
 										{:else}
 											<Button variant="outline" size="sm" href={`/student/assessment/${assessment.id}`}>
 												Continue
@@ -429,7 +445,6 @@
 				</Card>
 			</TabsContent>
 
-			<!-- ─── Courses Tab ────────────────────────────────────────────── -->
 			<TabsContent value="courses">
 				<Card>
 					<CardHeader>
@@ -459,7 +474,6 @@
 				</Card>
 			</TabsContent>
 
-			<!-- ─── Profile Tab ────────────────────────────────────────────── -->
 			<TabsContent value="profile">
 				<Card>
 					<CardHeader>

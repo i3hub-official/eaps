@@ -37,8 +37,10 @@
 		Building2,
 		FileText,
 		ChevronsUpDown,
+		Zap,
 	} from '@lucide/svelte/icons';
 	import { invalidateAll } from '$app/navigation';
+	import { enhance } from '$app/forms';
 	import { format } from '$lib/utils/date';
 	import { cn } from '$lib/utils.js';
 	import { tick } from 'svelte';
@@ -47,6 +49,7 @@
 
 	// ─── State ────────────────────────────────────────────────────────────────
 	let isRefreshing = $state(false);
+	let isAutoGrading = $state(false);
 	let searchQuery = $state(data?.filters?.search || '');
 	let filterCourse = $state(data?.filters?.course || 'all');
 	let filterStatus = $state(data?.filters?.status || 'pending');
@@ -73,7 +76,8 @@
 			const matchesSearch = s.studentName.toLowerCase().includes(searchQuery.toLowerCase()) ||
 				s.studentMatric.toLowerCase().includes(searchQuery.toLowerCase()) ||
 				s.questionBody.toLowerCase().includes(searchQuery.toLowerCase());
-			const matchesCourse = filterCourse === 'all' || s.course === filterCourse;
+			// ↓ match on courseId (the id field), not course (the code string)
+			const matchesCourse = filterCourse === 'all' || s.courseId === filterCourse;
 			const matchesStatus = filterStatus === 'all' || 
 				(filterStatus === 'pending' && !s.isGraded) ||
 				(filterStatus === 'graded' && s.isGraded);
@@ -138,19 +142,46 @@
 
 <Topbar title="Grade Submissions" description="Review and grade student submissions">
 	{#snippet actions()}
-		<Button
-			variant="outline"
-			size="sm"
-			onclick={handleRefresh}
-			disabled={isRefreshing}
-		>
-			{#if isRefreshing}
-				<LoaderCircle class="size-4 animate-spin" />
-			{:else}
-				<RefreshCw class="size-4" />
+		<div class="flex items-center gap-2">
+			<!-- Auto-grade: only shown when there are pending objective answers -->
+			{#if (stats?.autoGradable ?? 0) > 0}
+				<form
+					method="POST"
+					action="?/autoGrade"
+					use:enhance={() => {
+						isAutoGrading = true;
+						return async ({ update }) => {
+							await update();
+							await invalidateAll();
+							isAutoGrading = false;
+						};
+					}}
+				>
+					<Button type="submit" size="sm" disabled={isAutoGrading}>
+						{#if isAutoGrading}
+							<LoaderCircle class="size-4 animate-spin" />
+						{:else}
+							<Zap class="size-4" />
+						{/if}
+						Auto-Grade ({stats?.autoGradable})
+					</Button>
+				</form>
 			{/if}
-			Refresh
-		</Button>
+
+			<Button
+				variant="outline"
+				size="sm"
+				onclick={handleRefresh}
+				disabled={isRefreshing}
+			>
+				{#if isRefreshing}
+					<LoaderCircle class="size-4 animate-spin" />
+				{:else}
+					<RefreshCw class="size-4" />
+				{/if}
+				Refresh
+			</Button>
+		</div>
 	{/snippet}
 </Topbar>
 
@@ -423,14 +454,19 @@
 									<TableCell class="text-center font-medium">
 										{submission.isGraded ? submission.marksAwarded : '—'}
 									</TableCell>
+									<!-- ↓ Fixed: plain <a> tag instead of Button with href prop -->
 									<TableCell class="text-right">
-										<Button 
-											variant={submission.isGraded ? 'outline' : 'default'} 
-											size="sm" 
-											href={`/lecturer/grade/${submission.id}`}
+										<a
+											href="/lecturer/grade/{submission.id}"
+											class={cn(
+												'inline-flex h-8 items-center rounded-md px-3 text-sm font-medium transition-colors',
+												submission.isGraded
+													? 'border border-input bg-background hover:bg-accent hover:text-accent-foreground'
+													: 'bg-primary text-primary-foreground hover:bg-primary/90'
+											)}
 										>
 											{submission.isGraded ? 'Review' : 'Grade'}
-										</Button>
+										</a>
 									</TableCell>
 								</TableRow>
 							{/each}

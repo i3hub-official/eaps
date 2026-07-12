@@ -86,8 +86,38 @@
 	// View mode is independent per section — a student might want a dense
 	// list for the transcript's by-type breakdown but a big card view for
 	// the assessment results tab where "Review Questions" is a key action.
-	let transcriptViewMode = $state<ViewMode>('card');
-	let resultsViewMode = $state<ViewMode>('card');
+	// Initialized from the student's saved preference (loaded server-side
+	// via the app-wide preferences store), falling back to 'card' for
+	// first-time visitors with no saved row.
+	let transcriptViewMode = $state<ViewMode>(data.preferences?.transcriptView ?? 'card');
+	let resultsViewMode = $state<ViewMode>(data.preferences?.assessmentsView ?? 'card');
+
+	// Persists a view-mode change via the shared app-wide preferences
+	// endpoint (used by any page, not just this one). Fire-and-forget: a
+	// failed save shouldn't block or roll back the UI toggle the student
+	// just clicked — it just means the preference won't stick next visit,
+	// which isn't worth surfacing as an error for something this low-stakes.
+	async function savePreference(key: 'results.assessmentsView' | 'results.transcriptView', value: ViewMode) {
+		try {
+			await fetch('/api/preferences', {
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({ [key]: value }),
+			});
+		} catch {
+			// Silently ignore — see comment above.
+		}
+	}
+
+	function setTranscriptViewMode(mode: ViewMode) {
+		transcriptViewMode = mode;
+		savePreference('results.transcriptView', mode);
+	}
+
+	function setResultsViewMode(mode: ViewMode) {
+		resultsViewMode = mode;
+		savePreference('results.assessmentsView', mode);
+	}
 </script>
 
 {#snippet viewToggle(mode: ViewMode, setMode: (m: ViewMode) => void)}
@@ -256,7 +286,7 @@
 				<div>
 					<div class="mb-3 flex items-center justify-between gap-3">
 						<h3 class="text-sm font-semibold text-muted-foreground">By Assessment Type</h3>
-						{@render viewToggle(transcriptViewMode, (m) => (transcriptViewMode = m))}
+						{@render viewToggle(transcriptViewMode, setTranscriptViewMode)}
 					</div>
 					<Tabs.Root bind:value={activeTranscriptType}>
 						<Tabs.List>
@@ -386,7 +416,7 @@
 								</Tabs.Trigger>
 							{/each}
 						</Tabs.List>
-						{@render viewToggle(resultsViewMode, (m) => (resultsViewMode = m))}
+						{@render viewToggle(resultsViewMode, setResultsViewMode)}
 					</div>
 
 					{#each groupedResults as group (group.type)}

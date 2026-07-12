@@ -32,6 +32,30 @@
 		return new Date(d).toLocaleString('en-NG', { dateStyle: 'medium', timeStyle: 'short' });
 	}
 
+	function formatCountdown(startTime: string | Date | null): string {
+		if (!startTime) return 'Upcoming';
+		const now = new Date();
+		const start = new Date(startTime);
+		const diffMs = start.getTime() - now.getTime();
+
+		if (diffMs < 0) return 'Starting soon';
+
+		const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+		const diffHours = Math.floor((diffMs % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
+		const diffMins = Math.floor((diffMs % (1000 * 60 * 60)) / (1000 * 60));
+
+		if (diffDays > 0) {
+			return `Opens in ${diffDays} day${diffDays === 1 ? '' : 's'}`;
+		}
+		if (diffHours > 0) {
+			return `Opens in ${diffHours} hour${diffHours === 1 ? '' : 's'}`;
+		}
+		if (diffMins > 0) {
+			return `Opens in ${diffMins} min${diffMins === 1 ? '' : 's'}`;
+		}
+		return 'Opening now';
+	}
+
 	function statusBadge(t: (typeof data.tests)[number]) {
 		switch (t.displayStatus) {
 			case 'CANCELLED':
@@ -39,7 +63,7 @@
 			case 'IN_PROGRESS':
 				return { label: 'In progress', variant: 'default' as const };
 			case 'UPCOMING':
-				return { label: t.startTime ? `Opens ${formatDate(t.startTime)}` : 'Upcoming', variant: 'outline' as const };
+				return { label: formatCountdown(t.startTime), variant: 'outline' as const };
 			case 'ENDED':
 				return { label: 'Ended', variant: 'secondary' as const };
 			default:
@@ -58,6 +82,15 @@
 			default:
 				return { label: 'Completed', variant: 'secondary' as const };
 		}
+	}
+
+	// A resume is blocked exactly when this test requires face verification
+	// and the student currently has none enrolled — same rule the server
+	// applies. Resuming an in-progress session must NOT bypass this just
+	// because a session id already exists; an in-progress attempt from
+	// before enrollment lapsed still needs a live face check to continue.
+	function resumeBlocked(t: (typeof data.tests)[number]) {
+		return t.requireFaceVerify && !data.faceEnrolled;
 	}
 </script>
 
@@ -146,6 +179,7 @@
 				<div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
 					{#each availableTests as t (t.id)}
 						{@const badge = statusBadge(t)}
+						{@const blocked = resumeBlocked(t)}
 						<Card class="flex flex-col gap-4 p-5 {t.cancelled ? 'opacity-70' : ''}">
 							<div class="flex items-start justify-between gap-2">
 								<div>
@@ -204,6 +238,13 @@
 								</div>
 							{/if}
 
+							{#if blocked}
+								<div class="flex items-center gap-1.5 rounded-md bg-amber-500/10 px-3 py-2 text-sm text-amber-700 dark:text-amber-400">
+									<ScanFace class="size-3.5 shrink-0" />
+									Face enrollment required to {t.inProgressSessionId ? 'resume' : 'start'} this test.
+								</div>
+							{/if}
+
 							{#if !t.cancelled}
 								<form
 									method="POST"
@@ -221,15 +262,16 @@
 									<Button
 										type="submit"
 										class="w-full"
-										disabled={(!t.canStart && !t.inProgressSessionId) || startingId === t.id}
+										disabled={blocked || (!t.canStart && !t.inProgressSessionId) || startingId === t.id}
 									>
 										{#if startingId === t.id}
 											<Loader class="size-4 animate-spin" />
 											Starting…
+										{:else if blocked}
+											<ScanFace class="mr-1 size-3.5" />
+											Face enrollment required
 										{:else if t.inProgressSessionId}
 											Resume test
-										{:else if !data.faceEnrolled && t.requireFaceVerify}
-											Face enrollment required
 										{:else if t.displayStatus === 'ENDED'}
 											Ended
 										{:else if t.displayStatus === 'UPCOMING'}

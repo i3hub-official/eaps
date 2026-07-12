@@ -338,9 +338,18 @@ export const actions: Actions = {
       return fail(400, { startError: 'This test has closed.' })
     }
 
-    if (assessment.requireFaceVerify && !faceDescriptor) {
+    // No enrollment, no assessment — this check is now unconditional
+    // (previously gated on `assessment.requireFaceVerify`, which left a
+    // gap: a student with zero face enrollment could still resume an
+    // in-progress session below for any test that didn't specifically flag
+    // requireFaceVerify, since the existingActive redirect ran regardless).
+    // Enrollment is a platform-wide prerequisite for taking any test at
+    // all, so this must run — and block — before that resume redirect,
+    // not only when this particular assessment opts into live face
+    // verification during the exam itself.
+    if (!faceDescriptor) {
       return fail(400, {
-        startError: 'You must enroll your face before taking this test.',
+        startError: 'You must enroll your face before taking any test.',
         needsFaceEnrollment: true,
       })
     }

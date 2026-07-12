@@ -113,7 +113,7 @@
 		}
 
 		try {
-			await fetch(`/api/assessments/session/${data.sessionId}/accept-terms`, { method: 'POST' })
+			await fetch(`/api/assessment/session/${data.sessionId}/accept-terms`, { method: 'POST' })
 		} catch {
 			// best-effort; don't block progress on a logging failure
 		}
