@@ -28,6 +28,8 @@ import Layers from '@lucide/svelte/icons/layers';
 import ScrollText from '@lucide/svelte/icons/scroll-text';
 import Settings from '@lucide/svelte/icons/settings';
 import ScanFace from '@lucide/svelte/icons/scan-face';
+import Mail from '@lucide/svelte/icons/mail';
+
 
 export type NavItem = { label: string; href: string; icon: Component<any> };
 export type NavSection = { label?: string; items: NavItem[] };
@@ -158,7 +160,11 @@ export const navByRole: Record<Role, NavSection[]> = {
 			label: 'People',
 			items: [
 				{ label: 'Students', href: '/admin/students', icon: GraduationCap },
-				{ label: 'Lecturers', href: '/admin/lecturers', icon: Users }
+				{ label: 'Lecturers', href: '/admin/lecturers', icon: Users },
+				{ label: 'Exam officers', href: '/admin/exam-officers', icon: Users },
+				{ label: 'Invigilators', href: '/admin/invigilators', icon: Users },
+				{ label: 'Administrators', href: '/admin/administrators', icon: Users },
+				{ label: 'Invitations', href: '/admin/staff-invitations', icon: Mail }
 			]
 		},
 		{
