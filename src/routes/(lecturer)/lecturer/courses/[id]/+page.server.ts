@@ -7,7 +7,8 @@ import {
   revealName, 
   revealMatricNumber, 
   revealEmail,
-  revealText
+  revealText,
+  isEncrypted
 } from '$lib/security/dataProtection.js'
 
 export const load: PageServerLoad = async ({ params, locals }) => {
@@ -138,22 +139,60 @@ export const load: PageServerLoad = async ({ params, locals }) => {
 		}
 	})
 
-	// Decrypt student data
-	const decryptedStudents = course.registrations.map(reg => ({
-		...reg,
-		student: {
-			...reg.student,
-			matricNumber: revealMatricNumber(reg.student.matricNumber),
-			firstName: revealName(reg.student.firstName),
-			lastName: revealName(reg.student.lastName),
-			email: revealEmail(reg.student.email),
-			// Decrypt phone if needed
-			phone: reg.student.phone ? revealText(reg.student.phone) : null
+	// Safe decrypt helper - only decrypt if the field is actually encrypted
+	function safeDecrypt(value: string | null): string | null {
+		if (!value) return null
+		try {
+			// Check if it looks like encrypted data (contains a colon)
+			if (value.includes(':')) {
+				return revealText(value)
+			}
+			// If it doesn't look encrypted, return as-is
+			return value
+		} catch (e) {
+			// If decryption fails, return the original value
+			console.warn('Failed to decrypt field, returning original:', e)
+			return value
 		}
-	}))
+	}
 
-	// Decrypt course description if it exists
-	const courseDescription = course.description ? revealText(course.description) : null
+	// Decrypt student data safely
+	const decryptedStudents = course.registrations.map(reg => {
+		try {
+			return {
+				...reg,
+				student: {
+					...reg.student,
+					matricNumber: reg.student.matricNumber.includes(':') 
+						? revealMatricNumber(reg.student.matricNumber) 
+						: reg.student.matricNumber,
+					firstName: reg.student.firstName.includes(':') 
+						? revealName(reg.student.firstName) 
+						: reg.student.firstName,
+					lastName: reg.student.lastName.includes(':') 
+						? revealName(reg.student.lastName) 
+						: reg.student.lastName,
+					email: reg.student.email.includes(':') 
+						? revealEmail(reg.student.email) 
+						: reg.student.email,
+					phone: reg.student.phone ? safeDecrypt(reg.student.phone) : null
+				}
+			}
+		} catch (e) {
+			console.warn('Failed to decrypt student data:', e)
+			return {
+				...reg,
+				student: {
+					...reg.student,
+					matricNumber: reg.student.matricNumber || 'N/A',
+					firstName: reg.student.firstName || 'N/A',
+					lastName: reg.student.lastName || 'N/A',
+					email: reg.student.email || 'N/A',
+					phone: reg.student.phone || null
+				}
+			}
+		}
+	})
 
 	return {
 		course: {
@@ -163,7 +202,7 @@ export const load: PageServerLoad = async ({ params, locals }) => {
 			creditUnits: course.creditUnits,
 			type: course.type,
 			status: course.status,
-			description: courseDescription,
+			description: safeDecrypt(course.description),
 			department: course.department,
 			college: course.department.college,
 			level: course.level

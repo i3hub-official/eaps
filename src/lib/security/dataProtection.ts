@@ -396,3 +396,10 @@ export function hashOtp(code: string): string {
     .update(code)
     .digest('hex')
 }
+
+export function isEncrypted(value: string | null): boolean {
+	if (!value) return false
+	// Encrypted values typically contain a colon separator
+	// and look like base64:iv or similar format
+	return value.includes(':') && value.length > 20
+}
