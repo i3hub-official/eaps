@@ -17,14 +17,6 @@
     onMount(async () => {
         if (!browser) return;
 
-        // Automatically handles service worker registration via the Vite PWA internal script injection
-        if ('serviceWorker' in navigator) {
-            // Ignore TypeScript missing module declaration for the Vite PWA virtual module
-            // @ts-ignore
-            const { registerSW } = await import('virtual:pwa-register');
-            registerSW({ immediate: true });
-        }
-
         // Keep loading your tensor weights model configuration
          await faceModels.load();
     });
