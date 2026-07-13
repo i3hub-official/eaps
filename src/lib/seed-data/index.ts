@@ -1,5 +1,6 @@
 // src/lib/seed-data/index.ts
 import { CourseType } from '@prisma/client';
+import { title } from 'process';
 
 export const COLLEGES = [
   { code: 'CAERSE', name: 'College of Agricultural Economics, Rural Sociology & Extension', shortName: 'CAERSE' },
@@ -121,14 +122,18 @@ export const COURSES = [
   { code: 'MTH223', title: 'Linear Algebra II', creditUnits: 3, level: 200, deptCode: 'MTH', type: CourseType.COMPULSORY },
   { code: 'MTH226', title: 'Numerical Analysis', creditUnits: 3, level: 200, deptCode: 'MTH', type: CourseType.COMPULSORY },
   // Physics
-  { code: 'PHY113', title: 'General Physics I', creditUnits: 3, level: 100, deptCode: 'PHY', type: CourseType.COMPULSORY },
+   { code: 'PHY113', title: 'General Physics I', creditUnits: 3, level: 100, deptCode: 'PHY', type: CourseType.COMPULSORY },
   { code: 'PHY116', title: 'Practical Physics I', creditUnits: 2, level: 100, deptCode: 'PHY', type: CourseType.COMPULSORY },
   { code: 'PHY124', title: 'General Physics II', creditUnits: 3, level: 100, deptCode: 'PHY', type: CourseType.COMPULSORY },
   { code: 'PHY126', title: 'Practical Physics II', creditUnits: 2, level: 100, deptCode: 'PHY', type: CourseType.COMPULSORY },
-  { code: 'PHY211', title: 'Mechanics and Thermodynamics', creditUnits: 3, level: 200, deptCode: 'PHY', type: CourseType.COMPULSORY },
+  { code: 'PHY128', title: 'Introduction to Astronomy', creditUnits: 2, level: 100, deptCode: 'PHY', type: CourseType.ELECTIVE },
+  { code: 'PHY111', title: 'Mechanics and Thermodynamics', creditUnits: 3, level: 100, deptCode: 'PHY', type: CourseType.ELECTIVE },
+  { code: 'PHY127', title: 'Electricity I', creditUnits: 1, level: 100, deptCode: 'PHY', type: CourseType.ELECTIVE},
   { code: 'PHY215', title: 'Electromagnetism', creditUnits: 3, level: 200, deptCode: 'PHY', type: CourseType.COMPULSORY },
   { code: 'PHY224', title: 'Optics and Waves', creditUnits: 3, level: 200, deptCode: 'PHY', type: CourseType.COMPULSORY },
   { code: 'PHY228', title: 'Modern Physics', creditUnits: 3, level: 200, deptCode: 'PHY', type: CourseType.COMPULSORY },
+  { code: 'PHY231', title: 'Practical Physics III', creditUnits: 2, level: 200, deptCode: 'PHY', type: CourseType.COMPULSORY },
+  { code: 'PHY235', title: 'Introduction to Quantum Mechanics', creditUnits: 3, level: 200, deptCode: 'PHY', type: CourseType.ELECTIVE },
   // Agriculture
   { code: 'AGR112', title: 'Principles of Crop Production', creditUnits: 3, level: 100, deptCode: 'AGR', type: CourseType.COMPULSORY },
   { code: 'AGR115', title: 'Introduction to Agriculture', creditUnits: 2, level: 100, deptCode: 'AGR', type: CourseType.COMPULSORY },
@@ -138,10 +143,10 @@ export const COURSES = [
   { code: 'AGR225', title: 'Agroecology', creditUnits: 3, level: 200, deptCode: 'AGR', type: CourseType.COMPULSORY },
   { code: 'AGR228', title: 'Agricultural Economics', creditUnits: 3, level: 200, deptCode: 'AGR', type: CourseType.COMPULSORY },
   // General Studies
-  { code: 'GSE111', title: 'Use of English I', creditUnits: 2, level: 100, deptCode: 'ENG', type: CourseType.GENERAL_STUDIES },
-  { code: 'GSE122', title: 'Use of English II', creditUnits: 2, level: 100, deptCode: 'ENG', type: CourseType.GENERAL_STUDIES },
-  { code: 'GSE213', title: 'Communication Skills', creditUnits: 2, level: 200, deptCode: 'ENG', type: CourseType.GENERAL_STUDIES },
-  { code: 'GSE224', title: 'Research Methodology', creditUnits: 2, level: 200, deptCode: 'ENG', type: CourseType.GENERAL_STUDIES },
+  { code: 'GST111', title: 'Use of English I', creditUnits: 2, level: 100, deptCode: 'ENG', type: CourseType.GENERAL_STUDIES },
+  { code: 'GST122', title: 'Use of English II', creditUnits: 2, level: 100, deptCode: 'ENG', type: CourseType.GENERAL_STUDIES },
+  { code: 'GST213', title: 'Communication Skills', creditUnits: 2, level: 200, deptCode: 'ENG', type: CourseType.GENERAL_STUDIES },
+  { code: 'GST224', title: 'Research Methodology', creditUnits: 2, level: 200, deptCode: 'ENG', type: CourseType.GENERAL_STUDIES },
 ];
 
 export const ROLES = [

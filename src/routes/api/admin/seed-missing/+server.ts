@@ -26,48 +26,51 @@ import {
 const STAFF_DEFAULT_PASSWORD = 'Admin123';
 const STUDENT_DEFAULT_PASSWORD = 'Student123';
 
+// ============================================================
+// STAFF DATA
+// ============================================================
+
+// Name pool used only for auto-generated department staff below — large
+// enough that names don't feel obviously repeated across departments,
+// but this is seed data, not meant to be unique per person.
+const STAFF_FIRST_NAMES = [
+  'Ugochukwu', 'Ifeanyi', 'Chinwe', 'Emeka', 'Ndidi', 'Chukwuka', 'Amaka', 'Obiora',
+  'Ejike', 'Nkiruka', 'Chidi', 'Ozioma', 'Okechukwu', 'Adaugo', 'Ikenna', 'Uju',
+  'Chukwuemeka', 'Nneamaka', 'Chibuike', 'Adamma', 'Kelechi', 'Ijeoma', 'Uzoma', 'Chinyere',
+  'Chinedu', 'Amarachi', 'Obinna', 'Nkechinyere', 'Chukwudi', 'Ogechukwu',
+];
+const STAFF_LAST_NAMES = [
+  'Anyaoku', 'Ibekwe', 'Nwokolo', 'Achara', 'Okorocha', 'Egwuatu', 'Onyejiaka', 'Nwabuisi',
+  'Ekweremadu', 'Ihejirika', 'Nwaubani', 'Okwuosa', 'Emelumba', 'Onwuzuruike', 'Nwadike',
+  'Ogbonna', 'Ezekwesili', 'Nwafor', 'Amuchie', 'Ihedigbo', 'Nwokedi', 'Okonji', 'Nzeribe',
+  'Iheanacho', 'Okoli', 'Uzodinma', 'Ekwueme', 'Chukwura', 'Nwoye', 'Ogbuewu',
+];
+
+// Every staffNumber below STAFF-027 is hand-authored (university-wide
+// roles, college-scoped roles, CSC, and PHY blocks). Counter picks up
+// from there for auto-generated department staff, so re-running the
+// generator never collides with a hand-authored staffNumber.
+let staffAutoCounter = 26;
+let staffNameCursor = 0;
+
+function nextStaffNumber(): string {
+  staffAutoCounter++;
+  return `STAFF-${String(staffAutoCounter).padStart(3, '0')}`;
+}
+
+function nextStaffName(): { firstName: string; lastName: string } {
+  const firstName = STAFF_FIRST_NAMES[staffNameCursor % STAFF_FIRST_NAMES.length];
+  const lastName = STAFF_LAST_NAMES[staffNameCursor % STAFF_LAST_NAMES.length];
+  staffNameCursor++;
+  return { firstName, lastName };
+}
+
 // `deptCode` scopes a staff member to a department; `levels` (LECTURER only)
 // restricts which course levels they're eligible to teach — a lecturer
 // doesn't teach an entire department across every level, just their
 // assigned set. `maxCourseLoad` caps how many offerings they can be
 // assigned in a single semester.
-const STAFF_DATA = [
-  { staffNumber: 'STAFF-001', email: 'super.admin@mouau.edu.ng', firstName: 'Super', lastName: 'Admin', primaryRole: 'SUPER_ADMIN' },
-  { staffNumber: 'STAFF-002', email: 'registrar@mouau.edu.ng', firstName: 'University', lastName: 'Registrar', primaryRole: 'REGISTRAR' },
-  { staffNumber: 'STAFF-003', email: 'university.exam@mouau.edu.ng', firstName: 'University', lastName: 'Exam Officer', primaryRole: 'UNIVERSITY_EXAM_OFFICER' },
-  { staffNumber: 'STAFF-004', email: 'college.exam@cpas.mouau.edu.ng', firstName: 'College', lastName: 'Exam Officer', primaryRole: 'COLLEGE_EXAM_OFFICER', collegeCode: 'COLPAS' },
-  { staffNumber: 'STAFF-005', email: 'dept.exam@phy.mouau.edu.ng', firstName: 'Department', lastName: 'Exam Officer', primaryRole: 'DEPARTMENT_EXAM_OFFICER', deptCode: 'CSC' },
-  { staffNumber: 'STAFF-006', email: 'hod@phy.mouau.edu.ng', firstName: 'Head', lastName: 'Of Department', primaryRole: 'HOD', deptCode: 'CSC' },
-  { staffNumber: 'STAFF-007', email: 'lecturer1@phy.mouau.edu.ng', firstName: 'John', lastName: 'Lecturer', primaryRole: 'LECTURER', deptCode: 'CSC', levels: [100, 200], maxCourseLoad: 3 },
-  { staffNumber: 'STAFF-008', email: 'lecturer2@csc.mouau.edu.ng', firstName: 'Jane', lastName: 'Instructor', primaryRole: 'LECTURER', deptCode: 'CSC', levels: [200, 300], maxCourseLoad: 3 },
-  { staffNumber: 'STAFF-009', email: 'invigilator@phy.mouau.edu.ng', firstName: 'David', lastName: 'Invigilator', primaryRole: 'INVIGILATOR', deptCode: 'CSC' },
-  { staffNumber: 'STAFF-010', email: 'lecturer3@phy.mouau.edu.ng', firstName: 'Sarah', lastName: 'Professor', primaryRole: 'LECTURER', deptCode: 'CSC', levels: [300, 400], maxCourseLoad: 3 },
-
-  // ─── Previously-unseeded roles: 2 staff each ────────────────────────
-  // VC / DVC / UNIVERSITY_COURSE_COORDINATOR are university-wide roles —
-  // no collegeCode/deptCode, matching how SUPER_ADMIN/REGISTRAR are seeded.
-  { staffNumber: 'STAFF-011', email: 'vc1@mouau.edu.ng', firstName: 'Chukwuemeka', lastName: 'Nwosu', primaryRole: 'VC' },
-  { staffNumber: 'STAFF-012', email: 'vc2@mouau.edu.ng', firstName: 'Adaeze', lastName: 'Okonkwo', primaryRole: 'VC' },
-
-  { staffNumber: 'STAFF-013', email: 'dvc1@mouau.edu.ng', firstName: 'Ibrahim', lastName: 'Musa', primaryRole: 'DVC' },
-  { staffNumber: 'STAFF-014', email: 'dvc2@mouau.edu.ng', firstName: 'Folake', lastName: 'Adeyemi', primaryRole: 'DVC' },
-
-  { staffNumber: 'STAFF-015', email: 'uni.coordinator1@mouau.edu.ng', firstName: 'Emeka', lastName: 'Obiora', primaryRole: 'UNIVERSITY_COURSE_COORDINATOR' },
-  { staffNumber: 'STAFF-016', email: 'uni.coordinator2@mouau.edu.ng', firstName: 'Ngozi', lastName: 'Eze', primaryRole: 'UNIVERSITY_COURSE_COORDINATOR' },
-
-  // DEAN / COLLEGE_COORDINATOR are college-scoped — assign to 2 distinct
-  // colleges (COLPAS and CEET) so both new roles resolve a real collegeId.
-  { staffNumber: 'STAFF-017', email: 'dean.colpas@colpas.mouau.edu.ng', firstName: 'Oluwaseun', lastName: 'Bakare', primaryRole: 'DEAN', collegeCode: 'COLPAS' },
-  { staffNumber: 'STAFF-018', email: 'dean.ceet@ceet.mouau.edu.ng', firstName: 'Uchenna', lastName: 'Madu', primaryRole: 'DEAN', collegeCode: 'CEET' },
-
-  { staffNumber: 'STAFF-019', email: 'college.coord.colpas@colpas.mouau.edu.ng', firstName: 'Amina', lastName: 'Bello', primaryRole: 'COLLEGE_COORDINATOR', collegeCode: 'COLPAS' },
-  { staffNumber: 'STAFF-020', email: 'college.coord.ceet@ceet.mouau.edu.ng', firstName: 'Damilola', lastName: 'Ogunbiyi', primaryRole: 'COLLEGE_COORDINATOR', collegeCode: 'CEET' },
-
-  // DEPARTMENT_COORDINATOR is dept-scoped — assign to 2 distinct
-  // departments (CSC and MTH) rather than doubling up on CSC.
-  { staffNumber: 'STAFF-021', email: 'dept.coord.csc@csc.mouau.edu.ng', firstName: 'Kelechi', lastName: 'Nnamdi', primaryRole: 'DEPARTMENT_COORDINATOR', deptCode: 'CSC' },
-  { staffNumber: 'STAFF-022', email: 'dept.coord.mth@mth.mouau.edu.ng', firstName: 'Temitope', lastName: 'Okorie', primaryRole: 'DEPARTMENT_COORDINATOR', deptCode: 'MTH' },
-] satisfies Array<{
+interface StaffSeedEntry {
   staffNumber: string;
   email: string;
   firstName: string;
@@ -77,7 +80,88 @@ const STAFF_DATA = [
   collegeCode?: string;
   levels?: number[];
   maxCourseLoad?: number;
-}>;
+}
+
+// University-wide roles — no dept/college scope.
+const UNIVERSITY_WIDE_STAFF: StaffSeedEntry[] = [
+  { staffNumber: 'STAFF-001', email: 'super.admin@mouau.edu.ng', firstName: 'Super', lastName: 'Admin', primaryRole: 'SUPER_ADMIN' },
+  { staffNumber: 'STAFF-002', email: 'registrar@mouau.edu.ng', firstName: 'University', lastName: 'Registrar', primaryRole: 'REGISTRAR' },
+  { staffNumber: 'STAFF-003', email: 'university.exam@mouau.edu.ng', firstName: 'University', lastName: 'Exam Officer', primaryRole: 'UNIVERSITY_EXAM_OFFICER' },
+  { staffNumber: 'STAFF-011', email: 'vc1@mouau.edu.ng', firstName: 'Chukwuemeka', lastName: 'Nwosu', primaryRole: 'VC' },
+  { staffNumber: 'STAFF-012', email: 'vc2@mouau.edu.ng', firstName: 'Adaeze', lastName: 'Okonkwo', primaryRole: 'VC' },
+  { staffNumber: 'STAFF-013', email: 'dvc1@mouau.edu.ng', firstName: 'Ibrahim', lastName: 'Musa', primaryRole: 'DVC' },
+  { staffNumber: 'STAFF-014', email: 'dvc2@mouau.edu.ng', firstName: 'Folake', lastName: 'Adeyemi', primaryRole: 'DVC' },
+  { staffNumber: 'STAFF-015', email: 'uni.coordinator1@mouau.edu.ng', firstName: 'Emeka', lastName: 'Obiora', primaryRole: 'UNIVERSITY_COURSE_COORDINATOR' },
+  { staffNumber: 'STAFF-016', email: 'uni.coordinator2@mouau.edu.ng', firstName: 'Ngozi', lastName: 'Eze', primaryRole: 'UNIVERSITY_COURSE_COORDINATOR' },
+];
+
+// College-scoped roles — kept to COLPAS/CEET as before. Say the word if
+// you want DEAN/COLLEGE_EXAM_OFFICER/COLLEGE_COORDINATOR generated for
+// every college the same way departments are handled below.
+const COLLEGE_STAFF: StaffSeedEntry[] = [
+  { staffNumber: 'STAFF-004', email: 'college.exam@colpas.mouau.edu.ng', firstName: 'College', lastName: 'Exam Officer', primaryRole: 'COLLEGE_EXAM_OFFICER', collegeCode: 'COLPAS' },
+  { staffNumber: 'STAFF-017', email: 'dean.colpas@colpas.mouau.edu.ng', firstName: 'Oluwaseun', lastName: 'Bakare', primaryRole: 'DEAN', collegeCode: 'COLPAS' },
+  { staffNumber: 'STAFF-018', email: 'dean.ceet@ceet.mouau.edu.ng', firstName: 'Uchenna', lastName: 'Madu', primaryRole: 'DEAN', collegeCode: 'CEET' },
+  { staffNumber: 'STAFF-019', email: 'college.coord.colpas@colpas.mouau.edu.ng', firstName: 'Amina', lastName: 'Bello', primaryRole: 'COLLEGE_COORDINATOR', collegeCode: 'COLPAS' },
+  { staffNumber: 'STAFF-020', email: 'college.coord.ceet@ceet.mouau.edu.ng', firstName: 'Damilola', lastName: 'Ogunbiyi', primaryRole: 'COLLEGE_COORDINATOR', collegeCode: 'CEET' },
+];
+
+// Hand-authored CSC block — canonical example for what a fully-staffed
+// department looks like (exam officer, HOD, coordinator, invigilator,
+// two lecturers).
+const CSC_STAFF: StaffSeedEntry[] = [
+  { staffNumber: 'STAFF-005', email: 'dept.exam@csc.mouau.edu.ng', firstName: 'Department', lastName: 'Exam Officer', primaryRole: 'DEPARTMENT_EXAM_OFFICER', deptCode: 'CSC' },
+  { staffNumber: 'STAFF-006', email: 'hod@csc.mouau.edu.ng', firstName: 'Head', lastName: 'Of Department', primaryRole: 'HOD', deptCode: 'CSC' },
+  { staffNumber: 'STAFF-007', email: 'lecturer1@csc.mouau.edu.ng', firstName: 'John', lastName: 'Lecturer', primaryRole: 'LECTURER', deptCode: 'CSC', levels: [100, 200], maxCourseLoad: 3 },
+  { staffNumber: 'STAFF-008', email: 'lecturer2@csc.mouau.edu.ng', firstName: 'Jane', lastName: 'Instructor', primaryRole: 'LECTURER', deptCode: 'CSC', levels: [200, 300], maxCourseLoad: 3 },
+  { staffNumber: 'STAFF-009', email: 'invigilator@csc.mouau.edu.ng', firstName: 'David', lastName: 'Invigilator', primaryRole: 'INVIGILATOR', deptCode: 'CSC' },
+  { staffNumber: 'STAFF-010', email: 'lecturer3@csc.mouau.edu.ng', firstName: 'Sarah', lastName: 'Professor', primaryRole: 'LECTURER', deptCode: 'CSC', levels: [300, 400], maxCourseLoad: 3 },
+  { staffNumber: 'STAFF-021', email: 'dept.coord@csc.mouau.edu.ng', firstName: 'Kelechi', lastName: 'Nnamdi', primaryRole: 'DEPARTMENT_COORDINATOR', deptCode: 'CSC' },
+];
+
+// Hand-authored PHY block — like CSC, carved out of the generic
+// department generator below so these four roles get named entries here.
+const PHY_STAFF: StaffSeedEntry[] = [
+  { staffNumber: 'STAFF-023', email: 'hod@phy.mouau.edu.ng', firstName: 'Chukwuma', lastName: 'Ibeh', primaryRole: 'HOD', deptCode: 'PHY' },
+  { staffNumber: 'STAFF-024', email: 'lecturer1@phy.mouau.edu.ng', firstName: 'Ngozi', lastName: 'Okafor', primaryRole: 'LECTURER', deptCode: 'PHY', levels: [100, 200], maxCourseLoad: 3 },
+  { staffNumber: 'STAFF-025', email: 'dept.exam@phy.mouau.edu.ng', firstName: 'Ifeanyi', lastName: 'Nwachukwu', primaryRole: 'DEPARTMENT_EXAM_OFFICER', deptCode: 'PHY' },
+  { staffNumber: 'STAFF-026', email: 'dept.coord@phy.mouau.edu.ng', firstName: 'Adaobi', lastName: 'Eze', primaryRole: 'DEPARTMENT_COORDINATOR', deptCode: 'PHY' },
+];
+
+// One DEPARTMENT_EXAM_OFFICER, HOD, DEPARTMENT_COORDINATOR, INVIGILATOR,
+// and two LECTURERs (100/200-level and 200/300-level) for every
+// department other than CSC and PHY, which are hand-authored above.
+const DEPARTMENT_STAFF: StaffSeedEntry[] = DEPARTMENTS.filter((d) => d.code !== 'CSC' && d.code !== 'PHY').flatMap((dept) => {
+  const slug = dept.code.toLowerCase();
+
+  const examOfficer = nextStaffName();
+  const hod = nextStaffName();
+  const coordinator = nextStaffName();
+  const invigilator = nextStaffName();
+  const lecturer1 = nextStaffName();
+  const lecturer2 = nextStaffName();
+
+  return [
+    { staffNumber: nextStaffNumber(), email: `dept.exam@${slug}.mouau.edu.ng`, firstName: examOfficer.firstName, lastName: examOfficer.lastName, primaryRole: 'DEPARTMENT_EXAM_OFFICER', deptCode: dept.code },
+    { staffNumber: nextStaffNumber(), email: `hod@${slug}.mouau.edu.ng`, firstName: hod.firstName, lastName: hod.lastName, primaryRole: 'HOD', deptCode: dept.code },
+    { staffNumber: nextStaffNumber(), email: `dept.coord@${slug}.mouau.edu.ng`, firstName: coordinator.firstName, lastName: coordinator.lastName, primaryRole: 'DEPARTMENT_COORDINATOR', deptCode: dept.code },
+    { staffNumber: nextStaffNumber(), email: `invigilator@${slug}.mouau.edu.ng`, firstName: invigilator.firstName, lastName: invigilator.lastName, primaryRole: 'INVIGILATOR', deptCode: dept.code },
+    { staffNumber: nextStaffNumber(), email: `lecturer1@${slug}.mouau.edu.ng`, firstName: lecturer1.firstName, lastName: lecturer1.lastName, primaryRole: 'LECTURER', deptCode: dept.code, levels: [100, 200], maxCourseLoad: 3 },
+    { staffNumber: nextStaffNumber(), email: `lecturer2@${slug}.mouau.edu.ng`, firstName: lecturer2.firstName, lastName: lecturer2.lastName, primaryRole: 'LECTURER', deptCode: dept.code, levels: [200, 300], maxCourseLoad: 3 },
+  ];
+});
+
+const STAFF_DATA: StaffSeedEntry[] = [
+  ...UNIVERSITY_WIDE_STAFF,
+  ...COLLEGE_STAFF,
+  ...CSC_STAFF,
+  ...PHY_STAFF,
+  ...DEPARTMENT_STAFF,
+];
+
+// ============================================================
+// STUDENT DATA
+// ============================================================
 
 const STUDENT_FIRST_NAMES = [
   // English names
@@ -86,25 +170,25 @@ const STUDENT_FIRST_NAMES = [
   'Comfort', 'James', 'Patience', 'Paul', 'Mercy', 'Andrew', 'Gift',
   'Stephen', 'Favour', 'Victor', 'Joshua', 'Esther', 'Solomon', 'Hannah',
   'Timothy', 'Deborah', 'Jonathan', 'Elizabeth', 'Nathaniel', 'Sarah',
-  
+
   // Igbo names
   'Chidinma', 'Kingsley', 'Ifeoma', 'Chukwuemeka', 'Amara', 'Obinna',
   'Chiamaka', 'Ikechukwu', 'Nkechi', 'Uchenna', 'Adaobi', 'Chibuzor',
   'Ogechi', 'Ngozi', 'Chinonso', 'Onyinye', 'Chukwudi', 'Uchechi',
   'Somto', 'Kenechukwu', 'Chioma', 'Emeka', 'Nneka', 'Chukwuma',
   'Adaeze', 'Chinedu', 'Ifeanyi', 'Nneoma', 'Obinna', 'Uzochukwu',
-  
+
   // Yoruba names
   'Oluwafemi', 'Olayinka', 'Adebayo', 'Foluke', 'Oluwaseun', 'Ayomide',
   'Oluwadamilola', 'Temitayo', 'Abimbola', 'Olayemi', 'Oluwatoyin',
   'Adekunle', 'Olufemi', 'Funmilayo', 'Oluwaseyi', 'Tolulope',
   'Oluwadamilare', 'Folashade', 'Oluwabusayo', 'Adeola', 'Oluwakemi',
-  
+
   // Hausa names
   'Aisha', 'Fatima', 'Aminu', 'Zainab', 'Bello', 'Musa', 'Hadiza',
   'Sani', 'Rabi', 'Usman', 'Hauwa', 'Suleiman', 'Amina', 'Adamu',
   'Jamila', 'Yusuf', 'Mariya', 'Abdullahi', 'Maimuna', 'Haruna',
-  
+
   // More diverse names
   'Ibrahim', 'Damilola', 'Chukwuma', 'Oyindamola', 'Somtochukwu',
   'Oluwanifemi', 'Chiedozie', 'Temitope', 'Nduka', 'Oluwatosin',
@@ -118,24 +202,29 @@ const STUDENT_LAST_NAMES = [
   'Adeyemi', 'Okonkwo', 'Uzoma', 'Anyanwu', 'Nnamdi', 'Okeke', 'Igwe',
   'Onyekwere', 'Ejiofor', 'Nwankwo', 'Chukwuma', 'Onuoha', 'Amadi',
   'Iwu', 'Nnadi', 'Okorie', 'Chibueze', 'Madu', 'Ogunleye', 'Adewale',
-  
+
   // More Nigerian surnames
   'Adebayo', 'Ogunlade', 'Oladipo', 'Akinlade', 'Ogunbiyi', 'Olatunji',
   'Ogundeji', 'Adebisi', 'Fadipe', 'Onabanjo', 'Ogunyemi', 'Akinwale',
   'Oladunjoye', 'Akinmuyide', 'Ogunbanjo', 'Akintola', 'Ogunbayo',
   'Fasanya', 'Ogunbiyi', 'Ogunlade', 'Akinola', 'Ogunyemi', 'Adesola',
-  
+
   // Other Nigerian names
   'Abdullahi', 'Bello', 'Garba', 'Muhammad', 'Musa', 'Umar', 'Adamu',
   'Suleiman', 'Yusuf', 'Hassan', 'Aliyu', 'Ibrahim', 'Umaru', 'Danjuma',
   'Usman', 'Bala', 'Malami', 'Lawan', 'Abdulrahman', 'Abubakar',
-  
+
   // Southern names
   'Ezeh', 'Nnamdi', 'Ogbonna', 'Ukaegbu', 'Nwankpa', 'Ibe', 'Nwoke',
   'Uche', 'Nwokocha', 'Eke', 'Okpara', 'Onyejiaka', 'Nwogu', 'Okereke',
   'Ezeani', 'Nwosu', 'Ohakwe', 'Okogwu', 'Nwabueze', 'Ezeokonkwo',
   'Okafor', 'Mbah', 'Onyeje', 'Nwaiwu', 'Opara', 'Nwogwugwu',
 ];
+
+// Every department gets exactly one 100L and one 200L student.
+const STUDENT_LEVELS = [100, 200] as const;
+
+const TOTAL_STUDENTS_PLANNED = DEPARTMENTS.length * STUDENT_LEVELS.length;
 
 // ============================================================
 // TYPES
@@ -222,16 +311,6 @@ function getSemesterWindows(startYear: number, endYear: number, now: Date) {
     { ...second, isCurrent: currentType === 'SECOND' },
   ];
 }
-
-/** COLPAS gets 5 students per department; every other college gets 2. */
-function studentCountForDept(collegeCode: string): number {
-  return collegeCode === 'COLPAS' ? 5 : 2;
-}
-
-const TOTAL_STUDENTS_PLANNED = DEPARTMENTS.reduce(
-  (sum, d) => sum + studentCountForDept(d.collegeCode),
-  0,
-);
 
 function slugName(name: string): string {
   return name.toLowerCase().replace(/[^a-z]/g, '');
@@ -790,48 +869,6 @@ export const POST: RequestHandler = async () => {
       }
     }
 
-
-    // ─── 13. Assign lecturers to course offerings ──────────────────────
-    // For each course offering in the current semester that has no
-    // lecturerId yet, assign one lecturer from the course's own department,
-    // round-robin, so Staff.courseOfferings and CourseOffering.lecturer are
-    // both populated and consistent with departmentId.
-   if (currentSemester) {
-      const offeringsNeedingLecturer = await prisma.courseOffering.findMany({
-        where: { semesterId: currentSemester.id, lecturerId: null },
-        include: { course: { include: { level: true } } },
-      });
-      results.lecturerAssignments.total = offeringsNeedingLecturer.length;
-
-      for (const offering of offeringsNeedingLecturer) {
-        const deptCode = deptIdToCode.get(offering.course.departmentId);
-        const pool = deptCode ? lecturersByDept.get(deptCode) : undefined;
-        const courseLevel = offering.course.level.name;
-
-        const eligible = (pool ?? []).filter(
-          (l) => l.levels.includes(courseLevel) && l.assignedCount < l.maxCourseLoad,
-        );
-
-        if (eligible.length === 0) {
-          results.lecturerAssignments.skipped++;
-          totalSkipped++;
-          continue;
-        }
-
-        eligible.sort((a, b) => a.assignedCount - b.assignedCount);
-        const chosen = eligible[0];
-
-        await prisma.courseOffering.update({
-          where: { id: offering.id },
-          data: { lecturerId: chosen.staffId },
-        });
-        chosen.assignedCount++;
-
-        results.lecturerAssignments.created++;
-        totalCreated++;
-      }
-    }
-
     // ─── 14. Students ───────────────────────────────────────────────────
     // Mirrors src/routes/(auth)/register/+page.server.ts `signup` action:
     // same protectStudentRegistration() call, same field shape, same
@@ -950,8 +987,7 @@ export const POST: RequestHandler = async () => {
         }
       }
     }
-    
-    
+
     // ─── 15. Audit Log ──────────────────────────────────────────────────
     try {
       await prisma.auditLog.create({
