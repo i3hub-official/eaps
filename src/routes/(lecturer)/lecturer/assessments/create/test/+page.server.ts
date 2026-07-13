@@ -111,7 +111,7 @@ export const actions: Actions = {
 				questionIds = JSON.parse(questionIdsJson)
 			}
 		} catch (err) {
-			console.error('[TEST-CREATE] Failed to parse questionIds:', err)
+			// console.error('[TEST-CREATE] Failed to parse questionIds:', err)
 		}
 
 		const errors: Record<string, string> = {}
@@ -129,25 +129,25 @@ export const actions: Actions = {
 		}
 
 		if (Object.keys(errors).length > 0) {
-			console.log('[TEST-CREATE] Validation errors:', errors)
+			// console.log('[TEST-CREATE] Validation errors:', errors)
 			return fail(400, { errors })
 		}
 
 		try {
 			const prisma = await getPrismaClient()
 
-			console.log('[TEST-CREATE] Verifying course access...')
+			// console.log('[TEST-CREATE] Verifying course access...')
 			const offering = await prisma.courseOffering.findFirst({
 				where: { courseId, lecturerId: user.id },
 				include: { course: true },
 			})
 
 			if (!offering) {
-				console.error('[TEST-CREATE] User does not have access to course:', courseId)
+				// console.error('[TEST-CREATE] User does not have access to course:', courseId)
 				return fail(403, { error: 'You do not have access to this course' })
 			}
 
-			console.log('[TEST-CREATE] Verifying question ownership...')
+			// console.log('[TEST-CREATE] Verifying question ownership...')
 			const ownedQuestions = await prisma.question.findMany({
 				where: {
 					id: { in: questionIds },
@@ -159,12 +159,12 @@ export const actions: Actions = {
 			})
 
 			if (ownedQuestions.length !== questionIds.length) {
-				console.error(
-					'[TEST-CREATE] Question mismatch. Selected:',
-					questionIds.length,
-					'Found:',
-					ownedQuestions.length
-				)
+				// console.error(
+				// 	'[TEST-CREATE] Question mismatch. Selected:',
+				// 	questionIds.length,
+				// 	'Found:',
+				// 	ownedQuestions.length
+				// )
 				return fail(400, {
 					errors: {
 						questions:
@@ -176,7 +176,7 @@ export const actions: Actions = {
 			// Create or get tags
 			let tags: any[] = []
 			if (tagNames.length > 0) {
-				console.log('[TEST-CREATE] Creating/getting tags:', tagNames)
+				// console.log('[TEST-CREATE] Creating/getting tags:', tagNames)
 				tags = await Promise.all(
 					tagNames.map((name) =>
 						prisma.questionTag.upsert({
@@ -188,7 +188,7 @@ export const actions: Actions = {
 				)
 			}
 
-			console.log('[TEST-CREATE] Creating assessment with', questionIds.length, 'questions and', tags.length, 'tags')
+			// console.log('[TEST-CREATE] Creating assessment with', questionIds.length, 'questions and', tags.length, 'tags')
 
 			const test = await prisma.$transaction(async (tx) => {
 				// Create assessment (without tags, will add after)
@@ -218,7 +218,7 @@ export const actions: Actions = {
 					},
 				})
 
-				console.log('[TEST-CREATE] Assessment created:', created.id)
+				// console.log('[TEST-CREATE] Assessment created:', created.id)
 
 				// ── Eligibility ─────────────────────────────────────────────
 				// Built from actual APPROVED registrants of this course, NOT
@@ -249,7 +249,7 @@ export const actions: Actions = {
 					})
 				}
 
-				console.log('[TEST-CREATE] Eligibility set for', registrants.length, 'registered students')
+				// console.log('[TEST-CREATE] Eligibility set for', registrants.length, 'registered students')
 
 				// Link questions
 				await tx.assessmentQuestion.createMany({
@@ -260,7 +260,7 @@ export const actions: Actions = {
 					})),
 				})
 
-				console.log('[TEST-CREATE] Linked', questionIds.length, 'questions')
+				// console.log('[TEST-CREATE] Linked', questionIds.length, 'questions')
 
 				// Link tags (after assessment exists)
 				if (tags.length > 0) {
@@ -270,16 +270,16 @@ export const actions: Actions = {
 							tagId: tag.id,
 						})),
 					})
-					console.log('[TEST-CREATE] Linked', tags.length, 'tags')
+					// console.log('[TEST-CREATE] Linked', tags.length, 'tags')
 				}
 
 				return created
 			})
 
-			console.log('[TEST-CREATE] ✅ Success! Assessment ID:', test.id)
+			// console.log('[TEST-CREATE] ✅ Success! Assessment ID:', test.id)
 			return { success: true, id: test.id }
 		} catch (err) {
-			console.error('[TEST-CREATE] ❌ Database error:', err)
+			// console.error('[TEST-CREATE] ❌ Database error:', err)
 			const errorMsg = err instanceof Error ? err.message : 'Unknown error'
 			return fail(500, { error: `Failed to create test: ${errorMsg}` })
 		}
