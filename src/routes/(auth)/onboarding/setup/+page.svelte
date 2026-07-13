@@ -19,6 +19,7 @@
 	let isSubmitting = $state(false)
 	let showPassword = $state(false)
 	let showConfirm = $state(false)
+	let token = $state('')
 	let tokenMissing = $state(false)
 
 	// Form validation
@@ -67,15 +68,16 @@
 		!isSubmitting
 	)
 
-	onMount(() => {
-		// Check if token exists in sessionStorage
-		const token = sessionStorage.getItem('staff_onboarding_token')
-		const invitationId = sessionStorage.getItem('staff_onboarding_id')
+onMount(() => {
+	const storedToken = sessionStorage.getItem('staff_onboarding_token')
+	const invitationId = sessionStorage.getItem('staff_onboarding_id')
 
-		if (!token || !invitationId) {
-			tokenMissing = true
-		}
-	})
+	if (!storedToken || !invitationId) {
+		tokenMissing = true
+	} else {
+		token = storedToken
+	}
+})
 
 	async function handleSubmit(e: SubmitEvent) {
 		const form = e.target as HTMLFormElement
@@ -116,6 +118,8 @@
 
 <svelte:head>
 	<title>Complete Your Profile — Staff Onboarding</title>
+	<!-- Hidden token field -->
+<input type="hidden" name="token" value={token} />
 </svelte:head>
 
 {#if tokenMissing}

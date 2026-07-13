@@ -1,5 +1,4 @@
-// src/routes/(auth)/onboarding/staff/+page.server.ts
-import type { PageServerLoad, Actions } from './$types'
+import type { Actions, PageServerLoad } from './$types'
 import { fail, redirect } from '@sveltejs/kit'
 import { getPrismaClient } from '$lib/server/db/index.js'
 import { hashInvitationToken } from '$lib/server/auth/invitationToken'
@@ -7,51 +6,36 @@ import { hashPassword, validatePasswordStrength, createStaffSession, STAFF_COOKI
 import { staffRoleHome } from '$lib/server/auth/roleHome'
 import { protectStaffData } from '$lib/security/dataProtection.js'
 
-export const load: PageServerLoad = async ({ url }) => {
-	const token = url.searchParams.get('token') ?? ''
-	if (!token) return { error: 'Missing invitation token.' }
-
-	const prisma = await getPrismaClient()
-	const tokenHash = hashInvitationToken(token)
-
-	const invitation = await prisma.staffInvitation.findUnique({
-		where: { tokenHash },
-		include: { college: true, department: true, courses: { include: { course: true } } },
-	})
-
-	if (!invitation) return { error: 'Invalid or unrecognized invitation link.' }
-	if (invitation.status === 'ACCEPTED') return { error: 'This invitation has already been used.' }
-	if (invitation.status === 'REVOKED') return { error: 'This invitation has been revoked.' }
-	if (invitation.status === 'EXPIRED' || invitation.expiresAt < new Date()) {
-		return { error: 'This invitation link has expired. Contact your administrator for a new one.' }
+export const load: PageServerLoad = async ({ locals }) => {
+	if (locals.user) {
+		throw redirect(303, '/staff/dashboard')
 	}
-
-	return {
-		token,
-		invitation: {
-			email: invitation.email,
-			role: invitation.primaryRole,
-			college: invitation.college.name,
-			department: invitation.department.name,
-			courses: invitation.courses.map((c) => `${c.course.code} — ${c.course.title}`),
-		},
-	}
+	return {}
 }
 
 export const actions: Actions = {
-	accept: async ({ request, cookies, getClientAddress }) => {
+	setup: async ({ request, cookies, getClientAddress }) => {
 		const formData = await request.formData()
 		const token = String(formData.get('token') ?? '')
 		const firstName = String(formData.get('firstName') ?? '').trim()
-		const otherNames = String(formData.get('otherNames') ?? '').trim() || null
 		const lastName = String(formData.get('lastName') ?? '').trim()
+		const phoneNumber = String(formData.get('phoneNumber') ?? '').trim()
 		const password = String(formData.get('password') ?? '')
+		const confirmPassword = String(formData.get('confirmPassword') ?? '')
+
+		if (!token) {
+			return fail(400, { error: 'Your onboarding session is missing. Please start over from your invitation email.' })
+		}
 
 		const errors: Record<string, string> = {}
-		if (!firstName) errors.firstName = 'First name is required'
-		if (!lastName) errors.lastName = 'Last name is required'
+		if (!firstName || firstName.length < 2) errors.firstName = 'First name is required'
+		if (!lastName || lastName.length < 2) errors.lastName = 'Last name is required'
+		if (!phoneNumber || phoneNumber.length < 10) errors.phoneNumber = 'A valid phone number is required'
+		if (password !== confirmPassword) errors.confirmPassword = 'Passwords do not match'
 		const pwErr = validatePasswordStrength(password)
 		if (pwErr) errors.password = pwErr
+
+		if (Object.keys(errors).length > 0) return fail(400, { errors })
 
 		const prisma = await getPrismaClient()
 		const tokenHash = hashInvitationToken(token)
@@ -66,43 +50,41 @@ export const actions: Actions = {
 			return fail(400, { error: 'This invitation is no longer valid.' })
 		}
 
-		if (Object.keys(errors).length > 0) return fail(400, { errors })
-
 		const passwordHash = await hashPassword(password)
-
-		// Generate a unique staffNumber — no admin-facing "assign a staff
-		// number" step exists in this flow, so derive one deterministically
-		// from a counter-safe cuid suffix rather than requiring manual entry.
 		const staffNumber = `STAFF-${invitation.primaryRole.slice(0, 3)}-${Date.now().toString(36).toUpperCase()}`
 
 		try {
 			const staff = await prisma.$transaction(async (tx) => {
+				// NOTE: verify protectStaffData's signature accepts `phone` —
+				// if not, add phone/phoneHash handling to that helper first,
+				// following the same deterministic-hash pattern as email/name.
 				const protectedData = await protectStaffData({
 					email: invitation.email,
 					firstName,
 					lastName,
 					staffNumber,
+					phone: phoneNumber,
 				})
 
-				const createdStaff = await tx.staff.create({
-					data: {
-						staffNumber,
-						email: protectedData.email,
-						emailHash: protectedData.emailHash,
-						firstName: protectedData.firstName,
-						firstNameHash: protectedData.firstNameHash,
-						lastName: protectedData.lastName,
-						lastNameHash: protectedData.lastNameHash,
-						otherNames: otherNames ? protectedData.otherNames : null,
-						otherNamesHash: otherNames ? protectedData.otherNamesHash : null,
-						passwordHash,
-						primaryRole: invitation.primaryRole,
-						collegeId: invitation.collegeId,
-						departmentId: invitation.departmentId,
-						status: 'ACTIVE',
-						mustChangePassword: false,
-					},
-				})
+			const createdStaff = await tx.staff.create({
+	data: {
+		staffNumber, // plain value generated above — matches schema's plain @unique column
+		email: protectedData.email,
+		emailHash: protectedData.emailHash,
+		firstName: protectedData.firstName,
+		firstNameHash: protectedData.firstNameHash,
+		lastName: protectedData.lastName,
+		lastNameHash: protectedData.lastNameHash,
+		phone: protectedData.phone,
+		phoneHash: protectedData.phoneHash,
+		passwordHash,
+		primaryRole: invitation.primaryRole,
+		collegeId: invitation.collegeId,
+		departmentId: invitation.departmentId,
+		status: 'ACTIVE',
+		mustChangePassword: false,
+	},
+})
 
 				const role = await tx.role.findUnique({ where: { name: invitation.primaryRole } })
 				if (role) {
@@ -111,10 +93,6 @@ export const actions: Actions = {
 					})
 				}
 
-				// Assign the invited courses in the current semester, if one
-				// exists — mirrors the round-robin assignment logic from the
-				// seed script, but here it's explicit courses picked by the
-				// admin rather than auto-balanced.
 				const currentSemester = await tx.semester.findFirst({ where: { isCurrent: true } })
 				if (currentSemester && invitation.courses.length > 0) {
 					for (const ic of invitation.courses) {
@@ -149,8 +127,8 @@ export const actions: Actions = {
 
 			throw redirect(303, staffRoleHome(staff.primaryRole))
 		} catch (err) {
-			if (err && typeof err === 'object' && 'status' in err) throw err // redirect
-			console.error('[onboarding/staff] Failed to accept invitation:', err)
+			if (err && typeof err === 'object' && 'status' in err) throw err
+			console.error('[onboarding/staff/setup] Failed to complete onboarding:', err)
 			return fail(500, { error: 'Failed to complete onboarding. Please try again or contact your administrator.' })
 		}
 	},

@@ -689,7 +689,7 @@ export function buildStaffInvitationEmail(
   expiryHours: number,
   origin: string = APP_URL,
 ): { html: string; text: string } {
-  const onboardLink = `${origin}/onboarding/staff?token=${encodeURIComponent(token)}`
+  const onboardLink = `${origin}/onboarding/staff#token=${encodeURIComponent(token)}`
   const coursesText = courseList.length > 0 ? courseList.join(', ') : '(none assigned yet)'
 
   const text = `
