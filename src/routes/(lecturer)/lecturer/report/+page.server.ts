@@ -19,6 +19,7 @@ function isPassing(pct: number): boolean {
 	return pct >= 40
 }
 
+
 export const load: PageServerLoad = async ({ locals, url }) => {
     const prisma = await getPrismaClient()
 	const user = await requireLecturer(locals.user)
