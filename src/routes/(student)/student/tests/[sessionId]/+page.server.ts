@@ -1,6 +1,6 @@
 // src/routes/(student)/student/tests/[sessionId]/+page.server.ts
-import type { PageServerLoad } from './$types'
-import { error, redirect } from '@sveltejs/kit'
+import type { PageServerLoad, Actions } from './$types'
+import { error, redirect, fail } from '@sveltejs/kit'
 import { requireStudent } from '$lib/server/auth/guards'
 import { getPrismaClient } from '$lib/server/db/index.js'
 import { shuffleArray } from '$lib/utils/shuffle'
@@ -27,7 +27,6 @@ export const load: PageServerLoad = async ({ locals, params }) => {
 		throw error(404, 'Session not found')
 	}
 
-	// Already-written test: bounce straight to the result page
 	if (['SUBMITTED', 'TIMED_OUT', 'DISQUALIFIED'].includes(session.status)) {
 		throw redirect(303, `/student/tests/${session.id}/result`)
 	}
@@ -36,9 +35,8 @@ export const load: PageServerLoad = async ({ locals, params }) => {
 		where: { studentId: student.id },
 	})
 
-	// ─── Attempt Management ─────────────────────────────────────────────────
-	// Get all previous completed attempts for this assessment
-const previousAttempts = await prisma.assessmentSession.findMany({
+	// ─── Attempt management ──────────────────────────────────────────────────
+	const previousAttempts = await prisma.assessmentSession.findMany({
 		where: {
 			studentId: student.id,
 			assessmentId: session.assessment.id,
@@ -48,9 +46,6 @@ const previousAttempts = await prisma.assessmentSession.findMany({
 			id: true,
 			status: true,
 			submittedAt: true,
-			// score/totalMarks/percentage live on the related AssessmentResult,
-			// not on AssessmentSession itself — same shape as bestSession.result.*
-			// in src/routes/student/tests/+page.server.ts.
 			result: {
 				select: {
 					marksObtained: true,
@@ -64,7 +59,6 @@ const previousAttempts = await prisma.assessmentSession.findMany({
 		orderBy: { submittedAt: 'desc' },
 	})
 
-	// Check attempt limits
 	const attemptInfo = {
 		attemptNumber: previousAttempts.length + 1,
 		maxAttempts: session.assessment.maxAttempts,
@@ -79,7 +73,6 @@ const previousAttempts = await prisma.assessmentSession.findMany({
 		previousAttempts: [] as typeof previousAttempts,
 	}
 
-	// Check if max attempts reached
 	if (
 		session.assessment.maxAttempts &&
 		previousAttempts.length >= session.assessment.maxAttempts
@@ -90,25 +83,24 @@ const previousAttempts = await prisma.assessmentSession.findMany({
 		throw error(403, 'Maximum attempts reached for this assessment')
 	}
 
-	// Check retake delay
 	if (previousAttempts.length > 0 && session.assessment.retakeDelayMinutes > 0) {
 		const lastAttempt = previousAttempts[0]
 		const timeSinceLastAttempt = Date.now() - (lastAttempt.submittedAt?.getTime() ?? 0)
 		const delayMs = session.assessment.retakeDelayMinutes * 60 * 1000
-		
+
 		if (timeSinceLastAttempt < delayMs) {
 			attemptInfo.canRetake = false
 			attemptInfo.retakeBlockedUntil = new Date(
 				(lastAttempt.submittedAt?.getTime() ?? 0) + delayMs
 			)
-			throw error(403, 
+			throw error(
+				403,
 				`You must wait ${session.assessment.retakeDelayMinutes} minutes between attempts. ` +
-				`Next attempt available at ${attemptInfo.retakeBlockedUntil.toLocaleTimeString()}`
+					`Next attempt available at ${attemptInfo.retakeBlockedUntil.toLocaleTimeString()}`
 			)
 		}
 	}
 
-	// Include previous attempts only if configured to show
 	if (session.assessment.showPreviousAttempts) {
 		attemptInfo.previousAttempts = previousAttempts
 	}
@@ -116,7 +108,6 @@ const previousAttempts = await prisma.assessmentSession.findMany({
 	const answerMap = new Map(session.answers.map((a) => [a.questionId, a]))
 
 	type ExamOption = { id: string; body: string; imageUrl: string | null }
-
 	type ExamQuestion = {
 		position: number
 		questionId: string
@@ -149,7 +140,8 @@ const previousAttempts = await prisma.assessmentSession.findMany({
 			let orderIds = (sqo.optionOrder as string[] | null) ?? []
 
 			const validIds = new Set(q.options.map((o) => o.id))
-			const isStale = orderIds.length !== q.options.length || orderIds.some((id) => !validIds.has(id))
+			const isStale =
+				orderIds.length !== q.options.length || orderIds.some((id) => !validIds.has(id))
 
 			if (isStale) {
 				orderIds = shuffleArray(q.options.map((o) => o.id))
@@ -174,7 +166,8 @@ const previousAttempts = await prisma.assessmentSession.findMany({
 				leftItems: q.type === 'MATCHING' ? orderedOptions.map((o) => o.body) : undefined,
 				selectedOptions: (existing?.selectedOptions as string[] | null) ?? [],
 				textAnswer: existing?.textAnswer ?? '',
-				orderAnswer: (existing?.orderAnswer as string[] | null) ?? orderedOptions.map((o) => o.id),
+				orderAnswer:
+					(existing?.orderAnswer as string[] | null) ?? orderedOptions.map((o) => o.id),
 				matchAnswer: (existing?.matchAnswer as Record<string, string> | null) ?? {},
 			}
 		})
@@ -212,7 +205,6 @@ const previousAttempts = await prisma.assessmentSession.findMany({
 			requireFaceVerify: session.assessment.requireFaceVerify,
 			fullscreenRequired: session.assessment.fullscreenRequired,
 			allowReview: session.assessment.allowReview,
-			// Attempt management fields
 			maxAttempts: session.assessment.maxAttempts,
 			allowRetakes: session.assessment.allowRetakes,
 			retakeDelayMinutes: session.assessment.retakeDelayMinutes,
@@ -223,4 +215,79 @@ const previousAttempts = await prisma.assessmentSession.findMany({
 		},
 		questions,
 	}
+}
+
+// ─── Form actions ────────────────────────────────────────────────────────────
+export const actions: Actions = {
+	/**
+	 * acceptTerms — called from the TermsStep before the device check.
+	 * Stamps `termsAcceptedAt` and (if the session is still NOT_STARTED)
+	 * transitions it to IN_PROGRESS so the timer begins on the server side.
+	 */
+	acceptTerms: async ({ locals, params }) => {
+		const student = await requireStudent(locals.user)
+		const prisma = await getPrismaClient()
+
+		const session = await prisma.assessmentSession.findUnique({
+			where: { id: params.sessionId },
+			select: { id: true, studentId: true, status: true, termsAcceptedAt: true },
+		})
+
+		if (!session || session.studentId !== student.id) {
+			return fail(404, { message: 'Session not found' })
+		}
+
+		if (['SUBMITTED', 'TIMED_OUT', 'DISQUALIFIED'].includes(session.status)) {
+			return fail(409, { message: 'Session is already closed' })
+		}
+
+		// Idempotent — if terms were already accepted, do nothing
+		if (session.termsAcceptedAt) {
+			return { ok: true }
+		}
+
+		await prisma.assessmentSession.update({
+			where: { id: session.id },
+			data: {
+				termsAcceptedAt: new Date(),
+				// Kick off the timer on first acceptance if session hasn't started yet
+				...(session.status === 'NOT_STARTED'
+					? { status: 'IN_PROGRESS', startedAt: new Date() }
+					: {}),
+			},
+		})
+
+		return { ok: true }
+	},
+
+	/**
+	 * markFaceVerified — called from FaceVerifyStep once the client-side
+	 * Human.js check passes. The heavy lifting (descriptor comparison) should
+	 * happen in a dedicated API route; this action just stamps the timestamp
+	 * so the lobby can advance.
+	 */
+	markFaceVerified: async ({ locals, params }) => {
+		const student = await requireStudent(locals.user)
+		const prisma = await getPrismaClient()
+
+		const session = await prisma.assessmentSession.findUnique({
+			where: { id: params.sessionId },
+			select: { id: true, studentId: true, status: true },
+		})
+
+		if (!session || session.studentId !== student.id) {
+			return fail(404, { message: 'Session not found' })
+		}
+
+		if (['SUBMITTED', 'TIMED_OUT', 'DISQUALIFIED'].includes(session.status)) {
+			return fail(409, { message: 'Session is already closed' })
+		}
+
+		await prisma.assessmentSession.update({
+			where: { id: session.id },
+			data: { faceVerifiedAt: new Date() },
+		})
+
+		return { ok: true }
+	},
 }

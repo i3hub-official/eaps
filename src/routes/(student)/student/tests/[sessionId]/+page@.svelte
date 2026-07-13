@@ -1,7 +1,7 @@
 <!-- src/routes/(student)/student/tests/[sessionId]/+page@.svelte -->
 <script lang="ts">
 	import { onMount, onDestroy } from 'svelte'
-	import { goto } from '$app/navigation'
+	import { enhance } from '$app/forms'
 	import { toast } from 'svelte-sonner'
 	import { Button } from '$lib/components/ui/button/index.js'
 	import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '$lib/components/ui/card/index.js'
@@ -9,12 +9,10 @@
 	import { RadioGroup, RadioGroupItem } from '$lib/components/ui/radio-group/index.js'
 	import { Textarea } from '$lib/components/ui/textarea/index.js'
 	import { Input } from '$lib/components/ui/input/index.js'
-	import { Tabs, TabsContent, TabsList, TabsTrigger } from '$lib/components/ui/tabs/index.js'
 	import { Badge } from '$lib/components/ui/badge/index.js'
 	import FaceVerifyModal from '$lib/components/exam/FaceVerifyModal.svelte'
 	import DeviceCheckPanel from '$lib/components/exam/DeviceCheckPanel.svelte'
 	import AlertCircle from '@lucide/svelte/icons/alert-circle'
-	import CheckCircle2 from '@lucide/svelte/icons/check-circle-2'
 	import Clock from '@lucide/svelte/icons/clock'
 	import ArrowLeft from '@lucide/svelte/icons/arrow-left'
 	import ArrowRight from '@lucide/svelte/icons/arrow-right'
@@ -34,7 +32,6 @@
 			if (data.needsReverify) return 'faceverify'
 			return 'kiosk'
 		}
-		// Show attempts tab if this is a retake and there are previous attempts to review
 		if (data.attemptInfo.attemptNumber > 1 && data.attemptInfo.previousAttempts.length > 0) {
 			return data.attemptInfo.allowRetakes ? 'attempts' : 'lobby'
 		}
@@ -44,8 +41,16 @@
 	let step = $state<Step>(initialStep())
 	let termsAccepted = $state(Boolean(data.termsAcceptedAt))
 	let devicePassed = $state(false)
-
 	let submitError = $state<string | null>(null)
+
+	// ─── Hidden form refs (enhance-based server actions) ─────────────────────
+	// Using requestSubmit() on these keeps us in SvelteKit's action system
+	// (correct URL, CSRF token, no manual fetch) while letting step advancement
+	// happen client-side in the enhance callback — no full page reload.
+	let acceptTermsForm = $state<HTMLFormElement | null>(null)
+	let markFaceVerifiedForm = $state<HTMLFormElement | null>(null)
+	let submittingTerms = $state(false)
+	let submittingFace = $state(false)
 
 	const NUMBER_SIZE_CLASS = 'size-12 text-base font-bold'
 
@@ -78,7 +83,7 @@
 		return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`
 	}
 
-	// ─── Attempt Management ─────────────────────────────────────────────────
+	// ─── Attempt management ──────────────────────────────────────────────────
 	function proceedFromAttempts() {
 		step = 'lobby'
 	}
@@ -91,73 +96,69 @@
 		step = 'terms'
 	}
 
-	async function proceedFromTerms() {
+	// Called when student clicks "Continue" on the terms step.
+	// Submits the hidden ?/acceptTerms form via SvelteKit enhance — the enhance
+	// callback advances the step once the server confirms.
+	function proceedFromTerms() {
 		if (!termsAccepted) {
 			toast.error('You must accept the rules to continue')
 			return
 		}
+		if (submittingTerms) return
+		submittingTerms = true
+		acceptTermsForm?.requestSubmit()
+	}
+
+	async function enterKiosk() {
+		// requestFullscreen must fire synchronously before any await so the
+		// browser still considers it user-gesture-initiated.
+		requestFullscreen()
 
 		try {
-			await fetch(`/api/assessment/session/${data.sessionId}/accept-terms`, { method: 'POST' })
-		} catch {
-			// best-effort; don't block progress on a logging failure
-		}
-
-		if (data.assessment.requireFaceVerify && !data.faceVerifiedAt) {
-			if (!data.faceEnrolled) {
-				toast.error('You must enroll your face before taking this assessment')
-				return
+			const res = await fetch(`/api/assessment/session/${data.sessionId}/start`, { method: 'POST' })
+			if (!res.ok) {
+				const body = await res.json().catch(() => ({}))
+				throw new Error(body?.message ?? 'Could not start the session')
 			}
-			step = 'faceverify'
+			const body = await res.json()
+			if (body.expiresAt) {
+				remainingSeconds = Math.max(
+					0,
+					Math.floor((new Date(body.expiresAt).getTime() - Date.now()) / 1000)
+				)
+			}
+			step = 'kiosk'
+			startTimers()
+		} catch (err) {
+			toast.error(err instanceof Error ? err.message : 'Failed to start session')
+		}
+	}
+
+	function onFaceVerifySuccess() {
+		// Same reasoning — fire fullscreen synchronously first.
+		requestFullscreen()
+
+		if (data.status === 'IN_PROGRESS' || data.status === 'PAUSED') {
+			step = 'kiosk'
+			startTimers()
 		} else {
 			enterKiosk()
 		}
 	}
 
-	async function enterKiosk() {
-    // Must be called synchronously, before any `await`, while we're still
-    // inside the original click/tap event's call stack — browsers (Firefox
-    // especially) reject requestFullscreen() once that gesture context has
-    // expired, which happens the instant you `await` something first.
-    requestFullscreen()
-
-    try {
-        const res = await fetch(`/api/assessment/session/${data.sessionId}/start`, { method: 'POST' })
-        if (!res.ok) {
-            const body = await res.json().catch(() => ({}))
-            throw new Error(body?.message ?? 'Could not start the session')
-        }
-        const body = await res.json()
-        if (body.expiresAt) {
-            remainingSeconds = Math.max(
-                0,
-                Math.floor((new Date(body.expiresAt).getTime() - Date.now()) / 1000)
-            )
-        }
-        step = 'kiosk'
-        startTimers()
-    } catch (err) {
-        toast.error(err instanceof Error ? err.message : 'Failed to start session')
-    }
-}
-
-	function onFaceVerifySuccess() {
-    // Same reasoning as enterKiosk — fire first, synchronously.
-    requestFullscreen()
-
-    if (data.status === 'IN_PROGRESS' || data.status === 'PAUSED') {
-        step = 'kiosk'
-        startTimers()
-    } else {
-        enterKiosk()
-    }
-}
+	// Called from FaceVerifyModal once the client-side Human.js check passes.
+	// Stamps faceVerifiedAt on the session then advances to the kiosk.
+	function onFaceVerified() {
+		if (submittingFace) return
+		submittingFace = true
+		markFaceVerifiedForm?.requestSubmit()
+	}
 
 	function onFaceVerifyCancel() {
 		step = 'terms'
 	}
 
-	// ─── Fullscreen + violation logging ────────────────────────────────────
+	// ─── Fullscreen + violation logging ──────────────────────────────────────
 	async function logViolation(type: string, severity = 1, metadata: Record<string, unknown> = {}) {
 		try {
 			await fetch(`/api/assessment/session/${data.sessionId}/violation`, {
@@ -166,7 +167,7 @@
 				body: JSON.stringify({ type, severity, metadata }),
 			})
 		} catch {
-			// best-effort; don't block the exam on a logging failure
+			// best-effort; never block the exam on a logging failure
 		}
 	}
 
@@ -217,13 +218,8 @@
 		const key = e.key.toLowerCase()
 
 		if (showSubmitConfirm) {
-			if (key === 'y') {
-				e.preventDefault()
-				confirmSubmit()
-			} else if (key === 'r') {
-				e.preventDefault()
-				showSubmitConfirm = false
-			}
+			if (key === 'y') { e.preventDefault(); confirmSubmit() }
+			else if (key === 'r') { e.preventDefault(); showSubmitConfirm = false }
 			return
 		}
 
@@ -237,19 +233,12 @@
 			return
 		}
 
-		if (key === 'n') {
-			e.preventDefault()
-			goTo(currentIndex + 1)
-		} else if (key === 'p') {
-			e.preventDefault()
-			goTo(currentIndex - 1)
-		} else if (key === 'y') {
-			e.preventDefault()
-			openSubmitConfirm()
-		}
+		if (key === 'n') { e.preventDefault(); goTo(currentIndex + 1) }
+		else if (key === 'p') { e.preventDefault(); goTo(currentIndex - 1) }
+		else if (key === 'y') { e.preventDefault(); openSubmitConfirm() }
 	}
 
-	const syncIntervalMs = 20_000 + Math.random() * 5_000;
+	const syncIntervalMs = 20_000 + Math.random() * 5_000
 
 	function startTimers() {
 		timerInterval = setInterval(() => {
@@ -287,10 +276,7 @@
 	function scheduleSave(questionId: string) {
 		const existing = saveTimers.get(questionId)
 		if (existing) clearTimeout(existing)
-		saveTimers.set(
-			questionId,
-			setTimeout(() => saveAnswer(questionId), 600)
-		)
+		saveTimers.set(questionId, setTimeout(() => saveAnswer(questionId), 600))
 	}
 
 	async function saveAnswer(questionId: string) {
@@ -309,8 +295,7 @@
 				}),
 			})
 		} catch {
-			// best-effort; the next successful save (or final submit) still
-			// captures the latest state held in `questions`
+			// best-effort; final submit captures latest state
 		}
 	}
 
@@ -375,30 +360,19 @@
 		for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
 			try {
 				const res = await fetch(`/api/assessment/session/${data.sessionId}/submit`, { method: 'POST' })
-
-				if (!res.ok) {
-					throw new Error(`Submission failed (${res.status})`)
-				}
+				if (!res.ok) throw new Error(`Submission failed (${res.status})`)
 
 				if (document.fullscreenElement) {
 					await document.exitFullscreen?.().catch(() => {})
 				}
-
-				// Success — no toast, straight to the result page. The result
-				// page itself is where the student learns they've submitted.
 				window.location.href = `/student/tests/${data.sessionId}/result`
 				return
 			} catch (err) {
 				console.error(`Submission attempt ${attempt} failed:`, err)
-
 				if (attempt < MAX_ATTEMPTS) {
 					await new Promise((resolve) => setTimeout(resolve, RETRY_DELAY_MS))
 					continue
 				}
-
-				// All attempts exhausted — stay on this page, never redirect
-				// on failure. Answers already autosaved per-question, so
-				// nothing is lost while the student retries manually.
 				isSubmitting = false
 				submitError =
 					'We could not submit your test after several attempts. Your answers are saved — please check your connection and try again.'
@@ -406,8 +380,6 @@
 			}
 		}
 	}
-
-
 
 	onMount(() => {
 		document.addEventListener('fullscreenchange', handleFullscreenChange)
@@ -438,6 +410,53 @@
 	<title>{data.assessment.title} — MOUAU e-Test</title>
 </svelte:head>
 
+<!--
+	Hidden forms — no UI. We call requestSubmit() on them programmatically so
+	SvelteKit enhance intercepts the POST and we stay on the same page (no
+	full reload, no 405).
+-->
+<form
+	bind:this={acceptTermsForm}
+	method="POST"
+	action="?/acceptTerms"
+	class="hidden"
+	use:enhance={() => {
+		return async ({ result }) => {
+			submittingTerms = false
+			if (result.type === 'success' || result.type === 'redirect') {
+				if (data.assessment.requireFaceVerify && !data.faceVerifiedAt) {
+					if (!data.faceEnrolled) {
+						toast.error('You must enroll your face before taking this assessment')
+						return
+					}
+					step = 'faceverify'
+				} else {
+					enterKiosk()
+				}
+			} else {
+				toast.error('Could not save your acceptance — please try again')
+			}
+		}
+	}}
+></form>
+
+<form
+	bind:this={markFaceVerifiedForm}
+	method="POST"
+	action="?/markFaceVerified"
+	class="hidden"
+	use:enhance={() => {
+		return async ({ result }) => {
+			submittingFace = false
+			if (result.type === 'success' || result.type === 'redirect') {
+				onFaceVerifySuccess()
+			} else {
+				toast.error('Face verification could not be saved — please try again')
+			}
+		}
+	}}
+></form>
+
 {#if step === 'closed'}
 	<div class="flex min-h-screen items-center justify-center p-6">
 		<Card class="max-w-md">
@@ -460,13 +479,12 @@
 				<CardDescription>Review your previous submissions before continuing</CardDescription>
 			</CardHeader>
 			<CardContent class="space-y-4">
-				<!-- Attempt Counter -->
 				<div class="rounded-lg bg-muted/50 p-4">
 					<div class="flex items-center justify-between">
 						<div>
 							<p class="text-sm font-medium">Attempt {data.attemptInfo.attemptNumber}</p>
 							<p class="text-xs text-muted-foreground">
-								{data.attemptInfo.attemptsRemaining !== null 
+								{data.attemptInfo.attemptsRemaining !== null
 									? `${data.attemptInfo.attemptsRemaining} of ${data.attemptInfo.maxAttempts} remaining`
 									: 'Unlimited attempts'}
 							</p>
@@ -475,7 +493,6 @@
 					</div>
 				</div>
 
-				<!-- Previous Attempts Table -->
 				<div class="space-y-2">
 					<h3 class="text-sm font-semibold">Your Previous Submissions</h3>
 					<div class="rounded-lg border">
@@ -483,14 +500,14 @@
 							<thead class="border-b bg-muted/50">
 								<tr>
 									<th class="p-3 text-left">Attempt</th>
-									<th class="p-3 text-left">Date & Time</th>
+									<th class="p-3 text-left">Date &amp; Time</th>
 									<th class="p-3 text-center">Status</th>
 									<th class="p-3 text-right">Score</th>
 									<th class="p-3 text-center">Action</th>
 								</tr>
 							</thead>
 							<tbody>
-								{#each data.attemptInfo.previousAttempts as attempt, i}
+								{#each data.attemptInfo.previousAttempts as attempt, i (attempt.id)}
 									<tr class="border-b last:border-0">
 										<td class="p-3 font-medium">Attempt {i + 1}</td>
 										<td class="p-3 text-muted-foreground">
@@ -502,14 +519,10 @@
 											</Badge>
 										</td>
 										<td class="p-3 text-right font-semibold">
-											{attempt.percentageScore ?? 'N/A'}%
+											{attempt.result?.isReleased ? `${attempt.result.percentage?.toFixed(1)}%` : 'N/A'}
 										</td>
 										<td class="p-3 text-center">
-											<Button 
-												variant="outline" 
-												size="sm" 
-												href={`/student/tests/${attempt.id}/result`}
-											>
+											<Button variant="outline" size="sm" href={`/student/tests/${attempt.id}/result`}>
 												View
 											</Button>
 										</td>
@@ -536,7 +549,6 @@
 				<CardDescription>Confirm your information and device before continuing</CardDescription>
 			</CardHeader>
 			<CardContent class="space-y-4">
-				<!-- Attempt Info Banner -->
 				{#if data.attemptInfo.attemptNumber > 1}
 					<div class="rounded-lg bg-blue-50 p-3 dark:bg-blue-950/30">
 						<p class="text-sm font-medium text-blue-900 dark:text-blue-100">
@@ -544,7 +556,7 @@
 						</p>
 						{#if data.attemptInfo.attemptsRemaining !== null && data.attemptInfo.attemptsRemaining <= 2}
 							<p class="mt-1 text-xs text-blue-800 dark:text-blue-200">
-								⚠️ {data.attemptInfo.attemptsRemaining} attempt{data.attemptInfo.attemptsRemaining === 1 ? '' : 's'} remaining
+								{data.attemptInfo.attemptsRemaining} attempt{data.attemptInfo.attemptsRemaining === 1 ? '' : 's'} remaining
 							</p>
 						{/if}
 					</div>
@@ -558,7 +570,10 @@
 					<div class="flex justify-between py-1"><span class="text-muted-foreground">Total marks</span><span class="font-medium">{data.assessment.totalMarks}</span></div>
 				</div>
 
-				<DeviceCheckPanel bind:allPassed={devicePassed} />
+				<DeviceCheckPanel
+					requireFaceVerify={data.assessment.requireFaceVerify}
+					bind:allPassed={devicePassed}
+				/>
 
 				<Button class="w-full" onclick={proceedToTerms} disabled={!devicePassed}>
 					Continue
@@ -571,7 +586,7 @@
 	<div class="mx-auto flex min-h-screen max-w-lg flex-col justify-center p-6">
 		<Card>
 			<CardHeader>
-				<CardTitle>Rules & Regulations</CardTitle>
+				<CardTitle>Rules &amp; Regulations</CardTitle>
 				<CardDescription>Read carefully before starting</CardDescription>
 			</CardHeader>
 			<CardContent class="space-y-4">
@@ -595,8 +610,8 @@
 					<span>I have read and agree to the rules above.</span>
 				</label>
 
-				<Button class="w-full" onclick={proceedFromTerms} disabled={!termsAccepted}>
-					Continue
+				<Button class="w-full" onclick={proceedFromTerms} disabled={!termsAccepted || submittingTerms}>
+					{submittingTerms ? 'Saving…' : 'Continue'}
 				</Button>
 			</CardContent>
 		</Card>
@@ -605,13 +620,12 @@
 {:else if step === 'faceverify'}
 	<FaceVerifyModal
 		examId={data.assessment.id}
-		onSuccess={onFaceVerifySuccess}
+		onSuccess={onFaceVerified}
 		onCancel={onFaceVerifyCancel}
 	/>
 
 {:else if step === 'kiosk' && currentQuestion}
 	<div class="flex min-h-screen flex-col">
-		<!-- Kiosk header: timer + progress + attempt number -->
 		<div class="sticky top-0 z-10 flex items-center justify-between border-b bg-background/95 px-6 py-3 backdrop-blur">
 			<div>
 				<p class="text-sm font-semibold">{data.assessment.title}</p>
@@ -629,10 +643,9 @@
 		</div>
 
 		<div class="flex flex-1">
-			<!-- Question palette -->
 			<aside class="hidden w-56 shrink-0 border-r p-4 md:block">
 				<div class="grid grid-cols-5 gap-2">
-					{#each questions as q, i}
+					{#each questions as q, i (q.questionId)}
 						{@const answered =
 							q.type === 'ESSAY' || q.type === 'FILL_BLANK'
 								? q.textAnswer.trim().length > 0
@@ -656,7 +669,6 @@
 				</p>
 			</aside>
 
-			<!-- Question body -->
 			<main class="mx-auto flex w-full max-w-3xl flex-1 flex-col gap-6 p-6">
 				<div>
 					<p class="text-sm font-medium uppercase tracking-wide text-muted-foreground">
@@ -667,7 +679,7 @@
 
 				{#if currentQuestion.type === 'SINGLE_CHOICE' || currentQuestion.type === 'TRUE_FALSE'}
 					<RadioGroup value={currentQuestion.selectedOptions[0] ?? ''} onValueChange={selectSingle} class="space-y-3">
-						{#each currentQuestion.options as opt, i}
+						{#each currentQuestion.options as opt, i (opt.id)}
 							<label class="flex items-center gap-3 rounded-lg border-2 p-4 cursor-pointer transition-all {currentQuestion.selectedOptions.includes(opt.id) ? 'border-primary bg-primary/10' : 'border-border hover:border-primary/50 hover:bg-muted/40'}">
 								<RadioGroupItem value={opt.id} />
 								<span class="flex size-6 shrink-0 items-center justify-center rounded border font-bold text-sm">
@@ -680,7 +692,7 @@
 
 				{:else if currentQuestion.type === 'MULTIPLE_CHOICE'}
 					<div class="space-y-3">
-						{#each currentQuestion.options as opt, i}
+						{#each currentQuestion.options as opt, i (opt.id)}
 							<label class="flex items-center gap-3 rounded-lg border-2 p-4 cursor-pointer transition-all {currentQuestion.selectedOptions.includes(opt.id) ? 'border-primary bg-primary/10' : 'border-border hover:border-primary/50 hover:bg-muted/40'}">
 								<Checkbox
 									checked={currentQuestion.selectedOptions.includes(opt.id)}
@@ -713,7 +725,7 @@
 
 				{:else if currentQuestion.type === 'ORDERING'}
 					<div class="space-y-2">
-						{#each currentQuestion.orderAnswer as optId, i}
+						{#each currentQuestion.orderAnswer as optId, i (optId)}
 							<div class="flex items-center gap-3 rounded-lg border p-3">
 								<span class="w-6 text-sm font-semibold text-muted-foreground">{i + 1}</span>
 								<span class="flex-1 text-base font-medium">{optionBody(optId)}</span>
@@ -729,7 +741,7 @@
 
 				{:else if currentQuestion.type === 'MATCHING'}
 					<div class="space-y-2">
-						{#each currentQuestion.leftItems ?? [] as leftBody}
+						{#each currentQuestion.leftItems ?? [] as leftBody (leftBody)}
 							<div class="flex items-center gap-3 rounded-lg border p-3">
 								<span class="flex-1 text-base font-medium">{leftBody}</span>
 								<select
@@ -738,7 +750,7 @@
 									onchange={(e) => updateMatch(leftBody, (e.currentTarget as HTMLSelectElement).value)}
 								>
 									<option value="" disabled>Match to…</option>
-									{#each currentQuestion.options as opt}
+									{#each currentQuestion.options as opt (opt.id)}
 										<option value={opt.id}>{opt.body}</option>
 									{/each}
 								</select>
@@ -798,17 +810,17 @@
 		{/if}
 
 		{#if submitError}
-	<div class="fixed inset-x-0 bottom-0 z-50 border-t border-destructive/30 bg-destructive/10 px-6 py-4">
-		<div class="mx-auto flex max-w-3xl items-center justify-between gap-4">
-			<div class="flex items-start gap-2 text-sm text-destructive">
-				<AlertCircle class="mt-0.5 size-4 shrink-0" />
-				<span>{submitError}</span>
+			<div class="fixed inset-x-0 bottom-0 z-50 border-t border-destructive/30 bg-destructive/10 px-6 py-4">
+				<div class="mx-auto flex max-w-3xl items-center justify-between gap-4">
+					<div class="flex items-start gap-2 text-sm text-destructive">
+						<AlertCircle class="mt-0.5 size-4 shrink-0" />
+						<span>{submitError}</span>
+					</div>
+					<Button size="sm" onclick={() => handleSubmit(false)} disabled={isSubmitting}>
+						{isSubmitting ? 'Retrying…' : 'Retry Submit'}
+					</Button>
+				</div>
 			</div>
-			<Button size="sm" onclick={() => handleSubmit(false)} disabled={isSubmitting}>
-				{isSubmitting ? 'Retrying…' : 'Retry Submit'}
-			</Button>
-		</div>
-	</div>
-{/if}
+		{/if}
 	</div>
 {/if}
