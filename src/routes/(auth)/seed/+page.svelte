@@ -32,40 +32,36 @@
 
 	type ResultBlock = { created: number; skipped: number; total: number };
 
-	// Matches SeedResults['credentials'] from src/routes/api/admin/seed-missing/+server.ts
-	type Credential = {
-		type: 'staff' | 'student';
-		identifier: string; // staffNumber or matricNumber
-		role: string;
-		email: string;
-		password: string;
-	};
+// Matches SeedResults['credentials'] from src/routes/api/admin/seed-missing/+server.ts
+type Credential = {
+	type: 'staff' | 'student';
+	identifier: string; // staffNumber or matricNumber
+	role: string;
+	email: string;
+	password: string;
+};
 
-	type SeedResults = {
-		university: { created: boolean; skipped: boolean };
-		colleges: ResultBlock;
-		departments: ResultBlock;
-		levels: ResultBlock;
-		programmes: ResultBlock;
-		session: { created: boolean; skipped: boolean };
-		semesters: ResultBlock;
-		courses: ResultBlock;
-		offerings: ResultBlock;
-		gradeScale: ResultBlock;
-		roles: ResultBlock;
-		staff: ResultBlock;
-		students: ResultBlock;
-		lecturerAssignments: ResultBlock;
-		questionTags: ResultBlock;
-		questions: ResultBlock;
-		assessments: ResultBlock;
-		assessmentQuestions: ResultBlock;
-		assessmentEligibility: ResultBlock;
-		assessmentInvigilators: ResultBlock;
-		credentials: Credential[];
-		totalCreated: number;
-		totalSkipped: number;
-	};
+// Matches SeedResults exactly as returned by +server.ts — no question-bank
+// or assessment fields, since that endpoint doesn't seed those yet.
+type SeedResults = {
+	university: { created: boolean; skipped: boolean };
+	colleges: ResultBlock;
+	departments: ResultBlock;
+	levels: ResultBlock;
+	programmes: ResultBlock;
+	session: { created: boolean; skipped: boolean };
+	semesters: ResultBlock;
+	courses: ResultBlock;
+	offerings: ResultBlock;
+	gradeScale: ResultBlock;
+	roles: ResultBlock;
+	staff: ResultBlock;
+	students: ResultBlock;
+	lecturerAssignments: ResultBlock;
+	credentials: Credential[];
+	totalCreated: number;
+	totalSkipped: number;
+};
 
 	let loading = $state(false);
 	let success = $state(false);
@@ -98,25 +94,19 @@
 	];
 
 	const resultMeta: { key: keyof SeedResults; label: string; icon: typeof Building }[] = [
-		{ key: 'colleges', label: 'Colleges', icon: Building },
-		{ key: 'departments', label: 'Departments', icon: Layers },
-		{ key: 'levels', label: 'Levels', icon: GraduationCap },
-		{ key: 'programmes', label: 'Programmes', icon: GraduationCap },
-		{ key: 'semesters', label: 'Semesters', icon: CalendarRange },
-		{ key: 'courses', label: 'Courses', icon: BookOpen },
-		{ key: 'offerings', label: 'Course Offerings', icon: BookOpen },
-		{ key: 'gradeScale', label: 'Grade Scale', icon: Shield },
-		{ key: 'roles', label: 'Roles', icon: Shield },
-		{ key: 'staff', label: 'Staff Users', icon: Users },
-		{ key: 'students', label: 'Students', icon: GraduationCap },
-		{ key: 'lecturerAssignments', label: 'Lecturer Assignments', icon: UserCheck },
-		{ key: 'questionTags', label: 'Question Tags', icon: Tag },
-		{ key: 'questions', label: 'Questions', icon: FileQuestion },
-		{ key: 'assessments', label: 'Assessments', icon: ClipboardList },
-		{ key: 'assessmentQuestions', label: 'Assessment Questions', icon: ClipboardList },
-		{ key: 'assessmentEligibility', label: 'Assessment Eligibility', icon: UserCheck },
-		{ key: 'assessmentInvigilators', label: 'Assessment Invigilators', icon: UserCheck },
-	];
+    { key: 'colleges', label: 'Colleges', icon: Building },
+    { key: 'departments', label: 'Departments', icon: Layers },
+    { key: 'levels', label: 'Levels', icon: GraduationCap },
+    { key: 'programmes', label: 'Programmes', icon: GraduationCap },
+    { key: 'semesters', label: 'Semesters', icon: CalendarRange },
+    { key: 'courses', label: 'Courses', icon: BookOpen },
+    { key: 'offerings', label: 'Course Offerings', icon: BookOpen },
+    { key: 'gradeScale', label: 'Grade Scale', icon: Shield },
+    { key: 'roles', label: 'Roles', icon: Shield },
+    { key: 'staff', label: 'Staff Users', icon: Users },
+    { key: 'students', label: 'Students', icon: GraduationCap },
+    { key: 'lecturerAssignments', label: 'Lecturer Assignments', icon: UserCheck },
+];
 
 	function credentialsAsText(list: Credential[]): string {
 		const lines = [
