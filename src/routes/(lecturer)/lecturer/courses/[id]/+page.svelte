@@ -16,7 +16,10 @@
 		ChevronRight,
 		Plus,
 		Pencil,
-		Eye
+		Eye,
+		User,
+		Mail,
+		Phone
 	} from '@lucide/svelte/icons'
 
 	let { data } = $props()
@@ -305,6 +308,8 @@
 							<TableHead>Matric Number</TableHead>
 							<TableHead>Name</TableHead>
 							<TableHead>Level</TableHead>
+							<TableHead>Email</TableHead>
+							<TableHead>Phone</TableHead>
 							<TableHead>Status</TableHead>
 							<TableHead>Registered</TableHead>
 						</TableRow>
@@ -312,15 +317,19 @@
 					<TableBody>
 						{#each recentStudents as reg}
 							<TableRow>
-								<TableCell className="font-mono text-sm">{reg.student.matricNumber}</TableCell>
+								<TableCell class="font-mono text-sm">{reg.student.matricNumber}</TableCell>
 								<TableCell>
 									{reg.student.firstName} {reg.student.lastName}
 								</TableCell>
 								<TableCell>Level {reg.student.currentLevel.name}</TableCell>
+								<TableCell class="text-sm">{reg.student.email}</TableCell>
+								<TableCell class="text-sm">{reg.student.phone || 'N/A'}</TableCell>
 								<TableCell>
-									<Badge variant="outline">{reg.status}</Badge>
+									<Badge variant={reg.status === 'APPROVED' ? 'default' : 'secondary'}>
+										{reg.status}
+									</Badge>
 								</TableCell>
-								<TableCell className="text-sm text-muted-foreground">
+								<TableCell class="text-sm text-muted-foreground">
 									{formatDate(reg.createdAt)}
 								</TableCell>
 							</TableRow>
@@ -346,17 +355,17 @@
 					</CardContent>
 				</Card>
 			{:else}
-				<div className="space-y-3">
+				<div class="space-y-3">
 					{#each recentActivity as activity}
 						<Card>
-							<CardContent className="flex items-center justify-between p-4">
-								<div className="space-y-1">
-									<p className="text-sm font-medium">{activity.action}</p>
-									<p className="text-xs text-muted-foreground">
+							<CardContent class="flex items-center justify-between p-4">
+								<div class="space-y-1">
+									<p class="text-sm font-medium">{activity.action}</p>
+									<p class="text-xs text-muted-foreground">
 										By {activity.staff ? `${activity.staff.firstName} ${activity.staff.lastName}` : 'System'}
 									</p>
 								</div>
-								<span className="text-xs text-muted-foreground">
+								<span class="text-xs text-muted-foreground">
 									{formatDate(activity.createdAt)}
 								</span>
 							</CardContent>

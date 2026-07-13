@@ -3,6 +3,12 @@ import type { PageServerLoad } from './$types'
 import { error } from '@sveltejs/kit'
 import { getPrismaClient } from '$lib/server/db/index.js'
 import { requireLecturer } from '$lib/server/auth/guards.js'
+import { 
+  revealName, 
+  revealMatricNumber, 
+  revealEmail,
+  revealText
+} from '$lib/security/dataProtection.js'
 
 export const load: PageServerLoad = async ({ params, locals }) => {
 	const user = await requireLecturer(locals.user)
@@ -56,7 +62,9 @@ export const load: PageServerLoad = async ({ params, locals }) => {
 				include: {
 					student: {
 						include: {
-							currentLevel: true
+							currentLevel: true,
+							department: true,
+							programme: true
 						}
 					}
 				},
@@ -130,6 +138,23 @@ export const load: PageServerLoad = async ({ params, locals }) => {
 		}
 	})
 
+	// Decrypt student data
+	const decryptedStudents = course.registrations.map(reg => ({
+		...reg,
+		student: {
+			...reg.student,
+			matricNumber: revealMatricNumber(reg.student.matricNumber),
+			firstName: revealName(reg.student.firstName),
+			lastName: revealName(reg.student.lastName),
+			email: revealEmail(reg.student.email),
+			// Decrypt phone if needed
+			phone: reg.student.phone ? revealText(reg.student.phone) : null
+		}
+	}))
+
+	// Decrypt course description if it exists
+	const courseDescription = course.description ? revealText(course.description) : null
+
 	return {
 		course: {
 			id: course.id,
@@ -138,7 +163,7 @@ export const load: PageServerLoad = async ({ params, locals }) => {
 			creditUnits: course.creditUnits,
 			type: course.type,
 			status: course.status,
-			description: course.description,
+			description: courseDescription,
 			department: course.department,
 			college: course.department.college,
 			level: course.level
@@ -146,7 +171,7 @@ export const load: PageServerLoad = async ({ params, locals }) => {
 		offerings: course.offerings,
 		assessments: course.assessments,
 		recentQuestions: course.questions,
-		recentStudents: course.registrations,
+		recentStudents: decryptedStudents,
 		studentCount,
 		assessmentStats,
 		recentActivity,
