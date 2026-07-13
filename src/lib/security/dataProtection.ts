@@ -336,6 +336,7 @@ export async function protectStudentRegistration(data: {
   };
 }
 
+
 export async function protectStaffRegistration(data: {
   email: string;
   phone?: string | null;
@@ -356,7 +357,6 @@ export async function protectStaffRegistration(data: {
     data.phone ? protectPhone(data.phone) : Promise.resolve({ encrypted: null, searchHash: null }),
     protectName(data.firstName),
     protectName(data.lastName),
-    // Only protect otherNames if it has a value
     data.otherNames ? protectName(data.otherNames) : Promise.resolve({ encrypted: null, searchHash: null }),
     protectStaffNumber(data.staffNumber),
   ]);
@@ -371,9 +371,11 @@ export async function protectStaffRegistration(data: {
     lastName: lastName.encrypted,
     lastNameHash: lastName.searchHash,
     otherNames: otherNames?.encrypted || null,
-    otherNamesHash: otherNames?.searchHash || null, // Can be null since field is optional
+    otherNamesHash: otherNames?.searchHash || null,
     staffNumber: staffNumber.encrypted,
     staffNumberHash: staffNumber.searchHash,
+    // Keep original staffNumber for display/identifier purposes
+    staffNumberPlain: data.staffNumber,
   };
 }
 

@@ -369,8 +369,8 @@ function initials(title: string) {
 		</Button>
 		
 		<DropdownMenu>
-			<DropdownMenuTrigger asChild>
-				<Button size="sm">
+			<DropdownMenuTrigger>
+	<Button size="sm">
 					<Plus class="mr-2 size-4" />
 					New Assessment
 					<ChevronDown class="ml-2 size-4" />

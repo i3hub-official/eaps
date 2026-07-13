@@ -1,6 +1,6 @@
 <!-- src/lib/components/exam/DeviceCheckPanel.svelte -->
 <script lang="ts">
-	import { onMount, onDestroy } from 'svelte'
+import { onMount, onDestroy, tick } from 'svelte'
 	import { Button } from '$lib/components/ui/button/index.js'
 	import { Badge } from '$lib/components/ui/badge/index.js'
 	import Camera from '@lucide/svelte/icons/camera'
@@ -56,30 +56,31 @@
 	})
 
 	// ─── Camera + face detection ────────────────────────────────────────────
-	async function runCameraCheck() {
-		cameraStatus = 'checking'
-		cameraError = ''
-		faceDetected = false
-		try {
-			cameraStream = await navigator.mediaDevices.getUserMedia({
-				video: { facingMode: 'user', width: { ideal: 640 }, height: { ideal: 480 } },
-			})
-			if (!videoEl) throw new Error('Video preview not ready')
-			videoEl.srcObject = cameraStream
-			await videoEl.play()
+async function runCameraCheck() {
+	cameraStatus = 'checking'
+	cameraError = ''
+	faceDetected = false
+	try {
+		cameraStream = await navigator.mediaDevices.getUserMedia({
+			video: { facingMode: 'user', width: { ideal: 640 }, height: { ideal: 480 } },
+		})
+		await tick()  // ← wait for svelte to update bindings
+		if (!videoEl) throw new Error('Video preview not ready')
+		videoEl.srcObject = cameraStream
+		await videoEl.play()
 
-			const human = await getHuman()
-			faceLoop(human)
-		} catch (err) {
-			cameraStatus = 'failed'
-			cameraError = err instanceof Error ? err.message : 'Camera access denied or unavailable'
-		}
+		const human = await getHuman()
+		faceLoop(human, videoEl)
+	} catch (err) {
+		cameraStatus = 'failed'
+		cameraError = err instanceof Error ? err.message : 'Camera access denied or unavailable'
+	}
 	}
 
 	async function faceLoop(human: Awaited<ReturnType<typeof getHuman>>) {
 		if (stopped || !videoEl) return
 		try {
-			const result = await human.detect(videoEl)
+const result = await human.detect(videoEl)
 			const faces = result?.face ?? []
 			if (faces.length === 1) {
 				faceDetected = true
@@ -125,29 +126,31 @@
 
 	// ─── Location ───────────────────────────────────────────────────────────
 	async function reverseGeocode(lat: number, lng: number): Promise<string | null> {
-		try {
-			// Using OpenStreetMap's Nominatim (free, no API key required)
-			const response = await fetch(
-				`https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}&zoom=18&addressdetails=1`,
-				{
-					headers: {
-						'User-Agent': 'ExamApp/1.0' // Required by Nominatim
-					}
-				}
-			)
-			
-			if (!response.ok) return null
-			
-			const data = await response.json()
-			if (data && data.display_name) {
-				return data.display_name
+	try {
+		const controller = new AbortController()
+		const timeoutId = setTimeout(() => controller.abort(), 5000)  // 5s timeout
+		
+		const response = await fetch(
+			`https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}&zoom=18&addressdetails=1`,
+			{
+				headers: { 'User-Agent': 'ExamApp/1.0' },
+				signal: controller.signal  // abort if timeout
 			}
-			return null
-		} catch (error) {
+		)
+		clearTimeout(timeoutId)
+		
+		if (!response.ok) return null
+		const data = await response.json()
+		return data?.display_name ?? null
+	} catch (error) {
+		if (error instanceof Error && error.name === 'AbortError') {
+			console.warn('Reverse geocoding timeout')
+		} else {
 			console.error('Reverse geocoding error:', error)
-			return null
 		}
+		return null
 	}
+}
 
 	async function runLocationCheck() {
 		locationStatus = 'checking'
