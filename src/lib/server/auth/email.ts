@@ -676,7 +676,7 @@ ${APP_URL}
 // ─── Staff Invitation (Pre-onboarding) Email ─────────────────────────────────
 // Sent when an admin pre-onboards a staff member, before any Staff row
 // exists. Contains the identification token needed to complete onboarding
-// at /onboarding/staff — distinct from buildWelcomeStaffEmail, which is
+// at /onboarding — distinct from buildWelcomeStaffEmail, which is
 // sent AFTER a staff account already exists.
 
 export function buildStaffInvitationEmail(
@@ -689,7 +689,7 @@ export function buildStaffInvitationEmail(
   expiryHours: number,
   origin: string = APP_URL,
 ): { html: string; text: string } {
-  const onboardLink = `${origin}/onboarding/staff#token=${encodeURIComponent(token)}`
+const onboardLink = `${origin}/onboarding#token=${encodeURIComponent(token)}`
   const coursesText = courseList.length > 0 ? courseList.join(', ') : '(none assigned yet)'
 
   const text = `

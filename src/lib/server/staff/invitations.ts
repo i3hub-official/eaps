@@ -58,7 +58,7 @@ export async function generateStaffInvitation(options: CreateInvitationOptions) 
 		// Generate onboarding URL with token in hash fragment
 		// Hash fragment is client-side only, never sent to server in URL
 		const baseUrl = process.env.PUBLIC_APP_URL || 'https://localhost:1209'
-		const onboardingUrl = `${baseUrl}/onboarding/staff#token=${token}`
+		const onboardingUrl = `${baseUrl}/onboarding#token=${token}`
 
 		return {
 			invitation: {

@@ -1,4 +1,4 @@
-<!-- src/routes/staff/onboarding/+page.svelte -->
+<!-- src/routes/onboarding/+page.svelte -->
 <script lang="ts">
 	import { onMount } from 'svelte'
 	import { goto } from '$app/navigation'
@@ -84,7 +84,7 @@
 			sessionStorage.setItem('staff_invitation_id', invitation.id)
 
 			// Redirect to profile setup
-			await goto('/staff/onboarding/profile')
+			await goto('/onboarding/profile')
 		} catch (err) {
 			error = err instanceof Error ? err.message : 'An error occurred'
 			isSubmitting = false

@@ -1,4 +1,4 @@
-<!-- src/routes/staff/onboarding/profile/+page.svelte -->
+<!-- src/routes/onboarding/profile/+page.svelte -->
 <script lang="ts">
 	import { enhance } from '$app/forms'
 	import { goto } from '$app/navigation'

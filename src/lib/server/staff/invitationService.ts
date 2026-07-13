@@ -48,7 +48,7 @@ export async function createStaffInvitation(input: CreateStaffInvitationInput) {
 
 	// Build onboarding URL with token in hash fragment
 	const baseUrl = process.env.PUBLIC_APP_URL || 'http://localhost:5173'
-	const onboardingUrl = `${baseUrl}/staff/onboarding#token=${token}`
+	const onboardingUrl = `${baseUrl}/onboarding#token=${token}`
 
 	return {
 		invitation: {
