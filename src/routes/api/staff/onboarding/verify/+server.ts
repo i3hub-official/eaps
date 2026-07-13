@@ -4,101 +4,59 @@ import type { RequestHandler } from './$types'
 import { getPrismaClient } from '$lib/server/db/index.js'
 import { hashInvitationToken } from '$lib/server/auth/invitationToken'
 
-/**
- * POST /api/staff/invitations/verify
- *
- * Verifies a staff invitation token sent in request body.
- * Token is never sent in URL — it comes from the hash fragment
- * extracted client-side and submitted in the body.
- *
- * Request body:
- * {
- *   "token": "abc123..."
- * }
- *
- * Response:
- * {
- *   "success": true,
- *   "invitation": {
- *     "id": "inv_123",
- *     "email": "lecturer@example.com",
- *     "college": "College of Agriculture",
- *     "department": "Plant Science",
- *     "levels": ["100", "200", "300"]
- *   }
- * }
- */
 export const POST: RequestHandler = async ({ request }) => {
 	try {
-		const body = await request.json()
-		const { token } = body
-
-		// Validate token is provided and has correct format
-		if (!token || typeof token !== 'string' || token.length < 32) {
-			throw error(400, 'Invalid or missing invitation token')
+		const { token } = await request.json()
+		
+		if (!token) {
+			return json({ error: 'Token is required' }, { status: 400 })
 		}
 
 		const prisma = await getPrismaClient()
-		const now = new Date()
-
-		// Hash the token to look it up (same pattern as password reset verification)
 		const tokenHash = hashInvitationToken(token)
 
-		// Find invitation by token hash
 		const invitation = await prisma.staffInvitation.findUnique({
 			where: { tokenHash },
 			include: {
-				college: { select: { name: true } },
-				department: { select: { name: true } },
-			},
+				college: true,
+				department: true,
+				courses: {
+					include: {
+						course: true
+					}
+				}
+			}
 		})
 
-		// Token not found
 		if (!invitation) {
-			console.warn('[STAFF-INVITE-VERIFY] Token not found or invalid')
-			throw error(404, 'Invalid invitation token')
+			return json({ error: 'Invalid invitation' }, { status: 404 })
 		}
 
-		// Check invitation status
 		if (invitation.status !== 'PENDING') {
-			console.warn('[STAFF-INVITE-VERIFY] Invitation not pending', {
-				invitationId: invitation.id,
-				status: invitation.status,
-			})
-			throw error(400, `Invitation has already been ${invitation.status.toLowerCase()}`)
+			return json({ error: 'Invitation has already been used' }, { status: 400 })
 		}
 
-		// Check expiration
-		if (now > invitation.expiresAt) {
-			console.warn('[STAFF-INVITE-VERIFY] Invitation expired', {
-				invitationId: invitation.id,
-				expiresAt: invitation.expiresAt,
-			})
-			throw error(410, 'Invitation has expired. Please request a new one.')
+		if (invitation.expiresAt < new Date()) {
+			return json({ error: 'Invitation has expired' }, { status: 400 })
 		}
 
-		// Token is valid — return invitation details
-		// Do NOT return the token itself back to client
-		return json(
-			{
-				success: true,
-				invitation: {
-					id: invitation.id,
-					email: invitation.email,
-					college: invitation.college.name,
-					department: invitation.department.name,
-					levels: invitation.levels || [],
-				},
-			},
-			{ status: 200 }
-		)
+		return json({
+			invitation: {
+				id: invitation.id,
+				email: invitation.email,
+				role: invitation.primaryRole,
+				college: invitation.college?.name || 'Not assigned',
+				department: invitation.department?.name || 'Not assigned',
+				levels: invitation.levels || [],
+				courses: invitation.courses.map(ic => ({
+					id: ic.courseId,
+					code: ic.course.code,
+					title: ic.course.title
+				}))
+			}
+		})
 	} catch (err) {
-		// Re-throw SvelteKit errors
-		if (err instanceof Error && 'status' in err) {
-			throw err
-		}
-
-		console.error('[STAFF-INVITE-VERIFY] Verification error:', err)
-		throw error(500, 'Failed to verify invitation')
+		console.error('Verify invitation error:', err)
+		return json({ error: 'Failed to verify invitation' }, { status: 500 })
 	}
 }
