@@ -126,6 +126,10 @@ const PHY_STAFF: StaffSeedEntry[] = [
   { staffNumber: 'STAFF-024', email: 'lecturer1@phy.mouau.edu.ng', firstName: 'Ngozi', lastName: 'Okafor', primaryRole: 'LECTURER', deptCode: 'PHY', levels: [100, 200], maxCourseLoad: 3 },
   { staffNumber: 'STAFF-025', email: 'dept.exam@phy.mouau.edu.ng', firstName: 'Ifeanyi', lastName: 'Nwachukwu', primaryRole: 'DEPARTMENT_EXAM_OFFICER', deptCode: 'PHY' },
   { staffNumber: 'STAFF-026', email: 'dept.coord@phy.mouau.edu.ng', firstName: 'Adaobi', lastName: 'Eze', primaryRole: 'DEPARTMENT_COORDINATOR', deptCode: 'PHY' },
+  { staffNumber: 'STAFF-027', email: 'invigilator@phy.mouau.edu.ng', firstName: 'Chidinma', lastName: 'Anyanwu', primaryRole: 'INVIGILATOR', deptCode: 'PHY' },
+  { staffNumber: 'STAFF-028', email: 'lecturer2@phy.mouau.edu.ng', firstName: 'Obinna', lastName: 'Nwokolo', primaryRole: 'LECTURER', deptCode: 'PHY', levels: [100, 200], maxCourseLoad: 3 },
+  { staffNumber: 'STAFF-029', email: 'lecturer3@phy.mouau.edu.ng', firstName: 'Amarachi', lastName: 'Chukwuma', primaryRole: 'LECTURER', deptCode: 'PHY', levels: [100, 200], maxCourseLoad: 3 },
+  { staffNumber: 'STAFF-030', email: 'lecturer4@phy.mouau.edu.ng', firstName: 'Uchenna', lastName: 'Ibekwe', primaryRole: 'LECTURER', deptCode: 'PHY', levels: [100, 200], maxCourseLoad: 3 },
 ];
 
 // One DEPARTMENT_EXAM_OFFICER, HOD, DEPARTMENT_COORDINATOR, INVIGILATOR,

@@ -31,7 +31,12 @@
 
     let posHoldProgress = $state(0);
     let posHoldStart: number | null = null;
-    const POS_HOLD_MS = 2000;
+    // Increased from 2000ms -> 4000ms: a longer hold gives the progress bar
+    // a slower, more deliberate fill and gives us roughly double the number
+    // of neutral-frame samples below, which is what actually improves the
+    // averaged descriptor's accuracy.
+    const POS_HOLD_MS = 4000;
+    const SAMPLE_BUCKETS = 20; // was implicitly 10 (progress * 10)
 
     let selected = $state<GestureDefinition[]>([]);
     let gestureIndex = $state(0);
@@ -41,14 +46,6 @@
     const GESTURE_COUNT = 3;
 
     // ─── Identity capture (neutral frames only) ─────────────────────────────
-    // These come exclusively from the positioning-hold phase, while the face
-    // is centred, front-facing, and at rest — the pose/expression a
-    // recognition embedding is actually calibrated for. Gestures (below) are
-    // a liveness challenge only: proving a live person responded, never
-    // contributing to the identity vector. Mixing the two was the original
-    // bug — averaging in embeddings captured mid-turn/mid-smile measurably
-    // degrades match quality, which is why enrollment "succeeded" but later
-    // verification and monitoring kept rejecting a genuine match.
     let neutralSamples: number[][] = [];
     let lastSampledBucket = -1;
 
@@ -247,11 +244,7 @@
                 statusText = posHoldProgress < 1 ? 'Hold still…' : 'Starting gestures…';
                 drawOverlay(true, false, posHoldProgress);
 
-                // Sample the identity embedding roughly every 10% of the hold
-                // while the face is centred, front-facing, and at rest — this
-                // is the neutral pose a recognition embedding is calibrated
-                // for, and it's what enrollment's quality actually depends on.
-                const bucket = Math.floor(posHoldProgress * 10);
+                const bucket = Math.floor(posHoldProgress * SAMPLE_BUCKETS);
                 if (bucket !== lastSampledBucket && face.embedding) {
                     lastSampledBucket = bucket;
                     neutralSamples.push(Array.from(face.embedding as number[]));
@@ -282,7 +275,6 @@
     async function gestureLoop() {
         if (stopped || phase !== 'gesture') return;
 
-        // Guard: if tracker was lost, rebuild it rather than throwing.
         if (!tracker) tracker = new GestureTracker();
 
         await detect();
@@ -317,8 +309,6 @@
 
         const confidence = gestureConfidence(g.id, face, gestures);
 
-        // Only cancel if a conflicting gesture is very confidently detected —
-        // a slightly raised threshold prevents accidental resets from noise.
         const conflicting = ALL_GESTURES
             .filter(alt => alt.id !== g.id)
             .some(alt => gestureConfidence(alt.id, face, gestures) >= 0.85);
@@ -329,9 +319,6 @@
         drawOverlay(true, false, holdProgress, g.label);
         statusText = g.label;
 
-        // NOTE: no embedding capture here on purpose. This gesture only
-        // needs to be *performed* — it proves liveness. The identity vector
-        // was already collected above, during the neutral positioning hold.
         if (confirmed) {
             gesturesDone = gestureIndex + 1;
 
@@ -410,8 +397,6 @@
         onCancel?.();
     }
 
-    // Icon component lookup — avoids branching in the template on a field
-    // that may not exist on GestureDefinition at runtime.
     const gestureIconMap: Record<string, any> = {
         left:  ArrowLeft,
         right: ArrowRight,
@@ -434,7 +419,6 @@
             <X class="size-5" />
         </button>
 
-        <!-- Header -->
         <div class="mb-1 flex items-center gap-2">
             <h2 class="text-lg font-semibold">Face enrollment</h2>
             {#if phase === 'gesture'}
@@ -444,12 +428,10 @@
             {/if}
         </div>
 
-        <!-- Subtitle — fixed copy, not reactive status -->
         <p class="mb-4 text-sm text-muted-foreground">
             We'll use this to verify your identity before tests and exams.
         </p>
 
-        <!-- Camera viewport -->
         <div class="relative mb-4 aspect-video overflow-hidden rounded-lg bg-black">
             <video bind:this={videoEl} class="h-full w-full -scale-x-100 object-cover" muted playsinline></video>
             <canvas bind:this={canvasEl} class="pointer-events-none absolute inset-0 h-full w-full"></canvas>
@@ -467,8 +449,6 @@
                 </div>
             {/if}
         </div>
-
-        <!-- Phase-specific feedback -->
 
         {#if phase === 'positioning'}
             <div class="mb-3 flex items-center justify-center gap-2 text-sm font-medium">
@@ -488,7 +468,6 @@
         {/if}
 
         {#if phase === 'gesture'}
-            <!-- Step dots -->
             <div class="mb-3 flex items-center justify-center gap-2">
                 {#each selected as _g, i (i)}
                     <div
@@ -501,7 +480,6 @@
                 {/each}
             </div>
 
-            <!-- Gesture instruction pill with icon -->
             <div class="mb-3 flex items-center justify-center gap-2 rounded-lg border border-border bg-muted/40 px-3 py-2 text-sm font-medium">
                 {#if selected[gestureIndex]?.icon && gestureIconMap[selected[gestureIndex].icon]}
                     {@const GestureIcon = gestureIconMap[selected[gestureIndex].icon]}
@@ -524,7 +502,6 @@
             </div>
         {/if}
 
-        <!-- Actions -->
         <div class="flex gap-2">
             {#if phase === 'error'}
                 <Button variant="outline" class="flex-1" onclick={handleCancel}>Cancel</Button>
