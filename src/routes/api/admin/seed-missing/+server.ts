@@ -50,7 +50,7 @@ const STAFF_LAST_NAMES = [
 // roles, college-scoped roles, CSC, and PHY blocks). Counter picks up
 // from there for auto-generated department staff, so re-running the
 // generator never collides with a hand-authored staffNumber.
-let staffAutoCounter = 26;
+let staffAutoCounter = 30;
 let staffNameCursor = 0;
 
 function nextStaffNumber(): string {
