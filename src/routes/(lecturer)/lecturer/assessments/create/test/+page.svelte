@@ -131,8 +131,7 @@ import { toast } from 'svelte-sonner';
 		if (Object.keys(errors).length > 0) validateForm();
 		toast.success(`Applied "${preset.label}" preset`);
 	}
-
-	let formData = $state({
+let formData = $state({
 		courseId: '',
 		title: '',
 		instructions: '',
@@ -147,6 +146,15 @@ import { toast } from 'svelte-sonner';
 		startDate: '',
 		endDate: '',
 		selectedQuestions: [] as string[],
+
+		// ─── Attempts & Retakes ─────────────────────────────────────────
+		maxAttempts: 1,
+		paperVariants: 1,
+		allowRetakes: false,
+		retakeDelayMinutes: 0,
+		showPreviousAttempts: false,
+		bestScoreOnly: true,
+		reviewPreviousAttempts: false,
 	});
 
 	let errors = $state<Record<string, string>>({});
@@ -313,6 +321,20 @@ import { toast } from 'svelte-sonner';
 		} else if (formData.selectedQuestions.length < formData.questionCount) {
 			errors.questions = `You selected ${formData.selectedQuestions.length} question(s) but Question Count is ${formData.questionCount}. Select at least ${formData.questionCount}, or lower Question Count.`;
 		}
+
+		// ─── Attempts & Retakes ─────────────────────────────────────────
+		if (formData.maxAttempts <= 0) errors.maxAttempts = 'Max attempts must be greater than 0';
+		if (formData.paperVariants <= 0) errors.paperVariants = 'Paper variants must be greater than 0';
+		if (formData.allowRetakes && formData.maxAttempts <= 1) {
+			errors.maxAttempts = 'Set Max Attempts above 1 to allow retakes';
+		}
+		if (formData.retakeDelayMinutes < 0) {
+			errors.retakeDelayMinutes = 'Retake delay cannot be negative';
+		}
+		if (formData.paperVariants > 1 && formData.maxAttempts <= 1) {
+			errors.paperVariants = 'Paper variants only apply when Max Attempts is greater than 1';
+		}
+
 		return Object.keys(errors).length === 0;
 	}
 
@@ -334,6 +356,15 @@ import { toast } from 'svelte-sonner';
 		formDataObj.set('requireFaceVerify', formData.requireFaceVerify ? 'on' : 'off');
 		formDataObj.set('fullscreenRequired', formData.fullscreenRequired ? 'on' : 'off');
 		formDataObj.set('questionIds', JSON.stringify(formData.selectedQuestions));
+
+		// ─── Attempts & Retakes ─────────────────────────────────────────
+		formDataObj.set('maxAttempts', String(formData.maxAttempts));
+		formDataObj.set('paperVariants', String(formData.paperVariants));
+		formDataObj.set('allowRetakes', formData.allowRetakes ? 'on' : 'off');
+		formDataObj.set('retakeDelayMinutes', String(formData.retakeDelayMinutes));
+		formDataObj.set('showPreviousAttempts', formData.showPreviousAttempts ? 'on' : 'off');
+		formDataObj.set('bestScoreOnly', formData.bestScoreOnly ? 'on' : 'off');
+		formDataObj.set('reviewPreviousAttempts', formData.reviewPreviousAttempts ? 'on' : 'off');
 
 		try {
 			const response = await fetch('/lecturer/assessments/create/test', {
@@ -916,7 +947,7 @@ import { toast } from 'svelte-sonner';
 					</CardContent>
 				</Card>
 
-				<!-- Scheduling & Security -->
+				<!-- Scheduling, Attempts & Retakes & Security -->
 				<Card>
 					<CardHeader>
 						<CardTitle>Scheduling & Security</CardTitle>
@@ -947,6 +978,129 @@ import { toast } from 'svelte-sonner';
 								so there is zero risk of click events bubbling into the form or
 								triggering sonner toasts via reactive side-effects.
 							-->
+					<CardHeader>Configure whether students can retake this test and how attempts are scored</CardHeader>
+<div class="pt-2 border-t space-y-4">
+						<div class="space-y-2">
+							<Label for="maxAttempts">Max Attempts</Label>
+							<Input
+								id="maxAttempts"
+								name="maxAttempts"
+								type="number"
+								bind:value={formData.maxAttempts}
+								min="1"
+								class={errors.maxAttempts ? 'border-destructive' : ''}
+								required
+							/>
+							<p class="text-xs text-muted-foreground">1 = no retakes. Set above 1 and enable "Allow Retakes" below to let students try again.</p>
+							{#if errors.maxAttempts}
+								<p class="text-sm text-destructive">{errors.maxAttempts}</p>
+							{/if}
+						</div>
+
+						<div class="space-y-2">
+							<Label for="paperVariants">Paper Variants</Label>
+							<Input
+								id="paperVariants"
+								name="paperVariants"
+								type="number"
+								bind:value={formData.paperVariants}
+								min="1"
+								class={errors.paperVariants ? 'border-destructive' : ''}
+							/>
+							<p class="text-xs text-muted-foreground">Number of distinct question sets to rotate across attempts (requires Max Attempts &gt; 1).</p>
+							{#if errors.paperVariants}
+								<p class="text-sm text-destructive">{errors.paperVariants}</p>
+							{/if}
+						</div>
+
+						
+						<div class="pt-2 border-t space-y-4">
+						<CardHeader>Configure security settings for this test</CardHeader>
+<div class="pt-2 border-t space-y-4">
+
+							<!-- Allow Retakes -->
+							<div class="flex items-center justify-between">
+								<div>
+									<p class="text-sm font-medium leading-none">Allow Retakes</p>
+									<p class="text-xs text-muted-foreground mt-1">Let students attempt this test more than once</p>
+								</div>
+								<button
+									type="button"
+									role="switch"
+									aria-checked={formData.allowRetakes}
+									onclick={() => {
+										formData.allowRetakes = !formData.allowRetakes;
+										if (formData.allowRetakes) toast.success('Retakes enabled');
+										else toast.error('Retakes disabled');
+									}}
+									class="toggle-track {formData.allowRetakes ? 'is-on' : 'is-off'}"
+								></button>
+							</div>
+
+							{#if formData.allowRetakes}
+								<div class="space-y-2 pl-1">
+									<Label for="retakeDelayMinutes">Retake Delay (minutes)</Label>
+									<Input
+										id="retakeDelayMinutes"
+										name="retakeDelayMinutes"
+										type="number"
+										bind:value={formData.retakeDelayMinutes}
+										min="0"
+										class={errors.retakeDelayMinutes ? 'border-destructive' : ''}
+									/>
+									<p class="text-xs text-muted-foreground">0 = student can retake immediately after submitting.</p>
+									{#if errors.retakeDelayMinutes}
+										<p class="text-sm text-destructive">{errors.retakeDelayMinutes}</p>
+									{/if}
+								</div>
+
+								<!-- Show Previous Attempts -->
+								<div class="flex items-center justify-between">
+									<div>
+										<p class="text-sm font-medium leading-none">Show Previous Attempts</p>
+										<p class="text-xs text-muted-foreground mt-1">Students can see scores from earlier attempts</p>
+									</div>
+									<button
+										type="button"
+										role="switch"
+										aria-checked={formData.showPreviousAttempts}
+										onclick={() => (formData.showPreviousAttempts = !formData.showPreviousAttempts)}
+										class="toggle-track {formData.showPreviousAttempts ? 'is-on' : 'is-off'}"
+									></button>
+								</div>
+
+								<!-- Review Previous Attempts -->
+								<div class="flex items-center justify-between">
+									<div>
+										<p class="text-sm font-medium leading-none">Review Previous Attempts</p>
+										<p class="text-xs text-muted-foreground mt-1">Students can see their answers from earlier attempts</p>
+									</div>
+									<button
+										type="button"
+										role="switch"
+										aria-checked={formData.reviewPreviousAttempts}
+										onclick={() => (formData.reviewPreviousAttempts = !formData.reviewPreviousAttempts)}
+										class="toggle-track {formData.reviewPreviousAttempts ? 'is-on' : 'is-off'}"
+									></button>
+								</div>
+
+								<!-- Best Score Only -->
+								<div class="flex items-center justify-between">
+									<div>
+										<p class="text-sm font-medium leading-none">Best Score Only</p>
+										<p class="text-xs text-muted-foreground mt-1">Report the highest score across attempts (off = most recent attempt)</p>
+									</div>
+									<button
+										type="button"
+										role="switch"
+										aria-checked={formData.bestScoreOnly}
+										onclick={() => (formData.bestScoreOnly = !formData.bestScoreOnly)}
+										class="toggle-track {formData.bestScoreOnly ? 'is-on' : 'is-off'}"
+									></button>
+								</div>
+							{/if}
+						</div>
+					
 
 							<!-- Shuffle Questions -->
 							<div class="flex items-center justify-between">
@@ -1042,7 +1196,7 @@ import { toast } from 'svelte-sonner';
 					</CardContent>
 				</Card>
 
-				<!-- Submit -->
+								<!-- Submit -->
 				<div class="md:col-span-2 flex items-center justify-end gap-4">
 					<Button variant="outline" href="/lecturer/assessments">Cancel</Button>
 					<Button type="submit" disabled={isSubmitting}>

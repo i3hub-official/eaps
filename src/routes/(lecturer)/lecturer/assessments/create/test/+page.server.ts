@@ -87,12 +87,22 @@ export const actions: Actions = {
 		const passMark = Number(formData.get('passMark') ?? 18)
 		const durationMinutes = Number(formData.get('durationMinutes') ?? 60)
 		const questionCount = Number(formData.get('questionCount') ?? 8)
+		
 		const shuffleQuestions = String(formData.get('shuffleQuestions') ?? 'on') === 'on'
 		const shuffleOptions = String(formData.get('shuffleOptions') ?? 'on') === 'on'
 		const requireFaceVerify = String(formData.get('requireFaceVerify') ?? 'on') === 'on'
 		const fullscreenRequired = String(formData.get('fullscreenRequired') ?? 'on') === 'on'
 
-		const startDate = formData.get('startDate') ? new Date(String(formData.get('startDate'))) : null
+		// ─── Attempts & Retakes ─────────────────────────────────────────
+		const maxAttempts = Number(formData.get('maxAttempts') ?? 1)
+		const paperVariants = Number(formData.get('paperVariants') ?? 1)
+		const allowRetakes = String(formData.get('allowRetakes') ?? 'off') === 'on'
+		const retakeDelayMinutes = Number(formData.get('retakeDelayMinutes') ?? 0)
+		const showPreviousAttempts = String(formData.get('showPreviousAttempts') ?? 'off') === 'on'
+		const bestScoreOnly = String(formData.get('bestScoreOnly') ?? 'on') === 'on'
+		const reviewPreviousAttempts = String(formData.get('reviewPreviousAttempts') ?? 'off') === 'on'
+
+const startDate = formData.get('startDate') ? new Date(String(formData.get('startDate'))) : null
 		const endDate = formData.get('endDate') ? new Date(String(formData.get('endDate'))) : null
 
 		// Parse tags (optional)
@@ -114,7 +124,7 @@ export const actions: Actions = {
 			// console.error('[TEST-CREATE] Failed to parse questionIds:', err)
 		}
 
-		const errors: Record<string, string> = {}
+	const errors: Record<string, string> = {}
 		if (!courseId) errors.courseId = 'Course is required'
 		if (!title) errors.title = 'Title is required'
 		if (totalMarks <= 0) errors.totalMarks = 'Total marks must be greater than 0'
@@ -128,8 +138,18 @@ export const actions: Actions = {
 			errors.questions = `You selected ${questionIds.length} question(s) but set Question Count to ${questionCount}. Select at least ${questionCount}, or lower Question Count.`
 		}
 
+		// ─── Attempts & Retakes ─────────────────────────────────────────
+		if (maxAttempts <= 0) errors.maxAttempts = 'Max attempts must be greater than 0'
+		if (paperVariants <= 0) errors.paperVariants = 'Paper variants must be greater than 0'
+		if (allowRetakes && maxAttempts <= 1) {
+			errors.maxAttempts = 'Max Attempts must be greater than 1 to allow retakes'
+		}
+		if (retakeDelayMinutes < 0) errors.retakeDelayMinutes = 'Retake delay cannot be negative'
+		if (paperVariants > 1 && maxAttempts <= 1) {
+			errors.paperVariants = 'Paper variants only apply when Max Attempts is greater than 1'
+		}
+
 		if (Object.keys(errors).length > 0) {
-			// console.log('[TEST-CREATE] Validation errors:', errors)
 			return fail(400, { errors })
 		}
 
@@ -214,7 +234,15 @@ export const actions: Actions = {
 						endTime: endDate,
 						requireLiveness: false,
 						offlineEnabled: false,
-						maxAttempts: 1,
+
+						// ─── Attempts & Retakes ─────────────────────────────
+						maxAttempts,
+						paperVariants,
+						allowRetakes,
+						retakeDelayMinutes,
+						showPreviousAttempts,
+						bestScoreOnly,
+						reviewPreviousAttempts,
 					},
 				})
 

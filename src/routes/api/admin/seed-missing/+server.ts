@@ -8,6 +8,7 @@ import {
   protectText,
   protectStaffData,
   protectStudentRegistration,
+  protectName,
 } from '$lib/security/dataProtection.js';
 import { hashPassword } from '$lib/server/auth/index.js';
 import {
@@ -759,16 +760,21 @@ export const POST: RequestHandler = async () => {
 
       if (!existing) {
         try {
+          // Protect staff data using the dataProtection helper
           const protectedData = await protectStaffData({
             email: staff.email,
+            phone: null,
             firstName: staff.firstName,
             lastName: staff.lastName,
+            otherNames: null,
             staffNumber: staff.staffNumber,
           });
 
           const createdStaff = await prisma.staff.create({
             data: {
+              // Plain fields for lookup
               staffNumber: staff.staffNumber,
+              // Protected fields
               email: protectedData.email,
               emailHash: protectedData.emailHash,
               firstName: protectedData.firstName,
@@ -953,12 +959,10 @@ export const POST: RequestHandler = async () => {
           try {
             await prisma.student.create({
               data: {
+                // Plain fields for lookup
                 matricNumber: protectedData.matricNumber,
                 jambRegNo: protectedData.jambRegNo,
-                receiptNo: protectedData.receiptNo,
-                receiptRef: protectedData.receiptRef,
-                receiptSource: 'SEED',
-                registrationSession: sessionName,
+                // Protected fields
                 email: protectedData.email,
                 emailHash: protectedData.emailHash,
                 passwordHash: studentPasswordHash,
@@ -967,6 +971,11 @@ export const POST: RequestHandler = async () => {
                 otherNames: protectedData.otherNames,
                 phone: protectedData.phone,
                 phoneHash: protectedData.phoneHash,
+                // Other fields
+                receiptNo: protectedData.receiptNo,
+                receiptRef: protectedData.receiptRef,
+                receiptSource: 'SEED',
+                registrationSession: sessionName,
                 departmentId: dept.id,
                 programmeId,
                 currentLevelId: level.id,

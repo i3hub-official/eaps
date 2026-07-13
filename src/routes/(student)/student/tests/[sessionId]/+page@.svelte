@@ -1,13 +1,4 @@
 <!-- src/routes/(student)/student/tests/[sessionId]/+page@.svelte -->
-<!--
-	The "@" in the filename is SvelteKit's layout-reset syntax: it tells
-	SvelteKit to skip every layout between here and the root layout —
-	specifically the (student) dashboard layout (sidebar/topbar chrome) that
-	this route would otherwise inherit. The exam kiosk needs to stand alone,
-	full-bleed, with nothing from the dashboard shell around it. The
-	+page.server.ts loader is unaffected by this rename and keeps working
-	exactly as before.
--->
 <script lang="ts">
 	import { onMount, onDestroy } from 'svelte'
 	import { goto } from '$app/navigation'
@@ -18,38 +9,34 @@
 	import { RadioGroup, RadioGroupItem } from '$lib/components/ui/radio-group/index.js'
 	import { Textarea } from '$lib/components/ui/textarea/index.js'
 	import { Input } from '$lib/components/ui/input/index.js'
+	import { Tabs, TabsContent, TabsList, TabsTrigger } from '$lib/components/ui/tabs/index.js'
+	import { Badge } from '$lib/components/ui/badge/index.js'
 	import FaceVerifyModal from '$lib/components/exam/FaceVerifyModal.svelte'
 	import DeviceCheckPanel from '$lib/components/exam/DeviceCheckPanel.svelte'
 	import AlertCircle from '@lucide/svelte/icons/alert-circle'
+	import CheckCircle2 from '@lucide/svelte/icons/check-circle-2'
 	import Clock from '@lucide/svelte/icons/clock'
 	import ArrowLeft from '@lucide/svelte/icons/arrow-left'
 	import ArrowRight from '@lucide/svelte/icons/arrow-right'
 	import ArrowUp from '@lucide/svelte/icons/arrow-up'
 	import ArrowDown from '@lucide/svelte/icons/arrow-down'
+	import RotateCw from '@lucide/svelte/icons/rotate-cw'
 	import ExamMonitor from '$lib/components/exam/ExamMonitor.svelte'
 	import type { PageData } from './$types'
 
-	// Explicit annotation here (rather than relying on $props() to pick up
-	// the generated type on its own) is a safety net: it guarantees
-	// `data.questions` — and therefore the `questions` state below — keeps
-	// its real shape (selectedOptions, textAnswer, etc.) instead of ever
-	// silently widening to `{}` if type inference from the loader breaks.
 	let { data }: { data: PageData } = $props()
 
-	type Step = 'lobby' | 'terms' | 'faceverify' | 'kiosk' | 'closed'
+	type Step = 'lobby' | 'attempts' | 'terms' | 'faceverify' | 'kiosk' | 'closed'
 
-	// Sessions that are already IN_PROGRESS/PAUSED skip straight to the
-	// kiosk (reconnect/resume) — UNLESS the server flagged needsReverify
-	// (idle too long since last activity), in which case face verification
-	// runs again before re-entering the kiosk. Terminal sessions never reach
-	// this component — the server loader redirects those to /result — but
-	// 'closed' is kept as a defensive fallback in case status flips under us
-	// mid-kiosk (e.g. a background disqualification).
 	function initialStep(): Step {
 		if (['SUBMITTED', 'TIMED_OUT', 'DISQUALIFIED'].includes(data.status)) return 'closed'
 		if (data.status === 'IN_PROGRESS' || data.status === 'PAUSED') {
 			if (data.needsReverify) return 'faceverify'
 			return 'kiosk'
+		}
+		// Show attempts tab if this is a retake and there are previous attempts to review
+		if (data.attemptInfo.attemptNumber > 1 && data.attemptInfo.previousAttempts.length > 0) {
+			return data.attemptInfo.allowRetakes ? 'attempts' : 'lobby'
 		}
 		return 'lobby'
 	}
@@ -58,7 +45,6 @@
 	let termsAccepted = $state(Boolean(data.termsAcceptedAt))
 	let devicePassed = $state(false)
 
-	// ─── Question palette: fixed large size for accessibility ──────────────
 	const NUMBER_SIZE_CLASS = 'size-12 text-base font-bold'
 
 	// ─── Kiosk state ─────────────────────────────────────────────────────────
@@ -88,6 +74,11 @@
 		const m = Math.floor(totalSeconds / 60)
 		const s = totalSeconds % 60
 		return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`
+	}
+
+	// ─── Attempt Management ─────────────────────────────────────────────────
+	function proceedFromAttempts() {
+		step = 'lobby'
 	}
 
 	function proceedToTerms() {
@@ -137,11 +128,6 @@
 			}
 			step = 'kiosk'
 			startTimers()
-			// Always enter fullscreen for the kiosk — this is a general
-			// distraction-free requirement, independent of whether the
-			// assessment specifically flags fullscreenRequired (that flag
-			// still separately controls whether exiting fullscreen gets
-			// logged as a violation — see handleFullscreenChange).
 			requestFullscreen()
 		} catch (err) {
 			toast.error(err instanceof Error ? err.message : 'Failed to start session')
@@ -150,9 +136,6 @@
 
 	function onFaceVerifySuccess() {
 		if (data.status === 'IN_PROGRESS' || data.status === 'PAUSED') {
-			// Resume path: session is already started server-side, so calling
-			// /start again would 400 ("Session already started"). Just
-			// re-enter the kiosk and resume timers.
 			step = 'kiosk'
 			startTimers()
 			requestFullscreen()
@@ -185,10 +168,6 @@
 	}
 
 	function handleFullscreenChange() {
-		// Only log a violation if this specific assessment requires
-		// fullscreen — the kiosk still *tries* to go fullscreen for every
-		// assessment (see enterKiosk), but only flags exiting it as
-		// suspicious when the lecturer has explicitly turned that on.
 		if (step === 'kiosk' && !document.fullscreenElement && data.assessment.fullscreenRequired) {
 			logViolation('FULLSCREEN_EXIT', 2)
 			toast.warning('You exited fullscreen mode — this has been logged')
@@ -215,16 +194,6 @@
 		}
 	}
 
-	// ─── Keyboard shortcuts (kiosk only) ────────────────────────────────────
-	// A–D select options 0–3 for choice questions (True/False only ever has
-	// two options, so A/B already covers it — no separate Y/N answer
-	// shortcut is needed, which frees up Y/N for submit/next below).
-	// N: next question · P: previous question
-	// Y: open the submit confirmation (or confirm submit if it's already open)
-	// R: decline ("No") the submit confirmation
-	// Disabled while focus is inside a text field so essay/fill-blank typing
-	// is never hijacked, and disabled whenever a modifier key is held so it
-	// never fights the browser or the ExamMonitor's own shortcut interception.
 	function isTypingTarget(target: EventTarget | null) {
 		if (!(target instanceof HTMLElement)) return false
 		const tag = target.tagName
@@ -238,9 +207,6 @@
 
 		const key = e.key.toLowerCase()
 
-		// While the submit confirmation is open, only Y (confirm) and R
-		// (decline) do anything, so a stray keypress can't accidentally
-		// navigate away or submit early.
 		if (showSubmitConfirm) {
 			if (key === 'y') {
 				e.preventDefault()
@@ -276,7 +242,6 @@
 
 	const syncIntervalMs = 20_000 + Math.random() * 5_000;
 
-	// ─── Timers ─────────────────────────────────────────────────────────────
 	function startTimers() {
 		timerInterval = setInterval(() => {
 			remainingSeconds = Math.max(0, remainingSeconds - 1)
@@ -310,7 +275,6 @@
 		if (syncInterval) clearInterval(syncInterval)
 	}
 
-	// ─── Answer autosave (debounced per question) ──────────────────────────
 	function scheduleSave(questionId: string) {
 		const existing = saveTimers.get(questionId)
 		if (existing) clearTimeout(existing)
@@ -381,7 +345,6 @@
 		if (index >= 0 && index < questions.length) currentIndex = index
 	}
 
-	// ─── Submit confirmation ────────────────────────────────────────────────
 	function openSubmitConfirm() {
 		showSubmitConfirm = true
 	}
@@ -411,10 +374,6 @@
 
 			if (document.fullscreenElement) await document.exitFullscreen?.().catch(() => {})
 
-			// Leave the kiosk entirely and land on the result page. replaceState
-			// drops the kiosk route from history so the back button can't
-			// re-enter the exam; invalidateAll forces the result loader to run
-			// fresh rather than reusing anything cached for this URL.
 			await goto(`/student/tests/${data.sessionId}/result`, {
 				replaceState: true,
 				invalidateAll: true,
@@ -468,6 +427,82 @@
 		</Card>
 	</div>
 
+{:else if step === 'attempts'}
+	<div class="mx-auto flex min-h-screen max-w-3xl flex-col justify-center p-6">
+		<Card>
+			<CardHeader>
+				<CardTitle>Previous Attempts</CardTitle>
+				<CardDescription>Review your previous submissions before continuing</CardDescription>
+			</CardHeader>
+			<CardContent class="space-y-4">
+				<!-- Attempt Counter -->
+				<div class="rounded-lg bg-muted/50 p-4">
+					<div class="flex items-center justify-between">
+						<div>
+							<p class="text-sm font-medium">Attempt {data.attemptInfo.attemptNumber}</p>
+							<p class="text-xs text-muted-foreground">
+								{data.attemptInfo.attemptsRemaining !== null 
+									? `${data.attemptInfo.attemptsRemaining} of ${data.attemptInfo.maxAttempts} remaining`
+									: 'Unlimited attempts'}
+							</p>
+						</div>
+						<RotateCw class="size-5 text-primary" />
+					</div>
+				</div>
+
+				<!-- Previous Attempts Table -->
+				<div class="space-y-2">
+					<h3 class="text-sm font-semibold">Your Previous Submissions</h3>
+					<div class="rounded-lg border">
+						<table class="w-full text-sm">
+							<thead class="border-b bg-muted/50">
+								<tr>
+									<th class="p-3 text-left">Attempt</th>
+									<th class="p-3 text-left">Date & Time</th>
+									<th class="p-3 text-center">Status</th>
+									<th class="p-3 text-right">Score</th>
+									<th class="p-3 text-center">Action</th>
+								</tr>
+							</thead>
+							<tbody>
+								{#each data.attemptInfo.previousAttempts as attempt, i}
+									<tr class="border-b last:border-0">
+										<td class="p-3 font-medium">Attempt {i + 1}</td>
+										<td class="p-3 text-muted-foreground">
+											{new Date(attempt.submittedAt || Date.now()).toLocaleString()}
+										</td>
+										<td class="p-3 text-center">
+											<Badge variant={attempt.status === 'SUBMITTED' ? 'default' : 'secondary'}>
+												{attempt.status === 'SUBMITTED' ? 'Completed' : attempt.status.replace('_', ' ')}
+											</Badge>
+										</td>
+										<td class="p-3 text-right font-semibold">
+											{attempt.percentageScore ?? 'N/A'}%
+										</td>
+										<td class="p-3 text-center">
+											<Button 
+												variant="outline" 
+												size="sm" 
+												href={`/student/tests/${attempt.id}/result`}
+											>
+												View
+											</Button>
+										</td>
+									</tr>
+								{/each}
+							</tbody>
+						</table>
+					</div>
+				</div>
+
+				<Button class="w-full" onclick={proceedFromAttempts}>
+					<RotateCw class="mr-2 size-4" />
+					Start New Attempt
+				</Button>
+			</CardContent>
+		</Card>
+	</div>
+
 {:else if step === 'lobby'}
 	<div class="mx-auto flex min-h-screen max-w-lg flex-col justify-center p-6">
 		<Card>
@@ -476,6 +511,20 @@
 				<CardDescription>Confirm your information and device before continuing</CardDescription>
 			</CardHeader>
 			<CardContent class="space-y-4">
+				<!-- Attempt Info Banner -->
+				{#if data.attemptInfo.attemptNumber > 1}
+					<div class="rounded-lg bg-blue-50 p-3 dark:bg-blue-950/30">
+						<p class="text-sm font-medium text-blue-900 dark:text-blue-100">
+							Attempt {data.attemptInfo.attemptNumber} of {data.attemptInfo.maxAttempts || '∞'}
+						</p>
+						{#if data.attemptInfo.attemptsRemaining !== null && data.attemptInfo.attemptsRemaining <= 2}
+							<p class="mt-1 text-xs text-blue-800 dark:text-blue-200">
+								⚠️ {data.attemptInfo.attemptsRemaining} attempt{data.attemptInfo.attemptsRemaining === 1 ? '' : 's'} remaining
+							</p>
+						{/if}
+					</div>
+				{/if}
+
 				<div class="rounded-lg border p-4 text-sm">
 					<div class="flex justify-between py-1"><span class="text-muted-foreground">Test</span><span class="font-medium">{data.assessment.title}</span></div>
 					<div class="flex justify-between py-1"><span class="text-muted-foreground">Course</span><span class="font-medium">{data.assessment.course.code} — {data.assessment.course.title}</span></div>
@@ -537,11 +586,16 @@
 
 {:else if step === 'kiosk' && currentQuestion}
 	<div class="flex min-h-screen flex-col">
-		<!-- Kiosk header: timer + progress -->
+		<!-- Kiosk header: timer + progress + attempt number -->
 		<div class="sticky top-0 z-10 flex items-center justify-between border-b bg-background/95 px-6 py-3 backdrop-blur">
 			<div>
 				<p class="text-sm font-semibold">{data.assessment.title}</p>
-				<p class="text-xs text-muted-foreground">{data.assessment.course.code} · {answeredCount}/{questions.length} answered</p>
+				<p class="text-xs text-muted-foreground">
+					{data.assessment.course.code} · {answeredCount}/{questions.length} answered
+					{#if data.attemptInfo.attemptNumber > 1}
+						· Attempt {data.attemptInfo.attemptNumber}
+					{/if}
+				</p>
 			</div>
 			<div class="flex items-center gap-2 font-mono text-lg font-bold {remainingSeconds < 60 ? 'text-destructive' : ''}">
 				<Clock class="size-5" />
@@ -674,7 +728,6 @@
 					</Button>
 
 					<div class="flex items-center gap-2">
-						<!-- Show submit button as soon as ALL questions are answered, OR on the last page -->
 						{#if allAnswered || currentIndex === questions.length - 1}
 							<Button onclick={openSubmitConfirm} disabled={isSubmitting} class="text-base font-semibold">
 								{isSubmitting ? 'Submitting…' : 'Submit Test'} <span class="ml-1 text-[10px] opacity-70">(Y)</span>
@@ -690,9 +743,6 @@
 			</main>
 		</div>
 
-		<!-- ExamMonitor moved to the top-right corner, below the sticky header.
-		     z-30 keeps it under the submit-confirm dialog (z-40) and any
-		     face-verify modal (z-50), so nothing collides with it visually. -->
 		<div class="pointer-events-none fixed right-4 top-20 z-30">
 			<div class="pointer-events-auto">
 				<ExamMonitor sessionId={data.sessionId} />

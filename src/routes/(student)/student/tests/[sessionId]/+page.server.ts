@@ -1,16 +1,10 @@
+// src/routes/(student)/student/tests/[sessionId]/+page.server.ts
 import type { PageServerLoad } from './$types'
 import { error, redirect } from '@sveltejs/kit'
 import { requireStudent } from '$lib/server/auth/guards'
 import { getPrismaClient } from '$lib/server/db/index.js'
 import { shuffleArray } from '$lib/utils/shuffle'
 
-// A resumed IN_PROGRESS/PAUSED session skips lobby/terms and returns
-// straight to the kiosk — UNLESS the last known activity (lastSyncAt,
-// updated every ~20s while the kiosk tab is genuinely open) is older than
-// this threshold. Past that, we can no longer be confident the same
-// person is still at the keyboard, so face re-verification is required
-// again before re-entering the kiosk. Terms are not re-shown — consent
-// doesn't expire the same way presence does.
 const RESUME_REVERIFY_THRESHOLD_MINUTES = 5
 
 export const load: PageServerLoad = async ({ locals, params }) => {
@@ -33,9 +27,7 @@ export const load: PageServerLoad = async ({ locals, params }) => {
 		throw error(404, 'Session not found')
 	}
 
-	// Already-written test: bounce straight to the result page. This closes
-	// off re-entry into any part of the exam flow (lobby/terms/kiosk) for a
-	// session that has already reached a terminal state.
+	// Already-written test: bounce straight to the result page
 	if (['SUBMITTED', 'TIMED_OUT', 'DISQUALIFIED'].includes(session.status)) {
 		throw redirect(303, `/student/tests/${session.id}/result`)
 	}
@@ -44,17 +36,78 @@ export const load: PageServerLoad = async ({ locals, params }) => {
 		where: { studentId: student.id },
 	})
 
+	// ─── Attempt Management ─────────────────────────────────────────────────
+	// Get all previous completed attempts for this assessment
+	const previousAttempts = await prisma.assessmentSession.findMany({
+		where: {
+			studentId: student.id,
+			assessmentId: session.assessment.id,
+			status: { in: ['SUBMITTED', 'TIMED_OUT', 'DISQUALIFIED'] },
+		},
+		select: {
+			id: true,
+			status: true,
+			submittedAt: true,
+			score: true,
+			totalMarks: true,
+			percentageScore: true,
+		},
+		orderBy: { submittedAt: 'desc' },
+	})
+
+	// Check attempt limits
+	const attemptInfo = {
+		attemptNumber: previousAttempts.length + 1,
+		maxAttempts: session.assessment.maxAttempts,
+		allowRetakes: session.assessment.allowRetakes,
+		attemptsRemaining: session.assessment.maxAttempts
+			? Math.max(0, session.assessment.maxAttempts - previousAttempts.length)
+			: null,
+		canAttempt: true,
+		canRetake: true,
+		retakeBlockedUntil: null as Date | null,
+		attemptLimitReached: false,
+		previousAttempts: [] as typeof previousAttempts,
+	}
+
+	// Check if max attempts reached
+	if (
+		session.assessment.maxAttempts &&
+		previousAttempts.length >= session.assessment.maxAttempts
+	) {
+		attemptInfo.attemptLimitReached = true
+		attemptInfo.canAttempt = false
+		attemptInfo.canRetake = false
+		throw error(403, 'Maximum attempts reached for this assessment')
+	}
+
+	// Check retake delay
+	if (previousAttempts.length > 0 && session.assessment.retakeDelayMinutes > 0) {
+		const lastAttempt = previousAttempts[0]
+		const timeSinceLastAttempt = Date.now() - (lastAttempt.submittedAt?.getTime() ?? 0)
+		const delayMs = session.assessment.retakeDelayMinutes * 60 * 1000
+		
+		if (timeSinceLastAttempt < delayMs) {
+			attemptInfo.canRetake = false
+			attemptInfo.retakeBlockedUntil = new Date(
+				(lastAttempt.submittedAt?.getTime() ?? 0) + delayMs
+			)
+			throw error(403, 
+				`You must wait ${session.assessment.retakeDelayMinutes} minutes between attempts. ` +
+				`Next attempt available at ${attemptInfo.retakeBlockedUntil.toLocaleTimeString()}`
+			)
+		}
+	}
+
+	// Include previous attempts only if configured to show
+	if (session.assessment.showPreviousAttempts) {
+		attemptInfo.previousAttempts = previousAttempts
+	}
+
 	const answerMap = new Map(session.answers.map((a) => [a.questionId, a]))
 
 	type ExamOption = { id: string; body: string; imageUrl: string | null }
 
-	// Explicit shape for each question sent to the client. Annotating the
-	// map callback below with this return type means TypeScript locks in
-	// this shape no matter what — so an unrelated type error elsewhere in
-	// the callback (e.g. a Prisma model name that doesn't match your
-	// schema) can never again cause the whole `questions` array to
-	// collapse to `{}[]` and break every `q.foo` access downstream in
-	// +page.svelte.
 	type ExamQuestion = {
 		position: number
 		questionId: string
@@ -70,44 +123,8 @@ export const load: PageServerLoad = async ({ locals, params }) => {
 		matchAnswer: Record<string, string>
 	}
 
-	// NOTE on question-level shuffling: the *order of questions themselves*
-	// (session.questionOrder, sorted by `position`) is assigned once, when
-	// these rows are first created for the session — that's almost certainly
-	// in a "start test" / "create session" server action elsewhere in the
-	// codebase, not in this loader. If that code assigns `position`
-	// sequentially instead of over a shuffled question list, that's where to
-	// fix it, e.g.:
-	//
-	//   const shuffledQuestions = shuffleArray(bankQuestions)
-	//   await prisma.sessionQuestionOrder.createMany({
-	//     data: shuffledQuestions.map((q, i) => ({
-	//       sessionId: session.id,
-	//       questionId: q.id,
-	//       position: i,
-	//       optionOrder: shuffleArray(q.options.map((o) => o.id)),
-	//     })),
-	//   })
-	//
-	// This loader only *reads* whatever order was stored at creation time.
-	//
-	// What we CAN fix here defensively: option order. Previously, if
-	// `optionOrder` was ever missing or stale (e.g. legacy rows, or a bug
-	// upstream), the code silently fell back to the raw (unshuffled)
-	// `q.options` array — meaning "correct answer is always listed first"
-	// could leak through in practice. Below we self-heal: if the stored
-	// order doesn't match the current option set, shuffle once and persist
-	// it, so the fix is permanent and the order stays stable across reloads
-	// and resumes rather than re-shuffling on every request.
-	// Persisting a healed option order is best-effort and isolated in its own
-	// function with its own try/catch: if the model name below doesn't match
-	// your schema, or the write fails for any other reason, that failure is
-	// contained here — it can't affect the type or the value of `questions`,
-	// and the shuffled order the student sees this request is still correct
-	// even if it isn't saved (it'll just self-heal again on the next load).
 	async function persistHealedOptionOrder(sqoId: string, orderIds: string[]) {
 		try {
-			// Rename `sessionQuestionOrder` to match your actual Prisma model
-			// name for the session-question join table if it differs.
 			await prisma.sessionQuestionOrder.update({
 				where: { id: sqoId },
 				data: { optionOrder: orderIds },
@@ -154,7 +171,6 @@ export const load: PageServerLoad = async ({ locals, params }) => {
 		})
 	)
 
-	// Determine whether a resumed session needs face re-verification.
 	let needsReverify = false
 	if (
 		session.assessment.requireFaceVerify &&
@@ -174,6 +190,7 @@ export const load: PageServerLoad = async ({ locals, params }) => {
 		faceVerifiedAt: session.faceVerifiedAt,
 		faceEnrolled: Boolean(faceDescriptor),
 		needsReverify,
+		attemptInfo,
 		assessment: {
 			id: session.assessment.id,
 			title: session.assessment.title,
@@ -186,6 +203,13 @@ export const load: PageServerLoad = async ({ locals, params }) => {
 			requireFaceVerify: session.assessment.requireFaceVerify,
 			fullscreenRequired: session.assessment.fullscreenRequired,
 			allowReview: session.assessment.allowReview,
+			// Attempt management fields
+			maxAttempts: session.assessment.maxAttempts,
+			allowRetakes: session.assessment.allowRetakes,
+			retakeDelayMinutes: session.assessment.retakeDelayMinutes,
+			showPreviousAttempts: session.assessment.showPreviousAttempts,
+			bestScoreOnly: session.assessment.bestScoreOnly,
+			reviewPreviousAttempts: session.assessment.reviewPreviousAttempts,
 			course: { code: session.assessment.course.code, title: session.assessment.course.title },
 		},
 		questions,
