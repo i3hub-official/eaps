@@ -45,6 +45,8 @@
 	let termsAccepted = $state(Boolean(data.termsAcceptedAt))
 	let devicePassed = $state(false)
 
+	let submitError = $state<string | null>(null)
+
 	const NUMBER_SIZE_CLASS = 'size-12 text-base font-bold'
 
 	// ─── Kiosk state ─────────────────────────────────────────────────────────
@@ -113,36 +115,43 @@
 	}
 
 	async function enterKiosk() {
-		try {
-			const res = await fetch(`/api/assessment/session/${data.sessionId}/start`, { method: 'POST' })
-			if (!res.ok) {
-				const body = await res.json().catch(() => ({}))
-				throw new Error(body?.message ?? 'Could not start the session')
-			}
-			const body = await res.json()
-			if (body.expiresAt) {
-				remainingSeconds = Math.max(
-					0,
-					Math.floor((new Date(body.expiresAt).getTime() - Date.now()) / 1000)
-				)
-			}
-			step = 'kiosk'
-			startTimers()
-			requestFullscreen()
-		} catch (err) {
-			toast.error(err instanceof Error ? err.message : 'Failed to start session')
-		}
-	}
+    // Must be called synchronously, before any `await`, while we're still
+    // inside the original click/tap event's call stack — browsers (Firefox
+    // especially) reject requestFullscreen() once that gesture context has
+    // expired, which happens the instant you `await` something first.
+    requestFullscreen()
+
+    try {
+        const res = await fetch(`/api/assessment/session/${data.sessionId}/start`, { method: 'POST' })
+        if (!res.ok) {
+            const body = await res.json().catch(() => ({}))
+            throw new Error(body?.message ?? 'Could not start the session')
+        }
+        const body = await res.json()
+        if (body.expiresAt) {
+            remainingSeconds = Math.max(
+                0,
+                Math.floor((new Date(body.expiresAt).getTime() - Date.now()) / 1000)
+            )
+        }
+        step = 'kiosk'
+        startTimers()
+    } catch (err) {
+        toast.error(err instanceof Error ? err.message : 'Failed to start session')
+    }
+}
 
 	function onFaceVerifySuccess() {
-		if (data.status === 'IN_PROGRESS' || data.status === 'PAUSED') {
-			step = 'kiosk'
-			startTimers()
-			requestFullscreen()
-		} else {
-			enterKiosk()
-		}
-	}
+    // Same reasoning as enterKiosk — fire first, synchronously.
+    requestFullscreen()
+
+    if (data.status === 'IN_PROGRESS' || data.status === 'PAUSED') {
+        step = 'kiosk'
+        startTimers()
+    } else {
+        enterKiosk()
+    }
+}
 
 	function onFaceVerifyCancel() {
 		step = 'terms'
@@ -357,66 +366,48 @@
 	async function handleSubmit(auto = false) {
 		if (isSubmitting) return
 		isSubmitting = true
+		submitError = null
 		stopTimers()
 
-		async function navigateToResult(sessionId: string) {
-	// Try SvelteKit navigation first
-	try {
-		await goto(`/student/tests/${sessionId}/result`, {
-			replaceState: true,
-			invalidateAll: true,
-		})
-		
-		// Check if navigation actually happened
-		if (window.location.pathname !== `/student/tests/${sessionId}/result`) {
-			// SvelteKit navigation didn't work, fall back to hard navigation
-			window.location.href = `/student/tests/${sessionId}/result`
-		}
-	} catch (e) {
-		// If SvelteKit navigation throws, use hard navigation
-		window.location.href = `/student/tests/${sessionId}/result`
-	}
-}
+		const MAX_ATTEMPTS = 3
+		const RETRY_DELAY_MS = 1500
 
-try {
-	const result = await toast.promise(
-		fetch(`/api/assessment/session/${data.sessionId}/submit`, { method: 'POST' }).then((r) => {
-			if (!r.ok) throw new Error('Submission failed')
-			return r.json()
-		}),
-		{
-			loading: auto ? 'Time is up — submitting…' : 'Submitting…',
-			success: 'Submitted successfully',
-			error: 'Failed to submit. Please try again.',
-		}
-	).unwrap()
+		for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+			try {
+				const res = await fetch(`/api/assessment/session/${data.sessionId}/submit`, { method: 'POST' })
 
-	if (document.fullscreenElement) {
-		await document.exitFullscreen?.().catch(() => {})
-	}
+				if (!res.ok) {
+					throw new Error(`Submission failed (${res.status})`)
+				}
 
-	// Navigate to result page
-	await navigateToResult(data.sessionId)
-} catch (error) {
-	console.error('Submission error:', error)
-	isSubmitting = false
-	startTimers()
-	
-	// On error, try to check if session is already completed
-	try {
-		const checkRes = await fetch(`/api/assessment/session/${data.sessionId}/status`)
-		if (checkRes.ok) {
-			const status = await checkRes.json()
-			if (status.status === 'SUBMITTED' || status.status === 'TIMED_OUT') {
-				await navigateToResult(data.sessionId)
+				if (document.fullscreenElement) {
+					await document.exitFullscreen?.().catch(() => {})
+				}
+
+				// Success — no toast, straight to the result page. The result
+				// page itself is where the student learns they've submitted.
+				window.location.href = `/student/tests/${data.sessionId}/result`
+				return
+			} catch (err) {
+				console.error(`Submission attempt ${attempt} failed:`, err)
+
+				if (attempt < MAX_ATTEMPTS) {
+					await new Promise((resolve) => setTimeout(resolve, RETRY_DELAY_MS))
+					continue
+				}
+
+				// All attempts exhausted — stay on this page, never redirect
+				// on failure. Answers already autosaved per-question, so
+				// nothing is lost while the student retries manually.
+				isSubmitting = false
+				submitError =
+					'We could not submit your test after several attempts. Your answers are saved — please check your connection and try again.'
 				return
 			}
 		}
-	} catch (e) {
-		console.error('Failed to check session status:', e)
 	}
-}
-	}
+
+
 
 	onMount(() => {
 		document.addEventListener('fullscreenchange', handleFullscreenChange)
@@ -805,5 +796,19 @@ try {
 				</div>
 			</div>
 		{/if}
+
+		{#if submitError}
+	<div class="fixed inset-x-0 bottom-0 z-50 border-t border-destructive/30 bg-destructive/10 px-6 py-4">
+		<div class="mx-auto flex max-w-3xl items-center justify-between gap-4">
+			<div class="flex items-start gap-2 text-sm text-destructive">
+				<AlertCircle class="mt-0.5 size-4 shrink-0" />
+				<span>{submitError}</span>
+			</div>
+			<Button size="sm" onclick={() => handleSubmit(false)} disabled={isSubmitting}>
+				{isSubmitting ? 'Retrying…' : 'Retry Submit'}
+			</Button>
+		</div>
+	</div>
+{/if}
 	</div>
 {/if}

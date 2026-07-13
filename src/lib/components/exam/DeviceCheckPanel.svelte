@@ -6,6 +6,7 @@ import { onMount, onDestroy, tick } from 'svelte'
 	import Camera from '@lucide/svelte/icons/camera'
 	import Mic from '@lucide/svelte/icons/mic'
 	import MapPin from '@lucide/svelte/icons/map-pin'
+	import Monitor from '@lucide/svelte/icons/monitor'
 	import CheckCircle2 from '@lucide/svelte/icons/check-circle-2'
 	import AlertCircle from '@lucide/svelte/icons/alert-circle'
 	import Loader2 from '@lucide/svelte/icons/loader-2'
@@ -27,7 +28,19 @@ import { onMount, onDestroy, tick } from 'svelte'
 
 	let locationStatus = $state<CheckStatus>('idle')
 	let locationError = $state('')
-	
+
+	// ─── Window Management ──────────────────────────────────────────────────
+	// getScreenDetails() is only supported in Chromium-based browsers behind
+	// the "window-management" permission — Firefox/Safari have no equivalent
+	// API at all. We treat that as a pass-through rather than a hard failure,
+	// since there's nothing the student can do about their browser choice,
+	// and blocking the exam on an unsupported API would be unfair.
+	let windowStatus = $state<CheckStatus>('idle')
+	let windowError = $state('')
+	let screenCount = $state(0)
+	let multiScreenDetected = $state(false)
+	const windowMgmtSupported = typeof window !== 'undefined' && 'getScreenDetails' in window
+
 	// ─── Location Data ─────────────────────────────────────────────────────────
 	let locationData = $state<{
 		latitude: number | null
@@ -52,7 +65,11 @@ import { onMount, onDestroy, tick } from 'svelte'
 	let stopped = false
 
 	$effect(() => {
-		allPassed = cameraStatus === 'passed' && micStatus === 'passed' && locationStatus === 'passed'
+		allPassed =
+			cameraStatus === 'passed' &&
+			micStatus === 'passed' &&
+			locationStatus === 'passed' &&
+			windowStatus === 'passed'
 	})
 
 	// ─── Camera + face detection ────────────────────────────────────────────
@@ -200,10 +217,49 @@ const result = await human.detect(videoEl)
 		)
 	}
 
+	// ─── Window Management ──────────────────────────────────────────────────
+	async function runWindowCheck() {
+		// Unsupported browser (Firefox, Safari) — nothing to request, so
+		// treat this as an automatic pass rather than blocking the student.
+		if (!windowMgmtSupported) {
+			windowStatus = 'passed'
+			windowError = ''
+			return
+		}
+
+		windowStatus = 'checking'
+		windowError = ''
+
+		try {
+			// getScreenDetails() must be called from a secure context and,
+			// in most browsers, requires a user gesture the first time —
+			// calling it from onMount (as part of runAllChecks) generally
+			// still works for the initial prompt, but if a browser rejects
+			// it for lacking a gesture, the Retry button re-invokes this
+			// from a real click, which satisfies that requirement.
+			const screenDetails = await (window as any).getScreenDetails()
+			screenCount = screenDetails.screens?.length ?? 1
+			multiScreenDetected = screenCount > 1
+
+			windowStatus = 'passed'
+
+			// Multiple screens isn't itself a failure — flagging it is a
+			// proctoring signal for the invigilator/violation log elsewhere,
+			// not a reason to block the student from starting.
+		} catch (err) {
+			windowStatus = 'failed'
+			windowError =
+				err instanceof Error
+					? err.message
+					: 'Window management permission denied or unavailable'
+		}
+	}
+
 	function runAllChecks() {
 		runCameraCheck()
 		runMicCheck()
 		runLocationCheck()
+		runWindowCheck()
 	}
 
 	function cleanup() {
@@ -347,6 +403,38 @@ const result = await human.detect(videoEl)
 		{#if locationError}
 			<p class="mt-2 flex items-center gap-1 text-xs text-destructive">
 				<AlertCircle class="size-3" /> {locationError}
+			</p>
+		{/if}
+	</div>
+
+	<div class="rounded-lg border p-3">
+		<div class="flex items-center justify-between">
+			<div class="flex items-center gap-2 text-sm font-medium">
+				<Monitor class="size-4" /> Window management check
+			</div>
+			{#if windowStatus === 'passed'}
+				<Badge><CheckCircle2 class="mr-1 size-3" /> Passed</Badge>
+			{:else if windowStatus === 'failed'}
+				<Button size="sm" variant="outline" onclick={runWindowCheck}>Retry</Button>
+			{:else}
+				<Badge variant="secondary">Checking…</Badge>
+			{/if}
+		</div>
+
+		{#if !windowMgmtSupported}
+			<p class="mt-2 text-xs text-muted-foreground">
+				Your browser doesn't support window management checks — this step is skipped automatically.
+			</p>
+		{:else if windowStatus === 'passed' && multiScreenDetected}
+			<p class="mt-2 flex items-center gap-1 text-xs text-amber-600 dark:text-amber-400">
+				<AlertCircle class="size-3" />
+				{screenCount} displays detected — this will be visible to your invigilator.
+			</p>
+		{/if}
+
+		{#if windowError}
+			<p class="mt-2 flex items-center gap-1 text-xs text-destructive">
+				<AlertCircle class="size-3" /> {windowError}
 			</p>
 		{/if}
 	</div>
