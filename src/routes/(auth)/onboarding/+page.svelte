@@ -1,4 +1,4 @@
-<!-- src/routes/onboarding/+page.svelte -->
+// src/routes/(auth)/onboarding/+page.svelte
 <script lang="ts">
 	import { onMount } from 'svelte'
 	import { goto } from '$app/navigation'
@@ -16,6 +16,8 @@
 		college: string
 		department: string
 		levels: string[]
+		role: string
+		courses: { id: string; code: string; title: string }[]
 	}
 
 	let token = $state<string | null>(null)
@@ -36,7 +38,6 @@
 		}
 
 		// Clear hash from address bar for security
-		// This removes the token from browser history, referrer headers, etc.
 		window.history.replaceState(null, '', window.location.pathname)
 
 		// Immediately verify token
@@ -52,9 +53,21 @@
 		try {
 			const response = await fetch('/api/staff/invitations/verify', {
 				method: 'POST',
-				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify({ token }), // Token in body, not URL
+				headers: { 
+					'Content-Type': 'application/json',
+					'Accept': 'application/json'
+				},
+				body: JSON.stringify({ token }),
 			})
+
+			// Check if response is JSON
+			const contentType = response.headers.get('content-type')
+			if (!contentType || !contentType.includes('application/json')) {
+				// If not JSON, try to get the text for debugging
+				const text = await response.text()
+				console.error('Non-JSON response:', text)
+				throw new Error('Server returned an error page. Please try again or contact support.')
+			}
 
 			const result = await response.json()
 
@@ -63,9 +76,15 @@
 				return
 			}
 
+			if (!result.invitation) {
+				error = 'No invitation data received'
+				return
+			}
+
 			invitation = result.invitation
 		} catch (err) {
-			error = err instanceof Error ? err.message : 'An error occurred while verifying your invitation'
+			console.error('Verification error:', err)
+			error = err instanceof Error ? err.message : 'An error occurred while verifying your invitation. Please try again.'
 		} finally {
 			isVerifying = false
 		}
@@ -79,13 +98,13 @@
 
 		try {
 			// Store token in sessionStorage (cleared when tab closes)
-			// This is only temporary — for the profile setup page
 			sessionStorage.setItem('staff_onboarding_token', token)
 			sessionStorage.setItem('staff_invitation_id', invitation.id)
 
 			// Redirect to profile setup
 			await goto('/onboarding/profile')
 		} catch (err) {
+			console.error('Navigation error:', err)
 			error = err instanceof Error ? err.message : 'An error occurred'
 			isSubmitting = false
 		}
@@ -165,6 +184,12 @@
 							</p>
 							<p class="mt-1 text-sm font-mono">{invitation.email}</p>
 						</div>
+						<div>
+							<p class="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+								Role
+							</p>
+							<p class="mt-1 text-sm font-medium">{invitation.role}</p>
+						</div>
 						<div class="flex gap-4">
 							<div class="flex-1">
 								<p class="text-xs font-medium uppercase tracking-wide text-muted-foreground">
@@ -179,7 +204,7 @@
 								<p class="mt-1 text-sm font-medium">{invitation.department}</p>
 							</div>
 						</div>
-						{#if invitation.levels.length > 0}
+						{#if invitation.levels && invitation.levels.length > 0}
 							<div>
 								<p class="text-xs font-medium uppercase tracking-wide text-muted-foreground">
 									Assigned Levels
@@ -188,6 +213,20 @@
 									{#each invitation.levels as level}
 										<Badge variant="secondary" class="font-normal">
 											Level {level}
+										</Badge>
+									{/each}
+								</div>
+							</div>
+						{/if}
+						{#if invitation.courses && invitation.courses.length > 0}
+							<div>
+								<p class="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+									Assigned Courses
+								</p>
+								<div class="mt-2 flex flex-wrap gap-2">
+									{#each invitation.courses as course}
+										<Badge variant="outline" class="font-normal">
+											{course.code}
 										</Badge>
 									{/each}
 								</div>
