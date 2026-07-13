@@ -38,7 +38,7 @@ export const load: PageServerLoad = async ({ locals, params }) => {
 
 	// ─── Attempt Management ─────────────────────────────────────────────────
 	// Get all previous completed attempts for this assessment
-	const previousAttempts = await prisma.assessmentSession.findMany({
+const previousAttempts = await prisma.assessmentSession.findMany({
 		where: {
 			studentId: student.id,
 			assessmentId: session.assessment.id,
@@ -48,9 +48,18 @@ export const load: PageServerLoad = async ({ locals, params }) => {
 			id: true,
 			status: true,
 			submittedAt: true,
-			score: true,
-			totalMarks: true,
-			percentageScore: true,
+			// score/totalMarks/percentage live on the related AssessmentResult,
+			// not on AssessmentSession itself — same shape as bestSession.result.*
+			// in src/routes/student/tests/+page.server.ts.
+			result: {
+				select: {
+					marksObtained: true,
+					totalMarks: true,
+					percentage: true,
+					grade: true,
+					isReleased: true,
+				},
+			},
 		},
 		orderBy: { submittedAt: 'desc' },
 	})

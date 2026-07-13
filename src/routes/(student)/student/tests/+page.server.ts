@@ -1,4 +1,5 @@
 // src/routes/student/tests/+page.server.ts
+
 import { fail, redirect } from '@sveltejs/kit'
 import type { Actions, PageServerLoad } from './$types'
 import { getPrismaClient } from '$lib/server/db/index.js'
@@ -137,14 +138,11 @@ export const load: PageServerLoad = async ({ locals }) => {
       : null,
     tests: assessments.map((a) => {
       const attemptsUsed = a.sessions.length
-      const attemptsRemaining = Math.max(a.maxAttempts - attemptsUsed, 0)
+      const attemptsRemaining = a.maxAttempts > 0 ? Math.max(a.maxAttempts - attemptsUsed, 0) : null
       const latestSession = a.sessions[0] ?? null
       const inProgressSession = a.sessions.find(
         (s) => s.status === 'IN_PROGRESS' || s.status === 'PAUSED'
       )
-      // Most recent attempt that actually finished (submitted, timed out, or
-      // disqualified) — used to link the "already completed" notice straight
-      // to that attempt's result rather than leaving the student stuck.
       const latestTerminalSession = a.sessions.find((s) =>
         TERMINAL_STATUSES.includes(s.status as (typeof TERMINAL_STATUSES)[number])
       )
@@ -154,11 +152,7 @@ export const load: PageServerLoad = async ({ locals }) => {
         a.status === 'ENDED' || a.status === 'CANCELLED' || (a.endTime ? now > a.endTime : false)
       const cancelled = a.status === 'CANCELLED'
 
-      // A student who has used up every attempt has "completed" the test
-      // for our purposes, whether that used-up attempt was a normal submit,
-      // a timeout, or a disqualification. This is distinct from "closed"
-      // (the window shut with no attempt made at all).
-      const completed = attemptsRemaining === 0 && Boolean(latestTerminalSession)
+      const completed = a.maxAttempts > 0 && attemptsRemaining === 0 && Boolean(latestTerminalSession)
 
       let displayStatus:
         | 'CANCELLED'
@@ -184,12 +178,35 @@ export const load: PageServerLoad = async ({ locals }) => {
 
       const canStart =
         faceEnrolled &&
-        attemptsRemaining > 0 &&
+        (attemptsRemaining === null || attemptsRemaining > 0) &&
         !inProgressSession &&
         !opensInFuture &&
         !closed &&
         !cancelled &&
         (a.status === 'PUBLISHED' || a.status === 'ACTIVE')
+
+      // Compute best score if bestScoreOnly is enabled
+      const bestSession = a.bestScoreOnly
+        ? a.sessions
+            .filter((s) => s.result?.isReleased)
+            .sort((s1, s2) => {
+              const p1 = Number(s1.result?.percentage ?? 0)
+              const p2 = Number(s2.result?.percentage ?? 0)
+              return p2 - p1
+            })[0]
+        : latestSession
+
+      // Compute retake block time
+      let retakeBlockedUntil: Date | null = null
+      if (latestTerminalSession && a.retakeDelayMinutes > 0) {
+        const blockTime = new Date(
+          (latestTerminalSession.submittedAt?.getTime() ?? now.getTime()) +
+            a.retakeDelayMinutes * 60 * 1000
+        )
+        if (now < blockTime) {
+          retakeBlockedUntil = blockTime
+        }
+      }
 
       return {
         id: a.id,
@@ -213,11 +230,13 @@ export const load: PageServerLoad = async ({ locals }) => {
         fullscreenRequired: a.fullscreenRequired,
         canStart,
         inProgressSessionId: inProgressSession?.id ?? null,
-        // Frontend uses this to route "View Result" on a disabled/completed
-        // card straight to the finished attempt, instead of only disabling
-        // the Start button with no way forward.
         completedSessionId: latestTerminalSession?.id ?? null,
         completedSessionStatus: latestTerminalSession?.status ?? null,
+        bestScoreOnly: a.bestScoreOnly,
+        allowRetakes: a.allowRetakes,
+        retakeDelayMinutes: a.retakeDelayMinutes,
+        retakeBlockedUntil,
+        paperVariants: a.paperVariants,
         course: a.course
           ? {
               code: a.course.code,
@@ -225,13 +244,13 @@ export const load: PageServerLoad = async ({ locals }) => {
               level: a.course.level?.name,
             }
           : null,
-        result: latestSession?.result
+        result: bestSession?.result
           ? {
-              percentage: latestSession.result.percentage.toString(),
-              grade: latestSession.result.grade,
-              marksObtained: latestSession.result.marksObtained.toString(),
-              totalMarks: latestSession.result.totalMarks.toString(),
-              isReleased: latestSession.result.isReleased,
+              percentage: bestSession.result.percentage.toString(),
+              grade: bestSession.result.grade,
+              marksObtained: bestSession.result.marksObtained.toString(),
+              totalMarks: bestSession.result.totalMarks.toString(),
+              isReleased: bestSession.result.isReleased,
             }
           : null,
       }
@@ -253,7 +272,6 @@ export const actions: Actions = {
     const prisma = await getPrismaClient()
     const now = new Date()
 
-    // ─── Get current active semester ────────────────────────────────────
     let currentSemester = await prisma.semester.findFirst({
       where: {
         isCurrent: true,
@@ -274,7 +292,6 @@ export const actions: Actions = {
       return fail(400, { startError: 'No active semester found.' })
     }
 
-    // ─── Verify student has approved registration ──────────────────────
     const registration = await prisma.courseRegistration.findFirst({
       where: {
         studentId: student.id,
@@ -320,7 +337,6 @@ export const actions: Actions = {
       return fail(400, { startError: 'This test is not currently open.' })
     }
 
-    // ─── Check eligibility ──────────────────────────────────────────────
     const eligible = assessment.eligibility.some(
       (e) =>
         e.departmentId === student.departmentId ||
@@ -338,15 +354,6 @@ export const actions: Actions = {
       return fail(400, { startError: 'This test has closed.' })
     }
 
-    // No enrollment, no assessment — this check is now unconditional
-    // (previously gated on `assessment.requireFaceVerify`, which left a
-    // gap: a student with zero face enrollment could still resume an
-    // in-progress session below for any test that didn't specifically flag
-    // requireFaceVerify, since the existingActive redirect ran regardless).
-    // Enrollment is a platform-wide prerequisite for taking any test at
-    // all, so this must run — and block — before that resume redirect,
-    // not only when this particular assessment opts into live face
-    // verification during the exam itself.
     if (!faceDescriptor) {
       return fail(400, {
         startError: 'You must enroll your face before taking any test.',
@@ -354,7 +361,6 @@ export const actions: Actions = {
       })
     }
 
-    // Resume an attempt already in progress rather than starting a new one.
     const existingActive = assessment.sessions.find(
       (s) => s.status === 'IN_PROGRESS' || s.status === 'PAUSED'
     )
@@ -362,11 +368,25 @@ export const actions: Actions = {
       throw redirect(303, `/student/tests/${existingActive.id}`)
     }
 
-    // Attempts exhausted: this test has already been written. Send the
-    // student to their most recent finished attempt's result instead of
-    // just failing with an error and leaving them nowhere to go.
+    // Check retake delay
+    if (assessment.retakeDelayMinutes > 0) {
+      const lastTerminal = assessment.sessions.find((s) =>
+        TERMINAL_STATUSES.includes(s.status as (typeof TERMINAL_STATUSES)[number])
+      )
+      if (lastTerminal && lastTerminal.submittedAt) {
+        const timeSinceLastAttempt = now.getTime() - lastTerminal.submittedAt.getTime()
+        const delayMs = assessment.retakeDelayMinutes * 60 * 1000
+        if (timeSinceLastAttempt < delayMs) {
+          const nextAttemptTime = new Date(lastTerminal.submittedAt.getTime() + delayMs)
+          return fail(400, {
+            startError: `You must wait ${assessment.retakeDelayMinutes} minutes between attempts. Next attempt available at ${nextAttemptTime.toLocaleTimeString()}.`,
+          })
+        }
+      }
+    }
+
     const attemptsUsed = assessment.sessions.length
-    if (attemptsUsed >= assessment.maxAttempts) {
+    if (assessment.maxAttempts > 0 && attemptsUsed >= assessment.maxAttempts) {
       const latestTerminalSession = assessment.sessions.find((s) =>
         TERMINAL_STATUSES.includes(s.status as (typeof TERMINAL_STATUSES)[number])
       )

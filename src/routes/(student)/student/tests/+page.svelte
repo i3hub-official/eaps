@@ -15,15 +15,14 @@
 	import Loader from '@lucide/svelte/icons/loader';
 	import BookOpen from '@lucide/svelte/icons/book-open';
 	import Archive from '@lucide/svelte/icons/archive';
+	import Eye from '@lucide/svelte/icons/eye';
+	import AlertTriangle from '@lucide/svelte/icons/alert-triangle';
 
 	let { data, form } = $props();
 
 	let startingId = $state<string | null>(null);
+	let countdowns = $state<Record<string, string>>({});
 
-	// Split into two independent groups. Each entry here is a single
-	// assessment (by assessmentId), never merged or compared against other
-	// assessments for the same course — a student's score on one PHY112
-	// test has no effect on any other PHY112 test's record.
 	const availableTests = $derived(data.tests.filter((t) => !t.completed));
 	const completedTests = $derived(data.tests.filter((t) => t.completed));
 
@@ -56,6 +55,22 @@
 		return 'Opening now';
 	}
 
+	function formatRetakeCountdown(blockedUntil: Date | null): string {
+		if (!blockedUntil) return '';
+		const now = new Date();
+		const diffMs = blockedUntil.getTime() - now.getTime();
+
+		if (diffMs <= 0) return '';
+
+		const hours = Math.floor(diffMs / (1000 * 60 * 60));
+		const mins = Math.floor((diffMs % (1000 * 60 * 60)) / (1000 * 60));
+		const secs = Math.floor((diffMs % (1000 * 60)) / 1000);
+
+		if (hours > 0) return `${hours}h ${mins}m remaining`;
+		if (mins > 0) return `${mins}m ${secs}s remaining`;
+		return `${secs}s remaining`;
+	}
+
 	function statusBadge(t: (typeof data.tests)[number]) {
 		switch (t.displayStatus) {
 			case 'CANCELLED':
@@ -71,8 +86,6 @@
 		}
 	}
 
-	// Distinguish a normal finished attempt from a timed-out or
-	// disqualified one, since those carry different implications.
 	function completedBadge(t: (typeof data.tests)[number]) {
 		switch (t.completedSessionStatus) {
 			case 'DISQUALIFIED':
@@ -84,14 +97,36 @@
 		}
 	}
 
-	// A resume is blocked exactly when this test requires face verification
-	// and the student currently has none enrolled — same rule the server
-	// applies. Resuming an in-progress session must NOT bypass this just
-	// because a session id already exists; an in-progress attempt from
-	// before enrollment lapsed still needs a live face check to continue.
 	function resumeBlocked(t: (typeof data.tests)[number]) {
 		return t.requireFaceVerify && !data.faceEnrolled;
 	}
+
+	// Start countdown timers for retake delays
+	import { onMount, onDestroy } from 'svelte';
+
+	let countdownInterval: ReturnType<typeof setInterval> | null = null;
+
+	onMount(() => {
+		countdownInterval = setInterval(() => {
+			completedTests.forEach((t) => {
+				if (t.retakeBlockedUntil) {
+					countdowns[t.id] = formatRetakeCountdown(new Date(t.retakeBlockedUntil));
+				}
+			});
+			countdowns = countdowns;
+		}, 1000);
+
+		// Initial update
+		completedTests.forEach((t) => {
+			if (t.retakeBlockedUntil) {
+				countdowns[t.id] = formatRetakeCountdown(new Date(t.retakeBlockedUntil));
+			}
+		});
+	});
+
+	onDestroy(() => {
+		if (countdownInterval) clearInterval(countdownInterval);
+	});
 </script>
 
 <Topbar title="Tests" description={data?.currentSemester ? `Current semester: ${data.currentSemester.name}` : 'No active semester'} />
@@ -103,12 +138,11 @@
 			role="alert"
 		>
 			<AlertCircle class="mt-0.5 size-4 shrink-0" />
-			<span>
-				No active semester found. Please contact your HOD or the registrar.
-			</span>
+			<span>No active semester found. Please contact your HOD or the registrar.</span>
 		</div>
 	{/if}
 
+	<!-- Only show face enrollment warning if NOT enrolled -->
 	{#if !data.faceEnrolled}
 		<div
 			class="flex items-start gap-3 rounded-lg border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-700 dark:text-amber-400"
@@ -133,25 +167,25 @@
 	{/if}
 
 	{#if data.currentSemester}
-	<div class="rounded-lg border border-border bg-muted/30 px-4 py-2 text-sm">
-		<div class="flex flex-wrap items-center justify-between gap-2">
-			<span class="text-muted-foreground">
-				Current semester: <strong>{data.currentSemester.name}</strong>
-			</span>
-			{#if data.currentSemester.isWithinDateRange}
-				<Badge variant="default" class="gap-1">
-					<CheckCircle2 class="size-3" />
-					Active
-				</Badge>
-			{:else}
-				<Badge variant="secondary" class="gap-1">
-					<Clock class="size-3" />
-					{new Date(data.currentSemester.startDate) > new Date() ? 'Upcoming' : 'Past'}
-				</Badge>
-			{/if}
+		<div class="rounded-lg border border-border bg-muted/30 px-4 py-2 text-sm">
+			<div class="flex flex-wrap items-center justify-between gap-2">
+				<span class="text-muted-foreground">
+					Current semester: <strong>{data.currentSemester.name}</strong>
+				</span>
+				{#if data.currentSemester.isWithinDateRange}
+					<Badge variant="default" class="gap-1">
+						<CheckCircle2 class="size-3" />
+						Active
+					</Badge>
+				{:else}
+					<Badge variant="secondary" class="gap-1">
+						<Clock class="size-3" />
+						{new Date(data.currentSemester.startDate) > new Date() ? 'Upcoming' : 'Past'}
+					</Badge>
+				{/if}
+			</div>
 		</div>
-	</div>
-{/if}
+	{/if}
 
 	{#if data.tests.length === 0}
 		<Card class="flex flex-col items-center gap-3 border-dashed p-12 text-center">
@@ -180,7 +214,8 @@
 					{#each availableTests as t (t.id)}
 						{@const badge = statusBadge(t)}
 						{@const blocked = resumeBlocked(t)}
-						<Card class="flex flex-col gap-4 p-5 {t.cancelled ? 'opacity-70' : ''}">
+						{@const lowAttempts = t.maxAttempts > 0 && t.attemptsRemaining !== null && t.attemptsRemaining <= 2}
+						<Card class="flex flex-col gap-4 p-5 {t.cancelled ? 'opacity-70' : ''} {lowAttempts ? 'ring-2 ring-amber-500/30' : ''}">
 							<div class="flex items-start justify-between gap-2">
 								<div>
 									{#if t.course}
@@ -202,7 +237,7 @@
 								<span>{t.questionCount} question{t.questionCount === 1 ? '' : 's'}</span>
 								<span class="flex items-center gap-1">
 									<RotateCcw class="size-3.5" />
-									{t.attemptsUsed}/{t.maxAttempts} attempts used
+									{t.attemptsUsed}/{t.maxAttempts === 0 ? '∞' : t.maxAttempts} attempts
 								</span>
 							</div>
 
@@ -216,7 +251,19 @@
 								{#if t.fullscreenRequired}
 									<Badge variant="outline" class="font-normal">Fullscreen required</Badge>
 								{/if}
+								{#if t.paperVariants > 1}
+									<Badge variant="outline" class="font-normal">
+										Multiple variants
+									</Badge>
+								{/if}
 							</div>
+
+							{#if lowAttempts}
+								<div class="flex items-center gap-1.5 rounded-md bg-amber-500/10 px-3 py-2 text-sm text-amber-700 dark:text-amber-400">
+									<AlertTriangle class="size-3.5 shrink-0" />
+									{t.attemptsRemaining} attempt{t.attemptsRemaining === 1 ? '' : 's'} remaining — use carefully!
+								</div>
+							{/if}
 
 							{#if t.cancelled}
 								<div class="flex items-center gap-1.5 rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive">
@@ -227,7 +274,7 @@
 								<div class="rounded-md bg-muted px-3 py-2 text-sm">
 									<span class="flex items-center gap-1.5 text-muted-foreground">
 										<CheckCircle2 class="size-3.5 text-primary" />
-										Last score:
+										{t.bestScoreOnly ? 'Best' : 'Last'} score:
 									</span>
 									<span class="font-medium">
 										{t.result.marksObtained}/{t.result.totalMarks} ({t.result.percentage}%)
@@ -300,6 +347,7 @@
 				<div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
 					{#each completedTests as t (t.id)}
 						{@const badge = completedBadge(t)}
+						{@const countdown = countdowns[t.id]}
 						<Card class="flex flex-col gap-4 p-5 opacity-90">
 							<div class="flex items-start justify-between gap-2">
 								<div>
@@ -322,22 +370,33 @@
 								<span>{t.questionCount} question{t.questionCount === 1 ? '' : 's'}</span>
 								<span class="flex items-center gap-1">
 									<RotateCcw class="size-3.5" />
-									{t.attemptsUsed}/{t.maxAttempts} attempts used
+									{t.attemptsUsed}/{t.maxAttempts === 0 ? '∞' : t.maxAttempts} attempts
 								</span>
 							</div>
 
-							<div class="flex items-center gap-1.5 rounded-md bg-muted px-3 py-2 text-sm text-muted-foreground">
-								{#if t.completedSessionStatus === 'DISQUALIFIED'}
+							{#if countdown}
+								<div class="flex items-center gap-1.5 rounded-md bg-amber-500/10 px-3 py-2 text-sm text-amber-700 dark:text-amber-400">
+									<Clock class="size-3.5 shrink-0" />
+									Retake available in {countdown}
+								</div>
+							{/if}
+
+							{#if t.completedSessionStatus === 'DISQUALIFIED'}
+								<div class="flex items-center gap-1.5 rounded-md bg-muted px-3 py-2 text-sm text-muted-foreground">
 									<XCircle class="size-3.5 text-destructive" />
 									This attempt was disqualified. No further attempts remain.
-								{:else if t.completedSessionStatus === 'TIMED_OUT'}
+								</div>
+							{:else if t.completedSessionStatus === 'TIMED_OUT'}
+								<div class="flex items-center gap-1.5 rounded-md bg-muted px-3 py-2 text-sm text-muted-foreground">
 									<Clock class="size-3.5" />
 									Auto-submitted when time expired. No further attempts remain.
-								{:else}
+								</div>
+							{:else}
+								<div class="flex items-center gap-1.5 rounded-md bg-muted px-3 py-2 text-sm text-muted-foreground">
 									<CheckCircle2 class="size-3.5 text-primary" />
-									You have completed this test. No further attempts remain.
-								{/if}
-							</div>
+									You have completed this test{t.attemptsRemaining === null || t.attemptsRemaining > 0 ? '' : '. No further attempts remain'}.
+								</div>
+							{/if}
 
 							{#if t.result?.isReleased}
 								<div class="rounded-md bg-muted px-3 py-2 text-sm">
@@ -354,9 +413,15 @@
 								</div>
 							{/if}
 
-							<Button href={`/student/tests/${t.completedSessionId}/result`} variant="outline" class="mt-auto w-full">
-								View Result
-							</Button>
+							<div class="mt-auto flex gap-2">
+								<Button href={`/student/tests/${t.completedSessionId}/result`} variant="outline" class="flex-1">
+									View Result
+								</Button>
+								<Button href={`/student/tests/${t.completedSessionId}/review`} variant="outline" class="flex-1" title="Review your answers">
+									<Eye class="mr-1 size-3.5" />
+									Review
+								</Button>
+							</div>
 						</Card>
 					{/each}
 				</div>

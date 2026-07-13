@@ -968,6 +968,7 @@ model QuestionOption {
   imageUrl   String?
   isCorrect  Boolean @default(false)
   order      Int     @default(0)
+  isActive   Boolean @default(true)
 
   question Question @relation(fields: [questionId], references: [id], onDelete: Cascade)
 
@@ -1071,6 +1072,9 @@ model AssessmentQuestion {
   questionId    String
   order         Int      @default(0)
   marksOverride Decimal? @db.Decimal(6, 2)
+  isActive Boolean @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   assessment Assessment @relation(fields: [assessmentId], references: [id], onDelete: Cascade)
   question   Question   @relation(fields: [questionId], references: [id])
