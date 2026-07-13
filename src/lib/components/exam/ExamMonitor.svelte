@@ -12,6 +12,11 @@
 	import XCircle from '@lucide/svelte/icons/x-circle';
 	import AlertCircle from '@lucide/svelte/icons/alert-circle';
 	import { getHuman, cosineSimilarity } from '$lib/client/face/human.js';
+	// getYaw/getPitch/getRoll are the SAME helpers gesture-service.ts uses to
+	// read Human's rotation data. Previously this file read face.rotation.yaw
+	// directly (doesn't exist on Human's result — it's face.rotation.angle.yaw,
+	// with a radians fallback), which meant head-pose detection always saw 0.
+	import { getYaw, getPitch, getRoll } from './gesture-service.js';
 
 	let { sessionId }: { sessionId: string } = $props();
 
@@ -21,13 +26,17 @@
 	const FACE_MATCH_THRESHOLD = 0.7;
 
 	// ─── AI Analysis Thresholds ──────────────────────────────────────────────
+	// NOTE: several of these were tuned for a face-api.js-style metric that
+	// this file was never actually able to produce (face.landmarks doesn't
+	// exist on Human's result). Values marked below are rescaled for the
+	// mesh-index-based metrics now used in analyzeEyes/analyzeMouth.
 	const AI_THRESHOLDS = {
 		// Eye tracking
-		EYE_GAZE_THRESHOLD: 0.35,          // 35% off-center gaze (looking away)
-		EYE_CLOSURE_THRESHOLD: 0.5,         // 50% eye closure (looking down/closed)
+		EYE_GAZE_THRESHOLD: 0.35,          // fraction of normalized yaw/pitch (rotation-based gaze proxy)
+		EYE_CLOSURE_THRESHOLD: 0.22,        // eye-aspect-ratio (vertical/horizontal on mesh points); was 0.5, wrong scale
 		RAPID_BLINK_THRESHOLD: 25,          // >25 blinks per minute (suspicious)
 		SUSTAINED_GAZE_THRESHOLD: 4000,     // 4 seconds looking away
-		LOOKING_DOWN_THRESHOLD: 0.6,        // 60% looking down (phone/notes)
+		LOOKING_DOWN_THRESHOLD: 0.35,       // normalized pitch (rotation-based); was tuned for nonexistent face.gaze.y
 		
 		// Head pose
 		HEAD_TILT_THRESHOLD: 20,             // 20 degrees tilt
@@ -36,8 +45,8 @@
 		HEAD_NOD_THRESHOLD: 10,              // 10 degrees nod
 		
 		// Mouth
-		MOUTH_OPEN_THRESHOLD: 0.5,           // 50% mouth open (talking)
-		MOUTH_MOVEMENT_THRESHOLD: 0.25,      // 25% mouth movement
+		MOUTH_OPEN_THRESHOLD: 0.075,         // mouth-height / face-height ratio (mesh-based); was 0.5, wrong scale
+		MOUTH_MOVEMENT_THRESHOLD: 0.25,      // reserved
 		SUSTAINED_MOUTH_OPEN: 2000,          // 2 seconds mouth open
 		WHISPER_DETECTION: true,
 		
@@ -205,6 +214,14 @@ const FLUSH_INTERVAL_MS = 5000;
 	// ─── Blocked Keys ────────────────────────────────────────────────────────────
 	const BLOCKED_KEYS = ['a', 'b', 'c', 'd', 'n', 'y', 'r', 'p', 't', 'f'];
 	const BLOCKED_KEY_CODES = ['KeyA', 'KeyB', 'KeyC', 'KeyD', 'KeyN', 'KeyY', 'KeyR', 'KeyP', 'KeyT', 'KeyF'];
+
+	// ─── Face-mesh landmark indices (standard 468-point MediaPipe FaceMesh) ────
+	// Same numbering scheme gesture-service.ts already uses for mouth/chin/
+	// forehead — kept consistent here rather than relying on face-api.js
+	// style accessor methods that don't exist on Human's result object.
+	const LEFT_EYE_TOP = 159, LEFT_EYE_BOTTOM = 145, LEFT_EYE_OUTER = 33, LEFT_EYE_INNER = 133;
+	const RIGHT_EYE_TOP = 386, RIGHT_EYE_BOTTOM = 374, RIGHT_EYE_OUTER = 263, RIGHT_EYE_INNER = 362;
+	const MOUTH_TOP_IDX = 13, MOUTH_BOT_IDX = 14, CHIN_IDX = 152, FOREHEAD_IDX = 10;
 
 	// ─── Utility Functions ──────────────────────────────────────────────────────
 
@@ -384,125 +401,110 @@ async function checkStudentVerification() {
 
 	// ─── AI Analysis Functions ──────────────────────────────────────────────────
 
+	function eyeOpenness(mesh: number[][], topIdx: number, bottomIdx: number, outerIdx: number, innerIdx: number): number | null {
+		const top = mesh[topIdx], bottom = mesh[bottomIdx], outer = mesh[outerIdx], inner = mesh[innerIdx];
+		if (!top || !bottom || !outer || !inner) return null;
+		const horizontal = distance(outer, inner);
+		return horizontal > 0 ? distance(top, bottom) / horizontal : 0;
+	}
+
 	// ─── Eye Tracking Analysis ─────────────────────────────────────────────────
+	// FIXED: previously called face.landmarks.getLeftEye()/getRightEye(),
+	// which don't exist on Human's result (that's a face-api.js API). This
+	// analyzer was a permanent no-op before. Now reads directly from
+	// face.mesh at standard FaceMesh indices, and uses the head-rotation
+	// angle as a gaze-direction proxy since face.gaze also doesn't exist.
 	async function analyzeEyes(face: any) {
-		if (!face.landmarks) return;
+		if (!face.mesh || face.mesh.length < 468) return;
 
 		try {
-			// Get eye landmarks
-			const leftEye = face.landmarks.getLeftEye();
-			const rightEye = face.landmarks.getRightEye();
-			
-			if (!leftEye || !rightEye) return;
+			const mesh = face.mesh as number[][];
+			const leftOpenness = eyeOpenness(mesh, LEFT_EYE_TOP, LEFT_EYE_BOTTOM, LEFT_EYE_OUTER, LEFT_EYE_INNER);
+			const rightOpenness = eyeOpenness(mesh, RIGHT_EYE_TOP, RIGHT_EYE_BOTTOM, RIGHT_EYE_OUTER, RIGHT_EYE_INNER);
+			if (leftOpenness == null || rightOpenness == null) return;
 
-			// Calculate eye openness
-			const leftOpenness = calculateEyeOpenness(leftEye);
-			const rightOpenness = calculateEyeOpenness(rightEye);
 			const avgOpenness = (leftOpenness + rightOpenness) / 2;
+			const now = Date.now();
 
 			// Detect blinks (eyes closed)
 			if (avgOpenness < AI_THRESHOLDS.EYE_CLOSURE_THRESHOLD) {
-				const now = Date.now();
 				if (now - lastBlinkTime > 100) { // Prevent double counting
 					blinkCount++;
 					lastBlinkTime = now;
 				}
 			}
 
-			// Check rapid blinking
-			const timeWindow = 60000; // 1 minute
-			const now = Date.now();
-			const recentBlinks = blinkCount;
-			
-			if (recentBlinks > AI_THRESHOLDS.RAPID_BLINK_THRESHOLD && canLog('RAPID_BLINKING')) {
+			if (blinkCount > AI_THRESHOLDS.RAPID_BLINK_THRESHOLD && canLog('RAPID_BLINKING')) {
 				await logViolation('RAPID_BLINKING', 2, { 
-					blinkRate: recentBlinks,
+					blinkRate: blinkCount,
 					timeWindow: '1min'
 				});
 				blinkCount = 0;
 			}
 
-			// Detect gaze direction
-			if (face.gaze) {
-				const gazeX = face.gaze.x || 0;
-				const gazeY = face.gaze.y || 0;
+			// Gaze proxy: normalized head yaw/pitch from rotation data.
+			// (face.gaze never existed on Human's result — this uses the
+			// same rotation source analyzeHeadPose uses, just normalized.)
+			const gazeX = getYaw(face) / 90;
+			const gazeY = getPitch(face) / 90;
+
+			gazeHistory.push({ x: gazeX, y: gazeY, timestamp: now });
+			if (gazeHistory.length > 100) gazeHistory.shift();
+
+			const lookingAway = Math.abs(gazeX) > AI_THRESHOLDS.EYE_GAZE_THRESHOLD || 
+							   Math.abs(gazeY) > AI_THRESHOLDS.EYE_GAZE_THRESHOLD;
+
+			if (lookingAway) {
+				if (!sustainedGazeStart) sustainedGazeStart = now;
 				
-				// Track gaze history
-				gazeHistory.push({ x: gazeX, y: gazeY, timestamp: now });
-				if (gazeHistory.length > 100) gazeHistory.shift();
-
-				// Check if looking away from screen
-				const lookingAway = Math.abs(gazeX) > AI_THRESHOLDS.EYE_GAZE_THRESHOLD || 
-								   Math.abs(gazeY) > AI_THRESHOLDS.EYE_GAZE_THRESHOLD;
-
-				if (lookingAway) {
-					if (!sustainedGazeStart) sustainedGazeStart = now;
-					
-					// Check sustained gaze away
-					if (now - sustainedGazeStart > AI_THRESHOLDS.SUSTAINED_GAZE_THRESHOLD && canLog('SUSTAINED_GAZE')) {
-						await logViolation('SUSTAINED_GAZE', 2, { 
-							duration: now - sustainedGazeStart,
-							gazeX, gazeY
-						});
-						sustainedGazeStart = null;
-					}
-				} else {
+				if (now - sustainedGazeStart > AI_THRESHOLDS.SUSTAINED_GAZE_THRESHOLD && canLog('SUSTAINED_GAZE')) {
+					await logViolation('SUSTAINED_GAZE', 2, { 
+						duration: now - sustainedGazeStart,
+						gazeX, gazeY
+					});
 					sustainedGazeStart = null;
 				}
+			} else {
+				sustainedGazeStart = null;
+			}
 
-				// Check looking down (phone/notes)
-				if (gazeY < -AI_THRESHOLDS.LOOKING_DOWN_THRESHOLD) {
-					if (!lookingDownStart) lookingDownStart = now;
-					
-					if (now - lookingDownStart > 2000 && canLog('LOOKING_DOWN')) {
-						await logViolation('LOOKING_DOWN', 2, { duration: now - lookingDownStart });
-						lookingDownStart = null;
-					}
-				} else {
+			// gazeY > 0 (positive pitch) = looking down, matching getPitch's
+			// convention used elsewhere (gesture-service's nod_down).
+			if (gazeY > AI_THRESHOLDS.LOOKING_DOWN_THRESHOLD) {
+				if (!lookingDownStart) lookingDownStart = now;
+				
+				if (now - lookingDownStart > 2000 && canLog('LOOKING_DOWN')) {
+					await logViolation('LOOKING_DOWN', 2, { duration: now - lookingDownStart });
 					lookingDownStart = null;
 				}
+			} else {
+				lookingDownStart = null;
 			}
 		} catch (err) {
 			console.error('[Monitor] Eye analysis error:', err);
 		}
 	}
 
-	function calculateEyeOpenness(eyePoints: any[]): number {
-		if (!eyePoints || eyePoints.length < 6) return 1;
-		
-		// Calculate eye aspect ratio
-		const p1 = eyePoints[1];
-		const p2 = eyePoints[2];
-		const p3 = eyePoints[3];
-		const p4 = eyePoints[5];
-		const p5 = eyePoints[4];
-		
-		const vertical1 = distance(p1, p2);
-		const vertical2 = distance(p3, p4);
-		const horizontal = distance(p5, eyePoints[0]);
-		
-		return (vertical1 + vertical2) / (2 * horizontal);
-	}
-
-	function distance(p1: any, p2: any): number {
-		return Math.sqrt(Math.pow(p2.x - p1.x, 2) + Math.pow(p2.y - p1.y, 2));
+	function distance(p1: number[], p2: number[]): number {
+		return Math.sqrt(Math.pow(p2[0] - p1[0], 2) + Math.pow(p2[1] - p1[1], 2));
 	}
 
 	// ─── Head Pose Analysis ────────────────────────────────────────────────────
+	// FIXED: previously read face.rotation.yaw/pitch/roll directly, which
+	// isn't where Human puts this data (face.rotation.angle.yaw, with a
+	// radians fallback) — so yaw/pitch/roll always evaluated to 0 and this
+	// analyzer never actually detected anything. Now uses the same
+	// getYaw/getPitch/getRoll helpers gesture-service.ts relies on.
 	async function analyzeHeadPose(face: any) {
-		if (!face.rotation) return;
-
 		try {
-			const yaw = face.rotation.yaw || 0;
-			const pitch = face.rotation.pitch || 0;
-			const roll = face.rotation.roll || 0;
+			const yaw = getYaw(face);
+			const pitch = getPitch(face);
+			const roll = getRoll(face);
 			const now = Date.now();
 
-			// Track head pose
 			headPoseHistory.push({ yaw, pitch, roll, timestamp: now });
 			if (headPoseHistory.length > 50) headPoseHistory.shift();
 
-			// Check head turn (looking sideways)
 			const headTurned = Math.abs(yaw) > AI_THRESHOLDS.HEAD_TURN_THRESHOLD;
 			
 			if (headTurned) {
@@ -512,7 +514,6 @@ async function checkStudentVerification() {
 					await logViolation('HEAD_TURNING', 2, { yaw, pitch, roll });
 				}
 				
-				// Check sustained head turn
 				if (now - sustainedHeadTurnStart > AI_THRESHOLDS.SUSTAINED_HEAD_TURN && canLog('SUSTAINED_HEAD_TURN')) {
 					await logViolation('SUSTAINED_HEAD_TURN', 3, { 
 						duration: now - sustainedHeadTurnStart,
@@ -524,7 +525,6 @@ async function checkStudentVerification() {
 				sustainedHeadTurnStart = null;
 			}
 
-			// Check extreme head tilt
 			if (Math.abs(roll) > AI_THRESHOLDS.HEAD_TILT_THRESHOLD && canLog('HEAD_TURNING')) {
 				await logViolation('HEAD_TURNING', 2, { roll, type: 'tilt' });
 			}
@@ -534,20 +534,26 @@ async function checkStudentVerification() {
 	}
 
 	// ─── Mouth Analysis ────────────────────────────────────────────────────────
+	// FIXED: previously called face.landmarks.getMouth(), which doesn't
+	// exist on Human's result — this analyzer was a permanent no-op. Now
+	// reads face.mesh directly using the same mouth/chin/forehead indices
+	// gesture-service.ts already uses for its open-mouth gesture check, so
+	// the ratio scale (~0.02–0.08, not 0–1) matches AI_THRESHOLDS.MOUTH_OPEN_THRESHOLD.
 	async function analyzeMouth(face: any) {
-		if (!face.landmarks) return;
+		if (!face.mesh || face.mesh.length < 468) return;
 
 		try {
-			const mouth = face.landmarks.getMouth();
-			if (!mouth) return;
+			const mesh = face.mesh as number[][];
+			const top = mesh[MOUTH_TOP_IDX], bottom = mesh[MOUTH_BOT_IDX], chin = mesh[CHIN_IDX], forehead = mesh[FOREHEAD_IDX];
+			if (!top || !bottom || !chin || !forehead) return;
 
-			const mouthOpen = calculateMouthOpenness(mouth);
+			const faceH = distance(forehead, chin);
+			const mouthOpen = faceH > 0 ? distance(top, bottom) / faceH : 0;
 			const now = Date.now();
 
 			mouthOpenHistory.push({ open: mouthOpen, timestamp: now });
 			if (mouthOpenHistory.length > 30) mouthOpenHistory.shift();
 
-			// Check if mouth is open (talking)
 			if (mouthOpen > AI_THRESHOLDS.MOUTH_OPEN_THRESHOLD) {
 				if (!mouthMovementStart) mouthMovementStart = now;
 				
@@ -558,7 +564,6 @@ async function checkStudentVerification() {
 					});
 				}
 				
-				// Check sustained mouth open (talking for too long)
 				if (now - mouthMovementStart > AI_THRESHOLDS.SUSTAINED_MOUTH_OPEN && canLog('SUSPICIOUS_MOUTH')) {
 					await logViolation('SUSPICIOUS_MOUTH', 2, { 
 						duration: now - mouthMovementStart,
@@ -574,53 +579,39 @@ async function checkStudentVerification() {
 		}
 	}
 
-	function calculateMouthOpenness(mouthPoints: any[]): number {
-		if (!mouthPoints || mouthPoints.length < 6) return 0;
-		
-		const top = mouthPoints[2];
-		const bottom = mouthPoints[5];
-		const left = mouthPoints[0];
-		const right = mouthPoints[3];
-		
-		const vertical = distance(top, bottom);
-		const horizontal = distance(left, right);
-		
-		return vertical / (horizontal + 0.001);
-	}
-
 	// ─── Gesture Analysis ──────────────────────────────────────────────────────
+	// FIXED: face.box from Human is an array [x, y, width, height], not an
+	// object with .x/.y/.width/.height properties. Reading those properties
+	// off an array previously produced NaN region coordinates, which made
+	// ctx.getImageData throw on every single frame (caught silently, so this
+	// analyzer never actually produced a result).
 	async function analyzeGestures(face: any, video: HTMLVideoElement) {
-		if (!face.landmarks) return;
+		if (!face.mesh || !face.box) return;
 
 		try {
-			// Check for hand over mouth
-			const mouth = face.landmarks.getMouth();
-			if (mouth) {
-				const mouthCenter = {
-					x: (mouth[0].x + mouth[3].x) / 2,
-					y: (mouth[0].y + mouth[3].y) / 2
+			const box = face.box as [number, number, number, number] | { topLeft: number[]; bottomRight: number[] };
+			const faceBounds = Array.isArray(box)
+				? { x: box[0], y: box[1], width: box[2], height: box[3] }
+				: {
+					x: box.topLeft[0],
+					y: box.topLeft[1],
+					width: box.bottomRight[0] - box.topLeft[0],
+					height: box.bottomRight[1] - box.topLeft[1],
 				};
 
-				// Get face bounding box for hand detection
-				const faceBounds = face.box;
-				if (faceBounds) {
-					// Check if anything is covering the mouth area
-					// This is a simplified approach - in production you'd use hand detection
-					const hasHandOverMouth = await detectHandOverMouth(video, faceBounds);
-					
-					if (hasHandOverMouth && canLog('HAND_OVER_MOUTH')) {
-						await logViolation('HAND_OVER_MOUTH', 2, { 
-							confidence: 0.7 
-						});
-					}
-				}
+			const hasHandOverMouth = await detectHandOverMouth(video, faceBounds);
+			
+			if (hasHandOverMouth && canLog('HAND_OVER_MOUTH')) {
+				await logViolation('HAND_OVER_MOUTH', 2, { 
+					confidence: 0.7 
+				});
 			}
 		} catch (err) {
 			console.error('[Monitor] Gesture analysis error:', err);
 		}
 	}
 
-	async function detectHandOverMouth(video: HTMLVideoElement, faceBounds: any): Promise<boolean> {
+	async function detectHandOverMouth(video: HTMLVideoElement, faceBounds: { x: number; y: number; width: number; height: number }): Promise<boolean> {
 		try {
 			const canvas = document.createElement('canvas');
 			canvas.width = video.videoWidth;
@@ -629,12 +620,14 @@ async function checkStudentVerification() {
 			ctx.drawImage(video, 0, 0);
 			
 			// Get region around mouth
-			const mouthRegion = ctx.getImageData(
-				faceBounds.x - faceBounds.width * 0.2,
-				faceBounds.y + faceBounds.height * 0.5,
-				faceBounds.width * 0.4,
-				faceBounds.height * 0.3
-			);
+			const regionX = Math.max(0, faceBounds.x - faceBounds.width * 0.2);
+			const regionY = Math.max(0, faceBounds.y + faceBounds.height * 0.5);
+			const regionW = Math.min(canvas.width - regionX, faceBounds.width * 0.4);
+			const regionH = Math.min(canvas.height - regionY, faceBounds.height * 0.3);
+
+			if (regionW <= 0 || regionH <= 0) return false;
+
+			const mouthRegion = ctx.getImageData(regionX, regionY, regionW, regionH);
 			
 			// Check for skin tone or texture changes (simplified)
 			// In production, use proper hand detection model
