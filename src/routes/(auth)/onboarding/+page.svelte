@@ -1,4 +1,4 @@
-// src/routes/(auth)/onboarding/+page.svelte
+<!--src/routes/(auth)/onboarding/+page.svelte -->
 <script lang="ts">
 	import { onMount } from 'svelte'
 	import { goto } from '$app/navigation'

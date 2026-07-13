@@ -1,202 +1,167 @@
-// src/routes/staff/onboarding/profile/+page.server.ts
-import { fail, redirect } from '@sveltejs/kit'
+// src/routes/(auth)/onboarding/profile/+page.server.ts
 import type { Actions, PageServerLoad } from './$types'
+import { fail, redirect } from '@sveltejs/kit'
 import { getPrismaClient } from '$lib/server/db/index.js'
 import { hashInvitationToken } from '$lib/server/auth/invitationToken'
-import { hash } from '@node-rs/argon2'
-
-const ARGON2_OPTIONS = {
-	memoryCost: 65536,
-	timeCost: 3,
-	parallelism: 4,
-}
+import { hashPassword, validatePasswordStrength, createStaffSession, STAFF_COOKIE, cookieOptions } from '$lib/server/auth'
+import { staffRoleHome } from '$lib/server/auth/roleHome'
+import { protectStaffData, searchHashFor } from '$lib/security/dataProtection.js'
 
 export const load: PageServerLoad = async ({ locals }) => {
-	// Redirect to login if already authenticated
 	if (locals.user) {
 		throw redirect(303, '/staff/dashboard')
 	}
-
 	return {}
 }
 
 export const actions: Actions = {
-	setup: async ({ request, getClientAddress }) => {
-		const form = await request.formData()
+	setup: async ({ request, cookies, getClientAddress }) => {
+		const formData = await request.formData()
+		const token = String(formData.get('token') ?? '')
+		const firstName = String(formData.get('firstName') ?? '').trim()
+		const lastName = String(formData.get('lastName') ?? '').trim()
+		const phoneNumber = String(formData.get('phoneNumber') ?? '').trim()
+		const password = String(formData.get('password') ?? '')
+		const confirmPassword = String(formData.get('confirmPassword') ?? '')
 
-		// Extract form data
-		const token = form.get('token')?.toString()
-		const firstName = form.get('firstName')?.toString()?.trim()
-		const lastName = form.get('lastName')?.toString()?.trim()
-		const phoneNumber = form.get('phoneNumber')?.toString()?.trim()
-		const password = form.get('password')?.toString()
-		const confirmPassword = form.get('confirmPassword')?.toString()
-
-		// ─── Validation ──────────────────────────────────────────────────────
 		if (!token) {
-			return fail(400, {
-				error: 'Session expired',
-				details: 'Your onboarding token is missing. Please start over with a new invitation link.',
-			})
+			return fail(400, { error: 'Your onboarding session is missing. Please start over from your invitation email.' })
 		}
 
-		if (!firstName || firstName.length < 2) {
-			return fail(400, { error: 'First name must be at least 2 characters' })
-		}
+		const errors: Record<string, string> = {}
+		if (!firstName || firstName.length < 2) errors.firstName = 'First name is required'
+		if (!lastName || lastName.length < 2) errors.lastName = 'Last name is required'
+		if (!phoneNumber || phoneNumber.length < 10) errors.phoneNumber = 'A valid phone number is required'
+		if (password !== confirmPassword) errors.confirmPassword = 'Passwords do not match'
+		const pwErr = validatePasswordStrength(password)
+		if (pwErr) errors.password = pwErr
 
-		if (!lastName || lastName.length < 2) {
-			return fail(400, { error: 'Last name must be at least 2 characters' })
-		}
-
-		if (!phoneNumber || phoneNumber.length < 10) {
-			return fail(400, { error: 'Phone number must be at least 10 digits' })
-		}
-
-		if (!password || password.length < 8) {
-			return fail(400, {
-				error: 'Password too weak',
-				details: 'Password must be at least 8 characters.',
-			})
-		}
-
-		if (password !== confirmPassword) {
-			return fail(400, { error: 'Passwords do not match' })
-		}
-
-		// Check password strength (same as registration)
-		const strength = [
-			password.length >= 8,
-			password.length >= 12,
-			/[A-Z]/.test(password) && /[a-z]/.test(password),
-			/[0-9]/.test(password),
-			/[^A-Za-z0-9]/.test(password),
-		].filter(Boolean).length
-
-		if (strength < 3) {
-			return fail(400, {
-				error: 'Password too weak',
-				details: 'Use uppercase, lowercase, numbers, and symbols.',
-			})
-		}
+		if (Object.keys(errors).length > 0) return fail(400, { errors })
 
 		const prisma = await getPrismaClient()
-		const ip = getClientAddress()
+		const tokenHash = hashInvitationToken(token)
+
+		const invitation = await prisma.staffInvitation.findUnique({
+			where: { tokenHash },
+			include: { 
+				courses: true,
+				college: true,
+				department: true
+			},
+		})
+
+		if (!invitation) return fail(400, { error: 'Invalid invitation.' })
+		if (invitation.status !== 'PENDING' || invitation.expiresAt < new Date()) {
+			return fail(400, { error: 'This invitation is no longer valid.' })
+		}
+
+		// Check if a staff member already exists with this email hash
+		const emailHash = await searchHashFor(invitation.email, 'email')
+		const existingStaff = await prisma.staff.findUnique({
+			where: { emailHash }
+		})
+
+		if (existingStaff) {
+			return fail(400, { 
+				error: 'A staff account already exists with this email address. Please login or contact your administrator.' 
+			})
+		}
+
+		const passwordHash = await hashPassword(password)
+		const staffNumber = `STAFF-${invitation.primaryRole.slice(0, 3)}-${Date.now().toString(36).toUpperCase()}`
 
 		try {
-			// ─── Verify invitation token ──────────────────────────────────────
-			const tokenHash = hashInvitationToken(token)
-
-			const invitation = await prisma.staffInvitation.findUnique({
-				where: { tokenHash },
-				include: { department: true, college: true },
-			})
-
-			if (!invitation) {
-				console.warn('[STAFF-PROFILE] Invalid token:', { tokenHash: tokenHash.slice(0, 8) + '...' })
-				return fail(400, { error: 'Invalid invitation token' })
-			}
-
-			if (invitation.status !== 'PENDING') {
-				console.warn('[STAFF-PROFILE] Invitation not pending:', {
-					invitationId: invitation.id,
-					status: invitation.status,
-				})
-				return fail(400, {
-					error: 'Invitation already used',
-					details: `This invitation has already been ${invitation.status.toLowerCase()}.`,
-				})
-			}
-
-			const now = new Date()
-			if (now > invitation.expiresAt) {
-				console.warn('[STAFF-PROFILE] Invitation expired:', { invitationId: invitation.id })
-				return fail(400, {
-					error: 'Invitation expired',
-					details: 'Please request a new invitation from your department.',
-				})
-			}
-
-			// Check if staff account already exists
-			const existingStaff = await prisma.staff.findUnique({
-				where: { email: invitation.email },
-			})
-
-			if (existingStaff) {
-				console.warn('[STAFF-PROFILE] Staff account exists:', { email: invitation.email })
-				return fail(400, {
-					error: 'Account already exists',
-					details: 'An account for this email already exists. Try logging in instead.',
-				})
-			}
-
-			// ─── Hash password with Argon2 ────────────────────────────────────
-			let passwordHash: string
-			try {
-				passwordHash = await hash(password, ARGON2_OPTIONS)
-			} catch (hashErr) {
-				console.error('[STAFF-PROFILE] Password hashing failed:', hashErr)
-				return fail(500, {
-					error: 'Password encryption failed',
-					details: 'An error occurred while securing your password. Please try again.',
-				})
-			}
-
-			// ─── Create staff account in transaction ──────────────────────────
-			const staff = await prisma.staff.create({
-				data: {
+			const staff = await prisma.$transaction(async (tx) => {
+				// Protect staff data
+				const protectedData = await protectStaffData({
 					email: invitation.email,
 					firstName,
 					lastName,
-					phoneNumber,
-					password: passwordHash,
-					departmentId: invitation.departmentId,
-					collegeId: invitation.collegeId,
-					isActive: true,
-					emailVerified: true, // Email already verified via invitation
-					levels: invitation.levels,
-				},
-			})
-
-			// ─── Update invitation status ──────────────────────────────────────
-			await prisma.staffInvitation.update({
-				where: { id: invitation.id },
-				data: {
-					status: 'ACCEPTED',
-					acceptedAt: now,
-					acceptedIp: ip,
-					staffId: staff.id,
-				},
-			})
-
-			console.info('[STAFF-PROFILE] Staff account created:', {
-				staffId: staff.id,
-				email: staff.email,
-				firstName: staff.firstName,
-				lastName: staff.lastName,
-				department: invitation.department.name,
-			})
-
-			// Return success — frontend will redirect to login
-			return { success: true }
-		} catch (err) {
-			console.error('[STAFF-PROFILE] Error creating account:', err)
-
-			// Handle duplicate email constraint
-			if (
-				err instanceof Error &&
-				(err.message.includes('Unique constraint failed') ||
-					err.message.includes('unique_email'))
-			) {
-				return fail(400, {
-					error: 'Email already registered',
-					details: 'This email is already associated with a staff account.',
+					phone: phoneNumber,
+					staffNumber: staffNumber,
 				})
-			}
 
-			return fail(500, {
-				error: 'Account creation failed',
-				details: 'An unexpected error occurred. Please try again.',
+				const createdStaff = await tx.staff.create({
+					data: {
+						staffNumber: staffNumber,
+						email: protectedData.email,
+						emailHash: protectedData.emailHash,
+						firstName: protectedData.firstName,
+						firstNameHash: protectedData.firstNameHash,
+						lastName: protectedData.lastName,
+						lastNameHash: protectedData.lastNameHash,
+						phone: protectedData.phone,
+						phoneHash: protectedData.phoneHash,
+						passwordHash,
+						primaryRole: invitation.primaryRole,
+						collegeId: invitation.collegeId,
+						departmentId: invitation.departmentId,
+						status: 'ACTIVE',
+						mustChangePassword: false,
+					},
+				})
+
+				// Assign role
+				const role = await tx.role.findUnique({ where: { name: invitation.primaryRole } })
+				if (role) {
+					await tx.staffRoleAssignment.create({
+						data: { staffId: createdStaff.id, roleId: role.id, isActive: true },
+					})
+				}
+
+				// Assign courses if any
+				const currentSemester = await tx.semester.findFirst({ where: { isCurrent: true } })
+				if (currentSemester && invitation.courses.length > 0) {
+					for (const ic of invitation.courses) {
+						const offering = await tx.courseOffering.findUnique({
+							where: { 
+								courseId_semesterId: { 
+									courseId: ic.courseId, 
+									semesterId: currentSemester.id 
+								} 
+							},
+						})
+						if (offering) {
+							await tx.courseOffering.update({
+								where: { id: offering.id },
+								data: { lecturerId: createdStaff.id },
+							})
+						} else {
+							await tx.courseOffering.create({
+								data: { 
+									courseId: ic.courseId, 
+									semesterId: currentSemester.id, 
+									lecturerId: createdStaff.id 
+								},
+							})
+						}
+					}
+				}
+
+				// Mark invitation as accepted
+				await tx.staffInvitation.update({
+					where: { id: invitation.id },
+					data: { 
+						status: 'ACCEPTED', 
+						acceptedAt: new Date(), 
+						acceptedStaffId: createdStaff.id 
+					},
+				})
+
+				return createdStaff
 			})
+
+			// Create session and log in
+			const ip = getClientAddress()
+			const userAgent = request.headers.get('user-agent') ?? undefined
+			const { token: sessionToken } = await createStaffSession(staff.id, { ipAddress: ip, userAgent })
+			cookies.set(STAFF_COOKIE, sessionToken, cookieOptions)
+
+			throw redirect(303, staffRoleHome(staff.primaryRole))
+		} catch (err) {
+			if (err && typeof err === 'object' && 'status' in err) throw err
+			console.error('[onboarding/staff/setup] Failed to complete onboarding:', err)
+			return fail(500, { error: 'Failed to complete onboarding. Please try again or contact your administrator.' })
 		}
 	},
 }
