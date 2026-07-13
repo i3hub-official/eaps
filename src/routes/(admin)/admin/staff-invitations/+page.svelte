@@ -13,6 +13,7 @@
 	import {
 		Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 	} from '$lib/components/ui/table/index.js';
+	import { Loader } from '@lucide/svelte/icons';
 
 	let { data } = $props();
 
@@ -24,6 +25,8 @@
 	let selectedCourseIds = $state<string[]>([]);
 	let isSubmitting = $state(false);
 	let errors = $state<Record<string, string>>({});
+	let resendingId = $state<string | null>(null);
+	let revokingId = $state<string | null>(null);
 
 	// Check if selected role needs college/department
 	const needsCollegeDept = $derived(!data.rolesWithoutCollegeDept.includes(primaryRole));
@@ -61,7 +64,6 @@
 		fd.set('email', email);
 		fd.set('primaryRole', primaryRole);
 		
-		// Only include college/department if needed
 		if (needsCollegeDept) {
 			fd.set('collegeId', collegeId);
 			fd.set('departmentId', departmentId);
@@ -93,17 +95,44 @@
 		}
 	}
 
-	async function handleRevoke(invitationId: string) {
-		if (!confirm('Revoke this invitation? The link will stop working.')) return;
+	async function handleResend(invitationId: string) {
+		resendingId = invitationId;
 		const fd = new FormData();
 		fd.set('invitationId', invitationId);
-		const res = await fetch('?/revoke', { method: 'POST', body: fd });
-		const result = deserialize(await res.text());
-		if (result.type === 'success') {
-			toast.success('Invitation revoked');
-			await invalidateAll();
-		} else {
+		try {
+			const res = await fetch('?/resend', { method: 'POST', body: fd });
+			const result = deserialize(await res.text());
+			if (result.type === 'success') {
+				toast.success('Invitation resent successfully');
+				await invalidateAll();
+			} else {
+				toast.error(result.data?.error || 'Failed to resend invitation');
+			}
+		} catch (err) {
+			toast.error('Failed to resend invitation');
+		} finally {
+			resendingId = null;
+		}
+	}
+
+	async function handleRevoke(invitationId: string) {
+		if (!confirm('Revoke this invitation? The link will stop working.')) return;
+		revokingId = invitationId;
+		const fd = new FormData();
+		fd.set('invitationId', invitationId);
+		try {
+			const res = await fetch('?/revoke', { method: 'POST', body: fd });
+			const result = deserialize(await res.text());
+			if (result.type === 'success') {
+				toast.success('Invitation revoked');
+				await invalidateAll();
+			} else {
+				toast.error('Failed to revoke invitation');
+			}
+		} catch (err) {
 			toast.error('Failed to revoke invitation');
+		} finally {
+			revokingId = null;
 		}
 	}
 
@@ -111,6 +140,14 @@
 		if (status === 'PENDING') return 'secondary';
 		if (status === 'ACCEPTED') return 'default';
 		return 'destructive';
+	}
+
+	function formatDate(date: string | Date) {
+		return new Date(date).toLocaleDateString('en-NG', { 
+			day: '2-digit', 
+			month: 'short', 
+			year: 'numeric' 
+		});
 	}
 </script>
 
@@ -139,7 +176,6 @@
 							id="role" 
 							bind:value={primaryRole} 
 							onchange={() => {
-								// Reset fields when role changes
 								if (!needsCollegeDept) {
 									collegeId = '';
 									departmentId = '';
@@ -246,19 +282,32 @@
 			<Table>
 				<TableHeader>
 					<TableRow>
+						<TableHead>Staff Name</TableHead>
 						<TableHead>Email</TableHead>
 						<TableHead>Role</TableHead>
 						<TableHead>College / Dept</TableHead>
 						<TableHead>Courses</TableHead>
 						<TableHead>Status</TableHead>
 						<TableHead>Expires</TableHead>
-						<TableHead class="text-right">Action</TableHead>
+						<TableHead class="text-right">Actions</TableHead>
 					</TableRow>
 				</TableHeader>
 				<TableBody>
 					{#each data.invitations as inv}
 						<TableRow>
-							<TableCell class="font-medium">{inv.email}</TableCell>
+							<TableCell>
+								{#if inv.staffName}
+									<span class="font-medium">{inv.staffName}</span>
+									{#if inv.acceptedAt}
+										<p class="text-xs text-muted-foreground">
+											Accepted {formatDate(inv.acceptedAt)}
+										</p>
+									{/if}
+								{:else}
+									<span class="text-muted-foreground">—</span>
+								{/if}
+							</TableCell>
+							<TableCell class="font-mono text-sm">{inv.maskedEmail}</TableCell>
 							<TableCell>{inv.role}</TableCell>
 							<TableCell class="text-sm text-muted-foreground">
 								{inv.college === 'N/A' && inv.department === 'N/A' 
@@ -267,10 +316,36 @@
 							</TableCell>
 							<TableCell class="text-sm">{inv.courses.join(', ') || '—'}</TableCell>
 							<TableCell><Badge variant={statusVariant(inv.status)}>{inv.status}</Badge></TableCell>
-							<TableCell class="text-sm text-muted-foreground">{new Date(inv.expiresAt).toLocaleDateString()}</TableCell>
+							<TableCell class="text-sm text-muted-foreground">{formatDate(inv.expiresAt)}</TableCell>
 							<TableCell class="text-right">
 								{#if inv.status === 'PENDING'}
-									<Button variant="ghost" size="sm" onclick={() => handleRevoke(inv.id)}>Revoke</Button>
+									<div class="flex items-center justify-end gap-1">
+										<Button 
+											variant="ghost" 
+											size="sm" 
+											onclick={() => handleResend(inv.id)}
+											disabled={resendingId === inv.id}
+										>
+											{#if resendingId === inv.id}
+												<Loader class="size-3 animate-spin" />
+											{:else}
+												Resend
+											{/if}
+										</Button>
+										<Button 
+											variant="ghost" 
+											size="sm" 
+											onclick={() => handleRevoke(inv.id)}
+											disabled={revokingId === inv.id}
+											class="text-destructive hover:text-destructive"
+										>
+											{#if revokingId === inv.id}
+												<Loader class="size-3 animate-spin" />
+											{:else}
+												Revoke
+											{/if}
+										</Button>
+									</div>
 								{/if}
 							</TableCell>
 						</TableRow>

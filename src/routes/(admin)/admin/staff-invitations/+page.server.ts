@@ -6,6 +6,7 @@ import { getPrismaClient } from '$lib/server/db/index.js'
 import { createInvitationToken } from '$lib/server/auth/invitationToken'
 import { sendStaffInvitationEmail } from '$lib/server/auth/email'
 import { StaffRole } from '@prisma/client'
+import { revealName } from '$lib/security/dataProtection.js'
 
 const ASSIGNABLE_ROLES: StaffRole[] = Object.values(StaffRole).filter(
 	(r) => r !== 'SUPER_ADMIN'
@@ -19,17 +20,24 @@ const ROLES_WITHOUT_COLLEGE_DEPT: StaffRole[] = [
 	'DVC',
 	'REGISTRAR',
 	'UNIVERSITY_EXAM_OFFICER',
-	'UNIVERSITY_COURSE_COORDINATOR',
-	'COLLEGE_EXAM_OFFICER',
-	'DEAN',
+	'UNIVERSITY_COURSE_COORDINATOR'
 ]
 
-// Only these roles may issue invitations. Every route inside (admin) is
-// already gated to SUPER_ADMIN by routeGuard.ts at the layout level, but
-// SvelteKit does NOT re-run parent load()/guards before executing a form
-// action — only before re-rendering afterward. So this action must
-// independently verify authorization rather than relying on the layout.
+// Only these roles may issue invitations
 const CAN_INVITE: StaffRole[] = ['SUPER_ADMIN']
+
+// Helper to mask email
+function maskEmail(email: string): string {
+	if (!email) return ''
+	const [local, domain] = email.split('@')
+	if (local.length <= 3) {
+		return `${local.charAt(0)}***@${domain}`
+	}
+	const first = local.charAt(0)
+	const last = local.charAt(local.length - 1)
+	const middle = '*'.repeat(Math.min(local.length - 2, 3))
+	return `${first}${middle}${last}@${domain}`
+}
 
 export const load: PageServerLoad = async ({ locals }) => {
 	await requireStaff(locals.user)
@@ -40,7 +48,12 @@ export const load: PageServerLoad = async ({ locals }) => {
 		prisma.department.findMany({ orderBy: { name: 'asc' } }),
 		prisma.course.findMany({ include: { level: true }, orderBy: { code: 'asc' } }),
 		prisma.staffInvitation.findMany({
-			include: { college: true, department: true, courses: { include: { course: true } } },
+			include: { 
+				college: true, 
+				department: true, 
+				courses: { include: { course: true } },
+				acceptedStaff: true
+			},
 			orderBy: { createdAt: 'desc' },
 			take: 50,
 		}),
@@ -58,18 +71,34 @@ export const load: PageServerLoad = async ({ locals }) => {
 			level: c.level.name,
 			departmentId: c.departmentId,
 		})),
-		invitations: invitations.map((inv) => ({
-			id: inv.id,
-			email: inv.email,
-			role: inv.primaryRole,
-			college: inv.college?.shortName || 'N/A',
-			department: inv.department?.shortName || 'N/A',
-			levels: inv.levels,
-			courses: inv.courses.map((c) => c.course.code),
-			status: inv.status,
-			expiresAt: inv.expiresAt,
-			createdAt: inv.createdAt,
-		})),
+		invitations: invitations.map((inv) => {
+			let staffName = null
+			if (inv.acceptedStaff && inv.status === 'ACCEPTED') {
+				try {
+					const firstName = revealName(inv.acceptedStaff.firstName)
+					const lastName = revealName(inv.acceptedStaff.lastName)
+					staffName = `${firstName} ${lastName}`
+				} catch (e) {
+					staffName = 'Unknown'
+				}
+			}
+			
+			return {
+				id: inv.id,
+				email: inv.email,
+				maskedEmail: maskEmail(inv.email),
+				staffName,
+				role: inv.primaryRole,
+				college: inv.college?.shortName || 'N/A',
+				department: inv.department?.shortName || 'N/A',
+				levels: inv.levels,
+				courses: inv.courses.map((c) => c.course.code),
+				status: inv.status,
+				expiresAt: inv.expiresAt,
+				createdAt: inv.createdAt,
+				acceptedAt: inv.acceptedAt,
+			}
+		}),
 	}
 }
 
@@ -122,8 +151,7 @@ export const actions: Actions = {
 			}
 		}
 
-		// Verify selected courses actually belong to this department, and
-		// (if levels were specified) fall within the invited levels
+		// Verify selected courses
 		if (courseIds.length > 0 && needsCollegeDept) {
 			const validCourses = await prisma.course.findMany({
 				where: { id: { in: courseIds }, departmentId },
@@ -181,7 +209,6 @@ export const actions: Actions = {
 				).map((c) => c.code)
 			: []
 
-		// Send email with appropriate details
 		sendStaffInvitationEmail(
 			email,
 			primaryRole,
@@ -191,6 +218,62 @@ export const actions: Actions = {
 			token,
 			INVITATION_EXPIRY_HOURS
 		).catch((err) => console.error('[staff-invitations] Failed to send invitation email:', err))
+
+		return { success: true }
+	},
+
+	resend: async ({ request, locals }) => {
+		const admin = await requireStaff(locals.user)
+		if (!CAN_INVITE.includes(admin.primaryRole)) {
+			return fail(403, { error: 'You do not have permission to resend invitations.' })
+		}
+
+		const formData = await request.formData()
+		const invitationId = String(formData.get('invitationId') ?? '')
+
+		const prisma = await getPrismaClient()
+		const invitation = await prisma.staffInvitation.findUnique({
+			where: { id: invitationId },
+			include: { 
+				college: true, 
+				department: true,
+				courses: { include: { course: true } }
+			},
+		})
+
+		if (!invitation) {
+			return fail(404, { error: 'Invitation not found' })
+		}
+
+		if (invitation.status !== 'PENDING') {
+			return fail(400, { error: 'Only pending invitations can be resent' })
+		}
+
+		// Generate new token and update expiry
+		const { token, tokenHash } = createInvitationToken()
+		const expiresAt = new Date(Date.now() + INVITATION_EXPIRY_HOURS * 60 * 60 * 1000)
+
+		await prisma.staffInvitation.update({
+			where: { id: invitationId },
+			data: {
+				tokenHash,
+				expiresAt,
+				updatedAt: new Date(),
+			},
+		})
+
+		const courseList = invitation.courses.map((c) => c.course.code)
+
+		// Resend email
+		sendStaffInvitationEmail(
+			invitation.email,
+			invitation.primaryRole,
+			invitation.college?.name || 'N/A',
+			invitation.department?.name || 'N/A',
+			courseList,
+			token,
+			INVITATION_EXPIRY_HOURS
+		).catch((err) => console.error('[staff-invitations] Failed to resend invitation email:', err))
 
 		return { success: true }
 	},
