@@ -36,12 +36,37 @@ const STAFF_DATA = [
   { staffNumber: 'STAFF-002', email: 'registrar@mouau.edu.ng', firstName: 'University', lastName: 'Registrar', primaryRole: 'REGISTRAR' },
   { staffNumber: 'STAFF-003', email: 'university.exam@mouau.edu.ng', firstName: 'University', lastName: 'Exam Officer', primaryRole: 'UNIVERSITY_EXAM_OFFICER' },
   { staffNumber: 'STAFF-004', email: 'college.exam@cpas.mouau.edu.ng', firstName: 'College', lastName: 'Exam Officer', primaryRole: 'COLLEGE_EXAM_OFFICER', collegeCode: 'COLPAS' },
-  { staffNumber: 'STAFF-005', email: 'dept.exam@csc.mouau.edu.ng', firstName: 'Department', lastName: 'Exam Officer', primaryRole: 'DEPARTMENT_EXAM_OFFICER', deptCode: 'CSC' },
-  { staffNumber: 'STAFF-006', email: 'hod@csc.mouau.edu.ng', firstName: 'Head', lastName: 'Of Department', primaryRole: 'HOD', deptCode: 'CSC' },
-  { staffNumber: 'STAFF-007', email: 'lecturer1@csc.mouau.edu.ng', firstName: 'John', lastName: 'Lecturer', primaryRole: 'LECTURER', deptCode: 'CSC', levels: [100, 200], maxCourseLoad: 3 },
+  { staffNumber: 'STAFF-005', email: 'dept.exam@phy.mouau.edu.ng', firstName: 'Department', lastName: 'Exam Officer', primaryRole: 'DEPARTMENT_EXAM_OFFICER', deptCode: 'CSC' },
+  { staffNumber: 'STAFF-006', email: 'hod@phy.mouau.edu.ng', firstName: 'Head', lastName: 'Of Department', primaryRole: 'HOD', deptCode: 'CSC' },
+  { staffNumber: 'STAFF-007', email: 'lecturer1@phy.mouau.edu.ng', firstName: 'John', lastName: 'Lecturer', primaryRole: 'LECTURER', deptCode: 'CSC', levels: [100, 200], maxCourseLoad: 3 },
   { staffNumber: 'STAFF-008', email: 'lecturer2@csc.mouau.edu.ng', firstName: 'Jane', lastName: 'Instructor', primaryRole: 'LECTURER', deptCode: 'CSC', levels: [200, 300], maxCourseLoad: 3 },
-  { staffNumber: 'STAFF-009', email: 'invigilator@csc.mouau.edu.ng', firstName: 'David', lastName: 'Invigilator', primaryRole: 'INVIGILATOR', deptCode: 'CSC' },
-  { staffNumber: 'STAFF-010', email: 'lecturer3@csc.mouau.edu.ng', firstName: 'Sarah', lastName: 'Professor', primaryRole: 'LECTURER', deptCode: 'CSC', levels: [300, 400], maxCourseLoad: 3 },
+  { staffNumber: 'STAFF-009', email: 'invigilator@phy.mouau.edu.ng', firstName: 'David', lastName: 'Invigilator', primaryRole: 'INVIGILATOR', deptCode: 'CSC' },
+  { staffNumber: 'STAFF-010', email: 'lecturer3@phy.mouau.edu.ng', firstName: 'Sarah', lastName: 'Professor', primaryRole: 'LECTURER', deptCode: 'CSC', levels: [300, 400], maxCourseLoad: 3 },
+
+  // ─── Previously-unseeded roles: 2 staff each ────────────────────────
+  // VC / DVC / UNIVERSITY_COURSE_COORDINATOR are university-wide roles —
+  // no collegeCode/deptCode, matching how SUPER_ADMIN/REGISTRAR are seeded.
+  { staffNumber: 'STAFF-011', email: 'vc1@mouau.edu.ng', firstName: 'Chukwuemeka', lastName: 'Nwosu', primaryRole: 'VC' },
+  { staffNumber: 'STAFF-012', email: 'vc2@mouau.edu.ng', firstName: 'Adaeze', lastName: 'Okonkwo', primaryRole: 'VC' },
+
+  { staffNumber: 'STAFF-013', email: 'dvc1@mouau.edu.ng', firstName: 'Ibrahim', lastName: 'Musa', primaryRole: 'DVC' },
+  { staffNumber: 'STAFF-014', email: 'dvc2@mouau.edu.ng', firstName: 'Folake', lastName: 'Adeyemi', primaryRole: 'DVC' },
+
+  { staffNumber: 'STAFF-015', email: 'uni.coordinator1@mouau.edu.ng', firstName: 'Emeka', lastName: 'Obiora', primaryRole: 'UNIVERSITY_COURSE_COORDINATOR' },
+  { staffNumber: 'STAFF-016', email: 'uni.coordinator2@mouau.edu.ng', firstName: 'Ngozi', lastName: 'Eze', primaryRole: 'UNIVERSITY_COURSE_COORDINATOR' },
+
+  // DEAN / COLLEGE_COORDINATOR are college-scoped — assign to 2 distinct
+  // colleges (COLPAS and CEET) so both new roles resolve a real collegeId.
+  { staffNumber: 'STAFF-017', email: 'dean.colpas@colpas.mouau.edu.ng', firstName: 'Oluwaseun', lastName: 'Bakare', primaryRole: 'DEAN', collegeCode: 'COLPAS' },
+  { staffNumber: 'STAFF-018', email: 'dean.ceet@ceet.mouau.edu.ng', firstName: 'Uchenna', lastName: 'Madu', primaryRole: 'DEAN', collegeCode: 'CEET' },
+
+  { staffNumber: 'STAFF-019', email: 'college.coord.colpas@colpas.mouau.edu.ng', firstName: 'Amina', lastName: 'Bello', primaryRole: 'COLLEGE_COORDINATOR', collegeCode: 'COLPAS' },
+  { staffNumber: 'STAFF-020', email: 'college.coord.ceet@ceet.mouau.edu.ng', firstName: 'Damilola', lastName: 'Ogunbiyi', primaryRole: 'COLLEGE_COORDINATOR', collegeCode: 'CEET' },
+
+  // DEPARTMENT_COORDINATOR is dept-scoped — assign to 2 distinct
+  // departments (CSC and MTH) rather than doubling up on CSC.
+  { staffNumber: 'STAFF-021', email: 'dept.coord.csc@csc.mouau.edu.ng', firstName: 'Kelechi', lastName: 'Nnamdi', primaryRole: 'DEPARTMENT_COORDINATOR', deptCode: 'CSC' },
+  { staffNumber: 'STAFF-022', email: 'dept.coord.mth@mth.mouau.edu.ng', firstName: 'Temitope', lastName: 'Okorie', primaryRole: 'DEPARTMENT_COORDINATOR', deptCode: 'MTH' },
 ] satisfies Array<{
   staffNumber: string;
   email: string;
@@ -812,113 +837,121 @@ export const POST: RequestHandler = async () => {
     // same protectStudentRegistration() call, same field shape, same
     // dedup checks (emailHash / matricNumber / jambRegNo / phoneHash) —
     // so seeded students are indistinguishable in structure from students
-    // who registered themselves.
+    // who registered themselves. One student per level (100, 200) per
+    // department, matching the two levels seeded in LEVELS.
     const studentPasswordHash = await hashPassword(STUDENT_DEFAULT_PASSWORD);
     const entryYear = new Date().getFullYear();
     const usedStudentEmails = new Set<string>();
-    const level100 = levelMap.get(100);
     let globalNameIndex = 0;
 
-    if (!level100) {
-      console.error('Level 100 not found — skipping student seeding.');
-    } else {
-      for (const deptData of DEPARTMENTS) {
-        const dept = deptMap.get(deptData.code);
-        const programmeId = undergradProgrammeMap.get(deptData.code);
-        if (!dept || !programmeId) continue;
+    for (const deptData of DEPARTMENTS) {
+      const dept = deptMap.get(deptData.code);
+      const programmeId = undergradProgrammeMap.get(deptData.code);
+      if (!dept || !programmeId) continue;
 
-        const count = studentCountForDept(deptData.collegeCode);
+      for (let levelIndex = 0; levelIndex < STUDENT_LEVELS.length; levelIndex++) {
+        const levelName = STUDENT_LEVELS[levelIndex];
+        const level = levelMap.get(levelName);
+        if (!level) {
+          console.error(`Level ${levelName} not found — skipping ${deptData.code} ${levelName}L student.`);
+          continue;
+        }
 
-        for (let i = 1; i <= count; i++) {
-          const firstName = STUDENT_FIRST_NAMES[globalNameIndex % STUDENT_FIRST_NAMES.length];
-          const lastName = STUDENT_LAST_NAMES[globalNameIndex % STUDENT_LAST_NAMES.length];
-          globalNameIndex++;
+        const firstName = STUDENT_FIRST_NAMES[globalNameIndex % STUDENT_FIRST_NAMES.length];
+        const lastName = STUDENT_LAST_NAMES[globalNameIndex % STUDENT_LAST_NAMES.length];
+        globalNameIndex++;
 
-          const matricNumber = buildMatricNumber(deptData.code, i);
-          const jambRegNo = buildJambRegNo(deptData.code, i, entryYear);
-          const email = buildStudentEmail(firstName, lastName, usedStudentEmails);
+        // Index within this department's matric sequence: 1 = 100L, 2 = 200L.
+        const matricIndex = levelIndex + 1;
+        const matricNumber = buildMatricNumber(deptData.code, matricIndex);
+        // Entry year is offset back by how many levels above 100 the
+        // student is, so a 200L student's JAMB year reflects an earlier
+        // intake than a 100L student in the same department.
+        const studentEntryYear = entryYear - levelIndex;
+        const jambRegNo = buildJambRegNo(deptData.code, matricIndex, studentEntryYear);
+        const email = buildStudentEmail(firstName, lastName, usedStudentEmails);
 
-          // Always surface the credential, whether newly created or already existing.
-          results.credentials.push({
-            type: 'student',
-            identifier: matricNumber,
-            role: 'STUDENT',
-            email,
-            password: STUDENT_DEFAULT_PASSWORD,
-          });
+        // Always surface the credential, whether newly created or already existing.
+        results.credentials.push({
+          type: 'student',
+          identifier: matricNumber,
+          role: 'STUDENT',
+          email,
+          password: STUDENT_DEFAULT_PASSWORD,
+        });
 
-          // Same protection call the real signup action uses — encrypts
-          // email/phone, hashes email/phone/receipt fields, passes through
-          // matricNumber/jambRegNo/names per the schema's actual column set.
-          const protectedData = await protectStudentRegistration({
-            email,
-            phone: null,
-            firstName,
-            lastName,
-            otherNames: null,
-            matricNumber,
-            jambRegNo,
-            receiptNo: null,
-            receiptRef: null,
-          });
+        // Same protection call the real signup action uses — encrypts
+        // email/phone, hashes email/phone/receipt fields, passes through
+        // matricNumber/jambRegNo/names per the schema's actual column set.
+        const protectedData = await protectStudentRegistration({
+          email,
+          phone: null,
+          firstName,
+          lastName,
+          otherNames: null,
+          matricNumber,
+          jambRegNo,
+          receiptNo: null,
+          receiptRef: null,
+        });
 
-          // Same dedup strategy as the real signup action — check every
-          // unique field the schema actually enforces, not just matricNumber.
-          const [dupEmail, dupMatric, dupJamb, dupPhone] = await Promise.all([
-            prisma.student.findUnique({ where: { emailHash: protectedData.emailHash } }),
-            prisma.student.findUnique({ where: { matricNumber: protectedData.matricNumber } }),
-            prisma.student.findUnique({ where: { jambRegNo: protectedData.jambRegNo } }),
-            protectedData.phoneHash
-              ? prisma.student.findUnique({ where: { phoneHash: protectedData.phoneHash } })
-              : Promise.resolve(null),
-          ]);
+        // Same dedup strategy as the real signup action — check every
+        // unique field the schema actually enforces, not just matricNumber.
+        const [dupEmail, dupMatric, dupJamb, dupPhone] = await Promise.all([
+          prisma.student.findUnique({ where: { emailHash: protectedData.emailHash } }),
+          prisma.student.findUnique({ where: { matricNumber: protectedData.matricNumber } }),
+          prisma.student.findUnique({ where: { jambRegNo: protectedData.jambRegNo } }),
+          protectedData.phoneHash
+            ? prisma.student.findUnique({ where: { phoneHash: protectedData.phoneHash } })
+            : Promise.resolve(null),
+        ]);
 
-          const alreadyExists = dupEmail || dupMatric || dupJamb || dupPhone;
+        const alreadyExists = dupEmail || dupMatric || dupJamb || dupPhone;
 
-          if (!alreadyExists) {
-            try {
-              await prisma.student.create({
-                data: {
-                  matricNumber: protectedData.matricNumber,
-                  jambRegNo: protectedData.jambRegNo,
-                  receiptNo: protectedData.receiptNo,
-                  receiptRef: protectedData.receiptRef,
-                  receiptSource: 'SEED',
-                  registrationSession: sessionName,
-                  email: protectedData.email,
-                  emailHash: protectedData.emailHash,
-                  passwordHash: studentPasswordHash,
-                  firstName: protectedData.firstName,
-                  lastName: protectedData.lastName,
-                  otherNames: protectedData.otherNames,
-                  phone: protectedData.phone,
-                  phoneHash: protectedData.phoneHash,
-                  departmentId: dept.id,
-                  programmeId,
-                  currentLevelId: level100.id,
-                  entryYear,
-                  status: 'ACTIVE',
-                  // Seeded accounts get a shared default password, unlike
-                  // real registrants who choose their own — force a change.
-                  mustChangePassword: true,
-                },
-              });
+        if (!alreadyExists) {
+          try {
+            await prisma.student.create({
+              data: {
+                matricNumber: protectedData.matricNumber,
+                jambRegNo: protectedData.jambRegNo,
+                receiptNo: protectedData.receiptNo,
+                receiptRef: protectedData.receiptRef,
+                receiptSource: 'SEED',
+                registrationSession: sessionName,
+                email: protectedData.email,
+                emailHash: protectedData.emailHash,
+                passwordHash: studentPasswordHash,
+                firstName: protectedData.firstName,
+                lastName: protectedData.lastName,
+                otherNames: protectedData.otherNames,
+                phone: protectedData.phone,
+                phoneHash: protectedData.phoneHash,
+                departmentId: dept.id,
+                programmeId,
+                currentLevelId: level.id,
+                entryYear: studentEntryYear,
+                status: 'ACTIVE',
+                // Seeded accounts get a shared default password, unlike
+                // real registrants who choose their own — force a change.
+                mustChangePassword: true,
+              },
+            });
 
-              results.students.created++;
-              totalCreated++;
-            } catch (studentErr) {
-              const msg = studentErr instanceof Error ? studentErr.message : String(studentErr);
-              console.error(`Failed to create student ${matricNumber}:`, msg);
-              continue;
-            }
-          } else {
-            results.students.skipped++;
-            totalSkipped++;
+            results.students.created++;
+            totalCreated++;
+          } catch (studentErr) {
+            const msg = studentErr instanceof Error ? studentErr.message : String(studentErr);
+            console.error(`Failed to create student ${matricNumber}:`, msg);
+            continue;
           }
+        } else {
+          results.students.skipped++;
+          totalSkipped++;
         }
       }
     }
-
+    
+    
     // ─── 15. Audit Log ──────────────────────────────────────────────────
     try {
       await prisma.auditLog.create({

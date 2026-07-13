@@ -642,7 +642,7 @@ model Staff {
   sentMessages              Message[]           @relation("SentMessages")
   sentInvitations           StaffInvitation[]   @relation("InvitationSender")
   acceptedInvitation        StaffInvitation?    @relation("InvitationAcceptedStaff")
-  preferences               StaffPreference? 
+  preferences               StaffPreference?
 
   // Auth: identifier-first login
   @@index([emailHash])
@@ -752,14 +752,13 @@ model Student {
   updatedAt           DateTime      @updatedAt
   faceDescriptorId    String?
 
-
   department   Department @relation(fields: [departmentId], references: [id])
   programme    Programme  @relation(fields: [programmeId], references: [id])
   currentLevel Level      @relation("CurrentLevel", fields: [currentLevelId], references: [id])
 
   sessions            StudentSession[]
   courseRegistrations CourseRegistration[]
-  faceDescriptor      FaceDescriptor?         @relation(fields: [faceDescriptorId], references: [id])
+  faceDescriptor      FaceDescriptor?
   notifications       Notification[]
   auditLogs           AuditLog[]
   eligibility         AssessmentEligibility[]
@@ -773,8 +772,7 @@ model Student {
   tagPerformance      TagPerformance[]
   conversations       Conversation[]
   sentMessages        Message[]               @relation("SentMessages")
-    preference StudentPreference?
-
+  preference          StudentPreference?
 
   // Auth: identifier-first login
   @@index([emailHash])
@@ -833,14 +831,14 @@ model TagPerformance {
 // ============================================================
 
 model FaceDescriptor {
-  id                String    @id @default(cuid())
-  studentId         String    @unique // always looked up by studentId
+  id                String   @id @default(cuid())
+  studentId         String   @unique
   encryptedData     String
   iv                String
-  enrolledAt        DateTime  @default(now())
-  updatedAt         DateTime  @updatedAt
+  enrolledAt        DateTime @default(now())
+  updatedAt         DateTime @updatedAt
   enrolledIpAddress String?
-  students          Student[]
+  student           Student  @relation(fields: [studentId], references: [id], onDelete: Cascade)
 }
 
 // ============================================================
@@ -1379,35 +1377,34 @@ model Message {
 }
 
 model StudentPreference {
-  id        String   @id @default(cuid())
-  studentId String   @unique
+  id        String @id @default(cuid())
+  studentId String @unique
 
   // Example shape stored in `data`:
   // {
   //   "resultsViewMode": "card",       // ViewMode for Assessment Results tab
   //   "transcriptViewMode": "list"     // ViewMode for By Assessment Type section
   // }
-  data      Json     @default("{}")
+  data Json @default("{}")
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  student   Student  @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  student Student @relation(fields: [studentId], references: [id], onDelete: Cascade)
 
   @@map("student_preferences")
 }
 
-
 model StaffPreference {
-  id        String   @id @default(cuid())
-  staffId   String   @unique
+  id      String @id @default(cuid())
+  staffId String @unique
 
-  data      Json     @default("{}")
+  data Json @default("{}")
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  staff     Staff    @relation(fields: [staffId], references: [id], onDelete: Cascade)
+  staff Staff @relation(fields: [staffId], references: [id], onDelete: Cascade)
 
   @@map("staff_preferences")
 }
