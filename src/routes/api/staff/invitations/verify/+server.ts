@@ -1,5 +1,5 @@
 // src/routes/api/staff/invitations/verify/+server.ts
-import { json, error } from '@sveltejs/kit'
+import { json } from '@sveltejs/kit'
 import type { RequestHandler } from './$types'
 import { getPrismaClient } from '$lib/server/db/index.js'
 import { hashInvitationToken } from '$lib/server/auth/invitationToken'
@@ -48,7 +48,7 @@ export const POST: RequestHandler = async ({ request }) => {
 				college: invitation.college?.name || 'Not assigned',
 				department: invitation.department?.name || 'Not assigned',
 				levels: invitation.levels || [],
-				courses: invitation.courses.map(ic => ({
+				courses: invitation.courses.map((ic: any) => ({
 					id: ic.courseId,
 					code: ic.course.code,
 					title: ic.course.title
