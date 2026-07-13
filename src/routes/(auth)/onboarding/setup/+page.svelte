@@ -1,361 +1,235 @@
-<!-- src/routes/onboarding/staff/setup/+page.svelte -->
+<!-- src/routes/staff/onboarding/+page.svelte -->
 <script lang="ts">
-	import { enhance } from '$app/forms'
-	import { goto } from '$app/navigation'
 	import { onMount } from 'svelte'
+	import { goto } from '$app/navigation'
 	import { Button } from '$lib/components/ui/button/index.js'
-	import { Input } from '$lib/components/ui/input/index.js'
-	import { Label } from '$lib/components/ui/label/index.js'
 	import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '$lib/components/ui/card/index.js'
+	import { Badge } from '$lib/components/ui/badge/index.js'
 	import AlertCircle from '@lucide/svelte/icons/alert-circle'
-	import Eye from '@lucide/svelte/icons/eye'
-	import EyeOff from '@lucide/svelte/icons/eye-off'
 	import CheckCircle2 from '@lucide/svelte/icons/check-circle-2'
+	import Building2 from '@lucide/svelte/icons/building-2'
 	import Loader from '@lucide/svelte/icons/loader'
-	import type { ActionData } from './$types'
 
-	let { form, data }: { form: ActionData; data: any } = $props()
-
-	let isSubmitting = $state(false)
-	let showPassword = $state(false)
-	let showConfirm = $state(false)
-	let token = $state('')
-	let tokenMissing = $state(false)
-
-	// Form validation
-	let formData = $state({
-		firstName: '',
-		lastName: '',
-		phoneNumber: '',
-		password: '',
-		confirmPassword: '',
-	})
-
-	let errors = $state<Record<string, string>>({})
-	let passwordMatch = $derived(formData.password && formData.confirmPassword && formData.password === formData.confirmPassword)
-	let passwordStrength = $derived.by(() => {
-		const pwd = formData.password
-		if (!pwd) return { level: 0, label: '', color: 'bg-gray-300' }
-		let strength = 0
-		if (pwd.length >= 8) strength++
-		if (pwd.length >= 12) strength++
-		if (/[A-Z]/.test(pwd) && /[a-z]/.test(pwd)) strength++
-		if (/[0-9]/.test(pwd)) strength++
-		if (/[^A-Za-z0-9]/.test(pwd)) strength++
-
-		return {
-			level: Math.min(strength, 5),
-			label: ['', 'Weak', 'Fair', 'Good', 'Strong', 'Very Strong'][Math.min(strength, 5)] || '',
-			color:
-				strength <= 1
-					? 'bg-red-500'
-					: strength === 2
-						? 'bg-orange-500'
-						: strength === 3
-							? 'bg-yellow-500'
-							: strength === 4
-								? 'bg-blue-500'
-								: 'bg-green-500',
-		}
-	})
-
-	let isFormValid = $derived(
-		formData.firstName.trim() &&
-		formData.lastName.trim() &&
-		formData.phoneNumber.trim() &&
-		passwordMatch &&
-		passwordStrength.level >= 3 &&
-		!isSubmitting
-	)
-
-onMount(() => {
-	const storedToken = sessionStorage.getItem('staff_onboarding_token')
-	const invitationId = sessionStorage.getItem('staff_onboarding_id')
-
-	if (!storedToken || !invitationId) {
-		tokenMissing = true
-	} else {
-		token = storedToken
+	interface InvitationData {
+		id: string
+		email: string
+		college: string
+		department: string
+		levels: string[]
 	}
-})
 
-	async function handleSubmit(e: SubmitEvent) {
-		const form = e.target as HTMLFormElement
-		const formDataObj = new FormData(form)
+	let token = $state<string | null>(null)
+	let error = $state<string | null>(null)
+	let isVerifying = $state(false)
+	let invitation = $state<InvitationData | null>(null)
+	let isSubmitting = $state(false)
 
-		// Client-side validation
-		errors = {}
+	onMount(() => {
+		// Extract token from URL hash (client-side only, never sent to server in URL)
+		const hash = window.location.hash.slice(1) // Remove leading #
+		const params = new URLSearchParams(hash)
+		token = params.get('token')
 
-		if (!formData.firstName.trim()) {
-			errors.firstName = 'First name is required'
-		}
-		if (!formData.lastName.trim()) {
-			errors.lastName = 'Last name is required'
-		}
-		if (!formData.phoneNumber.trim()) {
-			errors.phoneNumber = 'Phone number is required'
-		}
-		if (formData.phoneNumber.length < 10) {
-			errors.phoneNumber = 'Phone number must be at least 10 digits'
-		}
-		if (!formData.password) {
-			errors.password = 'Password is required'
-		}
-		if (passwordStrength.level < 3) {
-			errors.password = 'Password is too weak. Use uppercase, lowercase, numbers, and symbols.'
-		}
-		if (!passwordMatch) {
-			errors.confirmPassword = 'Passwords do not match'
-		}
-
-		if (Object.keys(errors).length > 0) {
+		if (!token) {
+			error = 'No invitation token found. Please check your email for the complete link.'
 			return
 		}
 
+		// Clear hash from address bar for security
+		// This removes the token from browser history, referrer headers, etc.
+		window.history.replaceState(null, '', window.location.pathname)
+
+		// Immediately verify token
+		verifyToken()
+	})
+
+	async function verifyToken() {
+		if (!token) return
+
+		isVerifying = true
+		error = null
+
+		try {
+			const response = await fetch('/api/staff/invitations/verify', {
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({ token }), // Token in body, not URL
+			})
+
+			const result = await response.json()
+
+			if (!response.ok) {
+				error = result.error || 'Invalid or expired invitation'
+				return
+			}
+
+			invitation = result.invitation
+		} catch (err) {
+			error = err instanceof Error ? err.message : 'An error occurred while verifying your invitation'
+		} finally {
+			isVerifying = false
+		}
+	}
+
+	async function handleProceed() {
+		if (!token || !invitation) return
+
 		isSubmitting = true
+		error = null
+
+		try {
+			// Store token in sessionStorage (cleared when tab closes)
+			// This is only temporary — for the profile setup page
+			sessionStorage.setItem('staff_onboarding_token', token)
+			sessionStorage.setItem('staff_invitation_id', invitation.id)
+
+			// Redirect to profile setup
+			await goto('/staff/onboarding/profile')
+		} catch (err) {
+			error = err instanceof Error ? err.message : 'An error occurred'
+			isSubmitting = false
+		}
 	}
 </script>
 
 <svelte:head>
-	<title>Complete Your Profile — Staff Onboarding</title>
-	<!-- Hidden token field -->
-<input type="hidden" name="token" value={token} />
+	<title>Staff Onboarding — MOUAU e-Test</title>
 </svelte:head>
 
-{#if tokenMissing}
-	<!-- Token Missing Error -->
-	<div class="flex min-h-screen items-center justify-center p-4">
-		<Card class="w-full max-w-md border-destructive/50 bg-destructive/5">
-			<CardHeader>
-				<CardTitle class="flex items-center gap-2 text-destructive">
-					<AlertCircle class="size-5" />
-					Session Expired
-				</CardTitle>
-			</CardHeader>
-			<CardContent class="space-y-4">
-				<p class="text-sm text-destructive">
-					Your onboarding session has expired. This happens if you navigate away or the tab is closed.
-				</p>
-				<p class="text-sm text-muted-foreground">
-					Please check your email for a new invitation link to start over.
-				</p>
-				<Button href="/auth/login" class="w-full" variant="outline">
-					Back to Login
-				</Button>
-			</CardContent>
-		</Card>
-	</div>
-{:else}
-	<div class="flex min-h-screen flex-col items-center justify-center bg-gradient-to-b from-background to-muted/30 p-4">
-		<div class="w-full max-w-md">
-			<!-- Header -->
-			<div class="mb-8">
-				<h1 class="text-3xl font-bold">Complete Your Profile</h1>
-				<p class="mt-2 text-sm text-muted-foreground">Set your password and basic information</p>
+<div class="flex min-h-screen flex-col items-center justify-center bg-gradient-to-b from-background to-muted/30 p-4">
+	<div class="w-full max-w-md">
+		<!-- Header -->
+		<div class="mb-8 text-center">
+			<div class="mb-4 flex justify-center">
+				<div class="flex size-12 items-center justify-center rounded-lg bg-primary/10">
+					<Building2 class="size-6 text-primary" />
+				</div>
 			</div>
-
-			{#if form?.error}
-				<Card class="mb-6 border-destructive/50 bg-destructive/5">
-					<CardContent class="flex gap-3 pt-6">
-						<AlertCircle class="size-5 shrink-0 text-destructive" />
-						<div>
-							<p class="text-sm font-medium text-destructive">{form.error}</p>
-							{#if form.details}
-								<p class="mt-1 text-xs text-destructive/80">{form.details}</p>
-							{/if}
-						</div>
-					</CardContent>
-				</Card>
-			{/if}
-
-			{#if form?.success}
-				<Card class="border-green-500/30 bg-green-500/5">
-					<CardHeader>
-						<CardTitle class="flex items-center gap-2 text-green-700 dark:text-green-400">
-							<CheckCircle2 class="size-5" />
-							Profile Complete!
-						</CardTitle>
-					</CardHeader>
-					<CardContent class="space-y-4">
-						<p class="text-sm text-green-700/90 dark:text-green-400/90">
-							Your account has been activated. You can now log in with your credentials.
-						</p>
-						<Button href="/auth/login" class="w-full" onclick={() => sessionStorage.clear()}>
-							Go to Login
-						</Button>
-					</CardContent>
-				</Card>
-			{:else}
-				<Card>
-					<CardHeader>
-						<CardTitle>Account Setup</CardTitle>
-						<CardDescription>Secure password and personal information</CardDescription>
-					</CardHeader>
-					<CardContent>
-						<form method="POST" action="?/setup" use:enhance={() => {}} onsubmit={handleSubmit} class="space-y-5">
-							<!-- First Name -->
-							<div class="space-y-2">
-								<Label for="firstName">First Name *</Label>
-								<Input
-									id="firstName"
-									name="firstName"
-									type="text"
-									placeholder="John"
-									bind:value={formData.firstName}
-									class={errors.firstName ? 'border-destructive' : ''}
-									required
-								/>
-								{#if errors.firstName}
-									<p class="text-xs text-destructive">{errors.firstName}</p>
-								{/if}
-							</div>
-
-							<!-- Last Name -->
-							<div class="space-y-2">
-								<Label for="lastName">Last Name *</Label>
-								<Input
-									id="lastName"
-									name="lastName"
-									type="text"
-									placeholder="Doe"
-									bind:value={formData.lastName}
-									class={errors.lastName ? 'border-destructive' : ''}
-									required
-								/>
-								{#if errors.lastName}
-									<p class="text-xs text-destructive">{errors.lastName}</p>
-								{/if}
-							</div>
-
-							<!-- Phone Number -->
-							<div class="space-y-2">
-								<Label for="phoneNumber">Phone Number *</Label>
-								<Input
-									id="phoneNumber"
-									name="phoneNumber"
-									type="tel"
-									placeholder="+234 901 234 5678"
-									bind:value={formData.phoneNumber}
-									class={errors.phoneNumber ? 'border-destructive' : ''}
-									required
-								/>
-								{#if errors.phoneNumber}
-									<p class="text-xs text-destructive">{errors.phoneNumber}</p>
-								{/if}
-							</div>
-
-							<!-- Password -->
-							<div class="space-y-2">
-								<Label for="password">Password *</Label>
-								<div class="relative">
-									<Input
-										id="password"
-										name="password"
-										type={showPassword ? 'text' : 'password'}
-										placeholder="Enter a strong password"
-										bind:value={formData.password}
-										class={errors.password ? 'border-destructive' : ''}
-										required
-									/>
-									<button
-										type="button"
-										onclick={() => (showPassword = !showPassword)}
-										class="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
-										aria-label={showPassword ? 'Hide password' : 'Show password'}
-									>
-										{#if showPassword}
-											<EyeOff class="size-4" />
-										{:else}
-											<Eye class="size-4" />
-										{/if}
-									</button>
-								</div>
-
-								{#if formData.password}
-									<div class="space-y-1">
-										<div class="flex h-2 gap-1 rounded-full bg-muted overflow-hidden">
-											{#each Array(5) as _, i}
-												<div
-													class="flex-1 transition-colors {i < passwordStrength.level
-														? passwordStrength.color
-														: 'bg-gray-300'}"
-												/>
-											{/each}
-										</div>
-										<p class="text-xs font-medium {passwordStrength.color === 'bg-red-500' || passwordStrength.color === 'bg-orange-500'
-											? 'text-destructive'
-											: 'text-muted-foreground'}">
-											Strength: {passwordStrength.label}
-										</p>
-									</div>
-									<p class="text-xs text-muted-foreground">
-										Use at least 8 characters with uppercase, lowercase, numbers, and symbols.
-									</p>
-								{/if}
-
-								{#if errors.password}
-									<p class="text-xs text-destructive">{errors.password}</p>
-								{/if}
-							</div>
-
-							<!-- Confirm Password -->
-							<div class="space-y-2">
-								<Label for="confirmPassword">Confirm Password *</Label>
-								<div class="relative">
-									<Input
-										id="confirmPassword"
-										name="confirmPassword"
-										type={showConfirm ? 'text' : 'password'}
-										placeholder="Re-enter your password"
-										bind:value={formData.confirmPassword}
-										class={errors.confirmPassword ? 'border-destructive' : ''}
-										required
-									/>
-									<button
-										type="button"
-										onclick={() => (showConfirm = !showConfirm)}
-										class="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
-										aria-label={showConfirm ? 'Hide password' : 'Show password'}
-									>
-										{#if showConfirm}
-											<EyeOff class="size-4" />
-										{:else}
-											<Eye class="size-4" />
-										{/if}
-									</button>
-								</div>
-								{#if formData.confirmPassword && !passwordMatch}
-									<p class="text-xs text-destructive">Passwords do not match</p>
-								{/if}
-								{#if errors.confirmPassword}
-									<p class="text-xs text-destructive">{errors.confirmPassword}</p>
-								{/if}
-							</div>
-
-							<!-- Hidden token field -->
-							<input type="hidden" name="token" value={sessionStorage.getItem('staff_onboarding_token') || ''} />
-
-							<!-- Submit Button -->
-							<Button type="submit" class="w-full text-base" size="lg" disabled={!isFormValid}>
-								{#if isSubmitting}
-									<Loader class="mr-2 size-4 animate-spin" />
-									Creating Account…
-								{:else}
-									Create Account
-								{/if}
-							</Button>
-
-							<!-- Terms -->
-							<p class="text-center text-xs text-muted-foreground">
-								By creating your account, you agree to our
-								<a href="#" class="underline hover:text-foreground">Terms of Service</a>
-								and
-								<a href="#" class="underline hover:text-foreground">Privacy Policy</a>.
-							</p>
-						</form>
-					</CardContent>
-				</Card>
-			{/if}
+			<h1 class="text-3xl font-bold">Staff Onboarding</h1>
+			<p class="mt-2 text-sm text-muted-foreground">
+				Complete your profile to start using MOUAU e-Test
+			</p>
 		</div>
+
+		<!-- Loading State -->
+		{#if isVerifying}
+			<Card>
+				<CardContent class="flex flex-col items-center justify-center gap-4 py-12">
+					<Loader class="size-8 animate-spin text-primary" />
+					<p class="text-sm text-muted-foreground">Verifying your invitation...</p>
+				</CardContent>
+			</Card>
+		{:else if error}
+			<!-- Error State -->
+			<Card class="border-destructive/50 bg-destructive/5">
+				<CardHeader>
+					<CardTitle class="flex items-center gap-2 text-destructive">
+						<AlertCircle class="size-5" />
+						Invitation Invalid
+					</CardTitle>
+				</CardHeader>
+				<CardContent class="space-y-4">
+					<p class="text-sm text-destructive">{error}</p>
+					<div class="space-y-2">
+						<p class="text-xs font-medium text-muted-foreground">What to do:</p>
+						<ul class="list-inside list-disc space-y-1 text-xs text-muted-foreground">
+							<li>Check your email for a fresh invitation link</li>
+							<li>Make sure you're using the complete link with the token</li>
+							<li>Links expire after 7 days — request a new one if needed</li>
+							<li>Contact your department HOD if the problem persists</li>
+						</ul>
+					</div>
+					<Button href="/auth/login" variant="outline" class="w-full">
+						Back to Login
+					</Button>
+				</CardContent>
+			</Card>
+		{:else if invitation}
+			<!-- Invitation Confirmed -->
+			<Card>
+				<CardHeader>
+					<CardTitle class="flex items-center gap-2">
+						<CheckCircle2 class="size-5 text-green-600" />
+						Invitation Verified
+					</CardTitle>
+					<CardDescription>
+						Your invitation is valid. Proceed to complete your profile.
+					</CardDescription>
+				</CardHeader>
+				<CardContent class="space-y-5">
+					<!-- Invitation Details -->
+					<div class="space-y-3 rounded-lg bg-muted/50 p-4">
+						<div>
+							<p class="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+								Email
+							</p>
+							<p class="mt-1 text-sm font-mono">{invitation.email}</p>
+						</div>
+						<div class="flex gap-4">
+							<div class="flex-1">
+								<p class="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+									College
+								</p>
+								<p class="mt-1 text-sm font-medium">{invitation.college}</p>
+							</div>
+							<div class="flex-1">
+								<p class="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+									Department
+								</p>
+								<p class="mt-1 text-sm font-medium">{invitation.department}</p>
+							</div>
+						</div>
+						{#if invitation.levels.length > 0}
+							<div>
+								<p class="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+									Assigned Levels
+								</p>
+								<div class="mt-2 flex flex-wrap gap-2">
+									{#each invitation.levels as level}
+										<Badge variant="secondary" class="font-normal">
+											Level {level}
+										</Badge>
+									{/each}
+								</div>
+							</div>
+						{/if}
+					</div>
+
+					<!-- Security Note -->
+					<div
+						class="rounded-lg border border-blue-500/30 bg-blue-500/5 p-3 text-xs text-blue-700 dark:text-blue-400"
+					>
+						<p class="font-medium mb-1">🔒 Secure Onboarding</p>
+						<p>
+							Your invitation token has been verified securely. You'll now set your password
+							and complete your profile.
+						</p>
+					</div>
+
+					<!-- Action Button -->
+					<Button
+						onclick={handleProceed}
+						disabled={isSubmitting}
+						class="w-full text-base"
+						size="lg"
+					>
+						{#if isSubmitting}
+							<Loader class="mr-2 size-4 animate-spin" />
+							Proceeding…
+						{:else}
+							Continue to Profile Setup
+						{/if}
+					</Button>
+				</CardContent>
+			</Card>
+		{:else}
+			<!-- Waiting for verification -->
+			<Card>
+				<CardContent class="flex flex-col items-center justify-center gap-4 py-12">
+					<Loader class="size-8 animate-spin text-primary" />
+					<p class="text-sm text-muted-foreground">Loading invitation...</p>
+				</CardContent>
+			</Card>
+		{/if}
 	</div>
-{/if}
+</div>

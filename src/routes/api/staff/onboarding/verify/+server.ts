@@ -1,54 +1,67 @@
-// src/routes/api/staff/onboarding/verify/+server.ts
+// src/routes/api/staff/invitations/verify/+server.ts
 import { json, error } from '@sveltejs/kit'
 import type { RequestHandler } from './$types'
 import { getPrismaClient } from '$lib/server/db/index.js'
-import crypto from 'crypto'
+import { hashInvitationToken } from '$lib/server/auth/invitationToken'
 
 /**
- * POST /api/staff/onboarding/verify
- * 
- * Verifies a staff invitation token (sent in request body, not URL).
- * Token must be a valid, unexpired, pending invitation.
- * Returns invitation details if valid, or error if invalid/expired.
+ * POST /api/staff/invitations/verify
+ *
+ * Verifies a staff invitation token sent in request body.
+ * Token is never sent in URL — it comes from the hash fragment
+ * extracted client-side and submitted in the body.
+ *
+ * Request body:
+ * {
+ *   "token": "abc123..."
+ * }
+ *
+ * Response:
+ * {
+ *   "success": true,
+ *   "invitation": {
+ *     "id": "inv_123",
+ *     "email": "lecturer@example.com",
+ *     "college": "College of Agriculture",
+ *     "department": "Plant Science",
+ *     "levels": ["100", "200", "300"]
+ *   }
+ * }
  */
 export const POST: RequestHandler = async ({ request }) => {
 	try {
-		// Parse token from request body
 		const body = await request.json()
 		const { token } = body
 
-		// Validate token is provided
+		// Validate token is provided and has correct format
 		if (!token || typeof token !== 'string' || token.length < 32) {
-			throw error(400, 'Invalid token format')
+			throw error(400, 'Invalid or missing invitation token')
 		}
 
 		const prisma = await getPrismaClient()
+		const now = new Date()
 
-		// Hash the token to look it up (same way it was stored)
-		// Tokens should be hashed in DB for security
-		const tokenHash = crypto
-			.createHash('sha256')
-			.update(token)
-			.digest('hex')
+		// Hash the token to look it up (same pattern as password reset verification)
+		const tokenHash = hashInvitationToken(token)
 
-		// Look up invitation by token hash
+		// Find invitation by token hash
 		const invitation = await prisma.staffInvitation.findUnique({
 			where: { tokenHash },
 			include: {
-				college: { select: { id: true, name: true } },
-				department: { select: { id: true, name: true } },
+				college: { select: { name: true } },
+				department: { select: { name: true } },
 			},
 		})
 
-		// Invitation not found
+		// Token not found
 		if (!invitation) {
-			console.warn('[STAFF-ONBOARDING] Token not found or invalid:', { tokenHash: tokenHash.slice(0, 8) + '...' })
+			console.warn('[STAFF-INVITE-VERIFY] Token not found or invalid')
 			throw error(404, 'Invalid invitation token')
 		}
 
 		// Check invitation status
 		if (invitation.status !== 'PENDING') {
-			console.warn('[STAFF-ONBOARDING] Invitation not pending:', {
+			console.warn('[STAFF-INVITE-VERIFY] Invitation not pending', {
 				invitationId: invitation.id,
 				status: invitation.status,
 			})
@@ -56,16 +69,15 @@ export const POST: RequestHandler = async ({ request }) => {
 		}
 
 		// Check expiration
-		const now = new Date()
 		if (now > invitation.expiresAt) {
-			console.warn('[STAFF-ONBOARDING] Invitation expired:', {
+			console.warn('[STAFF-INVITE-VERIFY] Invitation expired', {
 				invitationId: invitation.id,
 				expiresAt: invitation.expiresAt,
 			})
 			throw error(410, 'Invitation has expired. Please request a new one.')
 		}
 
-		// Token is valid — return safe data to client
+		// Token is valid — return invitation details
 		// Do NOT return the token itself back to client
 		return json(
 			{
@@ -81,13 +93,12 @@ export const POST: RequestHandler = async ({ request }) => {
 			{ status: 200 }
 		)
 	} catch (err) {
-		// Log but don't expose internal details to client
+		// Re-throw SvelteKit errors
 		if (err instanceof Error && 'status' in err) {
-			// Re-throw SvelteKit errors
 			throw err
 		}
 
-		console.error('[STAFF-ONBOARDING] Verification error:', err)
+		console.error('[STAFF-INVITE-VERIFY] Verification error:', err)
 		throw error(500, 'Failed to verify invitation')
 	}
 }
