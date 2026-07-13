@@ -13,7 +13,7 @@
 	import {
 		Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 	} from '$lib/components/ui/table/index.js';
-	import { Loader } from '@lucide/svelte/icons';
+	import { Loader, ChevronLeft, ChevronRight } from '@lucide/svelte/icons';
 
 	let { data } = $props();
 
@@ -149,6 +149,13 @@
 			year: 'numeric' 
 		});
 	}
+
+	// Pagination
+	function goToPage(page: number) {
+		const url = new URL(window.location.href);
+		url.searchParams.set('page', String(page));
+		window.location.href = url.toString();
+	}
 </script>
 
 <Topbar title="Staff Invitations" description="Pre-onboard staff before they have an account" />
@@ -276,9 +283,11 @@
 	<Card>
 		<CardHeader>
 			<CardTitle>Recent Invitations</CardTitle>
-			<CardDescription>Last 50 invitations sent</CardDescription>
+			<CardDescription>
+				Showing {data.invitations.length} of {data.pagination.totalItems} invitations
+			</CardDescription>
 		</CardHeader>
-		<CardContent>
+		<CardContent class="space-y-4">
 			<Table>
 				<TableHeader>
 					<TableRow>
@@ -293,65 +302,123 @@
 					</TableRow>
 				</TableHeader>
 				<TableBody>
-					{#each data.invitations as inv}
+					{#if data.invitations.length === 0}
 						<TableRow>
-							<TableCell>
-								{#if inv.staffName}
-									<span class="font-medium">{inv.staffName}</span>
-									{#if inv.acceptedAt}
-										<p class="text-xs text-muted-foreground">
-											Accepted {formatDate(inv.acceptedAt)}
-										</p>
-									{/if}
-								{:else}
-									<span class="text-muted-foreground">—</span>
-								{/if}
-							</TableCell>
-							<TableCell class="font-mono text-sm">{inv.maskedEmail}</TableCell>
-							<TableCell>{inv.role}</TableCell>
-							<TableCell class="text-sm text-muted-foreground">
-								{inv.college === 'N/A' && inv.department === 'N/A' 
-									? '—' 
-									: `${inv.college} / ${inv.department}`}
-							</TableCell>
-							<TableCell class="text-sm">{inv.courses.join(', ') || '—'}</TableCell>
-							<TableCell><Badge variant={statusVariant(inv.status)}>{inv.status}</Badge></TableCell>
-							<TableCell class="text-sm text-muted-foreground">{formatDate(inv.expiresAt)}</TableCell>
-							<TableCell class="text-right">
-								{#if inv.status === 'PENDING'}
-									<div class="flex items-center justify-end gap-1">
-										<Button 
-											variant="ghost" 
-											size="sm" 
-											onclick={() => handleResend(inv.id)}
-											disabled={resendingId === inv.id}
-										>
-											{#if resendingId === inv.id}
-												<Loader class="size-3 animate-spin" />
-											{:else}
-												Resend
-											{/if}
-										</Button>
-										<Button 
-											variant="ghost" 
-											size="sm" 
-											onclick={() => handleRevoke(inv.id)}
-											disabled={revokingId === inv.id}
-											class="text-destructive hover:text-destructive"
-										>
-											{#if revokingId === inv.id}
-												<Loader class="size-3 animate-spin" />
-											{:else}
-												Revoke
-											{/if}
-										</Button>
-									</div>
-								{/if}
+							<TableCell colspan="8" class="text-center text-muted-foreground py-8">
+								No invitations found
 							</TableCell>
 						</TableRow>
-					{/each}
+					{:else}
+						{#each data.invitations as inv}
+							<TableRow>
+								<TableCell>
+									{#if inv.staffName}
+										<span class="font-medium">{inv.staffName}</span>
+										{#if inv.acceptedAt}
+											<p class="text-xs text-muted-foreground">
+												Accepted {formatDate(inv.acceptedAt)}
+											</p>
+										{/if}
+									{:else}
+										<span class="text-muted-foreground">—</span>
+									{/if}
+								</TableCell>
+								<TableCell class="font-mono text-sm">{inv.maskedEmail}</TableCell>
+								<TableCell>{inv.role}</TableCell>
+								<TableCell class="text-sm text-muted-foreground">
+									{inv.college === 'N/A' && inv.department === 'N/A' 
+										? '—' 
+										: `${inv.college} / ${inv.department}`}
+								</TableCell>
+								<TableCell class="text-sm">{inv.courses.join(', ') || '—'}</TableCell>
+								<TableCell><Badge variant={statusVariant(inv.status)}>{inv.status}</Badge></TableCell>
+								<TableCell class="text-sm text-muted-foreground">{formatDate(inv.expiresAt)}</TableCell>
+								<TableCell class="text-right">
+									{#if inv.status === 'PENDING'}
+										<div class="flex items-center justify-end gap-1">
+											<Button 
+												variant="ghost" 
+												size="sm" 
+												onclick={() => handleResend(inv.id)}
+												disabled={resendingId === inv.id}
+											>
+												{#if resendingId === inv.id}
+													<Loader class="size-3 animate-spin" />
+												{:else}
+													Resend
+												{/if}
+											</Button>
+											<Button 
+												variant="ghost" 
+												size="sm" 
+												onclick={() => handleRevoke(inv.id)}
+												disabled={revokingId === inv.id}
+												class="text-destructive hover:text-destructive"
+											>
+												{#if revokingId === inv.id}
+													<Loader class="size-3 animate-spin" />
+												{:else}
+													Revoke
+												{/if}
+											</Button>
+										</div>
+									{/if}
+								</TableCell>
+							</TableRow>
+						{/each}
+					{/if}
 				</TableBody>
 			</Table>
+
+			<!-- Pagination -->
+			{#if data.pagination.totalPages > 1}
+				<div class="flex items-center justify-between border-t pt-4">
+					<div class="text-sm text-muted-foreground">
+						Page {data.pagination.currentPage} of {data.pagination.totalPages}
+						<span class="mx-2">•</span>
+						{data.pagination.totalItems} total
+					</div>
+					<div class="flex gap-1">
+						<Button
+							variant="outline"
+							size="sm"
+							disabled={!data.pagination.hasPrev}
+							onclick={() => goToPage(data.pagination.currentPage - 1)}
+						>
+							<ChevronLeft class="size-3.5" />
+							Previous
+						</Button>
+						{#each Array(Math.min(5, data.pagination.totalPages)).fill(0).map((_, i) => i + 1) as page}
+							<Button
+								variant={page === data.pagination.currentPage ? 'default' : 'outline'}
+								size="sm"
+								on:click={() => goToPage(page)}
+							>
+								{page}
+							</Button>
+						{/each}
+						{#if data.pagination.totalPages > 5}
+							<span class="flex items-center px-2">…</span>
+							<Button
+								variant="outline"
+								size="sm"
+								onclick={() => goToPage(data.pagination.totalPages)}
+							>
+								{data.pagination.totalPages}
+							</Button>
+						{/if}
+						<Button
+							variant="outline"
+							size="sm"
+							disabled={!data.pagination.hasNext}
+							onclick={() => goToPage(data.pagination.currentPage + 1)}
+						>
+							Next
+							<ChevronRight class="size-3.5" />
+						</Button>
+					</div>
+				</div>
+			{/if}
 		</CardContent>
 	</Card>
 </main>

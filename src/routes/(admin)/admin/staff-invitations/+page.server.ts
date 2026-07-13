@@ -13,6 +13,7 @@ const ASSIGNABLE_ROLES: StaffRole[] = Object.values(StaffRole).filter(
 ) as StaffRole[]
 
 const INVITATION_EXPIRY_HOURS = 72
+const PAGE_SIZE = 10
 
 // Roles that don't need college/department assignment
 const ROLES_WITHOUT_COLLEGE_DEPT: StaffRole[] = [
@@ -20,7 +21,9 @@ const ROLES_WITHOUT_COLLEGE_DEPT: StaffRole[] = [
 	'DVC',
 	'REGISTRAR',
 	'UNIVERSITY_EXAM_OFFICER',
-	'UNIVERSITY_COURSE_COORDINATOR'
+	'UNIVERSITY_COURSE_COORDINATOR',
+	'COLLEGE_EXAM_OFFICER',
+	'DEAN'
 ]
 
 // Only these roles may issue invitations
@@ -39,11 +42,15 @@ function maskEmail(email: string): string {
 	return `${first}${middle}${last}@${domain}`
 }
 
-export const load: PageServerLoad = async ({ locals }) => {
+export const load: PageServerLoad = async ({ locals, url }) => {
 	await requireStaff(locals.user)
 	const prisma = await getPrismaClient()
 
-	const [colleges, departments, courses, invitations] = await Promise.all([
+	// Get page from URL
+	const page = parseInt(url.searchParams.get('page') || '1')
+	const skip = (page - 1) * PAGE_SIZE
+
+	const [colleges, departments, courses, invitations, totalCount] = await Promise.all([
 		prisma.college.findMany({ orderBy: { name: 'asc' } }),
 		prisma.department.findMany({ orderBy: { name: 'asc' } }),
 		prisma.course.findMany({ include: { level: true }, orderBy: { code: 'asc' } }),
@@ -55,9 +62,13 @@ export const load: PageServerLoad = async ({ locals }) => {
 				acceptedStaff: true
 			},
 			orderBy: { createdAt: 'desc' },
-			take: 50,
+			skip,
+			take: PAGE_SIZE,
 		}),
+		prisma.staffInvitation.count(),
 	])
+
+	const totalPages = Math.ceil(totalCount / PAGE_SIZE)
 
 	return {
 		roles: ASSIGNABLE_ROLES,
@@ -99,6 +110,14 @@ export const load: PageServerLoad = async ({ locals }) => {
 				acceptedAt: inv.acceptedAt,
 			}
 		}),
+		pagination: {
+			currentPage: page,
+			totalPages,
+			totalItems: totalCount,
+			pageSize: PAGE_SIZE,
+			hasNext: page < totalPages,
+			hasPrev: page > 1,
+		},
 	}
 }
 
