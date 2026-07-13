@@ -1,4 +1,4 @@
-<!-- // src/routes/(auth)/onboarding/+page.svelte -->
+// src/routes/(auth)/onboarding/+page.svelte
 <script lang="ts">
 	import { onMount } from 'svelte'
 	import { goto } from '$app/navigation'
@@ -27,8 +27,8 @@
 	let isSubmitting = $state(false)
 
 	onMount(() => {
-		// Extract token from URL hash (client-side only, never sent to server in URL)
-		const hash = window.location.hash.slice(1) // Remove leading #
+		// Extract token from URL hash
+		const hash = window.location.hash.slice(1)
 		const params = new URLSearchParams(hash)
 		token = params.get('token')
 
@@ -40,7 +40,7 @@
 		// Clear hash from address bar for security
 		window.history.replaceState(null, '', window.location.pathname)
 
-		// Immediately verify token
+		// Verify token
 		verifyToken()
 	})
 
@@ -60,31 +60,40 @@
 				body: JSON.stringify({ token }),
 			})
 
-			// Check if response is JSON
+			// Check if response is OK
+			if (!response.ok) {
+				// Try to parse error from response
+				let errorMessage = `Server returned ${response.status}`
+				try {
+					const errorData = await response.json()
+					errorMessage = errorData.error || errorMessage
+				} catch (e) {
+					// If response is not JSON, get text
+					const text = await response.text()
+					console.error('Non-JSON response:', text)
+					errorMessage = `Server error (${response.status}). Please try again later.`
+				}
+				throw new Error(errorMessage)
+			}
+
+			// Ensure we have JSON
 			const contentType = response.headers.get('content-type')
 			if (!contentType || !contentType.includes('application/json')) {
-				// If not JSON, try to get the text for debugging
 				const text = await response.text()
 				console.error('Non-JSON response:', text)
-				throw new Error('Server returned an error page. Please try again or contact support.')
+				throw new Error('Server returned an invalid response. Please try again.')
 			}
 
 			const result = await response.json()
 
-			if (!response.ok) {
-				error = result.error || 'Invalid or expired invitation'
-				return
-			}
-
 			if (!result.invitation) {
-				error = 'No invitation data received'
-				return
+				throw new Error('No invitation data received')
 			}
 
 			invitation = result.invitation
 		} catch (err) {
 			console.error('Verification error:', err)
-			error = err instanceof Error ? err.message : 'An error occurred while verifying your invitation. Please try again.'
+			error = err instanceof Error ? err.message : 'An error occurred while verifying your invitation.'
 		} finally {
 			isVerifying = false
 		}
@@ -97,7 +106,7 @@
 		error = null
 
 		try {
-			// Store token in sessionStorage (cleared when tab closes)
+			// Store token in sessionStorage
 			sessionStorage.setItem('staff_onboarding_token', token)
 			sessionStorage.setItem('staff_invitation_id', invitation.id)
 
@@ -158,9 +167,14 @@
 							<li>Contact your department HOD if the problem persists</li>
 						</ul>
 					</div>
-					<Button href="/auth/login" variant="outline" class="w-full">
-						Back to Login
-					</Button>
+					<div class="flex gap-2">
+						<Button href="/auth/login" variant="outline" class="flex-1">
+							Back to Login
+						</Button>
+						<Button onclick={() => { error = null; verifyToken(); }} variant="default" class="flex-1">
+							Try Again
+						</Button>
+					</div>
 				</CardContent>
 			</Card>
 		{:else if invitation}
@@ -235,9 +249,7 @@
 					</div>
 
 					<!-- Security Note -->
-					<div
-						class="rounded-lg border border-blue-500/30 bg-blue-500/5 p-3 text-xs text-blue-700 dark:text-blue-400"
-					>
+					<div class="rounded-lg border border-blue-500/30 bg-blue-500/5 p-3 text-xs text-blue-700 dark:text-blue-400">
 						<p class="font-medium mb-1">🔒 Secure Onboarding</p>
 						<p>
 							Your invitation token has been verified securely. You'll now set your password
@@ -246,12 +258,7 @@
 					</div>
 
 					<!-- Action Button -->
-					<Button
-						onclick={handleProceed}
-						disabled={isSubmitting}
-						class="w-full text-base"
-						size="lg"
-					>
+					<Button onclick={handleProceed} disabled={isSubmitting} class="w-full text-base" size="lg">
 						{#if isSubmitting}
 							<Loader class="mr-2 size-4 animate-spin" />
 							Proceeding…
