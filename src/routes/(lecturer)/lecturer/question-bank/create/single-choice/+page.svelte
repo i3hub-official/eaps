@@ -284,6 +284,7 @@ Marks: 1`
 										{#snippet child({ props })}
 											<Button
 												{...props}
+												asChild  
 												variant="outline"
 												class={cn(
 													'w-full justify-between h-12 text-base font-normal',
