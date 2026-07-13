@@ -1,13 +1,15 @@
 // src/lib/components/exam/gesture-service.ts
 
+// 1. Remove 'blink' from types
 export type GestureId = 'turn_left' | 'turn_right' | 'nod_up' | 'nod_down' | 'open_mouth';
 
 export interface GestureDefinition {
   id: GestureId;
   label: string;
-  icon: 'left' | 'right' | 'nod' | 'mouth';
+  icon: 'left' | 'right' | 'nod' | 'mouth'; // Cleaned up 'blink'
 }
 
+// 2. Updated clean gesture pool
 export const ALL_GESTURES: GestureDefinition[] = [
   { id: 'open_mouth', label: 'Open your mouth wide', icon: 'mouth' },
   { id: 'turn_left', label: 'Turn your head left', icon: 'left' },
@@ -35,13 +37,7 @@ function dist(a: number[], b: number[]): number {
   return Math.hypot(a[0] - b[0], a[1] - b[1]);
 }
 
-// ─── Shared angle helpers ──────────────────────────────────────────────────
-// Exported so any other component reading Human's rotation data (e.g.
-// ExamMonitor's AI analysis) uses the exact same property path/units
-// instead of re-guessing and getting it wrong (face.rotation.yaw does NOT
-// exist on Human's result — it's face.rotation.angle.yaw, or a radians
-// fallback at face.angle.yaw).
-export function getYaw(face: any): number {
+function getYaw(face: any): number {
   const deg = face?.rotation?.angle?.yaw;
   if (deg != null) return deg;
   const rad = face?.angle?.yaw ?? face?.rotation?.yaw;
@@ -49,63 +45,41 @@ export function getYaw(face: any): number {
   return 0;
 }
 
-export function getPitch(face: any): number {
+function getPitch(face: any): number {
   const deg = face?.rotation?.angle?.pitch;
   if (deg != null) return deg;
   const rad = face?.angle?.pitch ?? face?.rotation?.pitch;
   if (rad != null) return rad * (180 / Math.PI);
   return 0;
-}
-
-export function getRoll(face: any): number {
-  const deg = face?.rotation?.angle?.roll;
-  if (deg != null) return deg;
-  const rad = face?.angle?.roll ?? face?.rotation?.roll;
-  if (rad != null) return rad * (180 / Math.PI);
-  return 0;
-}
-
-function getYawRad(face: any): number {
-  const rad = face?.angle?.yaw ?? face?.rotation?.yaw;
-  if (rad != null) return rad;
-  const deg = face?.rotation?.angle?.yaw;
-  return deg != null ? deg * (Math.PI / 180) : 0;
-}
-
-function getPitchRad(face: any): number {
-  const rad = face?.angle?.pitch ?? face?.rotation?.pitch;
-  if (rad != null) return rad;
-  const deg = face?.rotation?.angle?.pitch;
-  return deg != null ? deg * (Math.PI / 180) : 0;
 }
 
 function detectTurnLeft(face: any): number {
-  const yaw = getYawRad(face);
-  if (yaw < YAW_LEFT_THRESH - 0.1) return 1.0;
+  const yaw = getYaw(face);
+  if (yaw < YAW_LEFT_THRESH - 5) return 1.0;
   if (yaw < YAW_LEFT_THRESH) return 0.85;
   if (yaw < 0) return 0.30;
   return 0;
 }
 
 function detectTurnRight(face: any): number {
-  const yaw = getYawRad(face);
-  if (yaw > YAW_RIGHT_THRESH + 0.1) return 1.0;
+  const yaw = getYaw(face);
+  if (yaw > YAW_RIGHT_THRESH + 5) return 1.0;
   if (yaw > YAW_RIGHT_THRESH) return 0.85;
   if (yaw > 0) return 0.30;
   return 0;
 }
 
 function detectNodUp(face: any): number {
-  const pitch = getPitchRad(face);
-  if (pitch < PITCH_UP_THRESH - 0.1) return 1.0;
+  const pitch = getPitch(face);
+  if (pitch < PITCH_UP_THRESH - 5) return 1.0;
   if (pitch < PITCH_UP_THRESH) return 0.85;
   if (pitch < 0) return 0.30;
   return 0;
 }
 
 function detectNodDown(face: any): number {
-  const pitch = getPitchRad(face);
-  if (pitch > PITCH_DOWN_THRESH + 0.1) return 1.0;
+  const pitch = getPitch(face);
+  if (pitch > PITCH_DOWN_THRESH + 5) return 1.0;
   if (pitch > PITCH_DOWN_THRESH) return 0.85;
   if (pitch > 0) return 0.30;
   return 0;
@@ -185,6 +159,8 @@ export class GestureTracker {
   }
 
   update(confidence: number, otherGesturesConfident: boolean = false): boolean {
+    // FIX: Only treat it as an explicit attack if the conflicting action is completely undeniable (>= 0.85)
+    // This allows natural facial structural changes during head rotations.
     const hit = confidence >= 0.55 && !otherGesturesConfident;
 
     this.window.push(confidence);
@@ -193,6 +169,7 @@ export class GestureTracker {
     if (hit) {
       this.holdProgress = Math.min(1, this.holdProgress + (1 / this.confirmFrames));
     } else {
+      // If a real attack is happening, penalize heavily. Otherwise, decay normally.
       const penalty = otherGesturesConfident ? DECAY_RATE * 1.5 : DECAY_RATE;
       this.holdProgress = Math.max(0, this.holdProgress - penalty);
     }
@@ -215,10 +192,14 @@ export function createTrackerForGesture(id: GestureId): GestureTracker {
   return new GestureTracker();
 }
 
+/**
+ * Grabs one randomized horizontal head turn, then fills remaining slots up to `count`
+ */
 export function selectGestures(count: number): GestureDefinition[] {
   const pool = [...ALL_GESTURES];
   const selected: GestureDefinition[] = [];
 
+  // Enforce exactly one lateral check to avoid back-to-back turn updates
   const turns = pool.filter(g => g.id === 'turn_left' || g.id === 'turn_right');
   const turn = turns[Math.floor(Math.random() * turns.length)];
   if (turn) {
@@ -233,6 +214,7 @@ export function selectGestures(count: number): GestureDefinition[] {
     pool.splice(idx, 1);
   }
 
+  // Final array shuffle
   for (let i = selected.length - 1; i > 0; i--) {
     const j = Math.floor(Math.random() * (i + 1));
     [selected[i], selected[j]] = [selected[j], selected[i]];
