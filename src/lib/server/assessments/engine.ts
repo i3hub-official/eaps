@@ -14,6 +14,13 @@ import type {
 } from '@prisma/client'
 import { normalizeMarks, toPercentage } from './decimal'
 
+// Sessions in any of these statuses are closed and count as a used attempt.
+// Kept as a single shared constant so this file, student/tests/+page.server.ts,
+// and [sessionId]/+page.server.ts can never drift out of sync on what
+// counts as "terminal" — a prior mismatch here let DISQUALIFIED sessions
+// escape the attempt count in checkStudentEligibility.
+const TERMINAL_STATUSES = ['SUBMITTED', 'TIMED_OUT', 'DISQUALIFIED'] as const
+
 // ─── Types ───────────────────────────────────────────────────────────────────
 
 export interface GradeResult {
@@ -82,17 +89,49 @@ export async function checkStudentEligibility(
     }
   }
 
-  // attempt count check
+  // attempt count check — DISQUALIFIED counts as a used/closed attempt,
+  // same as SUBMITTED/TIMED_OUT, so a disqualified session can't grant an
+  // extra attempt beyond maxAttempts.
   const attempts = await prisma.assessmentSession.count({
     where: {
       assessmentId,
       studentId,
-      status: { in: ['SUBMITTED', 'TIMED_OUT'] },
+      status: { in: TERMINAL_STATUSES },
     },
   })
 
-  if (attempts >= assessment.maxAttempts) {
+  if (assessment.maxAttempts > 0 && attempts >= assessment.maxAttempts) {
     return { eligible: false, reason: 'You have used all available attempts' }
+  }
+
+  // Retake gating — only applies once the student already has at least
+  // one closed attempt. A first attempt is always allowed regardless of
+  // allowRetakes/retakeDelayMinutes, since those settings only govern
+  // whether/when a SECOND+ attempt is permitted.
+  if (attempts > 0) {
+    if (!assessment.allowRetakes) {
+      return { eligible: false, reason: 'Retakes are not allowed for this assessment' }
+    }
+
+    if (assessment.retakeDelayMinutes > 0) {
+      const lastAttempt = await prisma.assessmentSession.findFirst({
+        where: { assessmentId, studentId, status: { in: TERMINAL_STATUSES } },
+        orderBy: { submittedAt: 'desc' },
+        select: { submittedAt: true },
+      })
+
+      if (lastAttempt?.submittedAt) {
+        const elapsedMs = now.getTime() - lastAttempt.submittedAt.getTime()
+        const delayMs = assessment.retakeDelayMinutes * 60 * 1000
+        if (elapsedMs < delayMs) {
+          const nextAttemptTime = new Date(lastAttempt.submittedAt.getTime() + delayMs)
+          return {
+            eligible: false,
+            reason: `You must wait until ${nextAttemptTime.toLocaleTimeString()} before retaking this assessment`,
+          }
+        }
+      }
+    }
   }
 
   // check for active session (prevent double-entry)
@@ -142,16 +181,38 @@ export async function createSession(
   })
   const attemptNumber = (lastAttempt?.attemptNumber ?? 0) + 1
 
-  // Pick paper variant (round-robin A/B/C)
+  // Full pool of questions linked to this assessment.
+  let pool = assessment.questions.map(aq => aq.question)
+
+  // ─── Paper variant assignment + partitioning ─────────────────────────
+  // Round-robin assign this session to a variant label (A/B/C), THEN
+  // partition the question pool so each variant draws from a distinct,
+  // deterministic subset of the bank — sorted by question id so the
+  // partition is stable across calls/sessions rather than re-randomised
+  // each time. Previously `paperVariant` was stored purely as a label
+  // with no effect on which questions were selected, so two students in
+  // "different" variants could still receive the exact same paper.
+  //
+  // If a variant's partition doesn't contain enough questions to satisfy
+  // assessment.questionCount, fall back to the full pool for that
+  // session rather than failing — better to occasionally reuse questions
+  // across variants than to be unable to start a session at all.
   let paperVariant: string | null = null
   if (assessment.paperVariants > 1) {
     const variants = ['A', 'B', 'C'].slice(0, assessment.paperVariants)
     const sessionCount = await prisma.assessmentSession.count({ where: { assessmentId } })
     paperVariant = variants[sessionCount % variants.length]
+
+    const variantIndex = variants.indexOf(paperVariant)
+    const sortedPool = [...pool].sort((a, b) => a.id.localeCompare(b.id))
+    const variantPool = sortedPool.filter((_, idx) => idx % variants.length === variantIndex)
+
+    if (variantPool.length >= assessment.questionCount) {
+      pool = variantPool
+    }
   }
 
-  // Randomise question selection from pool
-  const pool = assessment.questions.map(aq => aq.question)
+  // Randomise question selection from the (possibly variant-partitioned) pool
   const selected = shuffle(pool).slice(0, assessment.questionCount)
 
   // Build shuffled question order with shuffled options per question
@@ -317,7 +378,7 @@ export async function submitSession(
   })
 
   if (!session) throw error(404, 'Session not found')
-  if (['SUBMITTED', 'TIMED_OUT', 'DISQUALIFIED'].includes(session.status)) {
+  if (TERMINAL_STATUSES.includes(session.status as (typeof TERMINAL_STATUSES)[number])) {
     throw error(400, 'Session already closed')
   }
 

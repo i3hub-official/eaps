@@ -359,29 +359,63 @@
 		isSubmitting = true
 		stopTimers()
 
-		try {
-			await toast.promise(
-				fetch(`/api/assessment/session/${data.sessionId}/submit`, { method: 'POST' }).then((r) => {
-					if (!r.ok) throw new Error('Submission failed')
-					return r.json()
-				}),
-				{
-					loading: auto ? 'Time is up — submitting…' : 'Submitting…',
-					success: 'Submitted successfully',
-					error: 'Failed to submit. Please try again.',
-				}
-			).unwrap()
-
-			if (document.fullscreenElement) await document.exitFullscreen?.().catch(() => {})
-
-			await goto(`/student/tests/${data.sessionId}/result`, {
-				replaceState: true,
-				invalidateAll: true,
-			})
-		} catch {
-			isSubmitting = false
-			startTimers()
+		async function navigateToResult(sessionId: string) {
+	// Try SvelteKit navigation first
+	try {
+		await goto(`/student/tests/${sessionId}/result`, {
+			replaceState: true,
+			invalidateAll: true,
+		})
+		
+		// Check if navigation actually happened
+		if (window.location.pathname !== `/student/tests/${sessionId}/result`) {
+			// SvelteKit navigation didn't work, fall back to hard navigation
+			window.location.href = `/student/tests/${sessionId}/result`
 		}
+	} catch (e) {
+		// If SvelteKit navigation throws, use hard navigation
+		window.location.href = `/student/tests/${sessionId}/result`
+	}
+}
+
+try {
+	const result = await toast.promise(
+		fetch(`/api/assessment/session/${data.sessionId}/submit`, { method: 'POST' }).then((r) => {
+			if (!r.ok) throw new Error('Submission failed')
+			return r.json()
+		}),
+		{
+			loading: auto ? 'Time is up — submitting…' : 'Submitting…',
+			success: 'Submitted successfully',
+			error: 'Failed to submit. Please try again.',
+		}
+	).unwrap()
+
+	if (document.fullscreenElement) {
+		await document.exitFullscreen?.().catch(() => {})
+	}
+
+	// Navigate to result page
+	await navigateToResult(data.sessionId)
+} catch (error) {
+	console.error('Submission error:', error)
+	isSubmitting = false
+	startTimers()
+	
+	// On error, try to check if session is already completed
+	try {
+		const checkRes = await fetch(`/api/assessment/session/${data.sessionId}/status`)
+		if (checkRes.ok) {
+			const status = await checkRes.json()
+			if (status.status === 'SUBMITTED' || status.status === 'TIMED_OUT') {
+				await navigateToResult(data.sessionId)
+				return
+			}
+		}
+	} catch (e) {
+		console.error('Failed to check session status:', e)
+	}
+}
 	}
 
 	onMount(() => {
