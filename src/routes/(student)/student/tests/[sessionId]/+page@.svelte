@@ -18,10 +18,8 @@
 	import { RadioGroup, RadioGroupItem } from '$lib/components/ui/radio-group/index.js'
 	import { Textarea } from '$lib/components/ui/textarea/index.js'
 	import { Input } from '$lib/components/ui/input/index.js'
-	import { Slider } from '$lib/components/ui/slider/index.js'
 	import FaceVerifyModal from '$lib/components/exam/FaceVerifyModal.svelte'
 	import DeviceCheckPanel from '$lib/components/exam/DeviceCheckPanel.svelte'
-	import CheckCircle2 from '@lucide/svelte/icons/check-circle-2'
 	import AlertCircle from '@lucide/svelte/icons/alert-circle'
 	import Clock from '@lucide/svelte/icons/clock'
 	import ArrowLeft from '@lucide/svelte/icons/arrow-left'
@@ -60,14 +58,8 @@
 	let termsAccepted = $state(Boolean(data.termsAcceptedAt))
 	let devicePassed = $state(false)
 
-	// ─── Question palette number size (small / normal / big) ───────────────
-	// 0 = small, 1 = normal, 2 = big
-	let numberSize = $state<number>(1)
-	const NUMBER_SIZE_CLASSES = [
-		'size-6 text-[10px]',
-		'size-8 text-xs',
-		'size-11 text-sm',
-	]
+	// ─── Question palette: fixed large size for accessibility ──────────────
+	const NUMBER_SIZE_CLASS = 'size-12 text-base font-bold'
 
 	// ─── Kiosk state ─────────────────────────────────────────────────────────
 	let questions = $state(data.questions.map((q) => ({ ...q })))
@@ -559,15 +551,7 @@
 
 		<div class="flex flex-1">
 			<!-- Question palette -->
-			<aside class="hidden w-48 shrink-0 border-r p-4 md:block">
-				<div class="mb-4">
-					<p class="mb-1 text-[11px] font-medium text-muted-foreground">Number size</p>
-					<Slider type="single" min={0} max={2} step={1} bind:value={numberSize} class="w-full" />
-					<div class="mt-1 flex justify-between text-[10px] text-muted-foreground">
-						<span>Small</span><span>Normal</span><span>Big</span>
-					</div>
-				</div>
-
+			<aside class="hidden w-56 shrink-0 border-r p-4 md:block">
 				<div class="grid grid-cols-5 gap-2">
 					{#each questions as q, i}
 						{@const answered =
@@ -581,7 +565,7 @@
 						<button
 							type="button"
 							onclick={() => goTo(i)}
-							class="flex items-center justify-center rounded-md border font-semibold {NUMBER_SIZE_CLASSES[numberSize]}
+							class="flex items-center justify-center rounded-md border font-semibold {NUMBER_SIZE_CLASS}
 								{i === currentIndex ? 'border-primary bg-primary text-primary-foreground' : answered ? 'border-primary/40 bg-primary/10' : 'border-border'}"
 						>
 							{i + 1}
@@ -594,39 +578,39 @@
 			</aside>
 
 			<!-- Question body -->
-			<main class="mx-auto flex w-full max-w-2xl flex-1 flex-col gap-6 p-6">
+			<main class="mx-auto flex w-full max-w-3xl flex-1 flex-col gap-6 p-6">
 				<div>
-					<p class="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+					<p class="text-sm font-medium uppercase tracking-wide text-muted-foreground">
 						Question {currentIndex + 1} of {questions.length} · {currentQuestion.marks} mark{currentQuestion.marks === 1 ? '' : 's'}
 					</p>
-					<p class="mt-2 text-lg">{currentQuestion.body}</p>
+					<p class="mt-3 text-2xl font-semibold leading-relaxed">{currentQuestion.body}</p>
 				</div>
 
 				{#if currentQuestion.type === 'SINGLE_CHOICE' || currentQuestion.type === 'TRUE_FALSE'}
-					<RadioGroup value={currentQuestion.selectedOptions[0] ?? ''} onValueChange={selectSingle} class="space-y-2">
+					<RadioGroup value={currentQuestion.selectedOptions[0] ?? ''} onValueChange={selectSingle} class="space-y-3">
 						{#each currentQuestion.options as opt, i}
-							<label class="flex items-center gap-3 rounded-lg border p-3 cursor-pointer hover:bg-muted/40">
+							<label class="flex items-center gap-3 rounded-lg border-2 p-4 cursor-pointer transition-all {currentQuestion.selectedOptions.includes(opt.id) ? 'border-primary bg-primary/10' : 'border-border hover:border-primary/50 hover:bg-muted/40'}">
 								<RadioGroupItem value={opt.id} />
-								<span class="flex size-5 shrink-0 items-center justify-center rounded border text-[11px] font-semibold text-muted-foreground">
+								<span class="flex size-6 shrink-0 items-center justify-center rounded border font-bold text-sm">
 									{String.fromCharCode(65 + i)}
 								</span>
-								<span class="text-sm">{opt.body}</span>
+								<span class="text-base font-medium">{opt.body}</span>
 							</label>
 						{/each}
 					</RadioGroup>
 
 				{:else if currentQuestion.type === 'MULTIPLE_CHOICE'}
-					<div class="space-y-2">
+					<div class="space-y-3">
 						{#each currentQuestion.options as opt, i}
-							<label class="flex items-center gap-3 rounded-lg border p-3 cursor-pointer hover:bg-muted/40">
+							<label class="flex items-center gap-3 rounded-lg border-2 p-4 cursor-pointer transition-all {currentQuestion.selectedOptions.includes(opt.id) ? 'border-primary bg-primary/10' : 'border-border hover:border-primary/50 hover:bg-muted/40'}">
 								<Checkbox
 									checked={currentQuestion.selectedOptions.includes(opt.id)}
 									onCheckedChange={() => toggleMultiple(opt.id)}
 								/>
-								<span class="flex size-5 shrink-0 items-center justify-center rounded border text-[11px] font-semibold text-muted-foreground">
+								<span class="flex size-6 shrink-0 items-center justify-center rounded border font-bold text-sm">
 									{String.fromCharCode(65 + i)}
 								</span>
-								<span class="text-sm">{opt.body}</span>
+								<span class="text-base font-medium">{opt.body}</span>
 							</label>
 						{/each}
 					</div>
@@ -636,14 +620,16 @@
 						value={currentQuestion.textAnswer}
 						oninput={(e) => updateText((e.currentTarget as HTMLInputElement).value)}
 						placeholder="Type your answer"
+						class="text-lg p-3 h-12"
 					/>
 
 				{:else if currentQuestion.type === 'ESSAY'}
 					<Textarea
 						value={currentQuestion.textAnswer}
 						oninput={(e) => updateText((e.currentTarget as HTMLTextAreaElement).value)}
-						rows={8}
+						rows={10}
 						placeholder="Write your answer here"
+						class="text-lg p-3"
 					/>
 
 				{:else if currentQuestion.type === 'ORDERING'}
@@ -651,7 +637,7 @@
 						{#each currentQuestion.orderAnswer as optId, i}
 							<div class="flex items-center gap-3 rounded-lg border p-3">
 								<span class="w-6 text-sm font-semibold text-muted-foreground">{i + 1}</span>
-								<span class="flex-1 text-sm">{optionBody(optId)}</span>
+								<span class="flex-1 text-base font-medium">{optionBody(optId)}</span>
 								<Button variant="ghost" size="sm" class="h-7 w-7 p-0" onclick={() => moveOrderItem(i, -1)} disabled={i === 0}>
 									<ArrowUp class="size-3.5" />
 								</Button>
@@ -666,9 +652,9 @@
 					<div class="space-y-2">
 						{#each currentQuestion.leftItems ?? [] as leftBody}
 							<div class="flex items-center gap-3 rounded-lg border p-3">
-								<span class="flex-1 text-sm">{leftBody}</span>
+								<span class="flex-1 text-base font-medium">{leftBody}</span>
 								<select
-									class="h-9 rounded-md border border-input bg-background px-2 text-sm"
+									class="h-10 rounded-md border border-input bg-background px-2 text-base font-medium"
 									value={currentQuestion.matchAnswer[leftBody] ?? ''}
 									onchange={(e) => updateMatch(leftBody, (e.currentTarget as HTMLSelectElement).value)}
 								>
@@ -683,22 +669,19 @@
 				{/if}
 
 				<div class="mt-auto flex items-center justify-between gap-2 pt-4">
-					<Button variant="outline" onclick={() => goTo(currentIndex - 1)} disabled={currentIndex === 0}>
+					<Button variant="outline" onclick={() => goTo(currentIndex - 1)} disabled={currentIndex === 0} class="text-base">
 						<ArrowLeft class="mr-2 size-4" /> Previous <span class="ml-1 text-[10px] opacity-60">(P)</span>
 					</Button>
 
 					<div class="flex items-center gap-2">
-						<!-- Visible whenever every question is answered, on ANY page —
-						     not only on the last one. Also kept visible on the last
-						     page even if not everything is answered yet, so the
-						     student is never stuck without a way to submit. -->
+						<!-- Show submit button as soon as ALL questions are answered, OR on the last page -->
 						{#if allAnswered || currentIndex === questions.length - 1}
-							<Button onclick={openSubmitConfirm} disabled={isSubmitting}>
+							<Button onclick={openSubmitConfirm} disabled={isSubmitting} class="text-base font-semibold">
 								{isSubmitting ? 'Submitting…' : 'Submit Test'} <span class="ml-1 text-[10px] opacity-70">(Y)</span>
 							</Button>
 						{/if}
 						{#if currentIndex < questions.length - 1}
-							<Button variant={allAnswered ? 'outline' : 'default'} onclick={() => goTo(currentIndex + 1)}>
+							<Button variant={allAnswered ? 'outline' : 'default'} onclick={() => goTo(currentIndex + 1)} class="text-base">
 								Next <ArrowRight class="ml-2 size-4" /> <span class="ml-1 text-[10px] opacity-60">(N)</span>
 							</Button>
 						{/if}
