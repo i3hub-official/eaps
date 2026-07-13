@@ -13,6 +13,17 @@ const ASSIGNABLE_ROLES: StaffRole[] = Object.values(StaffRole).filter(
 
 const INVITATION_EXPIRY_HOURS = 72
 
+// Roles that don't need college/department assignment
+const ROLES_WITHOUT_COLLEGE_DEPT: StaffRole[] = [
+	'VC',
+	'DVC',
+	'REGISTRAR',
+	'UNIVERSITY_EXAM_OFFICER',
+	'UNIVERSITY_COURSE_COORDINATOR',
+	'COLLEGE_EXAM_OFFICER',
+	'DEAN',
+]
+
 // Only these roles may issue invitations. Every route inside (admin) is
 // already gated to SUPER_ADMIN by routeGuard.ts at the layout level, but
 // SvelteKit does NOT re-run parent load()/guards before executing a form
@@ -37,6 +48,7 @@ export const load: PageServerLoad = async ({ locals }) => {
 
 	return {
 		roles: ASSIGNABLE_ROLES,
+		rolesWithoutCollegeDept: ROLES_WITHOUT_COLLEGE_DEPT,
 		colleges: colleges.map((c) => ({ id: c.id, name: c.name, shortName: c.shortName })),
 		departments: departments.map((d) => ({ id: d.id, name: d.name, collegeId: d.collegeId })),
 		courses: courses.map((c) => ({
@@ -50,8 +62,8 @@ export const load: PageServerLoad = async ({ locals }) => {
 			id: inv.id,
 			email: inv.email,
 			role: inv.primaryRole,
-			college: inv.college.shortName,
-			department: inv.department.shortName,
+			college: inv.college?.shortName || 'N/A',
+			department: inv.department?.shortName || 'N/A',
 			levels: inv.levels,
 			courses: inv.courses.map((c) => c.course.code),
 			status: inv.status,
@@ -79,27 +91,40 @@ export const actions: Actions = {
 		const errors: Record<string, string> = {}
 		if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) errors.email = 'A valid email is required'
 		if (!ASSIGNABLE_ROLES.includes(primaryRole)) errors.primaryRole = 'Select a valid role'
-		if (!collegeId) errors.collegeId = 'Select a college'
-		if (!departmentId) errors.departmentId = 'Select a department'
+
+		// Only validate college/department for roles that need them
+		const needsCollegeDept = !ROLES_WITHOUT_COLLEGE_DEPT.includes(primaryRole)
+		
+		if (needsCollegeDept) {
+			if (!collegeId) errors.collegeId = 'Select a college'
+			if (!departmentId) errors.departmentId = 'Select a department'
+		}
 
 		if (Object.keys(errors).length > 0) return fail(400, { errors })
 
 		const prisma = await getPrismaClient()
 
-		const [college, department] = await Promise.all([
-			prisma.college.findUnique({ where: { id: collegeId } }),
-			prisma.department.findUnique({ where: { id: departmentId } }),
-		])
-		if (!college) return fail(400, { errors: { collegeId: 'College not found' } })
-		if (!department || department.collegeId !== collegeId) {
-			return fail(400, { errors: { departmentId: 'Department does not belong to the selected college' } })
+		let college = null
+		let department = null
+
+		// Only validate college/department for roles that need them
+		if (needsCollegeDept) {
+			const [c, d] = await Promise.all([
+				prisma.college.findUnique({ where: { id: collegeId } }),
+				prisma.department.findUnique({ where: { id: departmentId } }),
+			])
+			college = c
+			department = d
+			
+			if (!college) return fail(400, { errors: { collegeId: 'College not found' } })
+			if (!department || department.collegeId !== collegeId) {
+				return fail(400, { errors: { departmentId: 'Department does not belong to the selected college' } })
+			}
 		}
 
 		// Verify selected courses actually belong to this department, and
-		// (if levels were specified) fall within the invited levels — a
-		// mismatch here would silently assign someone a course outside the
-		// scope the admin intended.
-		if (courseIds.length > 0) {
+		// (if levels were specified) fall within the invited levels
+		if (courseIds.length > 0 && needsCollegeDept) {
 			const validCourses = await prisma.course.findMany({
 				where: { id: { in: courseIds }, departmentId },
 				select: { id: true, levelId: true, level: { select: { name: true } } },
@@ -115,8 +140,7 @@ export const actions: Actions = {
 			}
 		}
 
-		// One PENDING invitation per email at a time — resending should
-		// revoke the old one first, not silently stack duplicates.
+		// One PENDING invitation per email at a time
 		const existingPending = await prisma.staffInvitation.findFirst({
 			where: { email, status: 'PENDING' },
 		})
@@ -134,14 +158,16 @@ export const actions: Actions = {
 				data: {
 					email,
 					primaryRole,
-					collegeId,
-					departmentId,
-					levels,
+					collegeId: needsCollegeDept ? collegeId : null,
+					departmentId: needsCollegeDept ? departmentId : null,
+					levels: needsCollegeDept ? levels : [],
 					tokenHash,
 					status: 'PENDING',
 					invitedById: admin.id,
 					expiresAt,
-					courses: courseIds.length > 0 ? { create: courseIds.map((courseId) => ({ courseId })) } : undefined,
+					courses: needsCollegeDept && courseIds.length > 0 
+						? { create: courseIds.map((courseId) => ({ courseId })) } 
+						: undefined,
 				},
 			})
 		} catch (err) {
@@ -149,17 +175,18 @@ export const actions: Actions = {
 			return fail(500, { error: 'Failed to create invitation' })
 		}
 
-		const courseList = courseIds.length
+		const courseList = courseIds.length && needsCollegeDept
 			? (
 					await prisma.course.findMany({ where: { id: { in: courseIds } }, select: { code: true } })
 				).map((c) => c.code)
 			: []
 
+		// Send email with appropriate details
 		sendStaffInvitationEmail(
 			email,
 			primaryRole,
-			college.name,
-			department.name,
+			needsCollegeDept ? college?.name || '' : 'N/A',
+			needsCollegeDept ? department?.name || '' : 'N/A',
 			courseList,
 			token,
 			INVITATION_EXPIRY_HOURS

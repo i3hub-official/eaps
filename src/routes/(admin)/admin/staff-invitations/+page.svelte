@@ -25,6 +25,9 @@
 	let isSubmitting = $state(false);
 	let errors = $state<Record<string, string>>({});
 
+	// Check if selected role needs college/department
+	const needsCollegeDept = $derived(!data.rolesWithoutCollegeDept.includes(primaryRole));
+
 	const availableDepartments = $derived(
 		data.departments.filter((d) => !collegeId || d.collegeId === collegeId)
 	);
@@ -57,10 +60,14 @@
 		const fd = new FormData();
 		fd.set('email', email);
 		fd.set('primaryRole', primaryRole);
-		fd.set('collegeId', collegeId);
-		fd.set('departmentId', departmentId);
-		selectedLevels.forEach((l) => fd.append('levels', String(l)));
-		selectedCourseIds.forEach((c) => fd.append('courseIds', c));
+		
+		// Only include college/department if needed
+		if (needsCollegeDept) {
+			fd.set('collegeId', collegeId);
+			fd.set('departmentId', departmentId);
+			selectedLevels.forEach((l) => fd.append('levels', String(l)));
+			selectedCourseIds.forEach((c) => fd.append('courseIds', c));
+		}
 
 		try {
 			const res = await fetch('?/create', { method: 'POST', body: fd });
@@ -128,7 +135,20 @@
 
 					<div class="space-y-2">
 						<Label for="role">Role *</Label>
-						<select id="role" bind:value={primaryRole} class="h-10 w-full rounded-md border border-input bg-background px-3 text-sm">
+						<select 
+							id="role" 
+							bind:value={primaryRole} 
+							onchange={() => {
+								// Reset fields when role changes
+								if (!needsCollegeDept) {
+									collegeId = '';
+									departmentId = '';
+									selectedLevels = [];
+									selectedCourseIds = [];
+								}
+							}}
+							class="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
+						>
 							{#each data.roles as role}
 								<option value={role}>{role}</option>
 							{/each}
@@ -136,71 +156,79 @@
 						{#if errors.primaryRole}<p class="text-sm text-destructive">{errors.primaryRole}</p>{/if}
 					</div>
 
-					<div class="space-y-2">
-						<Label for="college">College *</Label>
-						<select
-							id="college"
-							bind:value={collegeId}
-							onchange={() => { departmentId = ''; selectedCourseIds = []; }}
-							class="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
-						>
-							<option value="">Select college</option>
-							{#each data.colleges as c}
-								<option value={c.id}>{c.shortName} — {c.name}</option>
-							{/each}
-						</select>
-						{#if errors.collegeId}<p class="text-sm text-destructive">{errors.collegeId}</p>{/if}
-					</div>
+					{#if needsCollegeDept}
+						<div class="space-y-2">
+							<Label for="college">College *</Label>
+							<select
+								id="college"
+								bind:value={collegeId}
+								onchange={() => { departmentId = ''; selectedCourseIds = []; }}
+								class="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
+							>
+								<option value="">Select college</option>
+								{#each data.colleges as c}
+									<option value={c.id}>{c.shortName} — {c.name}</option>
+								{/each}
+							</select>
+							{#if errors.collegeId}<p class="text-sm text-destructive">{errors.collegeId}</p>{/if}
+						</div>
 
-					<div class="space-y-2">
-						<Label for="department">Department *</Label>
-						<select
-							id="department"
-							bind:value={departmentId}
-							disabled={!collegeId}
-							onchange={() => { selectedCourseIds = []; }}
-							class="h-10 w-full rounded-md border border-input bg-background px-3 text-sm disabled:opacity-50"
-						>
-							<option value="">Select department</option>
-							{#each availableDepartments as d}
-								<option value={d.id}>{d.name}</option>
-							{/each}
-						</select>
-						{#if errors.departmentId}<p class="text-sm text-destructive">{errors.departmentId}</p>{/if}
-					</div>
+						<div class="space-y-2">
+							<Label for="department">Department *</Label>
+							<select
+								id="department"
+								bind:value={departmentId}
+								disabled={!collegeId}
+								onchange={() => { selectedCourseIds = []; }}
+								class="h-10 w-full rounded-md border border-input bg-background px-3 text-sm disabled:opacity-50"
+							>
+								<option value="">Select department</option>
+								{#each availableDepartments as d}
+									<option value={d.id}>{d.name}</option>
+								{/each}
+							</select>
+							{#if errors.departmentId}<p class="text-sm text-destructive">{errors.departmentId}</p>{/if}
+						</div>
+					{/if}
 				</div>
 
-				<div class="space-y-2">
-					<Label>Levels they teach (optional — filters course list below)</Label>
-					<div class="flex flex-wrap gap-2">
-						{#each availableLevels as level}
-							<label class="flex items-center gap-2 rounded-md border px-3 py-1.5 text-sm cursor-pointer">
-								<Checkbox checked={selectedLevels.includes(level)} onCheckedChange={() => toggleLevel(level)} />
-								{level}
-							</label>
-						{/each}
-					</div>
-				</div>
-
-				<div class="space-y-2">
-					<Label>Courses they teach</Label>
-					{#if !departmentId}
-						<p class="text-sm text-muted-foreground">Select a department to see available courses.</p>
-					{:else if availableCourses.length === 0}
-						<p class="text-sm text-muted-foreground">No courses match the selected department/levels.</p>
-					{:else}
-						<div class="max-h-64 overflow-y-auto rounded-md border divide-y">
-							{#each availableCourses as course}
-								<label class="flex items-center gap-3 p-2.5 text-sm cursor-pointer hover:bg-muted/40">
-									<Checkbox checked={selectedCourseIds.includes(course.id)} onCheckedChange={() => toggleCourse(course.id)} />
-									<span>{course.code} — {course.title}</span>
-									<Badge variant="outline" class="ml-auto text-xs">{course.level}L</Badge>
+				{#if needsCollegeDept}
+					<div class="space-y-2">
+						<Label>Levels they teach (optional — filters course list below)</Label>
+						<div class="flex flex-wrap gap-2">
+							{#each availableLevels as level}
+								<label class="flex items-center gap-2 rounded-md border px-3 py-1.5 text-sm cursor-pointer">
+									<Checkbox checked={selectedLevels.includes(level)} onCheckedChange={() => toggleLevel(level)} />
+									{level}
 								</label>
 							{/each}
 						</div>
-					{/if}
-					{#if errors.courseIds}<p class="text-sm text-destructive">{errors.courseIds}</p>{/if}
-				</div>
+					</div>
+
+					<div class="space-y-2">
+						<Label>Courses they teach</Label>
+						{#if !departmentId}
+							<p class="text-sm text-muted-foreground">Select a department to see available courses.</p>
+						{:else if availableCourses.length === 0}
+							<p class="text-sm text-muted-foreground">No courses match the selected department/levels.</p>
+						{:else}
+							<div class="max-h-64 overflow-y-auto rounded-md border divide-y">
+								{#each availableCourses as course}
+									<label class="flex items-center gap-3 p-2.5 text-sm cursor-pointer hover:bg-muted/40">
+										<Checkbox checked={selectedCourseIds.includes(course.id)} onCheckedChange={() => toggleCourse(course.id)} />
+										<span>{course.code} — {course.title}</span>
+										<Badge variant="outline" class="ml-auto text-xs">{course.level}L</Badge>
+									</label>
+								{/each}
+							</div>
+						{/if}
+						{#if errors.courseIds}<p class="text-sm text-destructive">{errors.courseIds}</p>{/if}
+					</div>
+				{:else}
+					<div class="rounded-lg bg-muted/50 p-4 text-sm text-muted-foreground">
+						<p>University-wide roles (VC, DVC, Registrar, etc.) do not require college or department assignment.</p>
+					</div>
+				{/if}
 
 				<Button type="submit" disabled={isSubmitting}>
 					{isSubmitting ? 'Sending…' : 'Send Invitation'}
@@ -232,7 +260,11 @@
 						<TableRow>
 							<TableCell class="font-medium">{inv.email}</TableCell>
 							<TableCell>{inv.role}</TableCell>
-							<TableCell class="text-sm text-muted-foreground">{inv.college} / {inv.department}</TableCell>
+							<TableCell class="text-sm text-muted-foreground">
+								{inv.college === 'N/A' && inv.department === 'N/A' 
+									? '—' 
+									: `${inv.college} / ${inv.department}`}
+							</TableCell>
 							<TableCell class="text-sm">{inv.courses.join(', ') || '—'}</TableCell>
 							<TableCell><Badge variant={statusVariant(inv.status)}>{inv.status}</Badge></TableCell>
 							<TableCell class="text-sm text-muted-foreground">{new Date(inv.expiresAt).toLocaleDateString()}</TableCell>

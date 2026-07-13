@@ -161,10 +161,7 @@ export const navByRole: Record<Role, NavSection[]> = {
 			items: [
 				{ label: 'Students', href: '/admin/students', icon: GraduationCap },
 				{ label: 'Lecturers', href: '/admin/lecturers', icon: Users },
-				{ label: 'Exam officers', href: '/admin/exam-officers', icon: Users },
-				{ label: 'Invigilators', href: '/admin/invigilators', icon: Users },
-				{ label: 'Administrators', href: '/admin/administrators', icon: Users },
-				{ label: 'Invitations', href: '/admin/staff-invitations', icon: Mail }
+							{ label: 'Invitations', href: '/admin/staff-invitations', icon: Mail }
 			]
 		},
 		{
