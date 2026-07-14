@@ -2,35 +2,59 @@ import sharp from 'sharp';
 import fs from 'fs';
 import path from 'path';
 
-const SOURCE_IMAGE = 'static/eaps.svg';
-const TARGET_DIR = 'static/icons';
-
-// Sizes referenced in vite.config.ts manifest, plus common extras for
-// apple-touch-icon / favicons. Naming matches the manifest: icon-{size}x{size}.png
-const sizes = [72, 96, 128, 144, 152, 180, 192, 384, 512];
-
-// Background used for maskable icons (matches manifest theme_color/background_color)
+// ---------------------------------------------------------------------------
+// Icons config
+// ---------------------------------------------------------------------------
+const ICON_SOURCE = 'static/eaps.svg';
+const ICON_TARGET_DIR = 'static/icons';
+const ICON_SIZES = [72, 96, 128, 144, 152, 180, 192, 384, 512];
 const MASKABLE_BG = { r: 0, g: 0, b: 0, alpha: 1 };
 
-async function generateIcons() {
-    console.log(`🚀 Starting icon generation from: ${SOURCE_IMAGE}`);
+// ---------------------------------------------------------------------------
+// Screenshots config
+// ---------------------------------------------------------------------------
+const SCREENSHOT_TARGET_DIR = 'static/screenshots';
 
-    if (!fs.existsSync(SOURCE_IMAGE)) {
-        console.error(`❌ Error: Source image "${SOURCE_IMAGE}" not found.`);
+// Update these to match your actual source files in the static folder
+const SCREENSHOT_SOURCES = [
+    {
+        input: 'static/desktop-wide.png', // <-- change to your actual filename
+        output: path.join(SCREENSHOT_TARGET_DIR, 'desktop-wide.png'),
+        width: 1280,
+        height: 800,
+        label: 'desktop'
+    },
+    {
+        input: 'static/mobile-narrow.png', // <-- change to your actual filename
+        output: path.join(SCREENSHOT_TARGET_DIR, 'mobile-narrow.png'),
+        width: 750,
+        height: 1334,
+        label: 'mobile'
+    }
+];
+
+// ---------------------------------------------------------------------------
+// Icon generation
+// ---------------------------------------------------------------------------
+async function generateIcons() {
+    console.log(`🚀 Starting icon generation from: ${ICON_SOURCE}`);
+
+    if (!fs.existsSync(ICON_SOURCE)) {
+        console.warn(`⚠️  Skipping icons: source "${ICON_SOURCE}" not found.`);
         return;
     }
 
-    if (!fs.existsSync(TARGET_DIR)) {
-        fs.mkdirSync(TARGET_DIR, { recursive: true });
+    if (!fs.existsSync(ICON_TARGET_DIR)) {
+        fs.mkdirSync(ICON_TARGET_DIR, { recursive: true });
     }
 
     try {
         // --- Standard "any" purpose icons (transparent background) ---
-        const anyIconPromises = sizes.map(async (size) => {
-            const outputPath = path.join(TARGET_DIR, `icon-${size}x${size}.png`);
+        const anyIconPromises = ICON_SIZES.map(async (size) => {
+            const outputPath = path.join(ICON_TARGET_DIR, `icon-${size}x${size}.png`);
 
-            await sharp(SOURCE_IMAGE)
-                .trim() // removes existing white/transparent borders
+            await sharp(ICON_SOURCE)
+                .trim()
                 .resize(size, size, {
                     fit: 'contain',
                     background: { r: 0, g: 0, b: 0, alpha: 0 }
@@ -44,17 +68,14 @@ async function generateIcons() {
         await Promise.all(anyIconPromises);
 
         // --- Maskable icon (512x512) ---
-        // Maskable icons get cropped into circles/squircles/etc by the OS, so
-        // artwork must sit inside a safe zone (~80% of the canvas, centered)
-        // with a solid background that fills the full square.
         const maskableSize = 512;
         const safeZoneRatio = 0.8;
         const contentSize = Math.round(maskableSize * safeZoneRatio);
         const padding = Math.round((maskableSize - contentSize) / 2);
 
-        const maskableOutputPath = path.join(TARGET_DIR, `icon-maskable-512x512.png`);
+        const maskableOutputPath = path.join(ICON_TARGET_DIR, `icon-maskable-512x512.png`);
 
-        const resizedContent = await sharp(SOURCE_IMAGE)
+        const resizedContent = await sharp(ICON_SOURCE)
             .trim()
             .resize(contentSize, contentSize, {
                 fit: 'contain',
@@ -75,15 +96,50 @@ async function generateIcons() {
             .toFile(maskableOutputPath);
 
         console.log(`✅ Generated: ${maskableOutputPath}`);
-
-        console.log('\x1b[32m%s\x1b[0m', '\nDone! Icons match vite.config.ts manifest.');
-        console.log(
-            '\x1b[33m%s\x1b[0m',
-            '⚠️  Note: screenshots (desktop-wide.png / mobile-narrow.png) are real UI captures, not generated from the logo — you\'ll need to add those to static/screenshots/ separately.'
-        );
     } catch (error) {
-        console.error('An error occurred during generation:', error);
+        console.error('An error occurred during icon generation:', error);
     }
 }
 
-generateIcons();
+// ---------------------------------------------------------------------------
+// Screenshot generation
+// ---------------------------------------------------------------------------
+async function generateScreenshots() {
+    console.log('\n🚀 Resizing PWA screenshots to manifest dimensions...');
+
+    if (!fs.existsSync(SCREENSHOT_TARGET_DIR)) {
+        fs.mkdirSync(SCREENSHOT_TARGET_DIR, { recursive: true });
+    }
+
+    for (const { input, output, width, height, label } of SCREENSHOT_SOURCES) {
+        if (!fs.existsSync(input)) {
+            console.warn(`⚠️  Skipping ${label}: source "${input}" not found.`);
+            continue;
+        }
+
+        try {
+            await sharp(input)
+                .resize(width, height, {
+                    fit: 'cover',
+                    position: 'center'
+                })
+                .png()
+                .toFile(output);
+
+            console.log(`✅ Generated ${label}: ${output} (${width}x${height})`);
+        } catch (error) {
+            console.error(`An error occurred generating ${label}:`, error);
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Run
+// ---------------------------------------------------------------------------
+async function run() {
+    await generateIcons();
+    await generateScreenshots();
+    console.log('\x1b[32m%s\x1b[0m', '\nDone!');
+}
+
+run();
