@@ -2,10 +2,8 @@
 // AES-256-GCM encryption for face descriptors + cross-student duplicate detection
 // Key is loaded from environment — never hardcoded
 
-import { Worker } from 'worker_threads'
-import { resolve } from 'path'
 import { createCipheriv, createDecipheriv, randomBytes } from 'crypto'
-import { getPrismaClient } from '$lib/server/db/index.js';
+import { getPrismaClient, prisma } from '$lib/server/db/index.js';
 import { env }    from '$env/dynamic/private';
 
 
@@ -74,42 +72,12 @@ export async function decryptDescriptor(
   return JSON.parse(decrypted.toString('utf8')) as number[]
 }
 
-/**
- * Offloads vector math to a worker thread to keep the main SvelteKit thread completely free.
- */
-function runDuplicateWorker(
-  newDescriptor: number[],
-  records: { studentId: string; descriptor: number[] }[]
-): Promise<string | null> {
-  return new Promise((res, rej) => {
-    // Dynamically resolve worker path safely across build environments
-    const workerPath = resolve('src/lib/server/face/duplicate.worker.ts')
-
-    const worker = new Worker(workerPath, {
-      workerData: {
-        newDescriptor,
-        records,
-        threshold: DUPLICATE_THRESHOLD,
-      },
-      // Automatically transpiles TS files if using ts-node/tsx runtimes locally
-      execArgv: process.env.NODE_ENV === 'development' ? ['--import', 'tsx'] : [],
-    })
-
-    worker.on('message', (message: { duplicateId: string | null }) => {
-      res(message.duplicateId)
-    })
-
-    worker.on('error', (err) => {
-      rej(err)
-    })
-
-    worker.on('exit', (code) => {
-      if (code !== 0) {
-        rej(new Error(`Duplicate validation worker stopped with exit code ${code}`))
-      }
-    })
-  })
-}
+// ─── Duplicate detection ───────────────────────────────────────────────────────
+// Runs inline on the request thread. There's no worker_threads offload here:
+// this function only ever runs inside a single-request serverless invocation
+// (Vercel), so there is no concurrent-request main thread to protect, and a
+// separately-spawned worker file cannot be reliably bundled/resolved at
+// runtime in that environment anyway.
 
 export async function findDuplicateEnrollment(
   newDescriptor: number[],
@@ -121,9 +89,7 @@ export async function findDuplicateEnrollment(
     select: { studentId: true, encryptedData: true, iv: true },
   })
 
-  // 1. Decrypt records in parallel batches to minimize database runtime lockup
-  const decryptedRecords: { studentId: string; descriptor: number[] }[] = []
-  
+  // 1. Decrypt records in parallel to minimize database/runtime lockup
   const decryptionPromises = records.map(async (record) => {
     try {
       const descriptor = await decryptDescriptor(record.encryptedData, record.iv)
@@ -134,34 +100,41 @@ export async function findDuplicateEnrollment(
   })
 
   const results = await Promise.all(decryptionPromises)
-  for (const res of results) {
-    if (res) decryptedRecords.push(res)
+
+  // 2. Compare inline — cheap enough (O(N) cosine similarity) that it doesn't
+  //    need to be offloaded anywhere.
+  for (const r of results) {
+    if (!r) continue
+    const similarity = cosineSimilarity(newDescriptor, r.descriptor)
+    if (similarity >= DUPLICATE_THRESHOLD) {
+      return r.studentId
+    }
   }
 
-  if (decryptedRecords.length === 0) return null
-
-  // 2. Offload the O(N) cosine calculations to the worker thread
-  return await runDuplicateWorker(newDescriptor, decryptedRecords)
+  return null
 }
-
-
-
 // Admin utility — find all students sharing faces across the database
 export async function findAllDuplicateEnrollments(): Promise<
   { studentA: string; studentB: string; similarity: number }[]
 > {
-      const prisma = await getPrismaClient();
+  const prisma = await getPrismaClient()
   const records = await prisma.faceDescriptor.findMany({
     select: { studentId: true, encryptedData: true, iv: true },
   })
 
-  const descriptors: { studentId: string; descriptor: number[] }[] = []
-
-  for (const r of records) {
+  const decryptionPromises = records.map(async (record) => {
     try {
-      const d = await decryptDescriptor(r.encryptedData, r.iv)
-      descriptors.push({ studentId: r.studentId, descriptor: d })
-    } catch {}
+      const descriptor = await decryptDescriptor(record.encryptedData, record.iv)
+      return { studentId: record.studentId, descriptor }
+    } catch {
+      return null
+    }
+  })
+
+  const results = await Promise.all(decryptionPromises)
+  const descriptors: { studentId: string; descriptor: number[] }[] = []
+  for (const r of results) {
+    if (r) descriptors.push(r)
   }
 
   const duplicates: { studentA: string; studentB: string; similarity: number }[] = []
@@ -181,12 +154,11 @@ export async function findAllDuplicateEnrollments(): Promise<
 
   return duplicates
 }
-
 // ─── Cosine similarity (server-side mirror of client-side check) ──────────────
 
 function cosineSimilarity(a: number[], b: number[]): number {
   if (a.length !== b.length || a.length === 0) return 0;
-  
+
   let dot = 0, magA = 0, magB = 0;
   for (let i = 0; i < a.length; i++) {
     const valA = a[i];
@@ -195,7 +167,7 @@ function cosineSimilarity(a: number[], b: number[]): number {
     magA += valA * valA;
     magB += valB * valB;
   }
-  
+
   if (magA === 0 || magB === 0) return 0;
   return dot / (Math.sqrt(magA) * Math.sqrt(magB));
 }

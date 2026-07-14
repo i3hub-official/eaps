@@ -35,7 +35,7 @@
     // a slower, more deliberate fill and gives us roughly double the number
     // of neutral-frame samples below, which is what actually improves the
     // averaged descriptor's accuracy.
-    const POS_HOLD_MS = 4000;
+    const POS_HOLD_MS = 2000;
     const SAMPLE_BUCKETS = 20; // was implicitly 10 (progress * 10)
 
     let selected = $state<GestureDefinition[]>([]);
