@@ -17,6 +17,19 @@ export const load: PageServerLoad = async ({ params, locals }) => {
 				where: {
 					lecturerId: user.id
 				}
+			},
+			department: {
+				select: {
+					id: true,
+					name: true,
+					code: true,
+				}
+			},
+			level: {
+				select: {
+					id: true,
+					name: true,
+				}
 			}
 		}
 	})
@@ -31,9 +44,46 @@ export const load: PageServerLoad = async ({ params, locals }) => {
 		throw error(403, 'You do not have access to this course')
 	}
 
+	// Get course statistics for the info display
+	const stats = await prisma.$transaction([
+		prisma.courseRegistration.count({
+			where: {
+				courseId: courseId,
+				status: 'APPROVED'
+			}
+		}),
+		prisma.assessment.count({
+			where: {
+				courseId: courseId,
+				createdById: user.id
+			}
+		}),
+		prisma.question.count({
+			where: {
+				courseId: courseId,
+				createdById: user.id,
+				isActive: true
+			}
+		})
+	])
+
+	const [studentCount, assessmentCount, questionCount] = stats
+
 	return {
 		courseId: course.id,
 		courseCode: course.code,
-		courseTitle: course.title
+		courseTitle: course.title,
+		courseDepartment: course.department?.name || 'N/A',
+		courseLevel: course.level?.name || 'N/A',
+		creditUnits: course.creditUnits,
+		studentCount,
+		assessmentCount,
+		questionCount,
+		// Add management contact info (can be moved to environment variables)
+		managementContact: {
+			email: process.env.REGISTRAR_EMAIL || 'registrar@mouau.edu.ng',
+			phone: process.env.REGISTRAR_PHONE || '+234 800 123 4567',
+			office: 'Administrative Block, Room 201'
+		}
 	}
 }
