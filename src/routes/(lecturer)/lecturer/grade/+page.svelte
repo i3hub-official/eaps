@@ -643,17 +643,13 @@
 																: 'bg-primary text-primary-foreground hover:bg-primary/90'
 														)}
 													>
-														{submission.isGraded ? (
-															<>
-																<Eye class="size-3.5" />
-																Review
-															</>
-														) : (
-															<>
-																<PenSquare class="size-3.5" />
-																Grade
-															</>
-														)}
+														{#if submission.isGraded}
+															<Eye class="size-3.5" />
+															Review
+														{:else}
+															<PenSquare class="size-3.5" />
+															Grade
+														{/if}
 													</a>
 												</div>
 											</TableCell>
