@@ -76,6 +76,15 @@
     let stopped = false;
     let lastResult: any = null;
 
+    // ─── Frame-rate throttle ────────────────────────────────────────────────
+    // Same rationale as FaceEnrollModal: cap inference to ~12fps instead of
+    // the ~60fps requestAnimationFrame gives us for free. Hold timing is
+    // driven by performance.now(), so this only reduces how often detect()
+    // runs, not how long any phase takes.
+    const TARGET_FPS = 12;
+    const FRAME_INTERVAL = 1000 / TARGET_FPS;
+    let lastFrameTime = 0;
+
     let colors = { primary: '', destructive: '', border: '', card: '', background: '', foreground: '' };
 
     function initColors() {
@@ -218,6 +227,7 @@
 
             phase = 'positioning';
             statusText = 'Centre your face in the oval';
+            lastFrameTime = 0;
             loopHandle = requestAnimationFrame(positioningLoop);
         } catch (err) {
             phase = 'error';
@@ -236,6 +246,14 @@
 
     async function positioningLoop() {
         if (stopped || phase !== 'positioning' || !canvasEl) return;
+
+        const now = performance.now();
+        if (now - lastFrameTime < FRAME_INTERVAL) {
+            loopHandle = requestAnimationFrame(positioningLoop);
+            return;
+        }
+        lastFrameTime = now;
+
         await detect();
         if (stopped || phase !== 'positioning') return;
 
@@ -273,9 +291,9 @@
             const largeEnough = faceW > w * 0.12 && faceH > h * 0.18;
 
             if (centred && largeEnough) {
-                const now = performance.now();
-                if (!posHoldStart) posHoldStart = now;
-                posHoldProgress = Math.min(1, (now - posHoldStart) / POS_HOLD_MS);
+                const holdNow = performance.now();
+                if (!posHoldStart) posHoldStart = holdNow;
+                posHoldProgress = Math.min(1, (holdNow - posHoldStart) / POS_HOLD_MS);
                 statusText = posHoldProgress < 1 ? 'Hold still…' : 'Starting liveness check…';
                 drawOverlay(true, false, posHoldProgress);
 
@@ -296,6 +314,7 @@
                     holdProgress = 0;
                     phase = 'gesture';
                     statusText = selected[0]?.label || 'Gesture';
+                    lastFrameTime = 0;
                     loopHandle = requestAnimationFrame(gestureLoop);
                     return;
                 }
@@ -311,6 +330,14 @@
 
     async function gestureLoop() {
         if (stopped || phase !== 'gesture') return;
+
+        const now = performance.now();
+        if (now - lastFrameTime < FRAME_INTERVAL) {
+            loopHandle = requestAnimationFrame(gestureLoop);
+            return;
+        }
+        lastFrameTime = now;
+
         await detect();
         if (stopped || phase !== 'gesture') return;
 

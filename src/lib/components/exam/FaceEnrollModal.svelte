@@ -58,11 +58,41 @@
     let stopped = false;
     let lastResult: any = null;
 
-    function themeColor(varName: string, fallback: string, alpha = 1) {
-        if (typeof window === 'undefined') return fallback;
-        const raw = getComputedStyle(document.documentElement).getPropertyValue(varName).trim();
-        if (!raw) return fallback;
-        return alpha < 1 ? `hsl(${raw} / ${alpha})` : `hsl(${raw})`;
+    // ─── Frame-rate throttle ────────────────────────────────────────────────
+    // human.detect() runs face mesh + embedding + gesture inference, which is
+    // by far the most expensive thing in these loops. requestAnimationFrame
+    // fires at ~60fps, but a face doesn't move fast enough to need inference
+    // that often for hold/position logic to feel responsive. Capping to
+    // ~12fps cuts inference calls ~4-5x. Timing (POS_HOLD_MS, hold progress)
+    // is driven by performance.now(), not frame count, so this doesn't change
+    // how long anything takes to complete — only how often we pay for detect().
+    const TARGET_FPS = 12;
+    const FRAME_INTERVAL = 1000 / TARGET_FPS;
+    let lastFrameTime = 0;
+
+    // ─── Cached theme colors ────────────────────────────────────────────────
+    // Read once per session instead of on every drawOverlay() call. Reading
+    // getComputedStyle inside a per-frame draw loop forces a style
+    // recalculation every frame for values that never change mid-session.
+    let colors = { primary: '', destructive: '', border: '', card: '', background: '', foreground: '' };
+
+    function initColors() {
+        if (typeof window === 'undefined') return;
+        const style = getComputedStyle(document.documentElement);
+        const getHsl = (prop: string, fallback: string) => {
+            const val = style.getPropertyValue(prop).trim();
+            return val ? `hsl(${val})` : fallback;
+        };
+        const getHslRaw = (prop: string, fallback: string) => style.getPropertyValue(prop).trim() || fallback;
+
+        colors = {
+            primary: getHsl('--primary', '#00c9a7'),
+            destructive: getHsl('--destructive', '#ef4444'),
+            border: getHsl('--border', 'rgba(255,255,255,0.18)'),
+            card: getHsl('--card', '#0f1115'),
+            background: getHslRaw('--background', '0 0% 0%'),
+            foreground: getHsl('--card-foreground', '#fff')
+        };
     }
 
     function drawOverlay(detectedFace: boolean, multiple: boolean, progress: number, label?: string) {
@@ -74,15 +104,10 @@
         const rx = w * 0.22;
         const ry = h * 0.48;
 
-        const primary     = themeColor('--primary', '#00c9a7');
-        const destructive = themeColor('--destructive', '#ef4444');
-        const border      = themeColor('--border', 'rgba(255,255,255,0.18)');
-        const card        = themeColor('--card', '#0f1115');
-
         ctx.clearRect(0, 0, w, h);
 
         ctx.save();
-        ctx.fillStyle = themeColor('--background', 'rgba(0,0,0,0.7)', 0.7);
+        ctx.fillStyle = `hsl(${colors.background} / 0.7)`;
         ctx.fillRect(0, 0, w, h);
         ctx.globalCompositeOperation = 'destination-out';
         ctx.beginPath();
@@ -92,7 +117,7 @@
 
         ctx.beginPath();
         ctx.ellipse(cx, cy, rx, ry, 0, 0, Math.PI * 2);
-        ctx.strokeStyle = multiple ? destructive : detectedFace ? primary : border;
+        ctx.strokeStyle = multiple ? colors.destructive : detectedFace ? colors.primary : colors.border;
         ctx.lineWidth = detectedFace ? 2.5 : 1.5;
         ctx.stroke();
 
@@ -103,7 +128,7 @@
             [cx - rx, cy + ry, [1, -1]],
             [cx + rx, cy + ry, [-1,-1]],
         ];
-        ctx.strokeStyle = multiple ? destructive : primary;
+        ctx.strokeStyle = multiple ? colors.destructive : colors.primary;
         ctx.lineWidth = 2.5;
         ctx.lineCap = 'round';
         for (const [x, y, [dx, dy]] of corners) {
@@ -118,7 +143,7 @@
             ctx.save();
             ctx.beginPath();
             ctx.ellipse(cx, cy, rx + 10, ry + 10, 0, -Math.PI / 2, -Math.PI / 2 + progress * Math.PI * 2);
-            ctx.strokeStyle = themeColor('--primary', '#00c9a7', 0.4 + progress * 0.4);
+            ctx.strokeStyle = colors.primary;
             ctx.lineWidth = 4;
             ctx.lineCap = 'round';
             ctx.stroke();
@@ -133,14 +158,14 @@
             const textW = ctx.measureText(label).width;
             const pillW = Math.min(textW + 44, w * 0.85);
             const pillX = cx - pillW / 2;
-            ctx.fillStyle = card;
-            ctx.strokeStyle = border;
+            ctx.fillStyle = colors.card;
+            ctx.strokeStyle = colors.border;
             ctx.lineWidth = 1.5;
             ctx.beginPath();
             ctx.roundRect(pillX, pillY, pillW, pillH, pillH / 2);
             ctx.fill();
             ctx.stroke();
-            ctx.fillStyle = progress > 0 ? primary : themeColor('--card-foreground', '#fff');
+            ctx.fillStyle = progress > 0 ? colors.primary : colors.foreground;
             ctx.textAlign = 'center';
             ctx.textBaseline = 'middle';
             ctx.fillText(label, cx, pillY + pillH / 2);
@@ -153,6 +178,7 @@
             stopped = false;
             phase = 'loading-model';
             statusText = 'Loading face model…';
+            initColors();
             human = await getHuman();
 
             if (stopped) return;
@@ -183,6 +209,7 @@
             statusText = 'Centre your face in the oval';
             posHoldStart = null;
             posHoldProgress = 0;
+            lastFrameTime = 0;
             loopHandle = requestAnimationFrame(positioningLoop);
         } catch (err) {
             phase = 'error';
@@ -201,6 +228,14 @@
 
     async function positioningLoop() {
         if (stopped || phase !== 'positioning' || !canvasEl) return;
+
+        const now = performance.now();
+        if (now - lastFrameTime < FRAME_INTERVAL) {
+            loopHandle = requestAnimationFrame(positioningLoop);
+            return;
+        }
+        lastFrameTime = now;
+
         await detect();
         if (stopped || phase !== 'positioning') return;
 
@@ -238,9 +273,9 @@
             const largeEnough = faceW > w * 0.12 && faceH > h * 0.18;
 
             if (centred && largeEnough) {
-                const now = performance.now();
-                if (!posHoldStart) posHoldStart = now;
-                posHoldProgress = Math.min(1, (now - posHoldStart) / POS_HOLD_MS);
+                const holdNow = performance.now();
+                if (!posHoldStart) posHoldStart = holdNow;
+                posHoldProgress = Math.min(1, (holdNow - posHoldStart) / POS_HOLD_MS);
                 statusText = posHoldProgress < 1 ? 'Hold still…' : 'Starting gestures…';
                 drawOverlay(true, false, posHoldProgress);
 
@@ -258,6 +293,7 @@
                     holdProgress = 0;
                     phase = 'gesture';
                     statusText = selected[0]?.label || '';
+                    lastFrameTime = 0;
                     loopHandle = requestAnimationFrame(gestureLoop);
                     return;
                 }
@@ -274,6 +310,13 @@
 
     async function gestureLoop() {
         if (stopped || phase !== 'gesture') return;
+
+        const now = performance.now();
+        if (now - lastFrameTime < FRAME_INTERVAL) {
+            loopHandle = requestAnimationFrame(gestureLoop);
+            return;
+        }
+        lastFrameTime = now;
 
         if (!tracker) tracker = new GestureTracker();
 
