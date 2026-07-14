@@ -66,6 +66,7 @@ async function loadSessionFromCookies(
           staffNumber: staff.staffNumber,
           email: safeDecrypt(() => revealEmail(staff.email), ''),
           firstName: safeDecrypt(() => revealName(staff.firstName), ''),
+          otherNames: safeDecrypt(() => revealName(staff.otherNames), ''),
           lastName: safeDecrypt(() => revealName(staff.lastName), ''),
           primaryRole: staff.primaryRole,
           collegeId: staff.collegeId,

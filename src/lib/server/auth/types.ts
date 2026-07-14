@@ -33,6 +33,7 @@ export interface AuthenticatedStaff {
   email: string;
   firstName: string;
   lastName: string;
+  otherNames: string;
   primaryRole: StaffRole;
   collegeId: string | null;
   departmentId: string | null;

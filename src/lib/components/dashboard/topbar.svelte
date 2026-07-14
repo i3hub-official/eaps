@@ -12,6 +12,7 @@
 	import Settings from '@lucide/svelte/icons/settings';
 	import ChevronLeft from '@lucide/svelte/icons/chevron-left';
 	import type { Snippet } from 'svelte';
+	import { normalizeUser } from '$lib/utils/user.js';
 
 	let {
 		title,
@@ -26,8 +27,6 @@
 		userName?: string;
 		userInitials?: string;
 		actions?: Snippet;
-		// When set, shows a back button before the title. Pass a URL to
-		// navigate there directly, or `true` to just call history.back().
 		backHref?: string | true;
 	} = $props();
 
@@ -39,30 +38,15 @@
 		}
 	}
 
-	// `page.data.user` can arrive in two shapes depending on the portal:
-	//  - student layout pre-shapes it as { name, initials }
-	//  - staff layouts (lecturer/admin/invigilator/exam-officer) return the
-	//    raw AuthenticatedStaff object with firstName/lastName instead.
-	// These helpers normalize either shape so Topbar works for both without
-	// every staff layout needing to reshape its data individually.
-	function buildName(u: any): string | undefined {
-		if (u?.name) return u.name;
-		if (u?.firstName || u?.lastName) return `${u.lastName ?? ''} ${u.firstName ?? ''}`.trim();
-		return undefined;
-	}
+	let normalized = $derived(normalizeUser(page.data.user));
+	let resolvedName = $derived(userName ?? normalized?.name ?? 'Guest');
+	let resolvedInitials = $derived(userInitials ?? normalized?.initials ?? '?');
 
-	function buildInitials(u: any): string | undefined {
-		if (u?.initials) return u.initials;
-		if (u?.firstName || u?.lastName) {
-			return `${u.lastName?.[0] ?? ''}${u.firstName?.[0] ?? ''}`.toUpperCase() || undefined;
-		}
-		return undefined;
-	}
-
-	// Falls back to session data from the nearest +layout.server.ts (via $page.data.user)
-	// when no explicit override is passed as a prop.
-	let resolvedName = $derived(userName ?? buildName(page.data.user) ?? 'Guest');
-	let resolvedInitials = $derived(userInitials ?? buildInitials(page.data.user) ?? '?');
+	// The first path segment is the portal base (student/admin/deo/lecturer/
+	// invigilator) — every portal now has a /profile page at that base, so
+	// this resolves correctly regardless of which portal Topbar is rendered
+	// inside, without each layout needing to pass its own profile href down.
+	let profileHref = $derived(`/${page.url.pathname.split('/')[1] ?? ''}/profile`);
 </script>
 
 <header
@@ -130,8 +114,12 @@
 					</div>
 				{/if}
 				<DropdownMenu.Item>
-					<Settings />
-					Account settings
+					{#snippet child({ props }: { props: Record<string, unknown> })}
+						<a href={profileHref} {...props}>
+							<Settings />
+							Account settings
+						</a>
+					{/snippet}
 				</DropdownMenu.Item>
 				<DropdownMenu.Separator />
 				<DropdownMenu.Item variant="destructive">
