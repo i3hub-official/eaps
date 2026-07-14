@@ -6,7 +6,7 @@
 	import { Label } from '$lib/components/ui/label/index.js';
 	import { Badge } from '$lib/components/ui/badge/index.js';
 	import { Separator } from '$lib/components/ui/separator/index.js';
-	import { ThemeToggle } from '$lib/components/ui/theme-toggle/index.js';
+	import AppearanceToggle from './appearance-toggle.svelte';
 	import * as Select from '$lib/components/ui/select/index.js';
 	import * as Alert from '$lib/components/ui/alert/index.js';
 	import ScanFace from '@lucide/svelte/icons/scan-face';
@@ -285,7 +285,7 @@
 			<Card.Description>Choose light or dark mode.</Card.Description>
 		</Card.Header>
 		<Card.Content>
-			<ThemeToggle />
+			<AppearanceToggle />
 		</Card.Content>
 	</Card.Root>
 </div>
