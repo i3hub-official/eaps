@@ -3,12 +3,16 @@
 	import { page } from '$app/state';
 	import { navByRole, roleLabel, type Role } from './nav-config';
 	import ShieldCheck from '@lucide/svelte/icons/shield-check';
+	import LoaderCircle from '@lucide/svelte/icons/loader-circle';
 	import { cn } from '$lib/utils.js';
+	import { goto } from '$app/navigation';
 
 	let { role }: { role: Role } = $props();
 	const sections = $derived(navByRole[role]);
 
 	const sidebar = Sidebar.useSidebar();
+	
+	let loadingHref = $state<string | null>(null);
 
 	function isActive(href: string) {
 		if (href === `/${role}`) return page.url.pathname === href;
@@ -22,13 +26,38 @@
 		);
 	}
 
-	// On mobile the sidebar renders as an overlay sheet; close it after
-	// navigating so the destination page isn't hidden behind the drawer.
-	function handleNavClick() {
+	async function handleNavigation(e: MouseEvent, href: string) {
+		e.preventDefault();
+		
+		// Don't navigate if already on this page or already loading
+		if (isActive(href) || loadingHref) return;
+		
+		// Set loading state
+		loadingHref = href;
+		
+		// Close mobile sidebar
 		if (sidebar.isMobile) {
 			sidebar.setOpenMobile(false);
 		}
+		
+		// Navigate
+		await goto(href);
+		
+		// Reset loading state after a small delay to ensure smooth transition
+		setTimeout(() => {
+			loadingHref = null;
+		}, 300);
 	}
+
+	// Reset loading state when page changes
+	$effect(() => {
+		if (loadingHref) {
+			// If the URL matches the loading href, reset
+			if (page.url.pathname === loadingHref || page.url.pathname === loadingHref + '/') {
+				loadingHref = null;
+			}
+		}
+	});
 </script>
 
 <Sidebar.Root collapsible="icon">
@@ -74,10 +103,20 @@
 											href={item.href}
 											{...props}
 											class={menuLinkClass(props.class)}
-											onclick={handleNavClick}
+											onclick={(e) => handleNavigation(e, item.href)}
 										>
-											<item.icon class="size-5 shrink-0 group-data-[collapsible=icon]:!size-6" />
-											<span class="truncate group-data-[collapsible=icon]:hidden">{item.label}</span>
+											{#if loadingHref === item.href}
+												<LoaderCircle class="size-5 shrink-0 animate-spin group-data-[collapsible=icon]:!size-6" />
+											{:else}
+												<item.icon class="size-5 shrink-0 group-data-[collapsible=icon]:!size-6" />
+											{/if}
+											<span class="truncate group-data-[collapsible=icon]:hidden">
+												{#if loadingHref === item.href}
+													Loading...
+												{:else}
+													{item.label}
+												{/if}
+											</span>
 										</a>
 									{/snippet}
 								</Sidebar.MenuButton>
