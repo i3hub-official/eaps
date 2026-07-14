@@ -29,7 +29,11 @@
 		Phone,
 		MapPin,
 		ScanFace,
-	} from '@lucide/svelte/icons';
+		FileText,
+		Check,
+		X,
+		History,
+	} from '@lucide/svelte';
 	import { format } from '$lib/utils/date';
 	import { goto, invalidateAll } from '$app/navigation';
 	import { enhance } from '$app/forms';
@@ -59,7 +63,7 @@
 		student ? `${student.lastName} ${student.firstName} ${student.otherNames}` : ''
 	);
 
-		let completedCount = $derived(
+	let completedCount = $derived(
 		recentAssessments.filter((a: any) => a.status === 'SUBMITTED').length
 	);
 
@@ -265,7 +269,7 @@
 						<CardContent>
 							{#if upcomingAssessments?.length > 0}
 								<div class="space-y-4">
-									{#each upcomingAssessments.slice(0, 3) as assessment}
+									{#each upcomingAssessments.slice(0, 3) as assessment (assessment.id)}
 										<div class="flex items-center justify-between rounded-lg border border-border p-3 transition-colors hover:bg-muted/50">
 											<div class="flex flex-col gap-0.5">
 												<span class="font-medium">{assessment.title}</span>
@@ -273,8 +277,8 @@
 													<Badge variant={getAssessmentTypeBadge(assessment.type).variant}>
 														{getAssessmentTypeBadge(assessment.type).label}
 													</Badge>
-													<span>•</span>
-													<Clock class="size-3" />
+													<span class="text-muted-foreground">•</span>
+													<Clock class="size-3 text-muted-foreground" />
 													<span>{format(new Date(assessment.startTime), 'PPp')}</span>
 												</div>
 											</div>
@@ -316,7 +320,7 @@
 						<CardContent>
 							{#if recentAssessments?.length > 0}
 								<div class="space-y-4">
-									{#each recentAssessments.slice(0, 4) as assessment}
+									{#each recentAssessments.slice(0, 4) as assessment (assessment.id)}
 										<div class="flex items-start gap-3">
 											{#if assessment.status === 'SUBMITTED'}
 												<CheckCircle class="mt-0.5 size-4 text-green-500" />
@@ -355,7 +359,7 @@
 						<CardContent>
 							{#if notifications?.length > 0}
 								<div class="space-y-3">
-									{#each notifications.slice(0, 5) as notification}
+									{#each notifications.slice(0, 5) as notification (notification.id)}
 										<div class="flex items-start gap-3 rounded-lg border border-border/50 p-3 {!notification.isRead ? 'bg-muted/40' : ''}">
 											<div class="mt-0.5 size-2 rounded-full {notification.isRead ? 'bg-muted' : 'bg-primary'}" />
 											<div class="flex-1">
@@ -403,7 +407,7 @@
 						{/if}
 						{#if recentAssessments?.length > 0}
 							<div class="space-y-3">
-								{#each recentAssessments as assessment}
+								{#each recentAssessments as assessment (assessment.id)}
 									<div class="flex items-center justify-between rounded-lg border border-border p-3">
 										<div class="flex flex-col gap-0.5">
 											<span class="font-medium">{assessment.title}</span>
@@ -454,14 +458,16 @@
 					<CardContent>
 						{#if courseRegistrations?.length > 0}
 							<div class="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-								{#each courseRegistrations as reg}
+								{#each courseRegistrations as reg (reg.id)}
 									<div class="rounded-lg border border-border p-4">
 										<h4 class="font-semibold">{reg.course.code}</h4>
 										<p class="text-sm text-muted-foreground">{reg.course.title}</p>
 										<div class="mt-2 flex items-center justify-between text-sm">
-											<span class="text-muted-foreground">Status: <Badge variant={reg.status === 'APPROVED' ? 'success' : reg.status === 'PENDING' ? 'warning' : 'destructive'}>
-												{reg.status}
-											</Badge></span>
+											<span class="text-muted-foreground">Status: 
+												<Badge variant={reg.status === 'APPROVED' ? 'success' : reg.status === 'PENDING' ? 'warning' : 'destructive'}>
+													{reg.status}
+												</Badge>
+											</span>
 											<span class="text-muted-foreground">{reg.course.creditUnits} units</span>
 										</div>
 									</div>
@@ -474,74 +480,97 @@
 				</Card>
 			</TabsContent>
 
-			<TabsContent value="profile">
-				<Card>
-					<CardHeader>
-						<CardTitle class="text-base">Student Profile</CardTitle>
-						<CardDescription>Your personal and academic information</CardDescription>
-					</CardHeader>
-					<CardContent class="grid gap-6 md:grid-cols-2">
-						{#if student}
-							<div class="space-y-4">
-								<div>
-									<label class="text-sm font-medium text-muted-foreground">Full Name</label>
-									<p class="flex items-center gap-2 text-lg font-semibold">
-										<User class="size-4 text-muted-foreground" />
-										{fullName}
-									</p>
-								</div>
-								<div>
-									<label class="text-sm font-medium text-muted-foreground">Matric Number</label>
-									<p class="font-mono">{student.matricNumber}</p>
-								</div>
-								<div>
-									<label class="text-sm font-medium text-muted-foreground">Email</label>
-									<p class="flex items-center gap-2">
-										<Mail class="size-4 text-muted-foreground" />
-										{student.email}
-									</p>
-								</div>
-								<div>
-									<label class="text-sm font-medium text-muted-foreground">Phone</label>
-									<p class="flex items-center gap-2">
-										<Phone class="size-4 text-muted-foreground" />
-										{student.phone || 'Not provided'}
-									</p>
-								</div>
-							</div>
-							<div class="space-y-4">
-								<div>
-									<label class="text-sm font-medium text-muted-foreground">Department</label>
-									<p class="flex items-center gap-2">
-										<Building2 class="size-4 text-muted-foreground" />
-										{student.department?.name || '—'}
-									</p>
-								</div>
-								<div>
-									<label class="text-sm font-medium text-muted-foreground">Programme</label>
-									<p>{student.programme?.name || '—'}</p>
-								</div>
-								<div>
-									<label class="text-sm font-medium text-muted-foreground">Current Level</label>
-									<p>{student.currentLevel?.label || '—'}</p>
-								</div>
-								<div>
-									<label class="text-sm font-medium text-muted-foreground">Entry Year</label>
-									<p>{student.entryYear || '—'}</p>
-								</div>
-								<div>
-									<label class="text-sm font-medium text-muted-foreground">Status</label>
-									<Badge variant={student.status === 'ACTIVE' ? 'success' : 'destructive'}>
-										{student.status}
-									</Badge>
-								</div>
-							</div>
-						{:else}
-							<p class="col-span-2 text-center text-muted-foreground">Profile data not available</p>
-						{/if}
-					</CardContent>
-				</Card>
-			</TabsContent>
+			<!-- Profile Tab - Updated with icons -->
+<TabsContent value="profile">
+	<Card>
+		<CardHeader>
+			<CardTitle class="text-base">Student Profile</CardTitle>
+			<CardDescription>Your personal and academic information</CardDescription>
+		</CardHeader>
+		<CardContent class="grid gap-6 md:grid-cols-2">
+			{#if student}
+				<div class="space-y-4">
+					<div>
+						<label class="text-sm font-medium text-muted-foreground">Full Name</label>
+						<p class="flex items-center gap-2 text-lg font-semibold">
+							<User class="size-4 text-muted-foreground" />
+							{fullName}
+						</p>
+					</div>
+					<div>
+						<label class="text-sm font-medium text-muted-foreground">Matric Number</label>
+						<p class="flex items-center gap-2 font-mono">
+							<FileText class="size-4 text-muted-foreground" />
+							{student.matricNumber}
+						</p>
+					</div>
+					<div>
+						<label class="text-sm font-medium text-muted-foreground">Email</label>
+						<p class="flex items-center gap-2">
+							<Mail class="size-4 text-muted-foreground" />
+							{student.email}
+						</p>
+					</div>
+					<div>
+						<label class="text-sm font-medium text-muted-foreground">Phone</label>
+						<p class="flex items-center gap-2">
+							<Phone class="size-4 text-muted-foreground" />
+							{student.phone || 'Not provided'}
+						</p>
+					</div>
+				</div>
+				<div class="space-y-4">
+					<div>
+						<label class="text-sm font-medium text-muted-foreground">Department</label>
+						<p class="flex items-center gap-2">
+							<Building2 class="size-4 text-muted-foreground" />
+							{student.department?.name || '—'}
+						</p>
+					</div>
+					<div>
+						<label class="text-sm font-medium text-muted-foreground">Programme</label>
+						<p class="flex items-center gap-2">
+							<GraduationCap class="size-4 text-muted-foreground" />
+							{student.programme?.name || '—'}
+							{#if student.programme?.shortName}
+								<span class="text-sm text-muted-foreground">({student.programme.shortName})</span>
+							{/if}
+						</p>
+					</div>
+					<div>
+						<label class="text-sm font-medium text-muted-foreground">Current Level</label>
+						<p class="flex items-center gap-2">
+							<BookOpen class="size-4 text-muted-foreground" />
+							{student.currentLevel?.label || '—'}
+						</p>
+					</div>
+					<div>
+						<label class="text-sm font-medium text-muted-foreground">Entry Year</label>
+						<p class="flex items-center gap-2">
+							<CalendarDays class="size-4 text-muted-foreground" />
+							{student.entryYear || '—'}
+						</p>
+					</div>
+					<div>
+						<label class="text-sm font-medium text-muted-foreground">Status</label>
+						<p class="flex items-center gap-2">
+							{#if student.status === 'ACTIVE'}
+								<CheckCircle class="size-4 text-green-500" />
+							{:else}
+								<XCircle class="size-4 text-red-500" />
+							{/if}
+							<Badge variant={student.status === 'ACTIVE' ? 'success' : 'destructive'}>
+								{student.status}
+							</Badge>
+						</p>
+					</div>
+				</div>
+			{:else}
+				<p class="col-span-2 text-center text-muted-foreground">Profile data not available</p>
+			{/if}
+		</CardContent>
+	</Card>
+</TabsContent>
 		</Tabs>
 	{/if}
 </div>

@@ -3,6 +3,7 @@ import type { PageServerLoad, Actions } from './$types';
 import { getPrismaClient } from '$lib/server/db/index.js';
 import { requireStudent } from '$lib/server/auth/guards'
 import { fail } from '@sveltejs/kit';
+import { revealText } from '$lib/security/dataProtection.js';
 
 // ─── Load ─────────────────────────────────────────────────────────────────────
 export const load: PageServerLoad = async ({ locals }) => {
@@ -93,6 +94,22 @@ export const load: PageServerLoad = async ({ locals }) => {
 	// email/matricNumber (decrypted once in hooks.server.ts) — no need to
 	// re-decrypt. `fullStudent` just supplies the extra fields/relations
 	// that aren't part of the session-derived user shape.
+	
+	// Decrypt programme data if it exists
+	let decryptedProgramme = null;
+	if (fullStudent?.programme) {
+		try {
+			decryptedProgramme = {
+				...fullStudent.programme,
+				name: fullStudent.programme.name ? revealText(fullStudent.programme.name) : fullStudent.programme.name,
+				shortName: fullStudent.programme.shortName ? revealText(fullStudent.programme.shortName) : fullStudent.programme.shortName,
+			};
+		} catch (e) {
+			console.warn('Failed to decrypt programme data:', e);
+			decryptedProgramme = fullStudent.programme;
+		}
+	}
+
 	const studentView = {
 		id: student.id,
 		firstName: student.firstName,
@@ -108,7 +125,7 @@ export const load: PageServerLoad = async ({ locals }) => {
 		// just a non-null faceEnrolledAt timestamp.
 		faceEnrolled: !!faceDescriptor,
 		department: fullStudent?.department ?? null,
-		programme: fullStudent?.programme ?? null,
+		programme: decryptedProgramme,
 		currentLevel: fullStudent?.currentLevel ?? null,
 	};
 
