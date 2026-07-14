@@ -1,0 +1,48 @@
+{
+  "name": "Evaluation Assessment & Proctor System",
+  "short_name": "EAPS",
+  "description": "Michael Okpara University of Agriculture, Umudike — Examination Management Platform",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#000000",
+  "theme_color": "#000000",
+  "lang": "en",
+  "scope": "/",
+  "id": "/",
+  "orientation": "portrait-primary",
+  "icons": [
+    {
+      "src": "/icons/icon-192x192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icons/icon-512x512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icons/icon-maskable-512x512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
+  ],
+  "screenshots": [
+    {
+      "src": "/screenshots/desktop-wide.png",
+      "sizes": "1280x800",
+      "type": "image/png",
+      "form_factor": "wide",
+      "label": "EAPS dashboard on desktop"
+    },
+    {
+      "src": "/screenshots/mobile-narrow.png",
+      "sizes": "750x1334",
+      "type": "image/png",
+      "label": "EAPS exam view on mobile"
+    }
+  ]
+}

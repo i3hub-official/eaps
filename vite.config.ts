@@ -104,26 +104,16 @@ export default defineConfig(() => {
         '@tensorflow/tfjs-backend-webgl',
         '@tensorflow/tfjs-core',
       ],
-      exclude: [
-        '@tensorflow/tfjs-node',
-        '@tensorflow/tfjs-node-gpu',
-        '@prisma/client',
-        '.prisma/client'
-      ],
+      // tfjs-node / tfjs-node-gpu removed — resolve.alias below already
+      // redirects them to '@tensorflow/tfjs' before optimizeDeps sees them.
+      exclude: ['@prisma/client', '.prisma/client'],
     },
 
     ssr: {
       noExternal: ['@vladmandic/human'],
-      external: [
-        'pg',
-        'ws',
-        'crypto',
-        '@tensorflow/tfjs-node',
-        '@tensorflow/tfjs-node-gpu',
-        'sharp',
-        '@prisma/client',
-        '.prisma/client'
-      ],
+      // tfjs-node / tfjs-node-gpu removed — same reasoning; the aliased
+      // name is what SSR externalization actually checks, not the original.
+      external: ['pg', 'ws', 'crypto', 'sharp', '@prisma/client', '.prisma/client'],
     },
 
     define: {
@@ -145,12 +135,10 @@ export default defineConfig(() => {
         exclude: [/@prisma\/client/, /\.prisma\/client/],
       },
       rollupOptions: {
-        external: [
-          '@tensorflow/tfjs-node',
-          '@tensorflow/tfjs-node-gpu',
-          '@prisma/client',
-          '.prisma/client'
-        ],
+        // Kept as-is: build-time externalization is a separate pass from
+        // dev-time SSR resolution, and Prisma's native binary loading still
+        // needs to stay external in the production bundle.
+        external: ['@tensorflow/tfjs-node', '@tensorflow/tfjs-node-gpu', '@prisma/client', '.prisma/client'],
       },
     },
   };
