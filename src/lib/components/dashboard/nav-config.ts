@@ -1,4 +1,3 @@
-// This file contains the navigation configuration for the dashboard, including the navigation items and sections for different user roles. It defines the structure of the navigation menu based on the user's role, providing a clear and organized way to access various features and pages within the application.
 // src/lib/components/dashboard/nav-config.ts
 import type { Component } from 'svelte';
 import LayoutDashboard from '@lucide/svelte/icons/layout-dashboard';
@@ -29,7 +28,14 @@ import ScrollText from '@lucide/svelte/icons/scroll-text';
 import Settings from '@lucide/svelte/icons/settings';
 import ScanFace from '@lucide/svelte/icons/scan-face';
 import Mail from '@lucide/svelte/icons/mail';
-
+import FileCheck from '@lucide/svelte/icons/file-check';
+import Clock from '@lucide/svelte/icons/clock';
+import UserCheck from '@lucide/svelte/icons/user-check';
+import UserX from '@lucide/svelte/icons/user-x';
+import Award from '@lucide/svelte/icons/award';
+import CreditCard from '@lucide/svelte/icons/credit-card';
+import Shield from '@lucide/svelte/icons/shield';
+import AlertCircle from '@lucide/svelte/icons/alert-circle';
 
 export type NavItem = { label: string; href: string; icon: Component<any> };
 export type NavSection = { label?: string; items: NavItem[] };
@@ -45,34 +51,45 @@ export const roleLabel: Record<Role, string> = {
 
 export const navByRole: Record<Role, NavSection[]> = {
 	student: [
+		// ─── Overview ────────────────────────────────────────────────────
 		{ items: [{ label: 'Dashboard', href: '/student', icon: LayoutDashboard }] },
+		
+		// ─── Academic Work ─────────────────────────────────────────────
 		{
-			label: 'Coursework',
+			label: 'Academic Work',
 			items: [
-				{ label: 'Courses', href: '/student/courses', icon: BookOpen },
-				{ label: 'Practice', href: '/student/practice', icon: PencilLine },
-				{ label: 'Assignments', href: '/student/assignments', icon: ClipboardList }
+				{ label: 'My Courses', href: '/student/courses', icon: BookOpen },
+				{ label: 'Assignments', href: '/student/assignments', icon: ClipboardList },
+				{ label: 'Practice', href: '/student/practice', icon: PencilLine }
 			]
 		},
+		
+		// ─── Assessments ──────────────────────────────────────────────
 		{
 			label: 'Assessments',
 			items: [
-				{ label: 'Upcoming tests', href: '/student/tests', icon: CalendarClock },
-				{ label: 'Upcoming exams', href: '/student/exams', icon: GraduationCap },
-				{ label: 'Results', href: '/student/results', icon: BarChart3 },
+				{ label: 'Upcoming Tests', href: '/student/tests', icon: CalendarClock },
+				{ label: 'Upcoming Exams', href: '/student/exams', icon: GraduationCap },
+				{ label: 'Results & Transcript', href: '/student/results', icon: BarChart3 },
 				{ label: 'Attendance', href: '/student/attendance', icon: CalendarCheck }
 			]
 		},
+		
+		// ─── Communication ────────────────────────────────────────────
 		{
-			label: 'Updates',
+			label: 'Communication',
 			items: [
 				{ label: 'Notifications', href: '/student/notifications', icon: Bell },
 				{ label: 'Messages', href: '/student/messages', icon: MessageSquare }
 			]
 		}
 	],
+	
 	lecturer: [
+		// ─── Overview ────────────────────────────────────────────────────
 		{ items: [{ label: 'Dashboard', href: '/lecturer', icon: LayoutDashboard }] },
+		
+		// ─── Teaching ──────────────────────────────────────────────────
 		{
 			label: 'Teaching',
 			items: [
@@ -80,60 +97,91 @@ export const navByRole: Record<Role, NavSection[]> = {
 				{ label: 'Attendance', href: '/lecturer/attendance', icon: CalendarCheck }
 			]
 		},
+		
+		// ─── Assessments ──────────────────────────────────────────────
 		{
-			label: 'Create',
+			label: 'Assessments',
 			items: [
-				{ label: 'Assessments', href: '/lecturer/assessments', icon: PencilLine },
-				{ label: 'Exam', href: '/lecturer/assessments/create/exam', icon: FilePlus },
-				{ label: 'Test', href: '/lecturer/assessments/create/test', icon: FilePlus },
+				{ label: 'All Assessments', href: '/lecturer/assessments', icon: ClipboardList },
+				{ label: 'Practice', href: '/lecturer/assessments/create/practice', icon: FilePlus },
 				{ label: 'Assignment', href: '/lecturer/assessments/create/assignment', icon: FilePlus },
-				{ label: 'Practice', href: '/lecturer/assessments/create/practice', icon: FilePlus }
+				{ label: 'Test', href: '/lecturer/assessments/create/test', icon: FilePlus },
+				{ label: 'Exam', href: '/lecturer/assessments/create/exam', icon: FileCheck }
 			]
 		},
+		
+		// ─── Content & Grading ────────────────────────────────────────
 		{
-			label: 'Content',
+			label: 'Content & Grading',
 			items: [
-				{ label: 'Question bank', href: '/lecturer/question-bank', icon: Database },
-				{ label: 'Grade submissions', href: '/lecturer/grade', icon: ClipboardList },
+				{ label: 'Question Bank', href: '/lecturer/question-bank', icon: Database },
+				{ label: 'Grade Submissions', href: '/lecturer/grade', icon: ClipboardList }
+			]
+		},
+		
+		// ─── Insights ─────────────────────────────────────────────────
+		{
+			label: 'Insights',
+			items: [
 				{ label: 'Reports', href: '/lecturer/report', icon: BarChart3 }
 			]
 		},
+		
+		// ─── Communication ────────────────────────────────────────────
 		{
-			label: 'Updates',
+			label: 'Communication',
 			items: [
 				{ label: 'Notifications', href: '/lecturer/notifications', icon: Bell },
 				{ label: 'Messages', href: '/lecturer/messages', icon: MessageSquare }
 			]
 		}
 	],
+	
 	'exam-officer': [
+		// ─── Overview ────────────────────────────────────────────────────
 		{ items: [{ label: 'Dashboard', href: '/exam-officer', icon: LayoutDashboard }] },
+		
+		// ─── Exam Management ──────────────────────────────────────────
 		{
-			label: 'Create',
+			label: 'Exam Management',
 			items: [
-				{ label: 'Exam', href: '/exam-officer/create/exam', icon: FilePlus },
-				{ label: 'Test', href: '/exam-officer/create/test', icon: FilePlus },
+				{ label: 'Practice', href: '/exam-officer/create/practice', icon: FilePlus },
 				{ label: 'Assignment', href: '/exam-officer/create/assignment', icon: FilePlus },
-				{ label: 'Practice', href: '/exam-officer/create/practice', icon: FilePlus }
+				{ label: 'Test', href: '/exam-officer/create/test', icon: FilePlus },
+				{ label: 'Exam', href: '/exam-officer/create/exam', icon: FileCheck }
 			]
 		},
-		{
-			label: 'Content',
-			items: [
-				{ label: 'Question bank', href: '/exam-officer/question-bank', icon: Database },
-				{ label: 'Grade submissions', href: '/exam-officer/grade', icon: ClipboardList }
-			]
-		},
+		
+		// ─── Operations ───────────────────────────────────────────────
 		{
 			label: 'Operations',
 			items: [
 				{ label: 'Scheduling', href: '/exam-officer/scheduling', icon: CalendarPlus },
 				{ label: 'Approvals', href: '/exam-officer/approval', icon: ShieldCheck },
 				{ label: 'Invigilators', href: '/exam-officer/invigilators', icon: Users },
-				{ label: 'Device monitoring', href: '/exam-officer/device-monitoring', icon: Laptop },
-				{ label: 'Incident reports', href: '/exam-officer/incidents', icon: TriangleAlert }
+				{ label: 'Incident Reports', href: '/exam-officer/incidents', icon: TriangleAlert }
 			]
 		},
+		
+		// ─── Monitoring ──────────────────────────────────────────────
+		{
+			label: 'Monitoring',
+			items: [
+				{ label: 'Device Monitoring', href: '/exam-officer/device-monitoring', icon: Laptop },
+				{ label: 'Live Sessions', href: '/exam-officer/live-sessions', icon: Radio }
+			]
+		},
+		
+		// ─── Content ──────────────────────────────────────────────────
+		{
+			label: 'Content',
+			items: [
+				{ label: 'Question Bank', href: '/exam-officer/question-bank', icon: Database },
+				{ label: 'Grade Submissions', href: '/exam-officer/grade', icon: ClipboardList }
+			]
+		},
+		
+		// ─── Insights ─────────────────────────────────────────────────
 		{
 			label: 'Insights',
 			items: [
@@ -142,44 +190,84 @@ export const navByRole: Record<Role, NavSection[]> = {
 			]
 		}
 	],
+	
 	invigilator: [
-		{ items: [{ label: 'Live candidates', href: '/invigilator', icon: Radio }] },
+		// ─── Overview ────────────────────────────────────────────────────
+		{ items: [{ label: 'Live Candidates', href: '/invigilator', icon: Radio }] },
+		
+		// ─── Monitoring ──────────────────────────────────────────────
 		{
 			label: 'Monitoring',
 			items: [
-				{ label: 'Device status', href: '/invigilator/devices', icon: Laptop },
-				{ label: 'Camera status', href: '/invigilator/cameras', icon: Camera },
-				{ label: 'Network status', href: '/invigilator/network', icon: Wifi },
-				{ label: 'Flagged candidates', href: '/invigilator/flagged', icon: Flag }
+				{ label: 'Device Status', href: '/invigilator/devices', icon: Laptop },
+				{ label: 'Camera Status', href: '/invigilator/cameras', icon: Camera },
+				{ label: 'Network Status', href: '/invigilator/network', icon: Wifi },
+				{ label: 'Flagged Candidates', href: '/invigilator/flagged', icon: Flag }
+			]
+		},
+		
+		// ─── Actions ──────────────────────────────────────────────────
+		{
+			label: 'Actions',
+			items: [
+				{ label: 'Incident Reports', href: '/invigilator/incidents', icon: AlertCircle },
+				{ label: 'Session Logs', href: '/invigilator/logs', icon: ScrollText }
 			]
 		}
 	],
+	
 	admin: [
+		// ─── Overview ────────────────────────────────────────────────────
 		{ items: [{ label: 'Dashboard', href: '/admin', icon: LayoutDashboard }] },
+		
+		// ─── User Management ──────────────────────────────────────────
 		{
-			label: 'People',
+			label: 'User Management',
 			items: [
 				{ label: 'Students', href: '/admin/students', icon: GraduationCap },
 				{ label: 'Lecturers', href: '/admin/lecturers', icon: Users },
-							{ label: 'Invitations', href: '/admin/staff-invitations', icon: Mail }
+				{ label: 'Invitations', href: '/admin/staff-invitations', icon: Mail }
 			]
 		},
+		
+		// ─── Academic Structure ──────────────────────────────────────
 		{
-			label: 'Structure',
+			label: 'Academic Structure',
 			items: [
 				{ label: 'Colleges', href: '/admin/colleges', icon: Building2 },
 				{ label: 'Departments', href: '/admin/departments', icon: Layers },
-				{ label: 'Courses', href: '/admin/courses', icon: BookOpen }
+				{ label: 'Courses', href: '/admin/courses', icon: BookOpen },
+				{ label: 'Levels', href: '/admin/levels', icon: Award }
 			]
 		},
+		
+		// ─── Oversight ────────────────────────────────────────────────
 		{
 			label: 'Oversight',
 			items: [
 				{ label: 'Analytics', href: '/admin/analytics', icon: BarChart3 },
 				{ label: 'Reports', href: '/admin/reports', icon: FileText },
-				{ label: 'Audit logs', href: '/admin/audit-logs', icon: ScrollText },
-				{ label: 'Face duplicates', href: '/admin/face-duplicates', icon: ScanFace },
-				{ label: 'Settings', href: '/admin/settings', icon: Settings }
+				{ label: 'Audit Logs', href: '/admin/audit-logs', icon: ScrollText }
+			]
+		},
+		
+		// ─── Security ──────────────────────────────────────────────────
+		{
+			label: 'Security',
+			items: [
+				{ label: 'Face Duplicates', href: '/admin/face-duplicates', icon: ScanFace },
+				{ label: 'User Sessions', href: '/admin/sessions', icon: Shield },
+				{ label: 'Access Control', href: '/admin/access-control', icon: UserCheck },
+				{ label: 'Suspicious Activity', href: '/admin/suspicious', icon: UserX }
+			]
+		},
+		
+		// ─── System ────────────────────────────────────────────────────
+		{
+			label: 'System',
+			items: [
+				{ label: 'Settings', href: '/admin/settings', icon: Settings },
+				{ label: 'Logs', href: '/admin/system-logs', icon: FileText }
 			]
 		}
 	]

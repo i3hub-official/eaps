@@ -16,12 +16,16 @@ export const load: PageServerLoad = async ({ locals, url }) => {
 			},
 			studentAttendance: [],
 			courses: [{ id: 'all', label: 'All courses' }],
+			levels: [{ id: 'all', label: 'All Levels' }],
 			filters: {
 				course: null,
+				level: null,
+				status: null,
 			},
 			stats: {
 				totalStudents: 0,
 				averageAttendance: 0,
+				attendanceDistribution: { excellent: 0, good: 0, average: 0, poor: 0 },
 			},
 			error: 'No department assigned. Contact your HOD.',
 		}
@@ -32,22 +36,33 @@ export const load: PageServerLoad = async ({ locals, url }) => {
 	const departmentId = user.departmentId
 
 	const courseFilter = url.searchParams.get('course')
+	const levelFilter = url.searchParams.get('level')
+	const statusFilter = url.searchParams.get('status')
 
-	const courses = await prisma.course.findMany({
-		where: { departmentId, status: 'ACTIVE' },
-		select: { id: true, code: true, title: true },
-		orderBy: { code: 'asc' },
+	// ─── FIX: Get ONLY courses the lecturer teaches ──────────────────
+	const courseOfferings = await prisma.courseOffering.findMany({
+		where: { 
+			lecturerId: staffId,
+			semester: {
+				isCurrent: true,
+			}
+		},
+		include: {
+			course: {
+				select: {
+					id: true,
+					code: true,
+					title: true,
+					levelId: true,
+				}
+			}
+		}
 	})
 
-	const registrationWhere: any = {
-		status: 'APPROVED',
-	}
+	// Extract course IDs the lecturer teaches
+	const lecturerCourseIds = courseOfferings.map((offering) => offering.courseId)
 
-	if (courseFilter && courseFilter !== 'all') {
-		registrationWhere.course = { id: courseFilter }
-	} else if (courses.length > 0) {
-		registrationWhere.course = { departmentId }
-	} else {
+	if (lecturerCourseIds.length === 0) {
 		return {
 			user: {
 				id: user.id,
@@ -55,22 +70,42 @@ export const load: PageServerLoad = async ({ locals, url }) => {
 				lastName: user.lastName,
 			},
 			studentAttendance: [],
-			courses: [
-				{ id: 'all', label: 'All courses' },
-				...courses.map((c) => ({ id: c.id, label: `${c.code} — ${c.title}` })),
-			],
+			courses: [{ id: 'all', label: 'All courses' }],
+			levels: [{ id: 'all', label: 'All Levels' }],
 			filters: {
-				course: courseFilter,
+				course: courseFilter || 'all',
+				level: levelFilter || 'all',
+				status: statusFilter || 'all',
 			},
 			stats: {
 				totalStudents: 0,
 				averageAttendance: 0,
+				attendanceDistribution: { excellent: 0, good: 0, average: 0, poor: 0 },
 			},
+			error: 'You are not assigned to teach any courses this semester.',
 		}
 	}
 
+	// Get levels for filter (from courses the lecturer teaches)
+	const courseLevels = await prisma.level.findMany({
+		where: {
+			courses: {
+				some: {
+					id: { in: lecturerCourseIds }
+				}
+			}
+		},
+		select: { id: true, name: true },
+		orderBy: { name: 'asc' },
+	})
+
+	// ─── Get REGISTERED STUDENTS for the lecturer's courses ────────
 	const registrations = await prisma.courseRegistration.findMany({
-		where: registrationWhere,
+		where: {
+			status: 'APPROVED',
+			courseId: { in: lecturerCourseIds },
+			...(courseFilter && courseFilter !== 'all' ? { courseId: courseFilter } : {}),
+		},
 		include: {
 			student: {
 				select: {
@@ -79,11 +114,11 @@ export const load: PageServerLoad = async ({ locals, url }) => {
 					firstName: true,
 					lastName: true,
 					otherNames: true,
-					currentLevel: { select: { name: true } },
+					currentLevel: { select: { id: true, name: true } },
 				},
 			},
 			course: {
-				select: { code: true, title: true },
+				select: { id: true, code: true, title: true },
 			},
 		},
 		orderBy: [
@@ -92,8 +127,17 @@ export const load: PageServerLoad = async ({ locals, url }) => {
 		],
 	})
 
+	// Apply level filter
+	let filteredRegistrations = registrations
+	if (levelFilter && levelFilter !== 'all') {
+		filteredRegistrations = registrations.filter(
+			(reg) => reg.student.currentLevel.id === levelFilter
+		)
+	}
+
 	const studentAttendance = await Promise.all(
-		registrations.map(async (reg) => {
+		filteredRegistrations.map(async (reg) => {
+			// Count sessions for THIS SPECIFIC course and lecturer
 			const totalEligibleSessions = await prisma.assessmentSession.count({
 				where: {
 					studentId: reg.studentId,
@@ -121,37 +165,84 @@ export const load: PageServerLoad = async ({ locals, url }) => {
 				? Math.round((completedSessions / totalEligibleSessions) * 100)
 				: 0
 
-			// Student PII is stored encrypted at rest (see protectStudentRegistration
-			// in dataProtection.ts). Decrypt only the fields this view needs to
-			// display, and only for students the lecturer is authorized to see
-			// (already scoped above to APPROVED registrations in their own
-			// department's courses).
 			let name: string
 			let matricNumber: string
 			try {
 				name = `${revealName(reg.student.lastName)}, ${revealName(reg.student.firstName)} ${revealName(reg.student.otherNames)}`
 				matricNumber = revealMatricNumber(reg.student.matricNumber)
 			} catch {
-				// A decryption failure (bad/legacy ciphertext, wrong key, etc.)
-				// shouldn't crash the whole attendance list for every other
-				// student — surface a clear placeholder for this row instead.
 				name = 'Unable to decrypt name'
 				matricNumber = 'N/A'
 			}
+
+			// Get last activity date for this student in this course
+			const lastSession = await prisma.assessmentSession.findFirst({
+				where: {
+					studentId: reg.studentId,
+					assessment: {
+						courseId: reg.courseId,
+						createdById: staffId,
+					},
+				},
+				orderBy: { updatedAt: 'desc' },
+				select: { updatedAt: true },
+			})
 
 			return {
 				id: reg.studentId,
 				matricNumber,
 				name,
 				level: reg.student.currentLevel.name,
-				course: `${reg.course.code}`,
+				levelId: reg.student.currentLevel.id,
+				course: reg.course.code,
+				courseId: reg.course.id,
 				courseTitle: reg.course.title,
 				attendance: attendancePercent,
 				assessmentsTaken: completedSessions,
 				assessmentsEligible: totalEligibleSessions,
+				lastActivity: lastSession?.updatedAt || null,
 			}
 		})
 	)
+
+	// Apply status filter
+	let filteredByStatus = studentAttendance
+	if (statusFilter && statusFilter !== 'all') {
+		if (statusFilter === 'excellent') {
+			filteredByStatus = studentAttendance.filter((s) => s.attendance >= 80)
+		} else if (statusFilter === 'good') {
+			filteredByStatus = studentAttendance.filter((s) => s.attendance >= 60 && s.attendance < 80)
+		} else if (statusFilter === 'average') {
+			filteredByStatus = studentAttendance.filter((s) => s.attendance >= 40 && s.attendance < 60)
+		} else if (statusFilter === 'poor') {
+			filteredByStatus = studentAttendance.filter((s) => s.attendance < 40)
+		}
+	}
+
+	// Calculate distribution
+	const distribution = {
+		excellent: studentAttendance.filter((s) => s.attendance >= 80).length,
+		good: studentAttendance.filter((s) => s.attendance >= 60 && s.attendance < 80).length,
+		average: studentAttendance.filter((s) => s.attendance >= 40 && s.attendance < 60).length,
+		poor: studentAttendance.filter((s) => s.attendance < 40).length,
+	}
+
+	// Build courses list for filter (only courses the lecturer teaches)
+	const courseList = [
+		{ id: 'all', label: 'All courses' },
+		...courseOfferings
+			.map((offering) => ({
+				id: offering.course.id,
+				label: `${offering.course.code} — ${offering.course.title}`,
+			}))
+			.sort((a, b) => a.label.localeCompare(b.label))
+	]
+
+	// Build levels list for filter (only levels from courses the lecturer teaches)
+	const levelList = [
+		{ id: 'all', label: 'All Levels' },
+		...courseLevels.map((l) => ({ id: l.id, label: `${l.name} Level` })),
+	]
 
 	return {
 		user: {
@@ -159,19 +250,20 @@ export const load: PageServerLoad = async ({ locals, url }) => {
 			lastName: user.lastName,
 			firstName: user.firstName,
 		},
-		studentAttendance,
-		courses: [
-			{ id: 'all', label: 'All courses' },
-			...courses.map((c) => ({ id: c.id, label: `${c.code} — ${c.title}` })),
-		],
+		studentAttendance: filteredByStatus,
+		courses: courseList,
+		levels: levelList,
 		filters: {
-			course: courseFilter,
+			course: courseFilter || 'all',
+			level: levelFilter || 'all',
+			status: statusFilter || 'all',
 		},
 		stats: {
-			totalStudents: registrations.length,
-			averageAttendance: studentAttendance.length > 0
-				? Math.round(studentAttendance.reduce((sum, s) => sum + s.attendance, 0) / studentAttendance.length)
+			totalStudents: filteredByStatus.length,
+			averageAttendance: filteredByStatus.length > 0
+				? Math.round(filteredByStatus.reduce((sum, s) => sum + s.attendance, 0) / filteredByStatus.length)
 				: 0,
+			attendanceDistribution: distribution,
 		},
 	}
 }
