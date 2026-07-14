@@ -12,60 +12,63 @@ export default defineConfig(() => {
       sveltekit(),
       basicSsl(),
       SvelteKitPWA({
-        // Registered manually via a small client component (see
-        // InstallPrompt.svelte) rather than the plugin's auto-inject, so
-        // SW registration order is explicit rather than dependent on
-        // SvelteKit's SSR head injection.
         injectRegister: null,
         registerType: 'autoUpdate',
         strategies: 'generateSW',
 
         manifest: {
+          id: '/',
           name: 'Evaluation Assessment & Proctor System',
-          short_name: 'WAPS',
+          short_name: 'EAPS',
           description:
             'Michael Okpara University of Agriculture, Umudike — Examination Management Platform',
-          theme_color: '#0f1115',
-          background_color: '#0f1115',
+          theme_color: '#000000',
+          background_color: '#000000',
           display: 'standalone',
           orientation: 'portrait-primary',
           start_url: '/',
           scope: '/',
           icons: [
-            { src: '/icons/icon-192.png', sizes: '192x192', type: 'image/png' },
-            { src: '/icons/icon-512.png', sizes: '512x512', type: 'image/png' },
+            { src: '/icons/icon-192x192.png', sizes: '192x192', type: 'image/png', purpose: 'any' },
+            { src: '/icons/icon-512x512.png', sizes: '512x512', type: 'image/png', purpose: 'any' },
             {
-              src: '/icons/icon-maskable-512.png',
+              src: '/icons/icon-maskable-512x512.png',
               sizes: '512x512',
               type: 'image/png',
               purpose: 'maskable',
             },
           ],
+          screenshots: [
+            {
+              src: '/screenshots/desktop-wide.png',
+              sizes: '1280x800',
+              type: 'image/png',
+              form_factor: 'wide',
+              label: 'EAPS dashboard on desktop',
+            },
+            {
+              src: '/screenshots/mobile-narrow.png',
+              sizes: '750x1334',
+              type: 'image/png',
+              label: 'EAPS exam view on mobile',
+            },
+          ],
         },
 
         workbox: {
-          // Only ever precache the static build shell — never a page route.
-          // A cached exam or portal page could render fully offline, which
-          // directly undermines ExamMonitor's NETWORK_DROP detection and
-          // the server's ability to confirm a live session.
           globPatterns: ['client/**/*.{js,css,ico,png,svg,webmanifest}'],
           navigateFallback: null,
 
           runtimeCaching: [
             {
-              // Violations, sessions, face verification — always network.
               urlPattern: /\/api\/.*/,
               handler: 'NetworkOnly',
             },
             {
-              // Nothing inside an active portal is ever cache-served.
               urlPattern: /\/(student|admin|exam-officer|invigilator)\/.*/,
               handler: 'NetworkOnly',
             },
             {
-              // Human.js's face models are large, static, and safe to cache
-              // aggressively — affects model load speed only, not exam
-              // integrity. Bump the cache name if the model version changes.
               urlPattern: /\/models\/human\/.*/,
               handler: 'CacheFirst',
               options: {
@@ -77,10 +80,6 @@ export default defineConfig(() => {
         },
 
         devOptions: {
-          // You already run HTTPS in dev via basicSsl(), so flipping this to
-          // true would let you test install prompts locally if you want —
-          // left off by default to keep `pnpm dev` free of SW cache surprises
-          // while you're actively changing routes/API shapes.
           enabled: false,
         },
       }),
