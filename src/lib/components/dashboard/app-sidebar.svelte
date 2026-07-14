@@ -110,13 +110,7 @@
 											{:else}
 												<item.icon class="size-5 shrink-0 group-data-[collapsible=icon]:!size-6" />
 											{/if}
-											<span class="truncate group-data-[collapsible=icon]:hidden">
-												{#if loadingHref === item.href}
-													Loading...
-												{:else}
-													{item.label}
-												{/if}
-											</span>
+											<span class="truncate group-data-[collapsible=icon]:hidden">{item.label}</span>
 										</a>
 									{/snippet}
 								</Sidebar.MenuButton>
