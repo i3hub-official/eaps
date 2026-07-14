@@ -1,6 +1,6 @@
 // src/routes/(lecturer)/lecturer/assessments/create/test/+page.server.ts
 import type { PageServerLoad, Actions } from './$types'
-import { fail } from '@sveltejs/kit'
+import { fail, redirect } from '@sveltejs/kit'  // Add redirect import
 import { getPrismaClient } from '$lib/server/db/index.js'
 import { requireLecturer } from '$lib/server/auth/guards.js'
 import { Decimal } from 'decimal.js'
@@ -92,8 +92,23 @@ export const actions: Actions = {
 		const requireFaceVerify = String(formData.get('requireFaceVerify') ?? 'on') === 'on'
 		const fullscreenRequired = String(formData.get('fullscreenRequired') ?? 'on') === 'on'
 
-		const startDate = formData.get('startDate') ? new Date(String(formData.get('startDate'))) : null
-		const endDate = formData.get('endDate') ? new Date(String(formData.get('endDate'))) : null
+		// ─── FIX: Parse dates WITHOUT timezone offset ──────────────────
+		const startDateStr = formData.get('startDate')
+		const endDateStr = formData.get('endDate')
+		
+		let startDate: Date | null = null
+		let endDate: Date | null = null
+		
+		if (startDateStr && typeof startDateStr === 'string' && startDateStr.trim()) {
+			// Parse as UTC to prevent timezone offset
+			startDate = new Date(startDateStr + 'Z')
+			// Alternative: parse as local date without time
+			// startDate = new Date(startDateStr + 'T00:00:00')
+		}
+		
+		if (endDateStr && typeof endDateStr === 'string' && endDateStr.trim()) {
+			endDate = new Date(endDateStr + 'Z')
+		}
 
 		// ─── Attempts & Retakes ─────────────────────────────────────────
 		const maxAttempts = Number(formData.get('maxAttempts') ?? 1)
@@ -249,19 +264,6 @@ export const actions: Actions = {
 				// console.log('[TEST-CREATE] Assessment created:', created.id)
 
 				// ── Eligibility ─────────────────────────────────────────────
-				// Built from actual APPROVED registrants of this course, NOT
-				// from department/level. This is required to correctly
-				// include carryover students — e.g. a 300L student retaking a
-				// 200L course has student.currentLevelId=300 but the course's
-				// own levelId=200, so a department/level-based eligibility
-				// row would silently exclude them even though they hold a
-				// valid, approved registration.
-				//
-				// Note: this only captures students registered as of RIGHT
-				// NOW. Anyone who registers for this course AFTER the test is
-				// created needs their eligibility backfilled — see the
-				// `register` action in src/routes/student/courses/+page.server.ts,
-				// which handles that side of the race.
 				const registrants = await tx.courseRegistration.findMany({
 					where: { courseId, status: 'APPROVED' },
 					select: { studentId: true },
@@ -277,8 +279,6 @@ export const actions: Actions = {
 					})
 				}
 
-				// console.log('[TEST-CREATE] Eligibility set for', registrants.length, 'registered students')
-
 				// Link questions
 				await tx.assessmentQuestion.createMany({
 					data: questionIds.map((questionId, index) => ({
@@ -288,8 +288,6 @@ export const actions: Actions = {
 					})),
 				})
 
-				// console.log('[TEST-CREATE] Linked', questionIds.length, 'questions')
-
 				// Link tags (after assessment exists)
 				if (tags.length > 0) {
 					await tx.assessmentTag.createMany({
@@ -298,15 +296,21 @@ export const actions: Actions = {
 							tagId: tag.id,
 						})),
 					})
-					// console.log('[TEST-CREATE] Linked', tags.length, 'tags')
 				}
 
 				return created
 			})
 
-			// console.log('[TEST-CREATE] ✅ Success! Assessment ID:', test.id)
-			return { success: true, id: test.id }
+			// ─── FIX: Redirect on success ──────────────────────────────
+			// Redirect to the assessments list
+			throw redirect(303, '/lecturer/assessments')
+			
 		} catch (err) {
+			// If it's a redirect, re-throw it
+			if (err instanceof redirect) {
+				throw err
+			}
+			
 			// console.error('[TEST-CREATE] ❌ Database error:', err)
 			const errorMsg = err instanceof Error ? err.message : 'Unknown error'
 			return fail(500, { error: `Failed to create test: ${errorMsg}` })
