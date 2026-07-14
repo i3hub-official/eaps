@@ -1,6 +1,5 @@
 <script lang="ts">
 	import { enhance } from '$app/forms';
-	import { goto } from '$app/navigation';
 	import { toast } from 'svelte-sonner';
 	import { Topbar } from '$lib/components/dashboard';
 	import { Button } from '$lib/components/ui/button/index.js';
@@ -165,53 +164,47 @@
 					{/if}
 
 					<Dialog bind:open={deleteDialogOpen}>
-    <DialogTrigger>
-        <Button
-            variant="destructive"
-            size="sm"
-            disabled={isPublishedLike}
-            title={isPublishedLike ? 'Unpublish before deleting' : ''}
-        >
-            <Trash2 class="mr-2 size-4" />
-            Delete
-        </Button>
-    </DialogTrigger>
-    <DialogContent>
-        <DialogHeader>
-            <DialogTitle>Delete "{a.title}"?</DialogTitle>
-            <DialogDescription>
-                This permanently removes the assessment and its question links. This cannot be undone.
-            </DialogDescription>
-        </DialogHeader>
-        <DialogFooter>
-            <Button variant="outline" onclick={() => (deleteDialogOpen = false)}>Cancel</Button>
-            <form
-                method="POST"
-                action="?/delete"
-                use:enhance={() => {
-                    isDeleting = true;
-                    return async ({ result }) => {
-                        if (result.type === 'success') {
-                            // Close dialog and navigate
-                            deleteDialogOpen = false;
-                            toast.success('Assessment deleted successfully');
-                            // Navigate back to assessments list
-                            goto('/lecturer/assessments');
-                        } else if (result.type === 'failure') {
-                            isDeleting = false;
-                            toast.error(result.data?.error ?? 'Failed to delete');
-                            deleteDialogOpen = false;
-                        }
-                    };
-                }}
-            >
-                <Button type="submit" variant="destructive" disabled={isDeleting}>
-                    {isDeleting ? 'Deleting…' : 'Confirm Delete'}
-                </Button>
-            </form>
-        </DialogFooter>
-    </DialogContent>
-</Dialog>
+						<DialogTrigger>
+							<Button
+								variant="destructive"
+								size="sm"
+								disabled={isPublishedLike}
+								title={isPublishedLike ? 'Unpublish before deleting' : ''}
+							>
+								<Trash2 class="mr-2 size-4" />
+								Delete
+							</Button>
+						</DialogTrigger>
+						<DialogContent>
+							<DialogHeader>
+								<DialogTitle>Delete "{a.title}"?</DialogTitle>
+								<DialogDescription>
+									This permanently removes the assessment and its question links. This cannot be undone.
+								</DialogDescription>
+							</DialogHeader>
+							<DialogFooter>
+								<Button variant="outline" onclick={() => (deleteDialogOpen = false)}>Cancel</Button>
+								<form
+									method="POST"
+									action="?/delete"
+									use:enhance={() => {
+										isDeleting = true;
+										return async ({ result }) => {
+											if (result.type === 'failure') {
+												isDeleting = false;
+												toast.error(result.data?.error ?? 'Failed to delete');
+												deleteDialogOpen = false;
+											}
+										};
+									}}
+								>
+									<Button type="submit" variant="destructive" disabled={isDeleting}>
+										{isDeleting ? 'Deleting…' : 'Confirm Delete'}
+									</Button>
+								</form>
+							</DialogFooter>
+						</DialogContent>
+					</Dialog>
 				</div>
 			</div>
 		</CardHeader>

@@ -160,9 +160,37 @@ import { toast } from 'svelte-sonner';
 
 	let errors = $state<Record<string, string>>({});
 	let isSubmitting = $state(false);
+
+	// ─── Question Upload (drag & drop + progress) ──────────────────────────
+	// NOTE: uploadStagedFile() below performs exactly ONE network request per
+	// click. The previous version called doUpload() twice — once inside
+	// toast.promise(doUpload()) and again in the try block right after —
+	// which silently POSTed the same file to the import endpoint twice,
+	// producing duplicate questions (e.g. 50 uploaded → 100 imported). The
+	// `isUploading` guard at the top of uploadStagedFile() also prevents a
+	// double-click or double-tap from re-firing the request while one is
+	// already in flight.
 	let isUploading = $state(false);
+	let uploadProgress = $state(0);
 	let uploadSuccess = $state<{ imported: number; errors?: string[] } | null>(null);
 	let uploadDialogOpen = $state(false);
+	let selectedFile = $state<File | null>(null);
+	let isDragging = $state(false);
+	let fileInputRef = $state<HTMLInputElement>(null!);
+
+	// Reset upload state whenever the dialog is closed (manually, via
+	// Cancel/X, or after a successful import) so stale progress/errors/files
+	// don't linger the next time it's opened.
+	let previousUploadDialogOpen = uploadDialogOpen;
+	$effect(() => {
+		if (previousUploadDialogOpen && !uploadDialogOpen && !isUploading) {
+			selectedFile = null;
+			uploadProgress = 0;
+			errors = { ...errors, file: undefined as unknown as string };
+			delete errors.file;
+		}
+		previousUploadDialogOpen = uploadDialogOpen;
+	});
 
 	// ─── Question Bank Dialog ──────────────────────────────────────────────
 	let questionBankOpen = $state(false);
@@ -237,74 +265,124 @@ import { toast } from 'svelte-sonner';
 		questionBankOpen = true;
 	}
 
-	async function handleFileUpload(event: Event) {
-		const target = event.target as HTMLInputElement;
-		const file = target.files?.[0];
-		if (!file || !formData.courseId) {
-			const msg = formData.courseId ? 'Select a file' : 'Select a course first';
-			errors = { file: msg };
-			toast.error(msg);
-			return;
-		}
+	// ── Staging (drag/drop or file picker) — validates only, no network call ──
+	function validateUploadFile(file: File): string | null {
+		if (!formData.courseId) return 'Select a course first';
 
 		const validTypes = ['.json', '.txt'];
 		const fileExt = '.' + file.name.split('.').pop()?.toLowerCase();
-		if (!validTypes.includes(fileExt)) {
-			errors = { file: 'Only .json and .txt files are supported' };
-			toast.error('Only .json and .txt files are supported');
-			return;
-		}
+		if (!validTypes.includes(fileExt)) return 'Only .json and .txt files are supported';
 
-		if (file.size > 5 * 1024 * 1024) {
-			errors = { file: 'File size must be less than 5MB' };
-			toast.error('File size must be less than 5MB');
+		if (file.size > 5 * 1024 * 1024) return 'File size must be less than 5MB';
+
+		return null;
+	}
+
+	function stageFile(file: File) {
+		const validationError = validateUploadFile(file);
+		if (validationError) {
+			errors = { ...errors, file: validationError };
+			toast.error(validationError);
 			return;
 		}
+		const { file: _omit, ...rest } = errors;
+		errors = rest;
+		selectedFile = file;
+		uploadSuccess = null;
+	}
+
+	function handleDragOver(event: DragEvent) {
+		event.preventDefault();
+		if (isUploading || !formData.courseId) return;
+		isDragging = true;
+	}
+
+	function handleDragLeave(event: DragEvent) {
+		event.preventDefault();
+		isDragging = false;
+	}
+
+	function handleDrop(event: DragEvent) {
+		event.preventDefault();
+		isDragging = false;
+		if (isUploading || !formData.courseId) return;
+		const file = event.dataTransfer?.files?.[0];
+		if (file) stageFile(file);
+	}
+
+	function handleFileInputChange(event: Event) {
+		const target = event.target as HTMLInputElement;
+		const file = target.files?.[0];
+		if (file) stageFile(file);
+		target.value = ''; // allow re-selecting the same filename later
+	}
+
+	// ── Actual upload — this is the ONLY place the import request fires ──
+	function uploadStagedFile() {
+		if (!selectedFile || isUploading) return; // guards against double-click/double-submit
+		const file = selectedFile;
 
 		isUploading = true;
+		uploadProgress = 0;
 		uploadSuccess = null;
-		errors = {};
+		const { file: _omit, ...rest } = errors;
+		errors = rest;
 
-		const doUpload = async () => {
+		const uploadPromise = new Promise<any>((resolve, reject) => {
 			const formDataObj = new FormData();
 			formDataObj.append('courseId', formData.courseId);
 			formDataObj.append('file', file);
 
-			const response = await fetch('/lecturer/question-bank/import', {
-				method: 'POST',
-				body: formDataObj,
-			});
+			const xhr = new XMLHttpRequest();
+			xhr.open('POST', '/lecturer/question-bank/import');
 
-			const result = await response.json();
+			xhr.upload.onprogress = (e) => {
+				if (e.lengthComputable) {
+					uploadProgress = Math.round((e.loaded / e.total) * 100);
+				}
+			};
 
-			if ((response.ok || result.success) && result.imported > 0) {
-				uploadSuccess = { imported: result.imported || 0, errors: result.errors };
-				target.value = '';
-				await invalidateAll();
-				uploadDialogOpen = false;
-				return result;
-			}
+			xhr.onload = () => {
+				let result: any;
+				try {
+					result = JSON.parse(xhr.responseText);
+				} catch {
+					reject(new Error('Server returned an unreadable response'));
+					return;
+				}
 
-			throw new Error(result.error || 'Import failed. Please check your file format.');
-		};
+				if (xhr.status >= 200 && xhr.status < 300 && result.imported > 0) {
+					resolve(result);
+				} else {
+					reject(new Error(result.error || 'Import failed. Please check your file format.'));
+				}
+			};
 
-		toast.promise(doUpload(), {
+			xhr.onerror = () => reject(new Error('Network error during upload'));
+			xhr.send(formDataObj);
+		});
+
+		toast.promise(uploadPromise, {
 			loading: 'Importing questions…',
 			success: (result: any) =>
 				`Imported ${result.imported} question(s)${result.errors?.length ? ` — ${result.errors.length} row(s) had errors` : ''}`,
-			error: (err) => {
-				errors = { file: err instanceof Error ? err.message : 'Import failed' };
-				return err instanceof Error ? err.message : 'Import failed';
-			},
+			error: (err) => (err instanceof Error ? err.message : 'Import failed'),
 		});
 
-		try {
-			await doUpload();
-		} catch {
-			// surfaced via toast.promise
-		} finally {
-			isUploading = false;
-		}
+		uploadPromise
+			.then(async (result) => {
+				uploadSuccess = { imported: result.imported || 0, errors: result.errors };
+				selectedFile = null;
+				await invalidateAll();
+				uploadDialogOpen = false;
+			})
+			.catch((err) => {
+				errors = { ...errors, file: err instanceof Error ? err.message : 'Import failed' };
+			})
+			.finally(() => {
+				isUploading = false;
+				uploadProgress = 0;
+			});
 	}
 
 	function validateForm() {
@@ -487,6 +565,16 @@ import { toast } from 'svelte-sonner';
 	}
 	.toggle-track.is-on::after {
 		transform: translateX(1.25rem); /* 20px */
+	}
+
+	/* Upload dropzone */
+	.dropzone {
+		display: block;
+		width: 100%;
+	}
+	.dropzone:focus-visible {
+		outline: 2px solid currentColor;
+		outline-offset: 2px;
 	}
 </style>
 
@@ -792,26 +880,73 @@ import { toast } from 'svelte-sonner';
 										</DialogHeader>
 										<div class="space-y-4 py-4">
 											<div class="space-y-2">
-												<Label for="upload-file">Select File</Label>
-												<Input
+												<Label for="upload-file">Question file</Label>
+
+												<!-- Drag & drop zone. Clicking anywhere in it (or pressing
+												     Enter/Space) opens the native file picker via the
+												     hidden input below. -->
+												<div
+													class="dropzone"
+													role="button"
+													tabindex="0"
+													ondragover={handleDragOver}
+													ondragleave={handleDragLeave}
+													ondrop={handleDrop}
+													onclick={() => fileInputRef?.click()}
+													onkeydown={(e) => {
+														if (e.key === 'Enter' || e.key === ' ') {
+															e.preventDefault();
+															fileInputRef?.click();
+														}
+													}}
+												>
+													<div
+														class={cn(
+															'rounded-lg border-2 border-dashed p-8 text-center transition-colors',
+															isDragging
+																? 'border-primary bg-primary/5'
+																: 'border-muted-foreground/25 hover:border-muted-foreground/50',
+															(!formData.courseId || isUploading) && 'opacity-50 pointer-events-none',
+															!isDragging && !formData.courseId ? 'cursor-not-allowed' : 'cursor-pointer'
+														)}
+													>
+														<Upload class="mx-auto size-8 text-muted-foreground/60 mb-2" />
+														{#if selectedFile}
+															<p class="text-sm font-medium">{selectedFile.name}</p>
+															<p class="text-xs text-muted-foreground mt-1">
+																{(selectedFile.size / 1024).toFixed(1)} KB · click or drop to replace
+															</p>
+														{:else}
+															<p class="text-sm font-medium">Drag & drop a file here</p>
+															<p class="text-xs text-muted-foreground mt-1">
+																or click to browse · .json or .txt · max 5MB
+															</p>
+														{/if}
+													</div>
+												</div>
+
+												<input
+													bind:this={fileInputRef}
 													id="upload-file"
 													type="file"
 													accept=".json,.txt"
-													onchange={handleFileUpload}
+													class="hidden"
+													onchange={handleFileInputChange}
 													disabled={isUploading || !formData.courseId}
 												/>
+
 												{#if !formData.courseId}
 													<p class="text-xs text-destructive">Select a course first</p>
-												{:else}
-													<p class="text-xs text-muted-foreground">Max 5 MB · .json and .txt supported</p>
 												{/if}
 											</div>
+
 											{#if errors.file}
 												<Alert variant="destructive">
 													<AlertCircle class="size-4" />
 													<AlertDescription>{errors.file}</AlertDescription>
 												</Alert>
 											{/if}
+
 											{#if uploadSuccess}
 												<Alert class="bg-green-50 border-green-200">
 													<CheckIcon class="size-4 text-green-600" />
@@ -825,10 +960,41 @@ import { toast } from 'svelte-sonner';
 													</AlertDescription>
 												</Alert>
 											{/if}
+
 											{#if isUploading}
-												<div class="flex items-center gap-2 text-sm text-muted-foreground">
-													<span class="animate-spin inline-block size-4 border-2 border-current border-t-transparent rounded-full"></span>
-													Uploading…
+												<div class="space-y-1.5">
+													<div class="flex justify-between text-xs text-muted-foreground">
+														<span class="flex items-center gap-1.5">
+															<span class="animate-spin inline-block size-3 border-2 border-current border-t-transparent rounded-full"></span>
+															Uploading…
+														</span>
+														<span>{uploadProgress}%</span>
+													</div>
+													<div class="h-2 w-full rounded-full bg-muted overflow-hidden">
+														<div
+															class="h-full bg-primary transition-all duration-150 ease-out"
+															style="width: {uploadProgress}%"
+														></div>
+													</div>
+												</div>
+											{/if}
+
+											{#if selectedFile && !isUploading}
+												<div class="flex justify-end gap-2">
+													<Button
+														type="button"
+														variant="ghost"
+														size="sm"
+														onclick={() => {
+															selectedFile = null;
+															uploadSuccess = null;
+														}}
+													>
+														Remove
+													</Button>
+													<Button type="button" size="sm" onclick={uploadStagedFile}>
+														Import file
+													</Button>
 												</div>
 											{/if}
 										</div>
@@ -979,11 +1145,11 @@ import { toast } from 'svelte-sonner';
 					</CardContent>
 				</Card>
 
-				<!-- Scheduling & Security -->
+				<!-- Scheduling -->
 				<Card>
 					<CardHeader>
-						<CardTitle>Scheduling & Security</CardTitle>
-						<CardDescription>Configure availability and security settings</CardDescription>
+						<CardTitle>Scheduling</CardTitle>
+						<CardDescription>Configure when this test is available to students</CardDescription>
 					</CardHeader>
 					<CardContent class="space-y-4">
 						<div class="space-y-2">
@@ -1002,90 +1168,97 @@ import { toast } from 'svelte-sonner';
 								Current academic session: <strong>{data.currentSession}</strong>
 							</p>
 						</div>
+					</CardContent>
+				</Card>
 
-						<div class="pt-4 border-t space-y-4">
-							<!--
-								Custom toggle pill — a plain <button type="button"> flips the
-								boolean in formData directly. No <label>/<input> wrapper needed,
-								so there is zero risk of click events bubbling into the form or
-								triggering sonner toasts via reactive side-effects.
-							-->
+				<!-- Security -->
+				<Card>
+					<CardHeader>
+						<CardTitle>Security</CardTitle>
+						<CardDescription>Configure proctoring and anti-cheating settings</CardDescription>
+					</CardHeader>
+					<CardContent class="space-y-4">
+						<!--
+							Custom toggle pill — a plain <button type="button"> flips the
+							boolean in formData directly. No <label>/<input> wrapper needed,
+							so there is zero risk of click events bubbling into the form or
+							triggering sonner toasts via reactive side-effects.
+						-->
 
-							<!-- Shuffle Questions -->
-							<div class="flex items-center justify-between">
-								<div>
-									<p class="text-sm font-medium leading-none">Shuffle Questions</p>
-									<p class="text-xs text-muted-foreground mt-1">Randomize question order</p>
-								</div>
-								<button
-									type="button"
-									role="switch"
-									aria-checked={formData.shuffleQuestions}
-									onclick={() => {
-										formData.shuffleQuestions = !formData.shuffleQuestions;
-										if (formData.shuffleQuestions) toast.success('Shuffle questions enabled');
-										else toast.error('Shuffle questions disabled');
-									}}
-									class="toggle-track {formData.shuffleQuestions ? 'is-on' : 'is-off'}"
-								></button>
+						<!-- Shuffle Questions -->
+						<div class="flex items-center justify-between">
+							<div>
+								<p class="text-sm font-medium leading-none">Shuffle Questions</p>
+								<p class="text-xs text-muted-foreground mt-1">Randomize question order</p>
 							</div>
+							<button
+								type="button"
+								role="switch"
+								aria-checked={formData.shuffleQuestions}
+								onclick={() => {
+									formData.shuffleQuestions = !formData.shuffleQuestions;
+									if (formData.shuffleQuestions) toast.success('Shuffle questions enabled');
+									else toast.error('Shuffle questions disabled');
+								}}
+								class="toggle-track {formData.shuffleQuestions ? 'is-on' : 'is-off'}"
+							></button>
+						</div>
 
-							<!-- Shuffle Options -->
-							<div class="flex items-center justify-between">
-								<div>
-									<p class="text-sm font-medium leading-none">Shuffle Options</p>
-									<p class="text-xs text-muted-foreground mt-1">Randomize option order</p>
-								</div>
-								<button
-									type="button"
-									role="switch"
-									aria-checked={formData.shuffleOptions}
-									onclick={() => {
-										formData.shuffleOptions = !formData.shuffleOptions;
-										if (formData.shuffleOptions) toast.success('Shuffle options enabled');
-										else toast.error('Shuffle options disabled');
-									}}
-									class="toggle-track {formData.shuffleOptions ? 'is-on' : 'is-off'}"
-								></button>
+						<!-- Shuffle Options -->
+						<div class="flex items-center justify-between">
+							<div>
+								<p class="text-sm font-medium leading-none">Shuffle Options</p>
+								<p class="text-xs text-muted-foreground mt-1">Randomize option order</p>
 							</div>
+							<button
+								type="button"
+								role="switch"
+								aria-checked={formData.shuffleOptions}
+								onclick={() => {
+									formData.shuffleOptions = !formData.shuffleOptions;
+									if (formData.shuffleOptions) toast.success('Shuffle options enabled');
+									else toast.error('Shuffle options disabled');
+								}}
+								class="toggle-track {formData.shuffleOptions ? 'is-on' : 'is-off'}"
+							></button>
+						</div>
 
-							<!-- Face Verification -->
-							<div class="flex items-center justify-between">
-								<div>
-									<p class="text-sm font-medium leading-none">Face Verification</p>
-									<p class="text-xs text-muted-foreground mt-1">Require face verification</p>
-								</div>
-								<button
-									type="button"
-									role="switch"
-									aria-checked={formData.requireFaceVerify}
-									onclick={() => {
-										formData.requireFaceVerify = !formData.requireFaceVerify;
-										if (formData.requireFaceVerify) toast.success('Face verification enabled');
-										else toast.error('Face verification disabled');
-									}}
-									class="toggle-track {formData.requireFaceVerify ? 'is-on' : 'is-off'}"
-								></button>
+						<!-- Face Verification -->
+						<div class="flex items-center justify-between">
+							<div>
+								<p class="text-sm font-medium leading-none">Face Verification</p>
+								<p class="text-xs text-muted-foreground mt-1">Require face verification</p>
 							</div>
+							<button
+								type="button"
+								role="switch"
+								aria-checked={formData.requireFaceVerify}
+								onclick={() => {
+									formData.requireFaceVerify = !formData.requireFaceVerify;
+									if (formData.requireFaceVerify) toast.success('Face verification enabled');
+									else toast.error('Face verification disabled');
+								}}
+								class="toggle-track {formData.requireFaceVerify ? 'is-on' : 'is-off'}"
+							></button>
+						</div>
 
-							<!-- Fullscreen Required -->
-							<div class="flex items-center justify-between">
-								<div>
-									<p class="text-sm font-medium leading-none">Fullscreen Required</p>
-									<p class="text-xs text-muted-foreground mt-1">Must be in fullscreen mode</p>
-								</div>
-								<button
-									type="button"
-									role="switch"
-									aria-checked={formData.fullscreenRequired}
-									onclick={() => {
-										formData.fullscreenRequired = !formData.fullscreenRequired;
-										if (formData.fullscreenRequired) toast.success('Fullscreen required enabled');
-										else toast.error('Fullscreen required disabled');
-									}}
-									class="toggle-track {formData.fullscreenRequired ? 'is-on' : 'is-off'}"
-								></button>
+						<!-- Fullscreen Required -->
+						<div class="flex items-center justify-between">
+							<div>
+								<p class="text-sm font-medium leading-none">Fullscreen Required</p>
+								<p class="text-xs text-muted-foreground mt-1">Must be in fullscreen mode</p>
 							</div>
+							<button
+								type="button"
+								role="switch"
+								aria-checked={formData.fullscreenRequired}
+								onclick={() => {
+									formData.fullscreenRequired = !formData.fullscreenRequired;
+									if (formData.fullscreenRequired) toast.success('Fullscreen required enabled');
+									else toast.error('Fullscreen required disabled');
+								}}
+								class="toggle-track {formData.fullscreenRequired ? 'is-on' : 'is-off'}"
+							></button>
 						</div>
 
 						<div class="rounded-lg bg-blue-500/10 border border-blue-500/30 p-3 mt-4">

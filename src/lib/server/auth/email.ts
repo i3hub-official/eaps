@@ -12,7 +12,7 @@ const SMTP_HOST = env.SMTP_HOST || 'smtp.gmail.com'
 const SMTP_PORT = parseInt(env.SMTP_PORT || '587', 10)
 const SMTP_USER = env.SMTP_USER || ''
 const SMTP_PASS = env.SMTP_PASS || ''
-const EMAIL_FROM = env.EMAIL_FROM || 'noreply@eaps.vercel.app'
+const EMAIL_FROM = env.EMAIL_FROM || 'i3hub0@gmail.com'
 const APP_NAME = env.APP_NAME || 'Evaluation Assessment Protocol System'
 const APP_SHORT = env.APP_SHORT || 'AES'
 const APP_URL = env.APP_URL || 'https://localhost:1209'
@@ -25,7 +25,7 @@ function getTransporter(): Transporter {
   if (!SMTP_USER || !SMTP_PASS) {
     throw new Error('SMTP_USER and SMTP_PASS environment variables are not set')
   }
-  
+
   if (!transporter) {
     transporter = nodemailer.createTransport({
       host: SMTP_HOST,
@@ -49,7 +49,7 @@ function getTransporter(): Transporter {
       }
     })
   }
-  
+
   return transporter
 }
 
@@ -78,10 +78,7 @@ export async function sendMail(msg: MailMessage): Promise<{ success: boolean; er
   try {
     // Only ever send real emails in production. In any other environment
     // (development, test, preview), log what would have been sent instead —
-    // regardless of whether SMTP credentials happen to be configured. This
-    // is a stronger guarantee than the old dev-mock branch below, which
-    // only mocked when SMTP_USER/SMTP_PASS were absent; a dev machine with
-    // real credentials configured would otherwise have sent real mail.
+    // regardless of whether SMTP credentials happen to be configured.
     if (process.env.NODE_ENV !== 'production') {
       console.log('[email] 📧 (non-production — not sent) Email would be sent:')
       console.log(`[email] To: ${msg.to}`)
@@ -111,18 +108,166 @@ export async function sendMail(msg: MailMessage): Promise<{ success: boolean; er
     }
 
     const info = await transporter.sendMail(mailOptions)
-    
-    console.log(`[email] Email sent successfully to ${msg.to}`)
+
     console.log(`[email] Message ID: ${info.messageId}`)
-    
+
     return { success: true, id: info.messageId }
   } catch (error) {
     console.error('[email] Failed to send email:', error)
-    return { 
-      success: false, 
+    return {
+      success: false,
       error: error instanceof Error ? error.message : 'Unknown error sending email'
     }
   }
+}
+
+// ─── Shared Template Shell ────────────────────────────────────────────────────
+// Strictly black / white / grayscale. Table-based layout throughout — NOT
+// flexbox — because Gmail, Outlook, and most mobile mail clients strip
+// unsupported CSS (including `display: flex`), which is what caused the old
+// "Matric NumberMOUAU/PHY/25/000112" run-together bug: the label/value pair
+// depended on flex for separation and Gmail simply ignored it. Tables with
+// explicit cells and padding cannot collapse that way regardless of which
+// styles a client decides to honor.
+
+const WRAPPER_WIDTH = 560
+
+function baseStyles(): string {
+  return `
+    body, table, td { font-family: Georgia, 'Times New Roman', serif; }
+    body { margin: 0; padding: 0; background: #ffffff; color: #000000; }
+    .mono { font-family: 'Courier New', Courier, monospace; }
+  `.trim()
+}
+
+/**
+ * Wraps a block of inner HTML in the shared shell: header rule, app name,
+ * content area, footer rule. Pure black-on-white, no background colors.
+ */
+function wrapEmail(innerHtml: string, preheader?: string): string {
+  return `
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>${APP_SHORT}</title>
+  <style>${baseStyles()}</style>
+</head>
+<body>
+  ${preheader ? `<div style="display:none;max-height:0;overflow:hidden;opacity:0;">${preheader}</div>` : ''}
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#ffffff;">
+    <tr>
+      <td align="center" style="padding: 32px 16px;">
+        <table role="presentation" width="${WRAPPER_WIDTH}" cellpadding="0" cellspacing="0" border="0" style="width:${WRAPPER_WIDTH}px; max-width:100%; border: 1px solid #000000;">
+
+          <!-- Header -->
+          <tr>
+            <td style="padding: 24px 32px; border-bottom: 2px solid #000000;">
+              <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+                <tr>
+                  <td style="font-size: 20px; font-weight: bold; letter-spacing: 0.5px; color: #000000;">
+                    ${APP_SHORT}
+                  </td>
+                </tr>
+                <tr>
+                  <td style="font-size: 12px; color: #444444; padding-top: 2px;">
+                    ${APP_NAME}
+                  </td>
+                </tr>
+              </table>
+            </td>
+          </tr>
+
+          <!-- Body -->
+          <tr>
+            <td style="padding: 32px; font-size: 15px; line-height: 1.6; color: #000000;">
+              ${innerHtml}
+            </td>
+          </tr>
+
+          <!-- Footer -->
+          <tr>
+            <td style="padding: 20px 32px; border-top: 1px solid #000000; font-size: 12px; color: #555555;">
+              <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+                <tr>
+                  <td>
+                    ${APP_NAME} (${APP_SHORT})<br>
+                    <a href="${APP_URL}" style="color: #000000;">${APP_URL}</a>
+                  </td>
+                </tr>
+                <tr>
+                  <td style="padding-top: 10px; font-size: 11px; color: #888888;">
+                    This is an automated message — please do not reply to this email.
+                  </td>
+                </tr>
+              </table>
+            </td>
+          </tr>
+
+        </table>
+      </td>
+    </tr>
+  </table>
+</body>
+</html>
+  `.trim()
+}
+
+/**
+ * Renders a label/value block list as an HTML table. This is the fix for
+ * the run-together bug: each label and value sit in their own <td> with
+ * fixed padding, so they can never render adjacent with no gap, regardless
+ * of whether the client honors any surrounding CSS.
+ */
+function detailTable(rows: Array<{ label: string; value: string; mono?: boolean }>): string {
+  const rowsHtml = rows
+    .map(
+      (r, i) => `
+        <tr>
+          <td style="padding: 10px 0; ${i > 0 ? 'border-top: 1px solid #dddddd;' : ''} font-size: 13px; color: #555555; width: 40%; vertical-align: top;">
+            ${r.label}
+          </td>
+          <td style="padding: 10px 0; ${i > 0 ? 'border-top: 1px solid #dddddd;' : ''} font-size: 14px; font-weight: bold; color: #000000; text-align: right; vertical-align: top; ${r.mono ? "font-family: 'Courier New', Courier, monospace;" : ''}">
+            ${r.value}
+          </td>
+        </tr>
+      `
+    )
+    .join('')
+
+  return `
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="border: 1px solid #000000; padding: 4px 16px; margin: 20px 0;">
+      ${rowsHtml}
+    </table>
+  `.trim()
+}
+
+/** Black button with white text, rendered as a bordered table cell (not an <a> with flex/box styling). */
+function actionButton(href: string, label: string): string {
+  return `
+    <table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin: 24px 0;">
+      <tr>
+        <td align="center" style="background: #000000;">
+          <a href="${href}" style="display: inline-block; padding: 13px 28px; font-size: 14px; font-weight: bold; color: #ffffff; text-decoration: none; letter-spacing: 0.3px;">
+            ${label}
+          </a>
+        </td>
+      </tr>
+    </table>
+  `.trim()
+}
+
+function noticeBox(html: string): string {
+  return `
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="border: 1px solid #000000; margin: 20px 0;">
+      <tr>
+        <td style="padding: 14px 16px; font-size: 13px; color: #000000;">
+          ${html}
+        </td>
+      </tr>
+    </table>
+  `.trim()
 }
 
 // ─── Email Templates ─────────────────────────────────────────────────────────
@@ -148,65 +293,21 @@ This link will expire in ${expiryMinutes} minutes.
 If you didn't request this, please ignore this email or contact support.
 
 ---
-${APP_NAME} (${APP_SHORT}) - Evaluation Assessment Protocol System
+${APP_NAME} (${APP_SHORT})
 ${APP_URL}
   `.trim()
 
-  const html = `
-<!DOCTYPE html>
-<html>
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <style>
-    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; line-height: 1.6; color: #1a1a1a; max-width: 600px; margin: 0 auto; padding: 20px; }
-    .header { border-bottom: 2px solid #1a56db; padding-bottom: 16px; margin-bottom: 24px; }
-    .logo { font-size: 24px; font-weight: bold; color: #1a56db; }
-    .subtitle { font-size: 14px; color: #6b7280; font-weight: normal; }
-    .button { display: inline-block; background: #1a56db; color: white; padding: 12px 24px; border-radius: 6px; text-decoration: none; font-weight: 600; margin: 16px 0; }
-    .footer { border-top: 1px solid #e5e7eb; padding-top: 16px; margin-top: 32px; font-size: 14px; color: #6b7280; }
-    .security { background: #fef3c7; border: 1px solid #f59e0b; border-radius: 6px; padding: 12px; margin: 16px 0; font-size: 14px; color: #92400e; }
-  </style>
-</head>
-<body>
-  <div class="header">
-    <div class="logo">${APP_NAME} <span class="subtitle">(${APP_SHORT})</span></div>
-  </div>
+  const inner = `
+    <h1 style="font-size: 18px; margin: 0 0 16px;">Password Reset Request</h1>
+    <p style="margin: 0 0 12px;">Hi ${fullName},</p>
+    <p style="margin: 0 0 12px;">We received a request to reset your password for your ${APP_NAME} account.</p>
+    <p style="margin: 0 0 4px;">Click the button below to view your verification code. Keep the tab where you started your reset open — you'll need to type the code back in there.</p>
+    ${actionButton(revealLink, 'View my verification code')}
+    <p style="margin: 0 0 4px;">This link will expire in <strong>${expiryMinutes} minutes</strong>.</p>
+    ${noticeBox(`<strong>Security notice</strong><br>If you didn't request this password reset, please ignore this email or contact support immediately. Never share this code with anyone.`)}
+  `
 
-  <h1>Password Reset Request</h1>
-
-  <p>Hi ${fullName},</p>
-
-  <p>We received a request to reset your password for your ${APP_NAME} account.</p>
-
-  <p>Click the button below to view your verification code. Keep the tab where you started your reset open — you'll need to type the code back in there.</p>
-
-  <p style="text-align: center;">
-    <a href="${revealLink}" class="button">View my verification code</a>
-  </p>
-
-  <p>This link will expire in <strong>${expiryMinutes} minutes</strong>.</p>
-
-  <div class="security">
-    <strong>⚠️ Security Notice</strong><br>
-    If you didn't request this password reset, please ignore this email or contact support immediately.
-    Never share this code with anyone.
-  </div>
-
-  <div class="footer">
-    <p>
-      ${APP_NAME} (${APP_SHORT}) - Evaluation Assessment Protocol System<br>
-      <a href="${APP_URL}" style="color: #1a56db;">${APP_URL}</a>
-    </p>
-    <p style="font-size: 12px; color: #9ca3af;">
-      This is an automated message, please do not reply to this email.
-    </p>
-  </div>
-</body>
-</html>
-  `.trim()
-
-  return { html, text }
+  return { html: wrapEmail(inner, 'Reset your password'), text }
 }
 
 export function buildVerificationEmail(
@@ -233,60 +334,27 @@ Click here to verify: ${verifyLink}
 If you didn't create an account, please ignore this email.
 
 ---
-${APP_NAME} (${APP_SHORT}) - Evaluation Assessment Protocol System
+${APP_NAME} (${APP_SHORT})
 ${APP_URL}
   `.trim()
 
-  const html = `
-<!DOCTYPE html>
-<html>
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <style>
-    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; line-height: 1.6; color: #1a1a1a; max-width: 600px; margin: 0 auto; padding: 20px; }
-    .header { border-bottom: 2px solid #1a56db; padding-bottom: 16px; margin-bottom: 24px; }
-    .logo { font-size: 24px; font-weight: bold; color: #1a56db; }
-    .subtitle { font-size: 14px; color: #6b7280; font-weight: normal; }
-    .code { background: #f3f4f6; padding: 12px 24px; border-radius: 8px; font-size: 28px; font-weight: bold; letter-spacing: 4px; text-align: center; margin: 20px 0; font-family: monospace; color: #1a56db; }
-    .button { display: inline-block; background: #1a56db; color: white; padding: 12px 24px; border-radius: 6px; text-decoration: none; font-weight: 600; margin: 16px 0; }
-    .footer { border-top: 1px solid #e5e7eb; padding-top: 16px; margin-top: 32px; font-size: 14px; color: #6b7280; }
-  </style>
-</head>
-<body>
-  <div class="header">
-    <div class="logo">${APP_NAME} <span class="subtitle">(${APP_SHORT})</span></div>
-  </div>
+  const inner = `
+    <h1 style="font-size: 18px; margin: 0 0 16px;">Welcome to ${APP_NAME}</h1>
+    <p style="margin: 0 0 12px;">Hi ${fullName},</p>
+    <p style="margin: 0 0 4px;">Thank you for creating an account. Please verify your email address to get started.</p>
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="border: 1px solid #000000; margin: 20px 0;">
+      <tr>
+        <td align="center" style="padding: 18px; font-size: 26px; font-weight: bold; letter-spacing: 5px; font-family: 'Courier New', Courier, monospace;">
+          ${token}
+        </td>
+      </tr>
+    </table>
+    <p style="margin: 0 0 4px;">This code will expire in <strong>${expiryMinutes} minutes</strong>.</p>
+    ${actionButton(verifyLink, 'Verify email')}
+    <p style="margin: 16px 0 0; font-size: 13px; color: #555555;">If you didn't create an account, please ignore this email.</p>
+  `
 
-  <h1>Welcome to ${APP_NAME}!</h1>
-  
-  <p>Hi ${fullName},</p>
-  
-  <p>Thank you for creating an account. Please verify your email address to get started.</p>
-  
-  <p>Your verification code is:</p>
-  
-  <div class="code">${token}</div>
-  
-  <p>This code will expire in <strong>${expiryMinutes} minutes</strong>.</p>
-  
-  <p style="text-align: center;">
-    <a href="${verifyLink}" class="button">Verify Email</a>
-  </p>
-  
-  <p>If you didn't create an account, please ignore this email.</p>
-  
-  <div class="footer">
-    <p>
-      ${APP_NAME} (${APP_SHORT}) - Evaluation Assessment Protocol System<br>
-      <a href="${APP_URL}" style="color: #1a56db;">${APP_URL}</a>
-    </p>
-  </div>
-</body>
-</html>
-  `.trim()
-
-  return { html, text }
+  return { html: wrapEmail(inner, 'Verify your email address'), text }
 }
 
 export function buildNotificationEmail(
@@ -306,56 +374,21 @@ ${message}
 ${actionText && actionLink ? `${actionText}: ${actionLink}` : ''}
 
 ---
-${APP_NAME} (${APP_SHORT}) - Evaluation Assessment Protocol System
+${APP_NAME} (${APP_SHORT})
 ${APP_URL}
   `.trim()
 
-  const html = `
-<!DOCTYPE html>
-<html>
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <style>
-    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; line-height: 1.6; color: #1a1a1a; max-width: 600px; margin: 0 auto; padding: 20px; }
-    .header { border-bottom: 2px solid #1a56db; padding-bottom: 16px; margin-bottom: 24px; }
-    .logo { font-size: 24px; font-weight: bold; color: #1a56db; }
-    .subtitle { font-size: 14px; color: #6b7280; font-weight: normal; }
-    .button { display: inline-block; background: #1a56db; color: white; padding: 12px 24px; border-radius: 6px; text-decoration: none; font-weight: 600; margin: 16px 0; }
-    .footer { border-top: 1px solid #e5e7eb; padding-top: 16px; margin-top: 32px; font-size: 14px; color: #6b7280; }
-  </style>
-</head>
-<body>
-  <div class="header">
-    <div class="logo">${APP_NAME} <span class="subtitle">(${APP_SHORT})</span></div>
-  </div>
+  const inner = `
+    <h1 style="font-size: 18px; margin: 0 0 16px;">${subject}</h1>
+    <p style="margin: 0 0 12px;">Hi ${fullName},</p>
+    <p style="margin: 0 0 4px;">${message}</p>
+    ${actionText && actionLink ? actionButton(actionLink, actionText) : ''}
+  `
 
-  <h2>${subject}</h2>
-  
-  <p>Hi ${fullName},</p>
-  
-  <div>${message}</div>
-  
-  ${actionText && actionLink ? `<p style="text-align: center;"><a href="${actionLink}" class="button">${actionText}</a></p>` : ''}
-  
-  <div class="footer">
-    <p>
-      ${APP_NAME} (${APP_SHORT}) - Evaluation Assessment Protocol System<br>
-      <a href="${APP_URL}" style="color: #1a56db;">${APP_URL}</a>
-    </p>
-  </div>
-</body>
-</html>
-  `.trim()
-
-  return { html, text }
+  return { html: wrapEmail(inner, subject), text }
 }
 
 // ─── Welcome Emails ───────────────────────────────────────────────────────────
-// Sent once, right after a student self-registers or a staff account is
-// seeded/provisioned — distinct from buildVerificationEmail (which asks the
-// person to confirm their email) and buildResetEmail (password recovery).
-// This is purely a "you're in, here's how to get started" message.
 
 export function buildWelcomeStudentEmail(
   fullName: string,
@@ -384,77 +417,29 @@ Log in here: ${loginLink}
 If you didn't create this account, please contact the registrar's office.
 
 ---
-${APP_NAME} (${APP_SHORT}) - Evaluation Assessment Protocol System
+${APP_NAME} (${APP_SHORT})
 ${APP_URL}
   `.trim()
 
-  const html = `
-<!DOCTYPE html>
-<html>
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <style>
-    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; line-height: 1.6; color: #1a1a1a; max-width: 600px; margin: 0 auto; padding: 20px; }
-    .header { border-bottom: 2px solid #1a56db; padding-bottom: 16px; margin-bottom: 24px; }
-    .logo { font-size: 24px; font-weight: bold; color: #1a56db; }
-    .subtitle { font-size: 14px; color: #6b7280; font-weight: normal; }
-    .detail-box { background: #f3f4f6; border-radius: 8px; padding: 16px; margin: 16px 0; }
-    .detail-row { display: flex; justify-content: space-between; padding: 4px 0; font-size: 14px; }
-    .detail-label { color: #6b7280; }
-    .detail-value { font-weight: 600; color: #1a1a1a; }
-    .checklist { padding-left: 20px; }
-    .checklist li { margin-bottom: 8px; }
-    .button { display: inline-block; background: #1a56db; color: white; padding: 12px 24px; border-radius: 6px; text-decoration: none; font-weight: 600; margin: 16px 0; }
-    .footer { border-top: 1px solid #e5e7eb; padding-top: 16px; margin-top: 32px; font-size: 14px; color: #6b7280; }
-  </style>
-</head>
-<body>
-  <div class="header">
-    <div class="logo">${APP_NAME} <span class="subtitle">(${APP_SHORT})</span></div>
-  </div>
+  const inner = `
+    <h1 style="font-size: 18px; margin: 0 0 16px;">Welcome, ${fullName}</h1>
+    <p style="margin: 0 0 12px;">Your student account has been created successfully. You're all set to get started.</p>
 
-  <h1>Welcome, ${fullName}!</h1>
+    ${detailTable([{ label: 'Matric Number', value: matricNumber, mono: true }])}
 
-  <p>Your student account has been created successfully. You're all set to get started.</p>
+    <p style="margin: 20px 0 6px; font-weight: bold;">Here's what you can do next:</p>
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+      <tr><td style="padding: 4px 0; font-size: 14px;">— Register your courses for the semester</td></tr>
+      <tr><td style="padding: 4px 0; font-size: 14px;">— Enroll your face for exam verification</td></tr>
+      <tr><td style="padding: 4px 0; font-size: 14px;">— View upcoming tests and examinations</td></tr>
+      <tr><td style="padding: 4px 0; font-size: 14px;">— Track your results once released</td></tr>
+    </table>
 
-  <div class="detail-box">
-    <div class="detail-row">
-      <span class="detail-label">Matric Number</span>
-      <span class="detail-value">${matricNumber}</span>
-    </div>
-  </div>
+    ${actionButton(loginLink, 'Log in to your account')}
+    <p style="margin: 16px 0 0; font-size: 13px; color: #555555;">If you didn't create this account, please contact the registrar's office.</p>
+  `
 
-  <p><strong>Here's what you can do next:</strong></p>
-  <ul class="checklist">
-    <li>Register your courses for the semester</li>
-    <li>Enroll your face for exam verification</li>
-    <li>View upcoming tests and examinations</li>
-    <li>Track your results once released</li>
-  </ul>
-
-  <p style="text-align: center;">
-    <a href="${loginLink}" class="button">Log in to your account</a>
-  </p>
-
-  <p style="font-size: 13px; color: #6b7280;">
-    If you didn't create this account, please contact the registrar's office.
-  </p>
-
-  <div class="footer">
-    <p>
-      ${APP_NAME} (${APP_SHORT}) - Evaluation Assessment Protocol System<br>
-      <a href="${APP_URL}" style="color: #1a56db;">${APP_URL}</a>
-    </p>
-    <p style="font-size: 12px; color: #9ca3af;">
-      This is an automated message, please do not reply to this email.
-    </p>
-  </div>
-</body>
-</html>
-  `.trim()
-
-  return { html, text }
+  return { html: wrapEmail(inner, 'Your student account is ready'), text }
 }
 
 export function buildWelcomeStaffEmail(
@@ -484,85 +469,31 @@ Log in here: ${loginLink}
 If you believe this account was created in error, please contact the system administrator.
 
 ---
-${APP_NAME} (${APP_SHORT}) - Evaluation Assessment Protocol System
+${APP_NAME} (${APP_SHORT})
 ${APP_URL}
   `.trim()
 
-  const html = `
-<!DOCTYPE html>
-<html>
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <style>
-    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; line-height: 1.6; color: #1a1a1a; max-width: 600px; margin: 0 auto; padding: 20px; }
-    .header { border-bottom: 2px solid #1a56db; padding-bottom: 16px; margin-bottom: 24px; }
-    .logo { font-size: 24px; font-weight: bold; color: #1a56db; }
-    .subtitle { font-size: 14px; color: #6b7280; font-weight: normal; }
-    .detail-box { background: #f3f4f6; border-radius: 8px; padding: 16px; margin: 16px 0; }
-    .detail-row { display: flex; justify-content: space-between; padding: 4px 0; font-size: 14px; }
-    .detail-label { color: #6b7280; }
-    .detail-value { font-weight: 600; color: #1a1a1a; }
-    .credential { background: #fef3c7; border: 1px solid #f59e0b; border-radius: 6px; padding: 12px; margin: 16px 0; font-size: 14px; color: #92400e; }
-    .button { display: inline-block; background: #1a56db; color: white; padding: 12px 24px; border-radius: 6px; text-decoration: none; font-weight: 600; margin: 16px 0; }
-    .footer { border-top: 1px solid #e5e7eb; padding-top: 16px; margin-top: 32px; font-size: 14px; color: #6b7280; }
-  </style>
-</head>
-<body>
-  <div class="header">
-    <div class="logo">${APP_NAME} <span class="subtitle">(${APP_SHORT})</span></div>
-  </div>
+  const rows: Array<{ label: string; value: string; mono?: boolean }> = [
+    { label: 'Staff Number', value: staffNumber, mono: true },
+    { label: 'Role', value: roleDisplayName },
+  ]
 
-  <h1>Welcome, ${fullName}!</h1>
+  const inner = `
+    <h1 style="font-size: 18px; margin: 0 0 16px;">Welcome, ${fullName}</h1>
+    <p style="margin: 0 0 12px;">Your staff account has been created successfully.</p>
 
-  <p>Your staff account has been created successfully.</p>
+    ${detailTable(rows)}
 
-  <div class="detail-box">
-    <div class="detail-row">
-      <span class="detail-label">Staff Number</span>
-      <span class="detail-value">${staffNumber}</span>
-    </div>
-    <div class="detail-row">
-      <span class="detail-label">Role</span>
-      <span class="detail-value">${roleDisplayName}</span>
-    </div>
-  </div>
+    ${temporaryPassword ? noticeBox(`<strong>Temporary password:</strong> <span class="mono">${temporaryPassword}</span><br>You will be asked to change this password the first time you log in.`) : ''}
 
-  ${temporaryPassword ? `
-  <div class="credential">
-    <strong>🔑 Temporary Password:</strong> <code>${temporaryPassword}</code><br>
-    You will be asked to change this password the first time you log in.
-  </div>
-  ` : ''}
+    ${actionButton(loginLink, 'Log in to your account')}
+    <p style="margin: 16px 0 0; font-size: 13px; color: #555555;">If you believe this account was created in error, please contact the system administrator.</p>
+  `
 
-  <p style="text-align: center;">
-    <a href="${loginLink}" class="button">Log in to your account</a>
-  </p>
-
-  <p style="font-size: 13px; color: #6b7280;">
-    If you believe this account was created in error, please contact the system administrator.
-  </p>
-
-  <div class="footer">
-    <p>
-      ${APP_NAME} (${APP_SHORT}) - Evaluation Assessment Protocol System<br>
-      <a href="${APP_URL}" style="color: #1a56db;">${APP_URL}</a>
-    </p>
-    <p style="font-size: 12px; color: #9ca3af;">
-      This is an automated message, please do not reply to this email.
-    </p>
-  </div>
-</body>
-</html>
-  `.trim()
-
-  return { html, text }
+  return { html: wrapEmail(inner, 'Your staff account is ready'), text }
 }
 
 // ─── Login Alert Email ────────────────────────────────────────────────────────
-// Sent on every successful login, fire-and-forget, purely informational —
-// lets the account owner notice a login they don't recognize. Not a
-// verification step and never blocks sign-in.
 
 export function buildLoginAlertEmail(
   fullName: string,
@@ -592,92 +523,32 @@ If you don't recognize this login, reset your password immediately:
 ${resetLink}
 
 ---
-${APP_NAME} (${APP_SHORT}) - Evaluation Assessment Protocol System
+${APP_NAME} (${APP_SHORT})
 ${APP_URL}
   `.trim()
 
-  const html = `
-<!DOCTYPE html>
-<html>
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <style>
-    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; line-height: 1.6; color: #1a1a1a; max-width: 600px; margin: 0 auto; padding: 20px; }
-    .header { border-bottom: 2px solid #1a56db; padding-bottom: 16px; margin-bottom: 24px; }
-    .logo { font-size: 24px; font-weight: bold; color: #1a56db; }
-    .subtitle { font-size: 14px; color: #6b7280; font-weight: normal; }
-    .detail-box { background: #f3f4f6; border-radius: 8px; padding: 16px; margin: 16px 0; }
-    .detail-row { display: flex; justify-content: space-between; padding: 4px 0; font-size: 14px; gap: 12px; }
-    .detail-label { color: #6b7280; white-space: nowrap; }
-    .detail-value { font-weight: 600; color: #1a1a1a; text-align: right; word-break: break-word; }
-    .security { background: #fef3c7; border: 1px solid #f59e0b; border-radius: 6px; padding: 12px; margin: 16px 0; font-size: 14px; color: #92400e; }
-    .button { display: inline-block; background: #dc2626; color: white; padding: 12px 24px; border-radius: 6px; text-decoration: none; font-weight: 600; margin: 16px 0; }
-    .footer { border-top: 1px solid #e5e7eb; padding-top: 16px; margin-top: 32px; font-size: 14px; color: #6b7280; }
-  </style>
-</head>
-<body>
-  <div class="header">
-    <div class="logo">${APP_NAME} <span class="subtitle">(${APP_SHORT})</span></div>
-  </div>
+  const rows: Array<{ label: string; value: string; mono?: boolean }> = [
+    { label: 'Time', value: formattedTime },
+  ]
+  if (ipAddress) rows.push({ label: 'IP Address', value: ipAddress, mono: true })
+  if (userAgent) rows.push({ label: 'Device', value: userAgent })
 
-  <h1>New Sign-in to Your Account</h1>
+  const inner = `
+    <h1 style="font-size: 18px; margin: 0 0 16px;">New Sign-in to Your Account</h1>
+    <p style="margin: 0 0 12px;">Hi ${fullName},</p>
+    <p style="margin: 0 0 4px;">Your account was just signed in to.</p>
 
-  <p>Hi ${fullName},</p>
+    ${detailTable(rows)}
 
-  <p>Your account was just signed in to.</p>
+    <p style="margin: 0 0 4px;">If this was you, no action is needed — you can safely ignore this email.</p>
+    ${noticeBox(`<strong>Don't recognize this login?</strong><br>Reset your password immediately to secure your account.`)}
+    ${actionButton(resetLink, 'Reset my password')}
+  `
 
-  <div class="detail-box">
-    <div class="detail-row">
-      <span class="detail-label">Time</span>
-      <span class="detail-value">${formattedTime}</span>
-    </div>
-    ${ipAddress ? `
-    <div class="detail-row">
-      <span class="detail-label">IP Address</span>
-      <span class="detail-value">${ipAddress}</span>
-    </div>
-    ` : ''}
-    ${userAgent ? `
-    <div class="detail-row">
-      <span class="detail-label">Device</span>
-      <span class="detail-value">${userAgent}</span>
-    </div>
-    ` : ''}
-  </div>
-
-  <p>If this was you, no action is needed — you can safely ignore this email.</p>
-
-  <div class="security">
-    <strong>⚠️ Don't recognize this login?</strong><br>
-    Reset your password immediately to secure your account.
-  </div>
-
-  <p style="text-align: center;">
-    <a href="${resetLink}" class="button">Reset my password</a>
-  </p>
-
-  <div class="footer">
-    <p>
-      ${APP_NAME} (${APP_SHORT}) - Evaluation Assessment Protocol System<br>
-      <a href="${APP_URL}" style="color: #1a56db;">${APP_URL}</a>
-    </p>
-    <p style="font-size: 12px; color: #9ca3af;">
-      This is an automated message, please do not reply to this email.
-    </p>
-  </div>
-</body>
-</html>
-  `.trim()
-
-  return { html, text }
+  return { html: wrapEmail(inner, 'New sign-in to your account'), text }
 }
 
 // ─── Staff Invitation (Pre-onboarding) Email ─────────────────────────────────
-// Sent when an admin pre-onboards a staff member, before any Staff row
-// exists. Contains the identification token needed to complete onboarding
-// at /onboarding — distinct from buildWelcomeStaffEmail, which is
-// sent AFTER a staff account already exists.
 
 export function buildStaffInvitationEmail(
   email: string,
@@ -689,7 +560,7 @@ export function buildStaffInvitationEmail(
   expiryHours: number,
   origin: string = APP_URL,
 ): { html: string; text: string } {
-const onboardLink = `${origin}/onboarding#token=${encodeURIComponent(token)}`
+  const onboardLink = `${origin}/onboarding#token=${encodeURIComponent(token)}`
   const coursesText = courseList.length > 0 ? courseList.join(', ') : '(none assigned yet)'
 
   const text = `
@@ -710,71 +581,30 @@ ${onboardLink}
 If you were not expecting this invitation, you can safely ignore this email.
 
 ---
-${APP_NAME} (${APP_SHORT}) - Evaluation Assessment Protocol System
+${APP_NAME} (${APP_SHORT})
 ${APP_URL}
   `.trim()
 
-  const html = `
-<!DOCTYPE html>
-<html>
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <style>
-    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; line-height: 1.6; color: #1a1a1a; max-width: 600px; margin: 0 auto; padding: 20px; }
-    .header { border-bottom: 2px solid #1a56db; padding-bottom: 16px; margin-bottom: 24px; }
-    .logo { font-size: 24px; font-weight: bold; color: #1a56db; }
-    .subtitle { font-size: 14px; color: #6b7280; font-weight: normal; }
-    .detail-box { background: #f3f4f6; border-radius: 8px; padding: 16px; margin: 16px 0; }
-    .detail-row { display: flex; justify-content: space-between; padding: 4px 0; font-size: 14px; gap: 12px; }
-    .detail-label { color: #6b7280; white-space: nowrap; }
-    .detail-value { font-weight: 600; color: #1a1a1a; text-align: right; word-break: break-word; }
-    .button { display: inline-block; background: #1a56db; color: white; padding: 12px 24px; border-radius: 6px; text-decoration: none; font-weight: 600; margin: 16px 0; }
-    .footer { border-top: 1px solid #e5e7eb; padding-top: 16px; margin-top: 32px; font-size: 14px; color: #6b7280; }
-  </style>
-</head>
-<body>
-  <div class="header">
-    <div class="logo">${APP_NAME} <span class="subtitle">(${APP_SHORT})</span></div>
-  </div>
+  const rows: Array<{ label: string; value: string; mono?: boolean }> = [
+    { label: 'Role', value: roleDisplayName },
+    { label: 'College', value: collegeName },
+    { label: 'Department', value: departmentName },
+    { label: 'Courses', value: coursesText },
+  ]
 
-  <h1>You've Been Invited to Join ${APP_SHORT}</h1>
+  const inner = `
+    <h1 style="font-size: 18px; margin: 0 0 16px;">You've Been Invited to Join ${APP_SHORT}</h1>
+    <p style="margin: 0 0 12px;">You've been pre-onboarded as staff. Here are the details on file:</p>
 
-  <p>You've been pre-onboarded as staff. Here are the details on file:</p>
+    ${detailTable(rows)}
 
-  <div class="detail-box">
-    <div class="detail-row"><span class="detail-label">Role</span><span class="detail-value">${roleDisplayName}</span></div>
-    <div class="detail-row"><span class="detail-label">College</span><span class="detail-value">${collegeName}</span></div>
-    <div class="detail-row"><span class="detail-label">Department</span><span class="detail-value">${departmentName}</span></div>
-    <div class="detail-row"><span class="detail-label">Courses</span><span class="detail-value">${coursesText}</span></div>
-  </div>
+    <p style="margin: 0 0 4px;">Click below to complete your account setup. This link contains your identification token.</p>
+    ${actionButton(onboardLink, 'Complete my onboarding')}
+    <p style="margin: 0 0 4px;">This link will expire in <strong>${expiryHours} hours</strong>.</p>
+    <p style="margin: 16px 0 0; font-size: 13px; color: #555555;">If you were not expecting this invitation, you can safely ignore this email.</p>
+  `
 
-  <p>Click below to complete your account setup. This link contains your identification token.</p>
-
-  <p style="text-align: center;">
-    <a href="${onboardLink}" class="button">Complete my onboarding</a>
-  </p>
-
-  <p>This link will expire in <strong>${expiryHours} hours</strong>.</p>
-
-  <p style="font-size: 13px; color: #6b7280;">
-    If you were not expecting this invitation, you can safely ignore this email.
-  </p>
-
-  <div class="footer">
-    <p>
-      ${APP_NAME} (${APP_SHORT}) - Evaluation Assessment Protocol System<br>
-      <a href="${APP_URL}" style="color: #1a56db;">${APP_URL}</a>
-    </p>
-    <p style="font-size: 12px; color: #9ca3af;">
-      This is an automated message, please do not reply to this email.
-    </p>
-  </div>
-</body>
-</html>
-  `.trim()
-
-  return { html, text }
+  return { html: wrapEmail(inner, `You're invited to join ${APP_SHORT}`), text }
 }
 
 // ─── Send Emails ─────────────────────────────────────────────────────────────
@@ -803,7 +633,7 @@ export async function sendVerificationEmail(
   origin?: string,
 ): Promise<{ success: boolean; error?: string; id?: string }> {
   const { html, text } = buildVerificationEmail(fullName, token, origin)
-  
+
   return sendMail({
     to: email,
     subject: `Verify Your ${APP_SHORT} Account`,
@@ -890,10 +720,10 @@ export async function sendStaffInvitationEmail(
 
 // ─── Helper Functions ──────────────────────────────────────────────────────
 
-export function getEmailConfigStatus(): { 
-  configured: boolean; 
-  provider: string; 
-  from: string; 
+export function getEmailConfigStatus(): {
+  configured: boolean;
+  provider: string;
+  from: string;
   host: string;
   appName: string;
   appShort: string;
@@ -917,13 +747,13 @@ export async function testEmailConnection(): Promise<{ success: boolean; error?:
     if (!SMTP_USER || !SMTP_PASS) {
       return { success: false, error: 'SMTP credentials not configured' }
     }
-    
+
     const transporter = getTransporter()
     await transporter.verify()
     return { success: true }
   } catch (error) {
-    return { 
-      success: false, 
+    return {
+      success: false,
       error: error instanceof Error ? error.message : 'Connection failed'
     }
   }
