@@ -7,9 +7,45 @@ import {
   revealName, 
   revealMatricNumber, 
   revealEmail,
-  revealText,
-  isEncrypted
+  revealText
 } from '$lib/security/dataProtection.js'
+
+// Helper to deeply serialize all Decimal objects
+// Helper to deeply serialize all Decimal and Date objects
+function serializeData(data: any): any {
+  if (data === null || data === undefined) return data
+
+  // Dates are already serializable by devalue — pass through untouched
+  if (data instanceof Date) return data
+
+  // Decimal.js / Prisma Decimal instances: duck-type instead of relying on
+  // constructor.name, which can be wrong/mangled depending on how the
+  // value was produced (raw queries, aggregates, bundler renaming, etc.)
+  if (
+    typeof data === 'object' &&
+    typeof data.toNumber === 'function' &&
+    typeof data.toFixed === 'function'
+  ) {
+    return Number(data)
+  }
+
+  // BigInt fields (e.g. from counts/aggregates) aren't serializable either
+  if (typeof data === 'bigint') return Number(data)
+
+  if (Array.isArray(data)) {
+    return data.map(item => serializeData(item))
+  }
+
+  if (typeof data === 'object') {
+    const result: Record<string, any> = {}
+    for (const key in data) {
+      result[key] = serializeData(data[key])
+    }
+    return result
+  }
+
+  return data
+}
 
 export const load: PageServerLoad = async ({ params, locals }) => {
 	const user = await requireLecturer(locals.user)
@@ -139,62 +175,100 @@ export const load: PageServerLoad = async ({ params, locals }) => {
 		}
 	})
 
-	// Safe decrypt helper - only decrypt if the field is actually encrypted
+	// Safe decrypt helper
 	function safeDecrypt(value: string | null): string | null {
 		if (!value) return null
 		try {
-			// Check if it looks like encrypted data (contains a colon)
-			if (value.includes(':')) {
-				return revealText(value)
-			}
-			// If it doesn't look encrypted, return as-is
-			return value
+			return revealText(value)
 		} catch (e) {
-			// If decryption fails, return the original value
-			console.warn('Failed to decrypt field, returning original:', e)
 			return value
 		}
 	}
 
 	// Decrypt student data safely
 	const decryptedStudents = course.registrations.map(reg => {
+		let decryptedStudent = {
+			...reg.student,
+			matricNumber: reg.student.matricNumber || 'N/A',
+			firstName: 'N/A',
+			lastName: 'N/A',
+			otherNames: reg.student.otherNames || null,
+			email: 'N/A',
+			programme: reg.student.programme ? {
+				...reg.student.programme,
+				shortName: reg.student.programme.shortName || 'N/A',
+				name: reg.student.programme.name || 'N/A'
+			} : null
+		}
+
 		try {
-			return {
-				...reg,
-				student: {
-					...reg.student,
-					matricNumber: reg.student.matricNumber.includes(':') 
-						? revealMatricNumber(reg.student.matricNumber) 
-						: reg.student.matricNumber,
-					firstName: reg.student.firstName.includes(':') 
-						? revealName(reg.student.firstName) 
-						: reg.student.firstName,
-					lastName: reg.student.lastName.includes(':') 
-						? revealName(reg.student.lastName) 
-						: reg.student.lastName,
-					email: reg.student.email.includes(':') 
-						? revealEmail(reg.student.email) 
-						: reg.student.email,
-					phone: reg.student.phone ? safeDecrypt(reg.student.phone) : null
+			if (reg.student.matricNumber) {
+				try {
+					decryptedStudent.matricNumber = revealMatricNumber(reg.student.matricNumber)
+				} catch (e) {
+					decryptedStudent.matricNumber = reg.student.matricNumber
+				}
+			}
+
+			if (reg.student.firstName) {
+				try {
+					decryptedStudent.firstName = revealName(reg.student.firstName)
+				} catch (e) {
+					decryptedStudent.firstName = reg.student.firstName
+				}
+			}
+
+			if (reg.student.lastName) {
+				try {
+					decryptedStudent.lastName = revealName(reg.student.lastName)
+				} catch (e) {
+					decryptedStudent.lastName = reg.student.lastName
+				}
+			}
+
+			if (reg.student.otherNames) {
+				try {
+					decryptedStudent.otherNames = revealName(reg.student.otherNames)
+				} catch (e) {
+					decryptedStudent.otherNames = reg.student.otherNames
+				}
+			}
+
+			if (reg.student.email) {
+				try {
+					decryptedStudent.email = revealEmail(reg.student.email)
+				} catch (e) {
+					decryptedStudent.email = reg.student.email
+				}
+			}
+
+			if (reg.student.programme?.shortName) {
+				try {
+					decryptedStudent.programme.shortName = revealText(reg.student.programme.shortName)
+				} catch (e) {
+					decryptedStudent.programme.shortName = reg.student.programme.shortName
+				}
+			}
+
+			if (reg.student.programme?.name) {
+				try {
+					decryptedStudent.programme.name = revealText(reg.student.programme.name)
+				} catch (e) {
+					decryptedStudent.programme.name = reg.student.programme.name
 				}
 			}
 		} catch (e) {
 			console.warn('Failed to decrypt student data:', e)
-			return {
-				...reg,
-				student: {
-					...reg.student,
-					matricNumber: reg.student.matricNumber || 'N/A',
-					firstName: reg.student.firstName || 'N/A',
-					lastName: reg.student.lastName || 'N/A',
-					email: reg.student.email || 'N/A',
-					phone: reg.student.phone || null
-				}
-			}
+		}
+
+		return {
+			...reg,
+			student: decryptedStudent
 		}
 	})
 
-	return {
+	// Build the response data
+	const responseData = {
 		course: {
 			id: course.id,
 			code: course.code,
@@ -214,10 +288,14 @@ export const load: PageServerLoad = async ({ params, locals }) => {
 		studentCount,
 		assessmentStats,
 		recentActivity,
+		transcriptEntries: course.transcriptEntries,
 		currentSemester: currentSemester ? {
 			id: currentSemester.id,
 			name: `${currentSemester.type} ${currentSemester.session?.name || ''}`,
 			isActive: currentSemester.isCurrent
 		} : null
 	}
+
+	// Serialize all Decimal objects in the response
+	return serializeData(responseData)
 }

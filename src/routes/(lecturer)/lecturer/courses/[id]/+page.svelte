@@ -13,18 +13,17 @@
 		ClipboardList, 
 		Calendar, 
 		Building2,
-		ChevronRight,
 		Plus,
 		Pencil,
 		Eye,
 		User,
-		Mail,
-		Phone
-	} from '@lucide/svelte/icons'
+		FileText,
+		GraduationCap
+	} from '@lucide/svelte'
 
 	let { data } = $props()
 
-	const { course, offerings, assessments, recentQuestions, recentStudents, studentCount, assessmentStats, recentActivity, currentSemester } = data
+	const { course, assessments, recentQuestions, recentStudents, studentCount, assessmentStats, recentActivity, currentSemester } = data
 
 	function getStatusBadge(status: string) {
 		const variants: Record<string, any> = {
@@ -90,9 +89,9 @@
 					</div>
 				</div>
 				<div class="mt-2 flex gap-2 text-xs text-muted-foreground">
-					<span>📝 {assessmentStats.draft} Draft</span>
-					<span>📤 {assessmentStats.published} Published</span>
-					<span>✅ {assessmentStats.completed} Completed</span>
+					<span><FileText class="inline size-3 mr-1" />{assessmentStats.draft} Draft</span>
+					<span><FileText class="inline size-3 mr-1" />{assessmentStats.published} Published</span>
+					<span><FileText class="inline size-3 mr-1" />{assessmentStats.completed} Completed</span>
 				</div>
 			</CardContent>
 		</Card>
@@ -302,40 +301,51 @@
 					</CardContent>
 				</Card>
 			{:else}
-				<Table>
-					<TableHeader>
-						<TableRow>
-							<TableHead>Matric Number</TableHead>
-							<TableHead>Name</TableHead>
-							<TableHead>Level</TableHead>
-							<TableHead>Email</TableHead>
-							<TableHead>Phone</TableHead>
-							<TableHead>Status</TableHead>
-							<TableHead>Registered</TableHead>
-						</TableRow>
-					</TableHeader>
-					<TableBody>
-						{#each recentStudents as reg}
-							<TableRow>
-								<TableCell class="font-mono text-sm">{reg.student.matricNumber}</TableCell>
-								<TableCell>
-									{reg.student.firstName} {reg.student.lastName}
-								</TableCell>
-								<TableCell>Level {reg.student.currentLevel.name}</TableCell>
-								<TableCell class="text-sm">{reg.student.email}</TableCell>
-								<TableCell class="text-sm">{reg.student.phone || 'N/A'}</TableCell>
-								<TableCell>
-									<Badge variant={reg.status === 'APPROVED' ? 'default' : 'secondary'}>
-										{reg.status}
-									</Badge>
-								</TableCell>
-								<TableCell class="text-sm text-muted-foreground">
-									{formatDate(reg.createdAt)}
-								</TableCell>
-							</TableRow>
-						{/each}
-					</TableBody>
-				</Table>
+				<Card>
+					<CardContent class="p-0">
+						<Table>
+							<TableHeader>
+								<TableRow>
+									<TableHead>Matric Number</TableHead>
+									<TableHead>Full Name</TableHead>
+									<TableHead>Level</TableHead>
+									<TableHead>Programme</TableHead>
+									<TableHead>Status</TableHead>
+									<TableHead>Registered</TableHead>
+								</TableRow>
+							</TableHeader>
+							<TableBody>
+								{#each recentStudents as reg}
+									<TableRow>
+										<TableCell class="font-mono text-sm">
+											{reg.student.matricNumber}
+										</TableCell>
+										<TableCell>
+											<div class="flex items-center gap-2">
+												<User class="size-3.5 text-muted-foreground" />
+												<span>{reg.student.firstName} {reg.student.lastName}</span>
+											</div>
+										</TableCell>
+										<TableCell>
+											<Badge variant="outline">Level {reg.student.currentLevel?.name || 'N/A'}</Badge>
+										</TableCell>
+										<TableCell class="text-sm">
+											{reg.student.programme?.shortName || 'N/A'}
+										</TableCell>
+										<TableCell>
+											<Badge variant={reg.status === 'APPROVED' ? 'default' : 'secondary'}>
+												{reg.status}
+											</Badge>
+										</TableCell>
+										<TableCell class="text-sm text-muted-foreground">
+											{formatDate(reg.createdAt)}
+										</TableCell>
+									</TableRow>
+								{/each}
+							</TableBody>
+						</Table>
+					</CardContent>
+				</Card>
 				{#if studentCount > 10}
 					<p class="text-center text-sm text-muted-foreground">
 						Showing 10 of {studentCount} students
