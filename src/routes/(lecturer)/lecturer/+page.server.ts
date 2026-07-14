@@ -2,6 +2,16 @@
 import type { PageServerLoad } from './$types'
 import { getPrismaClient } from '$lib/server/db/index.js'
 
+const STATUS_PRIORITY: Record<string, number> = {
+	ACTIVE: 0,
+	SCHEDULED: 1,
+	DRAFT: 2,
+	ENDED: 3,
+	CANCELLED: 4,
+}
+
+const EMPTY_STATUS_COUNTS = { ACTIVE: 0, SCHEDULED: 0, DRAFT: 0, ENDED: 0, CANCELLED: 0 }
+
 export const load: PageServerLoad = async ({ parent }) => {
 	const { user, onboarding } = await parent()
 
@@ -18,6 +28,7 @@ export const load: PageServerLoad = async ({ parent }) => {
 		published: 0,
 		activeSessions: 0,
 		totalSessions: 0,
+		statusCounts: EMPTY_STATUS_COUNTS,
 	}
 
 	// ─── Get courses the lecturer actually teaches via CourseOffering ──────
@@ -51,6 +62,7 @@ export const load: PageServerLoad = async ({ parent }) => {
 			coursePerformance: [],
 			assessmentStats: [],
 			pendingGrades: [],
+			assessmentOverview: [],
 		}
 	}
 
@@ -177,6 +189,72 @@ export const load: PageServerLoad = async ({ parent }) => {
 		},
 	})
 
+	// ─── Assessment Status Breakdown + "At a Glance" overview ──────────────
+	// Powers the top-of-dashboard glance card: a count per status, plus a
+	// priority-sorted list (ACTIVE → SCHEDULED → DRAFT → ENDED → CANCELLED,
+	// matching the same priority order used on the assessments list page)
+	// so the lecturer sees what needs attention first without opening a tab.
+
+	const statusGroups = await prisma.assessment.groupBy({
+		by: ['status'],
+		where: { createdById: staffId, courseId: { in: courseIds } },
+		_count: { _all: true },
+	})
+
+	const statusCounts = { ...EMPTY_STATUS_COUNTS }
+	for (const g of statusGroups) {
+		if (g.status in statusCounts) {
+			statusCounts[g.status as keyof typeof statusCounts] = g._count._all
+		}
+	}
+
+	const overviewCandidates = await prisma.assessment.findMany({
+		where: {
+			createdById: staffId,
+			courseId: { in: courseIds },
+			status: { in: ['ACTIVE', 'SCHEDULED', 'DRAFT', 'ENDED', 'CANCELLED'] },
+		},
+		select: {
+			id: true,
+			title: true,
+			type: true,
+			status: true,
+			startTime: true,
+			endTime: true,
+			dueDate: true,
+			updatedAt: true,
+			course: { select: { code: true } },
+		},
+		orderBy: { updatedAt: 'desc' },
+		take: 50,
+	})
+
+	const timeOf = (a: (typeof overviewCandidates)[number]) => {
+		if (a.startTime) return new Date(a.startTime).getTime()
+		if (a.dueDate) return new Date(a.dueDate).getTime()
+		if (a.endTime) return new Date(a.endTime).getTime()
+		return new Date(a.updatedAt).getTime()
+	}
+
+	const assessmentOverview = [...overviewCandidates]
+		.sort((a, b) => {
+			const pa = STATUS_PRIORITY[a.status] ?? 99
+			const pb = STATUS_PRIORITY[b.status] ?? 99
+			if (pa !== pb) return pa - pb
+			return timeOf(a) - timeOf(b)
+		})
+		.slice(0, 10)
+		.map((a) => ({
+			id: a.id,
+			title: a.title,
+			type: a.type,
+			status: a.status,
+			courseCode: a.course.code,
+			startTime: a.startTime,
+			endTime: a.endTime,
+			dueDate: a.dueDate,
+		}))
+
 	// ─── Course Performance Insights ───────────────────────────────────────
 
 	const coursePerformance = await Promise.all(
@@ -275,6 +353,7 @@ export const load: PageServerLoad = async ({ parent }) => {
 			questions: questionCount,
 			activeSessions,
 			totalSessions,
+			statusCounts,
 		},
 		upcomingAssessments: upcomingAssessments.map((a) => ({
 			id: a.id,
@@ -303,6 +382,7 @@ export const load: PageServerLoad = async ({ parent }) => {
 		})),
 		coursePerformance,
 		assessmentStats,
+		assessmentOverview,
 		recentActivity: auditLogs.map((log) => ({
 			id: log.id,
 			action: log.action,

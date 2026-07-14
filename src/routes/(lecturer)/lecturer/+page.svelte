@@ -36,6 +36,7 @@
 	import Rocket from '@lucide/svelte/icons/rocket'
 	import XCircle from '@lucide/svelte/icons/x-circle'
 	import Building2 from '@lucide/svelte/icons/building-2'
+	import LayoutGrid from '@lucide/svelte/icons/layout-grid'
 
 	let { data } = $props()
 
@@ -49,6 +50,8 @@
 	const needsOnboarding = $derived(data?.onboarding && !data.onboarding.isComplete)
 
 	let showOnboarding = $state(false)
+
+	const draftCount = $derived(data?.stats?.statusCounts?.DRAFT ?? 0)
 
 	const formatDate = (date: Date | string) => {
 		if (!date) return ''
@@ -96,6 +99,56 @@
 		if (missing.length === 3) return 'You need to set up your College, Department, and Courses'
 		if (missing.length === 2) return `You need to set up your ${missing.join(' and ')}`
 		return `You need to set up your ${missing[0]}`
+	}
+
+	// ─── At-a-glance countdown ───────────────────────────────────────────────
+	// ACTIVE assessments count down to their end time (closing soon = urgent);
+	// SCHEDULED assessments count down to their start time. Anything else
+	// (DRAFT/ENDED/CANCELLED, or nothing within 48h) just shows a plain date.
+	type OverviewAssessment = {
+		status: string
+		startTime: Date | string | null
+		endTime: Date | string | null
+		dueDate: Date | string | null
+	}
+
+	const formatCountdown = (assessment: OverviewAssessment) => {
+		const now = new Date()
+
+		const target =
+			assessment.status === 'SCHEDULED' && assessment.startTime
+				? new Date(assessment.startTime)
+				: assessment.endTime
+					? new Date(assessment.endTime)
+					: assessment.dueDate
+						? new Date(assessment.dueDate)
+						: null
+
+		if (!target) return null
+
+		const diffMs = target.getTime() - now.getTime()
+		const diffHours = diffMs / (1000 * 60 * 60)
+
+		if (assessment.status === 'ACTIVE') {
+			if (diffHours <= 0) return { text: 'Closing now', urgent: true }
+			if (diffHours <= 48) {
+				const h = Math.floor(diffHours)
+				const m = Math.floor((diffHours - h) * 60)
+				return { text: `Closes in ${h}h ${m}m`, urgent: true }
+			}
+			return { text: `Closes ${formatDate(target)}`, urgent: false }
+		}
+
+		if (assessment.status === 'SCHEDULED') {
+			if (diffHours > 0 && diffHours <= 48) {
+				const h = Math.floor(diffHours)
+				const m = Math.floor((diffHours - h) * 60)
+				return { text: `Starts in ${h}h ${m}m`, urgent: true }
+			}
+			return { text: `Starts ${formatDate(target)}`, urgent: false }
+		}
+
+		return { text: formatDate(target), urgent: false }
 	}
 </script>
 
@@ -161,6 +214,21 @@
 		</Alert>
 	{/if}
 
+	<!-- Drafts Needing Action - Conditional -->
+	{#if draftCount > 0}
+		<Alert class="border-gray-400/50 bg-gray-100/50 dark:border-gray-700/50 dark:bg-gray-900/20">
+			<FileText class="size-5" />
+			<AlertTitle class="font-semibold">You have unpublished drafts</AlertTitle>
+			<AlertDescription class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+				<span>{draftCount} assessment{draftCount === 1 ? '' : 's'} sitting in Draft — students can't see {draftCount === 1 ? 'it' : 'these'} until published.</span>
+				<Button href="/lecturer/assessments" variant="outline" size="sm" class="shrink-0">
+					Review Drafts
+					<ChevronRight class="ml-2 size-4" />
+				</Button>
+			</AlertDescription>
+		</Alert>
+	{/if}
+
 	<!-- Stats Grid with Descriptions -->
 	<div class="grid gap-6 sm:grid-cols-2 lg:grid-cols-4">
 		<Card>
@@ -213,6 +281,66 @@
 			</CardContent>
 		</Card>
 	</div>
+
+	<!-- Assessments at a Glance -->
+	<Card>
+		<CardHeader class="pb-3">
+			<CardTitle class="flex items-center gap-2">
+				<LayoutGrid class="size-5" />
+				Assessments at a Glance
+			</CardTitle>
+			<CardDescription>Every assessment you own, sorted by what needs attention first</CardDescription>
+		</CardHeader>
+		<CardContent class="space-y-5">
+			<div class="flex flex-wrap gap-2">
+				{#each [
+					{ key: 'ACTIVE', label: 'Active' },
+					{ key: 'SCHEDULED', label: 'Scheduled' },
+					{ key: 'DRAFT', label: 'Draft' },
+					{ key: 'ENDED', label: 'Ended' },
+					{ key: 'CANCELLED', label: 'Cancelled' },
+				] as s}
+					<Badge class={getStatusColor(s.key)} variant="outline">
+						{s.label}: {data?.stats?.statusCounts?.[s.key] ?? 0}
+					</Badge>
+				{/each}
+			</div>
+
+			{#if data?.assessmentOverview && data.assessmentOverview.length > 0}
+				<div class="space-y-2">
+					{#each data.assessmentOverview as assessment (assessment.id)}
+					{@const countdown = formatCountdown(assessment)}
+
+<a
+    href={`/lecturer/assessments/${assessment.id}`}
+    class="flex items-center justify-between gap-4 rounded-lg border p-3 hover:bg-muted/50 transition-colors"
+>
+    <div class="flex min-w-0 items-center gap-3">
+        <Badge class={getStatusColor(assessment.status)}>{assessment.status}</Badge>
+        <Badge class={getTypeColor(assessment.type)} variant="outline">{assessment.type}</Badge>
+        <div class="min-w-0">
+            <p class="truncate font-medium">{assessment.title}</p>
+            <p class="text-xs text-muted-foreground">{assessment.courseCode}</p>
+        </div>
+    </div>
+    {#if countdown}
+        <span
+            class={`whitespace-nowrap text-sm ${countdown.urgent ? 'font-medium text-red-600 dark:text-red-400' : 'text-muted-foreground'}`}
+        >
+            {countdown.text}
+        </span>
+    {/if}
+</a>
+					{/each}
+				</div>
+			{:else}
+				<div class="rounded-lg border border-dashed p-8 text-center">
+					<CheckCircle class="mx-auto mb-2 size-8 text-muted-foreground" />
+					<p class="text-muted-foreground">No assessments yet — create one to get started.</p>
+				</div>
+			{/if}
+		</CardContent>
+	</Card>
 
 	<!-- Tabs -->
 	<Tabs defaultValue="urgent" class="space-y-6">
