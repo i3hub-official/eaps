@@ -852,6 +852,8 @@ model Notification {
   title     String
   body      String
   isRead    Boolean          @default(false)
+   isArchived   Boolean   @default(false)
+  archivedAt   DateTime?
   readAt    DateTime?
   link      String?
   createdAt DateTime         @default(now())

@@ -73,7 +73,6 @@ export const load: PageServerLoad = async ({ locals, url }) => {
 				include: {
 					assessment: {
 						include: {
-							// ↓ courseId is now included via the relation object
 							course: { select: { id: true, code: true, title: true } },
 						},
 					},
@@ -137,7 +136,6 @@ export const load: PageServerLoad = async ({ locals, url }) => {
 			sessionId: s.sessionId,
 			studentName,
 			studentMatric,
-			// ↓ use course.id from the included relation — no courseId on assessment needed
 			courseId: s.session.assessment.course.id,
 			course: s.session.assessment.course.code,
 			assessment: s.session.assessment.title,
@@ -218,6 +216,53 @@ export const actions: Actions = {
 			success: true,
 			graded: pending.length,
 			message: `${pending.length} answer${pending.length === 1 ? '' : 's'} auto-graded successfully.`,
+		}
+	},
+
+	// ─── Bulk Grade ──────────────────────────────────────────────────────
+	bulkGrade: async ({ request, locals }) => {
+		const user = await requireLecturer(locals.user)
+		const formData = await request.formData()
+		const submissionIdsJson = formData.get('submissionIds')?.toString()
+		const marksJson = formData.get('marks')?.toString()
+
+		if (!submissionIdsJson || !marksJson) {
+			return fail(400, { error: 'Submission IDs and marks are required' })
+		}
+
+		let submissionIds: string[]
+		let marks: Record<string, number>
+		try {
+			submissionIds = JSON.parse(submissionIdsJson)
+			marks = JSON.parse(marksJson)
+		} catch {
+			return fail(400, { error: 'Invalid data format' })
+		}
+
+		const prisma = await getPrismaClient()
+
+		try {
+			const updates = submissionIds.map((id) => {
+				const mark = marks[id] || 0
+				return prisma.studentAnswer.update({
+					where: {
+						id,
+						session: { assessment: { createdById: user.id } },
+					},
+					data: {
+						isManualGraded: true,
+						marksAwarded: mark,
+						gradedAt: new Date(),
+						gradedById: user.id,
+					},
+				})
+			})
+
+			await prisma.$transaction(updates)
+			return { success: true, count: submissionIds.length }
+		} catch (err) {
+			console.error('[bulkGrade] transaction failed:', err)
+			return fail(500, { error: 'Bulk grading failed. Please try again.' })
 		}
 	},
 }

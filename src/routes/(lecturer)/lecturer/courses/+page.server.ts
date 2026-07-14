@@ -26,6 +26,12 @@ export const load: PageServerLoad = async ({ locals }) => {
 		orderBy: [{ level: { name: 'asc' } }, { code: 'asc' }],
 	})
 
+	// Calculate statistics
+	const totalCourses = courses.length
+	const totalStudents = courses.reduce((sum, c) => sum + c.registrations.length, 0)
+	const totalQuestions = courses.reduce((sum, c) => sum + c.questions.length, 0)
+	const totalAssessments = courses.reduce((sum, c) => sum + c.assessments.length, 0)
+
 	return {
 		user: {
 			id: user.id,
@@ -43,5 +49,11 @@ export const load: PageServerLoad = async ({ locals }) => {
 			assessmentCount: c.assessments.length,
 			questionCount: c.questions.length,
 		})),
+		stats: {
+			totalCourses,
+			totalStudents,
+			totalQuestions,
+			totalAssessments,
+		},
 	}
 }
