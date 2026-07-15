@@ -95,71 +95,82 @@ export const load: PageServerLoad = async ({ locals, url }) => {
 }
 
 export const actions: Actions = {
+
 	invite: async ({ request, locals }) => {
-		const user = await requireStaff(locals.user)
-		
-		if (!CAN_MANAGE_DEVELOPERS.includes(user.primaryRole)) {
-			return fail(403, { error: 'You do not have permission to invite developers.' })
-		}
+	const user = await requireStaff(locals.user)
+	
+	if (!CAN_MANAGE_DEVELOPERS.includes(user.primaryRole)) {
+		return fail(403, { error: 'You do not have permission to invite developers.' })
+	}
 
-		const formData = await request.formData()
-		const email = String(formData.get('email') ?? '').trim().toLowerCase()
-		const name = String(formData.get('name') ?? '').trim()
-		const role = String(formData.get('role') ?? '')
-		const permissions = formData.getAll('permissions').map(String).filter(Boolean)
+	const formData = await request.formData()
+	const email = String(formData.get('email') ?? '').trim().toLowerCase()
+	const name = String(formData.get('name') ?? '').trim()
+	const role = String(formData.get('role') ?? '')
+	const permissions = formData.getAll('permissions').map(String).filter(Boolean)
 
-		const errors: Record<string, string> = {}
-		if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
-			errors.email = 'A valid email is required'
-		}
-		if (!name) errors.name = 'Name is required'
-		if (!role) errors.role = 'Select a role'
+	const errors: Record<string, string> = {}
+	if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+		errors.email = 'A valid email is required'
+	}
+	if (!name) errors.name = 'Name is required'
+	if (!role) errors.role = 'Select a role'
 
-		if (Object.keys(errors).length > 0) {
-			return fail(400, { errors })
-		}
+	if (Object.keys(errors).length > 0) {
+		return fail(400, { errors })
+	}
 
-		const prisma = await getPrismaClient()
+	const prisma = await getPrismaClient()
 
-		// Check if developer already exists
-		const existing = await prisma.developerTeam.findUnique({
-			where: { email },
+	// Check if developer already exists
+	const existing = await prisma.developerTeam.findUnique({
+		where: { email },
+	})
+
+	if (existing) {
+		return fail(400, { 
+			errors: { email: 'This developer is already on the team.' } 
+		})
+	}
+
+	// Get role display name
+	const roleDisplay = DEVELOPER_ROLES.find(r => r.value === role)?.label || role
+
+	// Create invitation token
+	const { token, tokenHash } = createInvitationToken()
+	const expiresAt = new Date(Date.now() + INVITATION_EXPIRY_HOURS * 60 * 60 * 1000)
+
+	try {
+		await prisma.developerTeam.create({
+			data: {
+				email,
+				name,
+				role: role as any,
+				permissions,
+				tokenHash,
+				tokenExpiresAt: expiresAt,
+				invitedBy: user.id,
+				invitedAt: new Date(),
+				isActive: false,
+			},
 		})
 
-		if (existing) {
-			return fail(400, { 
-				errors: { email: 'This developer is already in the team.' } 
-			})
-		}
+		// Send invitation email with role and permissions
+		await sendDeveloperInvitationEmail(
+			email,
+			name,
+			roleDisplay,
+			permissions,
+			token,
+			INVITATION_EXPIRY_HOURS
+		)
 
-		// Create invitation token
-		const { token, tokenHash } = createInvitationToken()
-		const expiresAt = new Date(Date.now() + INVITATION_EXPIRY_HOURS * 60 * 60 * 1000)
-
-		try {
-			await prisma.developerTeam.create({
-				data: {
-					email,
-					name,
-					role: role as any,
-					permissions,
-					tokenHash,
-					tokenExpiresAt: expiresAt,
-					invitedBy: user.id,
-					invitedAt: new Date(),
-					isActive: false,
-				},
-			})
-
-			// Send invitation email
-			await sendDeveloperInvitationEmail(email, name, token, expiresAt)
-
-			return { success: true }
-		} catch (err) {
-			console.error('[developers] Failed to invite developer:', err)
-			return fail(500, { error: 'Failed to send invitation' })
-		}
-	},
+		return { success: true }
+	} catch (err) {
+		console.error('[team] Failed to invite developer:', err)
+		return fail(500, { error: 'Failed to send invitation' })
+	}
+},
 
 	update: async ({ request, locals }) => {
 		const user = await requireStaff(locals.user)

@@ -655,7 +655,6 @@ ${APP_URL}
 
     <p style="margin: 0 0 4px;">Click below to complete your registration. This link contains your identification token and will expire in <strong>${expiryHours} hours</strong>.</p>
     ${actionButton(onboardLink, 'Accept Invitation')}
-    <p style="margin: 0 0 4px;">This link will expire in <strong>${expiryHours} hours</strong>.</p>
     <p style="margin: 16px 0 0; font-size: 13px; color: #555555;">If you weren't expecting this invitation, you can safely ignore this email.</p>
   `
 

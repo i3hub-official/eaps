@@ -516,7 +516,7 @@
 				<TableBody>
 					{#if filteredInvitations.length === 0}
 						<TableRow>
-							<TableCell colspan="8" class="text-center text-muted-foreground py-8">
+							<TableCell colspan={8} class="text-center text-muted-foreground py-8">
 								{#if searchQuery || filterStatus !== 'all'}
 									<Search class="mx-auto size-8 text-muted-foreground/50 mb-2" />
 									<p>No invitations match your filters</p>
@@ -527,7 +527,7 @@
 							</TableCell>
 						</TableRow>
 					{:else}
-						{#each filteredInvitations as inv}
+						{#each filteredInvitations as inv (inv.id)}
 							<TableRow class="transition-colors hover:bg-muted/30">
 								<TableCell>
 									{#if inv.staffName}
@@ -558,7 +558,7 @@
 								<TableCell class="text-sm">
 									{#if inv.courses.length > 0}
 										<div class="flex flex-wrap gap-1 max-w-[150px]">
-											{#each inv.courses.slice(0, 3) as course}
+											{#each inv.courses.slice(0, 3) as course, index (index)}
 												<Badge variant="outline" class="text-[10px]">{course}</Badge>
 											{/each}
 											{#if inv.courses.length > 3}
