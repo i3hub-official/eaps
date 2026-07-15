@@ -140,8 +140,11 @@ export const actions: Actions = {
 	const { token, tokenHash } = createInvitationToken()
 	const expiresAt = new Date(Date.now() + INVITATION_EXPIRY_HOURS * 60 * 60 * 1000)
 
+	console.log('[team/invite] Created token:', token.substring(0, 10) + '...')
+	console.log('[team/invite] Token hash:', tokenHash)
+
 	try {
-		await prisma.developerTeam.create({
+		const developer = await prisma.developerTeam.create({
 			data: {
 				email,
 				name,
@@ -154,6 +157,8 @@ export const actions: Actions = {
 				isActive: false,
 			},
 		})
+
+		console.log('[team/invite] Developer created with ID:', developer.id)
 
 		// Send invitation email with role and permissions
 		await sendDeveloperInvitationEmail(
