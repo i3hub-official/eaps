@@ -1481,3 +1481,13 @@ model SystemSetting {
   value     Boolean
   updatedAt DateTime @updatedAt
 }
+
+model SystemFlag {
+    id        String   @id @default(cuid())
+    key       String   @unique   // "maintenance" | "shutdown"
+    value     String             // "true" | "false"
+    updatedAt DateTime @updatedAt
+    updatedBy String?            // admin userId who last changed it
+
+    @@map("system_flags")
+}

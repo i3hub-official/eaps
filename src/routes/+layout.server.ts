@@ -1,38 +1,75 @@
 // src/routes/+layout.server.ts
 import type { LayoutServerLoad } from './$types';
+import { getPrismaClient } from '$lib/server/db/index.js';
 
-export const load: LayoutServerLoad = async ({ request }) => {
-    // --- Maintenance / Shutdown: set these from env or DB ---
-    const maintenance = process.env.SYSTEM_MAINTENANCE === 'true';
-    const shutdown    = process.env.SYSTEM_SHUTDOWN === 'true';
+// ── helpers ────────────────────────────────────────────────────────────────
 
-    // --- VPN detection: check the connecting IP ---
-    const ip =
-        request.headers.get('x-forwarded-for')?.split(',')[0].trim() ??
-        request.headers.get('x-real-ip') ??
-        '';
+async function getSystemFlags(): Promise<{ maintenance: boolean; shutdown: boolean }> {
+    // .env takes priority — hard-override without needing a DB connection
+    if (process.env.SYSTEM_SHUTDOWN === 'true')    return { shutdown: true,  maintenance: false };
+    if (process.env.SYSTEM_MAINTENANCE === 'true') return { shutdown: false, maintenance: true  };
 
-    const vpnBlocked = await isVpnOrProxy(ip); // your detection logic
-
-    const systemState = shutdown
-        ? 'shutdown'
-        : maintenance
-        ? 'maintenance'
-        : vpnBlocked
-        ? 'vpn_blocked'
-        : null;
-
-    return { systemState, detectedIp: ip };
-};
-
-async function isVpnOrProxy(ip: string): Promise<boolean> {
-    if (!ip) return false;
-    // Option A: free API check
     try {
-        const res = await fetch(`https://vpnapi.io/api/${ip}?key=${process.env.VPNAPI_KEY}`);
-        const data = await res.json();
-        return data.security?.vpn || data.security?.proxy || data.security?.tor;
+        const prisma = await getPrismaClient();
+        const flags  = await prisma.systemFlag.findMany({
+            where:  { key: { in: ['maintenance', 'shutdown'] } },
+            select: { key: true, value: true },
+        });
+        const get = (k: string) => flags.find((f) => f.key === k)?.value === 'true';
+        return { shutdown: get('shutdown'), maintenance: get('maintenance') };
     } catch {
-        return false; // fail open — don't block if the check itself fails
+        // DB unreachable — fail closed, show maintenance screen
+        return { shutdown: false, maintenance: true };
     }
 }
+
+async function isVpnOrProxy(ip: string): Promise<boolean> {
+    // Fail closed: unknown or empty IP is blocked
+    if (!ip) return true;
+
+    try {
+        const res = await fetch(
+            `https://vpnapi.io/api/${ip}?key=${process.env.VPNAPI_KEY}`,
+            { signal: AbortSignal.timeout(4000) }
+        );
+        if (!res.ok) return true; // fail closed on non-200
+        const data = await res.json();
+        return !!(data.security?.vpn || data.security?.proxy || data.security?.tor);
+    } catch {
+        return true; // fail closed on timeout / network error
+    }
+}
+
+function getClientIp(request: Request): string {
+    return (
+        request.headers.get('x-forwarded-for')?.split(',')[0].trim() ??
+        request.headers.get('x-real-ip') ??
+        ''
+    );
+}
+
+// ── load ───────────────────────────────────────────────────────────────────
+
+export const load: LayoutServerLoad = async ({ request, url, locals }) => {
+    // Hidden admin login route always bypasses system screens
+    if (url.pathname.startsWith('/sys/admin-access')) {
+        return { systemState: null, detectedIp: null };
+    }
+
+    // Authenticated admins bypass all screens so they can operate during maintenance
+    if (locals.user?.role === 'admin') {
+        return { systemState: null, detectedIp: null };
+    }
+
+    const ip = getClientIp(request);
+    const { shutdown, maintenance } = await getSystemFlags();
+
+    // Shutdown and maintenance take priority — no point checking VPN
+    if (shutdown)    return { systemState: 'shutdown'    as const, detectedIp: ip };
+    if (maintenance) return { systemState: 'maintenance' as const, detectedIp: ip };
+
+    const vpnBlocked = await isVpnOrProxy(ip);
+    if (vpnBlocked)  return { systemState: 'vpn_blocked' as const, detectedIp: ip };
+
+    return { systemState: null, detectedIp: ip };
+};

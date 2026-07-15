@@ -1,460 +1,521 @@
 <!-- src/routes/(auth)/seed/+page.svelte -->
 <script lang="ts">
-	import { Button } from '$lib/components/ui/button/index.js';
-	import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '$lib/components/ui/card/index.js';
-	import { Alert, AlertDescription } from '$lib/components/ui/alert/index.js';
-	import { Progress } from '$lib/components/ui/progress/index.js';
-	import { Badge } from '$lib/components/ui/badge/index.js';
-	import { Separator } from '$lib/components/ui/separator/index.js';
-	import Loader2 from '@lucide/svelte/icons/loader-2';
-	import CheckCircle2 from '@lucide/svelte/icons/check-circle-2';
-	import AlertCircle from '@lucide/svelte/icons/alert-circle';
-	import Database from '@lucide/svelte/icons/database';
-	import Building from '@lucide/svelte/icons/building';
-	import BookOpen from '@lucide/svelte/icons/book-open';
-	import Users from '@lucide/svelte/icons/users';
-	import Shield from '@lucide/svelte/icons/shield';
-	import GraduationCap from '@lucide/svelte/icons/graduation-cap';
-	import Layers from '@lucide/svelte/icons/layers';
-	import CalendarRange from '@lucide/svelte/icons/calendar-range';
-	import KeyRound from '@lucide/svelte/icons/key-round';
-	import Mail from '@lucide/svelte/icons/mail';
-	import ChevronRight from '@lucide/svelte/icons/chevron-right';
-	import Download from '@lucide/svelte/icons/download';
-	import Eye from '@lucide/svelte/icons/eye';
-	import EyeOff from '@lucide/svelte/icons/eye-off';
-	import Copy from '@lucide/svelte/icons/copy';
-	import Check from '@lucide/svelte/icons/check';
-	import FileQuestion from '@lucide/svelte/icons/file-question';
-	import ClipboardList from '@lucide/svelte/icons/clipboard-list';
-	import Tag from '@lucide/svelte/icons/tag';
-	import UserCheck from '@lucide/svelte/icons/user-check';
+    import { Button } from '$lib/components/ui/button/index.js';
+    import { Badge } from '$lib/components/ui/badge/index.js';
+    import LoaderIcon from '@lucide/svelte/icons/loader';
+    import CheckIcon from '@lucide/svelte/icons/check';
+    import AlertCircleIcon from '@lucide/svelte/icons/alert-circle';
+    import DownloadIcon from '@lucide/svelte/icons/download';
+    import CopyIcon from '@lucide/svelte/icons/copy';
+    import EyeIcon from '@lucide/svelte/icons/eye';
+    import EyeOffIcon from '@lucide/svelte/icons/eye-off';
+    import DatabaseIcon from '@lucide/svelte/icons/database';
+    import ChevronRightIcon from '@lucide/svelte/icons/chevron-right';
 
-	type ResultBlock = { created: number; skipped: number; total: number };
+    // ── Types ──────────────────────────────────────────────────────────────
 
-// Matches SeedResults['credentials'] from src/routes/api/admin/seed-missing/+server.ts
-type Credential = {
-	type: 'staff' | 'student';
-	identifier: string; // staffNumber or matricNumber
-	role: string;
-	email: string;
-	password: string;
-};
+    type ResultBlock = { created: number; skipped: number; total: number };
 
-// Matches SeedResults exactly as returned by +server.ts — no question-bank
-// or assessment fields, since that endpoint doesn't seed those yet.
-type SeedResults = {
-	university: { created: boolean; skipped: boolean };
-	colleges: ResultBlock;
-	departments: ResultBlock;
-	levels: ResultBlock;
-	programmes: ResultBlock;
-	session: { created: boolean; skipped: boolean };
-	semesters: ResultBlock;
-	courses: ResultBlock;
-	offerings: ResultBlock;
-	gradeScale: ResultBlock;
-	roles: ResultBlock;
-	staff: ResultBlock;
-	students: ResultBlock;
-	lecturerAssignments: ResultBlock;
-	credentials: Credential[];
-	totalCreated: number;
-	totalSkipped: number;
-};
+    type Credential = {
+        type:       'staff' | 'student';
+        identifier: string;
+        role:       string;
+        email:      string;
+        password:   string;
+    };
 
-	let loading = $state(false);
-	let success = $state(false);
-	let error = $state<string | null>(null);
-	let progress = $state(0);
-	let results = $state<SeedResults | null>(null);
+    type SeedResults = {
+        systemFlags:         ResultBlock;
+        university:          { created: boolean; skipped: boolean };
+        colleges:            ResultBlock;
+        departments:         ResultBlock;
+        levels:              ResultBlock;
+        programmes:          ResultBlock;
+        session:             { created: boolean; skipped: boolean };
+        semesters:           ResultBlock;
+        courses:             ResultBlock;
+        offerings:           ResultBlock;
+        gradeScale:          ResultBlock;
+        roles:               ResultBlock;
+        staff:               ResultBlock;
+        students:            ResultBlock;
+        lecturerAssignments: ResultBlock;
+        credentials:         Credential[];
+        totalCreated:        number;
+        totalSkipped:        number;
+    };
 
-	let showPasswords = $state(false);
-	let copied = $state(false);
-	let credentialFilter = $state<'all' | 'staff' | 'student'>('all');
+    // ── Pipeline steps (mirrors server steps 0–14) ─────────────────────────
 
-	const filteredCredentials = $derived(
-		results?.credentials.filter((c) => credentialFilter === 'all' || c.type === credentialFilter) ?? [],
-	);
-	const staffCredCount = $derived(results?.credentials.filter((c) => c.type === 'staff').length ?? 0);
-	const studentCredCount = $derived(results?.credentials.filter((c) => c.type === 'student').length ?? 0);
+    const PIPELINE = [
+        { label: 'System flags',          detail: 'maintenance · shutdown' },
+        { label: 'University',            detail: 'MOUAU root record' },
+        { label: 'Colleges',              detail: '12 colleges' },
+        { label: 'Departments',           detail: '65+ departments' },
+        { label: 'Levels',                detail: '100 L – 700 L' },
+        { label: 'Programmes',            detail: '3 per department' },
+        { label: 'Academic session',      detail: 'current session' },
+        { label: 'Semesters',             detail: 'first · second' },
+        { label: 'Courses',               detail: 'course catalogue' },
+        { label: 'Course offerings',      detail: 'current semester' },
+        { label: 'Grade scale',           detail: 'A – F tiers' },
+        { label: 'Roles',                 detail: '14 system roles' },
+        { label: 'Staff accounts',        detail: 'default Admin123' },
+        { label: 'Lecturer assignments',  detail: 'offering ↔ lecturer' },
+        { label: 'Student accounts',      detail: 'default Student123' },
+    ];
 
-	const seedPlan = [
-		{ icon: Building, label: 'Colleges', count: '12', detail: 'All MOUAU colleges' },
-		{ icon: Layers, label: 'Departments', count: '65+', detail: 'Across every college' },
-		{ icon: GraduationCap, label: 'Levels & Programmes', count: '7 · 3/dept', detail: '100–700L, 3 programmes each' },
-		{ icon: CalendarRange, label: 'Session & Semesters', count: '1 · 2', detail: 'Current academic session' },
-		{ icon: BookOpen, label: 'Courses', count: '33', detail: 'Sample courses + offerings' },
-		{ icon: Shield, label: 'Roles', count: '14', detail: 'System role definitions' },
-		{ icon: Users, label: 'Staff Users', count: '10', detail: 'Default password: Admin123' },
-		{ icon: GraduationCap, label: 'Students', count: 'Varies', detail: '2 per dept (5 for COLPAS) · Default password: Student123' },
-		{ icon: Tag, label: 'Question Tags', count: '1/course', detail: 'One fundamentals tag per course' },
-		{ icon: FileQuestion, label: 'Questions', count: '10/course', detail: 'Single-choice, 4 options each' },
-		{ icon: ClipboardList, label: 'Assessments', count: '3/course', detail: 'Practice · Test · Examination' },
-	];
+    const RESULT_KEYS: { key: keyof SeedResults; label: string }[] = [
+        { key: 'systemFlags',        label: 'System flags' },
+        { key: 'colleges',           label: 'Colleges' },
+        { key: 'departments',        label: 'Departments' },
+        { key: 'levels',             label: 'Levels' },
+        { key: 'programmes',         label: 'Programmes' },
+        { key: 'semesters',          label: 'Semesters' },
+        { key: 'courses',            label: 'Courses' },
+        { key: 'offerings',          label: 'Course offerings' },
+        { key: 'gradeScale',         label: 'Grade scale' },
+        { key: 'roles',              label: 'Roles' },
+        { key: 'staff',              label: 'Staff accounts' },
+        { key: 'students',           label: 'Student accounts' },
+        { key: 'lecturerAssignments',label: 'Lecturer assignments' },
+    ];
 
-	const resultMeta: { key: keyof SeedResults; label: string; icon: typeof Building }[] = [
-    { key: 'colleges', label: 'Colleges', icon: Building },
-    { key: 'departments', label: 'Departments', icon: Layers },
-    { key: 'levels', label: 'Levels', icon: GraduationCap },
-    { key: 'programmes', label: 'Programmes', icon: GraduationCap },
-    { key: 'semesters', label: 'Semesters', icon: CalendarRange },
-    { key: 'courses', label: 'Courses', icon: BookOpen },
-    { key: 'offerings', label: 'Course Offerings', icon: BookOpen },
-    { key: 'gradeScale', label: 'Grade Scale', icon: Shield },
-    { key: 'roles', label: 'Roles', icon: Shield },
-    { key: 'staff', label: 'Staff Users', icon: Users },
-    { key: 'students', label: 'Students', icon: GraduationCap },
-    { key: 'lecturerAssignments', label: 'Lecturer Assignments', icon: UserCheck },
-];
+    // ── State ──────────────────────────────────────────────────────────────
 
-	function credentialsAsText(list: Credential[]): string {
-		const lines = [
-			'MOUAU eTEST — Seeded Login Credentials',
-			`Generated: ${new Date().toISOString()}`,
-			'='.repeat(60),
-			'',
-			...list.map(
-				(c) =>
-					`Type         : ${c.type === 'staff' ? 'Staff' : 'Student'}\n` +
-					`${c.type === 'staff' ? 'Staff Number' : 'Matric No.  '} : ${c.identifier}\n` +
-					`Role         : ${c.role}\n` +
-					`Email        : ${c.email}\n` +
-					`Password     : ${c.password}\n` +
-					'-'.repeat(60),
-			),
-			'',
-			'Note: mustChangePassword is enabled — each account will be',
-			'prompted to set a new password on first login.',
-		];
-		return lines.join('\n');
-	}
+    type Phase = 'idle' | 'running' | 'done' | 'error';
 
-	function downloadCredentials() {
-		if (!filteredCredentials.length) return;
-		const text = credentialsAsText(filteredCredentials);
-		const blob = new Blob([text], { type: 'text/plain;charset=utf-8' });
-		const url = URL.createObjectURL(blob);
-		const a = document.createElement('a');
-		a.href = url;
-		a.download = `mouau-etest-credentials-${credentialFilter}-${new Date().toISOString().slice(0, 10)}.txt`;
-		document.body.appendChild(a);
-		a.click();
-		a.remove();
-		URL.revokeObjectURL(url);
-	}
+    let phase           = $state<Phase>('idle');
+    let errorMsg        = $state<string | null>(null);
+    let results         = $state<SeedResults | null>(null);
+    let activeStep      = $state(-1);         // which pipeline step is "running"
+    let showPasswords   = $state(false);
+    let copied          = $state(false);
+    let credFilter      = $state<'all' | 'staff' | 'student'>('all');
 
-	async function copyCredentials() {
-		if (!filteredCredentials.length) return;
-		try {
-			await navigator.clipboard.writeText(credentialsAsText(filteredCredentials));
-			copied = true;
-			setTimeout(() => (copied = false), 1800);
-		} catch {
-			// clipboard API unavailable — silently ignore, download still works
-		}
-	}
+    const filteredCreds = $derived(
+        results?.credentials.filter((c) => credFilter === 'all' || c.type === credFilter) ?? []
+    );
+    const staffCount   = $derived(results?.credentials.filter((c) => c.type === 'staff').length   ?? 0);
+    const studentCount = $derived(results?.credentials.filter((c) => c.type === 'student').length ?? 0);
 
-	async function seedDatabase() {
-		loading = true;
-		error = null;
-		success = false;
-		results = null;
-		progress = 0;
-		showPasswords = false;
-		credentialFilter = 'all';
+    // ── Credential export ──────────────────────────────────────────────────
 
-		const progressInterval = setInterval(() => {
-			progress = Math.min(progress + 5, 90);
-		}, 200);
+    function credsToText(list: Credential[]): string {
+        return [
+            'MOUAU e-Test — Seeded Login Credentials',
+            `Generated : ${new Date().toISOString()}`,
+            '─'.repeat(60),
+            '',
+            ...list.map((c) =>
+                `Type      : ${c.type === 'staff' ? 'Staff' : 'Student'}\n` +
+                `${c.type === 'staff' ? 'Staff No.' : 'Matric   '} : ${c.identifier}\n` +
+                `Role      : ${c.role}\n` +
+                `Email     : ${c.email}\n` +
+                `Password  : ${c.password}\n` +
+                '─'.repeat(60)
+            ),
+            '',
+            'Note: mustChangePassword is set — each account will be prompted',
+            'to choose a new password on first login.',
+        ].join('\n');
+    }
 
-		try {
-			const response = await fetch('/api/admin/seed-missing', {
-				method: 'POST',
-			});
+    function downloadCreds() {
+        if (!filteredCreds.length) return;
+        const blob = new Blob([credsToText(filteredCreds)], { type: 'text/plain;charset=utf-8' });
+        const url  = URL.createObjectURL(blob);
+        const a    = Object.assign(document.createElement('a'), {
+            href:     url,
+            download: `mouau-etest-credentials-${credFilter}-${new Date().toISOString().slice(0, 10)}.txt`,
+        });
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        URL.revokeObjectURL(url);
+    }
 
-			const data = await response.json();
+    async function copyCreds() {
+        if (!filteredCreds.length) return;
+        try {
+            await navigator.clipboard.writeText(credsToText(filteredCreds));
+            copied = true;
+            setTimeout(() => (copied = false), 1800);
+        } catch { /* clipboard unavailable — silent */ }
+    }
 
-			if (!response.ok) {
-				throw new Error(data.error || 'Failed to seed database');
-			}
+    // ── Seed action ────────────────────────────────────────────────────────
 
-			results = data.results;
-			progress = 100;
-			success = true;
-		} catch (err) {
-			error = err instanceof Error ? err.message : 'An error occurred';
-			progress = 0;
-		} finally {
-			clearInterval(progressInterval);
-			loading = false;
-		}
-	}
+    async function seed() {
+        phase        = 'running';
+        errorMsg     = null;
+        results      = null;
+        activeStep   = 0;
+        showPasswords = false;
+        credFilter   = 'all';
+
+        // Animate through pipeline steps while the real request runs
+        const stepInterval = setInterval(() => {
+            activeStep = Math.min(activeStep + 1, PIPELINE.length - 1);
+        }, 600);
+
+        try {
+            const res  = await fetch('/api/admin/seed-missing', { method: 'POST' });
+            const data = await res.json();
+            if (!res.ok) throw new Error(data.error ?? 'Seed request failed');
+            results   = data.results;
+            activeStep = PIPELINE.length; // all done
+            phase     = 'done';
+        } catch (err) {
+            errorMsg = err instanceof Error ? err.message : 'An unexpected error occurred';
+            phase    = 'error';
+            activeStep = -1;
+        } finally {
+            clearInterval(stepInterval);
+        }
+    }
 </script>
 
-<div class="container max-w-3xl py-10">
-	<!-- ── Header ─────────────────────────────────────────────────────────── -->
-	<div class="mb-8 flex items-start gap-4">
-		<div class="flex size-12 shrink-0 items-center justify-center rounded-xl border border-border bg-primary/10">
-			<Database class="size-6 text-primary" />
-		</div>
-		<div class="min-w-0">
-			<h1 class="text-2xl font-bold tracking-tight">Seed Database</h1>
-			<p class="mt-0.5 text-sm text-muted-foreground">
-				Populate the academic structure, courses, roles, staff/student accounts, and sample assessments.
-			</p>
-		</div>
-	</div>
+<!-- ═══════════════════════════════════════════════════════════════════════ -->
+<!-- Layout: left pipeline rail + right content panel                       -->
+<!-- ═══════════════════════════════════════════════════════════════════════ -->
 
-	{#if !success}
-		<!-- ── Pre-run plan ────────────────────────────────────────────────── -->
-		<Card class="overflow-hidden">
-			<CardHeader class="pb-3">
-				<CardTitle class="text-base">What will be created</CardTitle>
-				<CardDescription>Existing records are detected and skipped automatically — this is safe to re-run.</CardDescription>
-			</CardHeader>
-			<CardContent class="p-0">
-				<div class="divide-y divide-border/60">
-					{#each seedPlan as item}
-						<div class="flex items-center gap-3 px-6 py-3">
-							<div class="flex size-8 shrink-0 items-center justify-center rounded-lg bg-muted">
-								<item.icon class="size-4 text-muted-foreground" />
-							</div>
-							<div class="min-w-0 flex-1">
-								<p class="text-sm font-medium leading-none">{item.label}</p>
-								<p class="mt-1 text-xs text-muted-foreground">{item.detail}</p>
-							</div>
-							<Badge variant="outline" class="shrink-0 font-mono text-xs">{item.count}</Badge>
-						</div>
-					{/each}
-				</div>
-			</CardContent>
-		</Card>
+<div class="min-h-screen bg-background">
+    <div class="mx-auto max-w-5xl px-6 py-12">
 
-		<div class="mt-4 flex items-start gap-2 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2.5 text-xs text-amber-700 dark:text-amber-400">
-			<KeyRound class="mt-0.5 size-3.5 shrink-0" />
-			<span
-				>Staff accounts use the default password <strong class="font-mono">Admin123</strong>, students use
-				<strong class="font-mono">Student123</strong> — both with <code class="rounded bg-amber-500/15 px-1 py-0.5"
-					>mustChangePassword</code
-				> enabled. You'll be able to view or download the full login list after seeding.</span
-			>
-		</div>
+        <!-- Page header -->
+        <div class="mb-10">
+            <div class="mb-3 flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.15em] text-muted-foreground">
+                <DatabaseIcon class="h-3.5 w-3.5" />
+                Administration
+            </div>
+            <h1 class="text-3xl font-bold tracking-tight text-foreground">Seed Database</h1>
+            <p class="mt-2 text-sm text-muted-foreground">
+                Populates the full academic structure — colleges, departments, courses, staff, and students.
+                Existing records are detected and skipped; safe to re-run.
+            </p>
+        </div>
 
-		{#if loading}
-			<div class="mt-6 space-y-2">
-				<div class="flex items-center justify-between text-sm">
-					<span class="flex items-center gap-2 text-muted-foreground">
-						<Loader2 class="size-3.5 animate-spin" />
-						Seeding in progress…
-					</span>
-					<span class="font-medium tabular-nums">{Math.round(progress)}%</span>
-				</div>
-				<Progress value={progress} class="h-1.5" />
-			</div>
-		{/if}
+        <div class="grid grid-cols-1 gap-8 lg:grid-cols-[220px_1fr]">
 
-		<Button onclick={seedDatabase} disabled={loading} class="mt-6 w-full" size="lg">
-			{#if loading}
-				<Loader2 class="mr-2 size-4 animate-spin" />
-				Seeding database…
-			{:else}
-				<Database class="mr-2 size-4" />
-				Seed All Data
-			{/if}
-		</Button>
-	{/if}
+            <!-- ── Left: pipeline step rail ─────────────────────────────── -->
+            <div class="hidden lg:block">
+                <div class="sticky top-8">
+                    <p class="mb-4 text-[11px] font-semibold uppercase tracking-widest text-muted-foreground">
+                        Pipeline
+                    </p>
+                    <ol class="space-y-0">
+                        {#each PIPELINE as step, i}
+                            {@const isDone    = phase === 'done' || (phase === 'running' && i < activeStep)}
+                            {@const isActive  = phase === 'running' && i === activeStep}
+                            {@const isPending = phase === 'idle'    || (phase === 'running' && i > activeStep)}
 
-	{#if error}
-		<Alert class="mt-6" variant="destructive">
-			<AlertCircle class="size-4" />
-			<AlertDescription>{error}</AlertDescription>
-		</Alert>
-		<Button onclick={seedDatabase} variant="outline" class="mt-3 w-full">
-			Try again
-		</Button>
-	{/if}
+                            <li class="relative flex gap-3 pb-5 last:pb-0">
+                                <!-- connector line -->
+                                {#if i < PIPELINE.length - 1}
+                                    <div class="absolute left-[11px] top-6 h-full w-px {isDone ? 'bg-foreground/20' : 'bg-border'}"></div>
+                                {/if}
 
-	<!-- ── Success state ────────────────────────────────────────────────── -->
-	{#if success && results}
-		<div class="space-y-4">
-			<div class="flex items-center gap-3 rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-5 py-4">
-				<div class="flex size-9 shrink-0 items-center justify-center rounded-full bg-emerald-500/15">
-					<CheckCircle2 class="size-5 text-emerald-600 dark:text-emerald-400" />
-				</div>
-				<div class="min-w-0 flex-1">
-					<p class="text-sm font-semibold text-emerald-700 dark:text-emerald-400">Database seeded successfully</p>
-					<p class="mt-0.5 text-xs text-emerald-700/70 dark:text-emerald-400/70">
-						{results.totalCreated} created · {results.totalSkipped} skipped
-					</p>
-				</div>
-			</div>
+                                <!-- step dot -->
+                                <div class="relative z-10 flex h-6 w-6 shrink-0 items-center justify-center rounded-full border text-[10px] font-bold transition-all duration-300
+                                    {isDone   ? 'border-foreground/30 bg-foreground text-background'         : ''}
+                                    {isActive ? 'border-foreground bg-background text-foreground shadow-sm'  : ''}
+                                    {isPending && phase !== 'idle' ? 'border-border bg-background text-muted-foreground/40' : ''}
+                                    {phase === 'idle' ? 'border-border bg-background text-muted-foreground/50' : ''}
+                                ">
+                                    {#if isDone}
+                                        <CheckIcon class="h-3 w-3" />
+                                    {:else if isActive}
+                                        <LoaderIcon class="h-3 w-3 animate-spin" />
+                                    {:else}
+                                        {i + 1}
+                                    {/if}
+                                </div>
 
-			<Card>
-				<CardHeader class="pb-3">
-					<CardTitle class="text-base">Breakdown</CardTitle>
-				</CardHeader>
-				<CardContent class="p-0">
-					<div class="divide-y divide-border/60">
-						{#if results.university.created || results.university.skipped}
-							<div class="flex items-center justify-between px-6 py-2.5 text-sm">
-								<span class="flex items-center gap-2 text-muted-foreground">
-									<Building class="size-4" /> University
-								</span>
-								{#if results.university.created}
-									<Badge class="bg-emerald-500/15 text-emerald-700 hover:bg-emerald-500/15 dark:text-emerald-400">created</Badge>
-								{:else}
-									<Badge variant="secondary">already exists</Badge>
-								{/if}
-							</div>
-						{/if}
+                                <!-- step label -->
+                                <div class="pt-0.5">
+                                    <p class="text-xs font-medium leading-tight transition-colors
+                                        {isDone   ? 'text-foreground'              : ''}
+                                        {isActive ? 'text-foreground'              : ''}
+                                        {isPending && phase !== 'idle' ? 'text-muted-foreground/40' : ''}
+                                        {phase === 'idle' ? 'text-muted-foreground' : ''}
+                                    ">{step.label}</p>
+                                    <p class="mt-0.5 text-[10px] text-muted-foreground/60">{step.detail}</p>
+                                </div>
+                            </li>
+                        {/each}
+                    </ol>
+                </div>
+            </div>
 
-						{#if results.session.created || results.session.skipped}
-							<div class="flex items-center justify-between px-6 py-2.5 text-sm">
-								<span class="flex items-center gap-2 text-muted-foreground">
-									<CalendarRange class="size-4" /> Academic Session
-								</span>
-								{#if results.session.created}
-									<Badge class="bg-emerald-500/15 text-emerald-700 hover:bg-emerald-500/15 dark:text-emerald-400">created</Badge>
-								{:else}
-									<Badge variant="secondary">already exists</Badge>
-								{/if}
-							</div>
-						{/if}
+            <!-- ── Right: main content ───────────────────────────────────── -->
+            <div class="min-w-0 space-y-5">
 
-						{#each resultMeta as meta}
-							{@const block = results[meta.key] as ResultBlock}
-							{#if block.total > 0}
-								<div class="flex items-center justify-between gap-3 px-6 py-2.5 text-sm">
-									<span class="flex items-center gap-2 text-muted-foreground">
-										<meta.icon class="size-4" /> {meta.label}
-									</span>
-									<div class="flex shrink-0 items-center gap-1.5">
-										{#if block.created > 0}
-											<Badge class="bg-emerald-500/15 font-mono text-emerald-700 hover:bg-emerald-500/15 dark:text-emerald-400">
-												+{block.created}
-											</Badge>
-										{/if}
-										{#if block.skipped > 0}
-											<Badge variant="secondary" class="font-mono">
-												{block.skipped} existing
-											</Badge>
-										{/if}
-									</div>
-								</div>
-							{/if}
-						{/each}
-					</div>
-				</CardContent>
-			</Card>
+                <!-- ── IDLE state ─────────────────────────────────────────── -->
+                {#if phase === 'idle'}
+                    <div class="rounded-2xl border border-border bg-muted/30 p-6">
+                        <h2 class="mb-1 text-sm font-semibold text-foreground">Ready to seed</h2>
+                        <p class="text-xs text-muted-foreground">
+                            15 steps will run in sequence. The whole operation takes 5–20 seconds depending on database latency.
+                        </p>
 
-			<!-- ── Login credentials ───────────────────────────────────────── -->
-			{#if results.credentials?.length}
-				<Card class="border-blue-500/30 bg-blue-500/5">
-					<CardHeader class="pb-3">
-						<div class="flex flex-wrap items-center justify-between gap-3">
-							<div>
-								<CardTitle class="flex items-center gap-2 text-base">
-									<KeyRound class="size-4" />
-									Login Credentials
-								</CardTitle>
-								<CardDescription class="mt-1">
-									{staffCredCount} staff · {studentCredCount} student{studentCredCount === 1 ? '' : 's'} — default passwords
-									<span class="font-mono">Admin123</span> / <span class="font-mono">Student123</span>
-								</CardDescription>
-							</div>
-							<div class="flex shrink-0 flex-wrap gap-2">
-								<Button variant="outline" size="sm" onclick={() => (showPasswords = !showPasswords)}>
-									{#if showPasswords}
-										<EyeOff class="mr-1.5 size-3.5" /> Hide
-									{:else}
-										<Eye class="mr-1.5 size-3.5" /> Reveal
-									{/if}
-								</Button>
-								<Button variant="outline" size="sm" onclick={copyCredentials}>
-									{#if copied}
-										<Check class="mr-1.5 size-3.5 text-emerald-600" /> Copied
-									{:else}
-										<Copy class="mr-1.5 size-3.5" /> Copy
-									{/if}
-								</Button>
-								<Button size="sm" onclick={downloadCredentials}>
-									<Download class="mr-1.5 size-3.5" /> .txt
-								</Button>
-							</div>
-						</div>
+                        <div class="mt-5 grid grid-cols-2 gap-3 sm:grid-cols-3">
+                            {#each [
+                                ['65+', 'Departments'],
+                                ['14',  'System roles'],
+                                ['33',  'Sample courses'],
+                                ['3',   'Programmes/dept'],
+                                ['2',   'Semesters'],
+                                ['2/dept', 'Students'],
+                            ] as [n, label]}
+                                <div class="rounded-xl border border-border bg-background px-4 py-3">
+                                    <p class="text-xl font-bold tabular-nums text-foreground">{n}</p>
+                                    <p class="mt-0.5 text-[11px] text-muted-foreground">{label}</p>
+                                </div>
+                            {/each}
+                        </div>
 
-						<div class="mt-3 flex gap-1.5">
-							<Button
-								variant={credentialFilter === 'all' ? 'default' : 'outline'}
-								size="sm"
-								class="h-7 px-2.5 text-xs"
-								onclick={() => (credentialFilter = 'all')}
-							>
-								All ({results.credentials.length})
-							</Button>
-							<Button
-								variant={credentialFilter === 'staff' ? 'default' : 'outline'}
-								size="sm"
-								class="h-7 px-2.5 text-xs"
-								onclick={() => (credentialFilter = 'staff')}
-							>
-								Staff ({staffCredCount})
-							</Button>
-							<Button
-								variant={credentialFilter === 'student' ? 'default' : 'outline'}
-								size="sm"
-								class="h-7 px-2.5 text-xs"
-								onclick={() => (credentialFilter = 'student')}
-							>
-								Students ({studentCredCount})
-							</Button>
-						</div>
-					</CardHeader>
-					<CardContent class="p-0">
-						<div class="max-h-80 overflow-y-auto">
-							<table class="w-full text-sm">
-								<thead class="sticky top-0 bg-blue-500/10 text-xs uppercase text-muted-foreground backdrop-blur">
-									<tr>
-										<th class="px-4 py-2 text-left font-medium">Type</th>
-										<th class="px-4 py-2 text-left font-medium">ID</th>
-										<th class="px-4 py-2 text-left font-medium">Role</th>
-										<th class="px-4 py-2 text-left font-medium">Email</th>
-										<th class="px-4 py-2 text-left font-medium">Password</th>
-									</tr>
-								</thead>
-								<tbody class="divide-y divide-border/50">
-									{#each filteredCredentials as cred}
-										<tr class="hover:bg-muted/40">
-											<td class="whitespace-nowrap px-4 py-2 text-xs">
-												<Badge variant={cred.type === 'staff' ? 'outline' : 'secondary'} class="text-[10px]">
-													{cred.type === 'staff' ? 'Staff' : 'Student'}
-												</Badge>
-											</td>
-											<td class="whitespace-nowrap px-4 py-2 font-mono text-xs">{cred.identifier}</td>
-											<td class="whitespace-nowrap px-4 py-2 text-xs text-muted-foreground">{cred.role}</td>
-											<td class="whitespace-nowrap px-4 py-2 font-mono text-xs">{cred.email}</td>
-											<td class="whitespace-nowrap px-4 py-2 font-mono text-xs">
-												{showPasswords ? cred.password : '••••••••'}
-											</td>
-										</tr>
-									{/each}
-								</tbody>
-							</table>
-						</div>
-					</CardContent>
-				</Card>
-			{/if}
+                        <div class="mt-5 flex items-start gap-2 rounded-xl border border-border bg-background px-4 py-3 text-xs text-muted-foreground">
+                            <span class="mt-0.5 shrink-0 font-mono font-bold text-foreground">!</span>
+                            <span>
+                                Staff default password <span class="font-mono font-medium text-foreground">Admin123</span> ·
+                                Student default password <span class="font-mono font-medium text-foreground">Student123</span>.
+                                All accounts have <span class="font-mono text-foreground">mustChangePassword</span> enabled.
+                            </span>
+                        </div>
 
-			<Button onclick={seedDatabase} variant="outline" class="w-full" disabled={loading}>
-				{#if loading}
-					<Loader2 class="mr-2 size-4 animate-spin" />
-					Re-running…
-				{:else}
-					<ChevronRight class="mr-2 size-4" />
-					Run again
-				{/if}
-			</Button>
-		</div>
-	{/if}
+                        <Button onclick={seed} class="mt-6 w-full" size="lg">
+                            <DatabaseIcon class="mr-2 h-4 w-4" />
+                            Seed database
+                        </Button>
+                    </div>
+                {/if}
+
+                <!-- ── RUNNING state ──────────────────────────────────────── -->
+                {#if phase === 'running'}
+                    <div class="rounded-2xl border border-border bg-muted/30 p-6">
+                        <div class="flex items-center gap-3">
+                            <LoaderIcon class="h-5 w-5 shrink-0 animate-spin text-muted-foreground" />
+                            <div>
+                                <p class="text-sm font-semibold text-foreground">
+                                    {activeStep >= 0 && activeStep < PIPELINE.length
+                                        ? PIPELINE[activeStep].label
+                                        : 'Preparing…'}
+                                </p>
+                                <p class="text-xs text-muted-foreground">
+                                    Step {Math.min(activeStep + 1, PIPELINE.length)} of {PIPELINE.length}
+                                </p>
+                            </div>
+                        </div>
+
+                        <!-- Progress bar -->
+                        <div class="mt-5 h-1 w-full overflow-hidden rounded-full bg-border">
+                            <div
+                                class="h-full rounded-full bg-foreground transition-all duration-500"
+                                style="width: {Math.round(((activeStep + 1) / PIPELINE.length) * 100)}%"
+                            ></div>
+                        </div>
+
+                        <!-- Mobile step list (pipeline rail hidden on mobile) -->
+                        <div class="mt-4 flex flex-wrap gap-1.5 lg:hidden">
+                            {#each PIPELINE as step, i}
+                                <span class="rounded-full px-2 py-0.5 text-[10px] font-medium
+                                    {i < activeStep  ? 'bg-foreground text-background'         : ''}
+                                    {i === activeStep ? 'bg-muted text-foreground ring-1 ring-border' : ''}
+                                    {i > activeStep  ? 'bg-muted/50 text-muted-foreground/50'  : ''}
+                                ">{step.label}</span>
+                            {/each}
+                        </div>
+                    </div>
+                {/if}
+
+                <!-- ── ERROR state ────────────────────────────────────────── -->
+                {#if phase === 'error'}
+                    <div class="rounded-2xl border border-destructive/30 bg-destructive/5 p-6">
+                        <div class="flex items-start gap-3">
+                            <AlertCircleIcon class="mt-0.5 h-4 w-4 shrink-0 text-destructive" />
+                            <div class="min-w-0">
+                                <p class="text-sm font-semibold text-destructive">Seed failed</p>
+                                <p class="mt-1 break-words text-xs text-destructive/80">{errorMsg}</p>
+                            </div>
+                        </div>
+                        <Button onclick={seed} variant="outline" class="mt-5 w-full">
+                            Try again
+                        </Button>
+                    </div>
+                {/if}
+
+                <!-- ── DONE state ─────────────────────────────────────────── -->
+                {#if phase === 'done' && results}
+                    <!-- Summary bar -->
+                    <div class="flex items-center justify-between rounded-2xl border border-border bg-muted/30 px-5 py-4">
+                        <div class="flex items-center gap-3">
+                            <div class="flex h-8 w-8 items-center justify-center rounded-full bg-foreground">
+                                <CheckIcon class="h-4 w-4 text-background" />
+                            </div>
+                            <div>
+                                <p class="text-sm font-semibold text-foreground">Seed complete</p>
+                                <p class="text-xs text-muted-foreground">
+                                    {results.totalCreated} created · {results.totalSkipped} already existed
+                                </p>
+                            </div>
+                        </div>
+                        <Button onclick={seed} variant="outline" size="sm" class="shrink-0">
+                            <ChevronRightIcon class="mr-1.5 h-3.5 w-3.5" />
+                            Re-run
+                        </Button>
+                    </div>
+
+                    <!-- Breakdown table -->
+                    <div class="rounded-2xl border border-border bg-background overflow-hidden">
+                        <div class="border-b border-border px-5 py-3">
+                            <p class="text-xs font-semibold uppercase tracking-widest text-muted-foreground">Breakdown</p>
+                        </div>
+
+                        <div class="divide-y divide-border/60">
+                            <!-- University (bool) -->
+                            <div class="flex items-center justify-between px-5 py-2.5 text-sm">
+                                <span class="text-muted-foreground">University</span>
+                                {#if results.university.created}
+                                    <span class="font-mono text-xs font-medium text-foreground">+1</span>
+                                {:else}
+                                    <span class="text-xs text-muted-foreground/60">existed</span>
+                                {/if}
+                            </div>
+
+                            <!-- Session (bool) -->
+                            <div class="flex items-center justify-between px-5 py-2.5 text-sm">
+                                <span class="text-muted-foreground">Academic session</span>
+                                {#if results.session.created}
+                                    <span class="font-mono text-xs font-medium text-foreground">+1</span>
+                                {:else}
+                                    <span class="text-xs text-muted-foreground/60">existed</span>
+                                {/if}
+                            </div>
+
+                            {#each RESULT_KEYS as { key, label }}
+                                {@const block = results[key] as ResultBlock}
+                                {#if block && block.total > 0}
+                                    <div class="flex items-center justify-between px-5 py-2.5 text-sm">
+                                        <span class="text-muted-foreground">{label}</span>
+                                        <div class="flex items-center gap-3">
+                                            {#if block.created > 0}
+                                                <span class="font-mono text-xs font-semibold text-foreground">+{block.created}</span>
+                                            {/if}
+                                            {#if block.skipped > 0}
+                                                <span class="font-mono text-xs text-muted-foreground/50">{block.skipped} existed</span>
+                                            {/if}
+                                        </div>
+                                    </div>
+                                {/if}
+                            {/each}
+                        </div>
+                    </div>
+
+                    <!-- Credentials panel -->
+                    {#if results.credentials?.length}
+                        <div class="rounded-2xl border border-border bg-background overflow-hidden">
+                            <!-- Panel header -->
+                            <div class="border-b border-border px-5 py-4">
+                                <div class="flex flex-wrap items-start justify-between gap-4">
+                                    <div>
+                                        <p class="text-xs font-semibold uppercase tracking-widest text-muted-foreground">
+                                            Login credentials
+                                        </p>
+                                        <p class="mt-1 text-xs text-muted-foreground">
+                                            {staffCount} staff · {studentCount} student{studentCount === 1 ? '' : 's'}
+                                        </p>
+                                    </div>
+
+                                    <!-- Actions -->
+                                    <div class="flex shrink-0 flex-wrap items-center gap-2">
+                                        <button
+                                            onclick={() => (showPasswords = !showPasswords)}
+                                            class="flex items-center gap-1.5 rounded-lg border border-border px-3 py-1.5 text-xs font-medium text-foreground transition-colors hover:bg-muted"
+                                        >
+                                            {#if showPasswords}
+                                                <EyeOffIcon class="h-3.5 w-3.5" /> Hide
+                                            {:else}
+                                                <EyeIcon class="h-3.5 w-3.5" /> Reveal
+                                            {/if}
+                                        </button>
+                                        <button
+                                            onclick={copyCreds}
+                                            class="flex items-center gap-1.5 rounded-lg border border-border px-3 py-1.5 text-xs font-medium text-foreground transition-colors hover:bg-muted"
+                                        >
+                                            {#if copied}
+                                                <CheckIcon class="h-3.5 w-3.5 text-foreground" /> Copied
+                                            {:else}
+                                                <CopyIcon class="h-3.5 w-3.5" /> Copy
+                                            {/if}
+                                        </button>
+                                        <button
+                                            onclick={downloadCreds}
+                                            class="flex items-center gap-1.5 rounded-lg bg-foreground px-3 py-1.5 text-xs font-medium text-background transition-opacity hover:opacity-90"
+                                        >
+                                            <DownloadIcon class="h-3.5 w-3.5" /> Download .txt
+                                        </button>
+                                    </div>
+                                </div>
+
+                                <!-- Filter pills -->
+                                <div class="mt-4 flex gap-1.5">
+                                    {#each [['all', `All (${results.credentials.length})`], ['staff', `Staff (${staffCount})`], ['student', `Students (${studentCount})`]] as [val, lbl]}
+                                        <button
+                                            onclick={() => (credFilter = val as typeof credFilter)}
+                                            class="rounded-full px-3 py-1 text-xs font-medium transition-colors
+                                                {credFilter === val
+                                                    ? 'bg-foreground text-background'
+                                                    : 'bg-muted text-muted-foreground hover:text-foreground'}"
+                                        >
+                                            {lbl}
+                                        </button>
+                                    {/each}
+                                </div>
+                            </div>
+
+                            <!-- Table -->
+                            <div class="max-h-96 overflow-auto">
+                                <table class="w-full text-xs">
+                                    <thead class="sticky top-0 bg-muted/80 backdrop-blur-sm">
+                                        <tr class="text-left text-[10px] font-semibold uppercase tracking-widest text-muted-foreground">
+                                            <th class="px-5 py-2.5">Type</th>
+                                            <th class="px-4 py-2.5">ID</th>
+                                            <th class="px-4 py-2.5">Role</th>
+                                            <th class="px-4 py-2.5">Email</th>
+                                            <th class="px-4 py-2.5">Password</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody class="divide-y divide-border/40">
+                                        {#each filteredCreds as cred}
+                                            <tr class="transition-colors hover:bg-muted/30">
+                                                <td class="whitespace-nowrap px-5 py-2.5">
+                                                    <span class="rounded-md border border-border px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
+                                                        {cred.type}
+                                                    </span>
+                                                </td>
+                                                <td class="whitespace-nowrap px-4 py-2.5 font-mono font-medium text-foreground">
+                                                    {cred.identifier}
+                                                </td>
+                                                <td class="whitespace-nowrap px-4 py-2.5 text-muted-foreground">
+                                                    {cred.role}
+                                                </td>
+                                                <td class="whitespace-nowrap px-4 py-2.5 font-mono text-muted-foreground">
+                                                    {cred.email}
+                                                </td>
+                                                <td class="whitespace-nowrap px-4 py-2.5 font-mono">
+                                                    {showPasswords ? cred.password : '••••••••'}
+                                                </td>
+                                            </tr>
+                                        {/each}
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    {/if}
+                {/if}
+
+            </div><!-- /right panel -->
+        </div><!-- /grid -->
+    </div>
 </div>
