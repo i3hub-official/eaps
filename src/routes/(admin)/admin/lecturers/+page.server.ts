@@ -3,9 +3,52 @@ import type { PageServerLoad } from './$types'
 import { requireStaff } from '$lib/server/auth/guards.js'
 import { getPrismaClient } from '$lib/server/db/index.js'
 import { StaffRole } from '@prisma/client'
-import { revealName, revealEmail, isEncrypted } from '$lib/security/dataProtection.js'
+import { 
+	revealName, 
+	revealEmail, 
+	revealText,
+	isEncrypted 
+} from '$lib/security/dataProtection.js'
 
 const PAGE_SIZE = 20
+
+function safeReveal(fn: () => string, fallback: string): string {
+	try {
+		const result = fn()
+		return result || fallback
+	} catch (e) {
+		console.warn('[lecturers] Failed to decrypt field:', e)
+		return fallback
+	}
+}
+
+// Robust decrypt that tries multiple methods
+function decryptField(value: string | null | undefined): string {
+	if (!value) return 'N/A'
+	
+	// Ensure value is a string
+	const strValue = String(value)
+	
+	// If not encrypted, return as-is
+	if (!isEncrypted(strValue)) return strValue
+	
+	// Try revealName first (most common for names)
+	try {
+		return safeReveal(() => revealName(strValue), strValue)
+	} catch (e) {
+		// Try revealText for generic encrypted fields
+		try {
+			return safeReveal(() => revealText(strValue), strValue)
+		} catch (e2) {
+			// Try revealEmail for emails
+			try {
+				return safeReveal(() => revealEmail(strValue), strValue)
+			} catch (e3) {
+				return strValue // Return original if all fail
+			}
+		}
+	}
+}
 
 export const load: PageServerLoad = async ({ locals, url }) => {
 	const user = await requireStaff(locals.user)
@@ -28,9 +71,6 @@ export const load: PageServerLoad = async ({ locals, url }) => {
 	const statusFilter = url.searchParams.get('status') || 'all'
 	const departmentFilter = url.searchParams.get('department') || 'all'
 
-	const skip = (page - 1) * PAGE_SIZE
-
-	// Get all staff with LECTURER role or other teaching roles
 	const where: any = {
 		OR: [
 			{ primaryRole: 'LECTURER' },
@@ -43,89 +83,114 @@ export const load: PageServerLoad = async ({ locals, url }) => {
 		]
 	}
 
-	if (searchQuery) {
-		where.OR = [
-			{ firstName: { contains: searchQuery, mode: 'insensitive' } },
-			{ lastName: { contains: searchQuery, mode: 'insensitive' } },
-			{ email: { contains: searchQuery, mode: 'insensitive' } },
-			{ staffNumber: { contains: searchQuery, mode: 'insensitive' } },
-		]
-	}
-
 	if (roleFilter !== 'all') {
+		where.OR = undefined
 		where.primaryRole = roleFilter
 	}
+	if (statusFilter !== 'all') where.status = statusFilter
+	if (departmentFilter !== 'all') where.departmentId = departmentFilter
 
-	if (statusFilter !== 'all') {
-		where.status = statusFilter
-	}
-
-	if (departmentFilter !== 'all') {
-		where.departmentId = departmentFilter
-	}
-
-	const [lecturers, totalCount, departments, stats] = await Promise.all([
-		prisma.staff.findMany({
-			where,
-			include: {
-				college: { select: { name: true, shortName: true } },
-				department: { select: { name: true, shortName: true } },
-				courseOfferings: {
-					include: { course: true }
-				}
-			},
-			orderBy: { createdAt: 'desc' },
-			skip,
-			take: PAGE_SIZE,
-		}),
-		prisma.staff.count({ where }),
-		prisma.department.findMany({ 
+	const [departments, statsRaw] = await Promise.all([
+		prisma.department.findMany({
 			select: { id: true, name: true, shortName: true },
-			orderBy: { name: 'asc' } 
+			orderBy: { name: 'asc' }
 		}),
 		prisma.$transaction([
-			prisma.staff.count({ where: { ...where } }),
+			prisma.staff.count({ where }),
 			prisma.staff.count({ where: { ...where, status: 'ACTIVE' } }),
 			prisma.staff.count({ where: { ...where, status: 'INACTIVE' } }),
 			prisma.staff.count({ where: { ...where, status: 'SUSPENDED' } }),
 		])
 	])
 
-	const totalPages = Math.ceil(totalCount / PAGE_SIZE)
+	function decryptStaff(staff: any) {
+		// Decrypt all name parts using decryptField
+		const firstNameRaw = staff.firstName ? decryptField(staff.firstName) : ''
+		const lastNameRaw = staff.lastName ? decryptField(staff.lastName) : ''
+		const otherNamesRaw = staff.otherNames ? decryptField(staff.otherNames) : ''
 
-	const processedLecturers = lecturers.map((staff) => {
-		let name = 'Unknown Staff'
-		let email = 'Unknown'
+		// Build "Last, First Other" without leaving a dangling comma/space
+		const givenParts = [firstNameRaw, otherNamesRaw].filter(Boolean).join(' ')
+		const name = [lastNameRaw, givenParts].filter(Boolean).join(', ') || 'Unknown Staff'
 
-		try {
-			if (staff.firstName && staff.lastName) {
-				const firstName = isEncrypted(staff.firstName) ? revealName(staff.firstName) : staff.firstName
-				const lastName = isEncrypted(staff.lastName) ? revealName(staff.lastName) : staff.lastName
-				name = `${firstName} ${lastName}`
-			}
-			if (staff.email) {
-				email = isEncrypted(staff.email) ? revealEmail(staff.email) : staff.email
-			}
-		} catch (e) {
-			console.warn('[lecturers] Failed to decrypt staff data:', e)
-		}
+		// Email - decrypt if encrypted
+		const email = staff.email ? decryptField(staff.email) : 'Unknown'
+
+		// staffNumber is plain text (not encrypted) - use as-is
+		const staffNumber = staff.staffNumber || 'N/A'
+
+		// Decrypt college and department names
+		const collegeName = staff.college?.name ? decryptField(staff.college.name) : 
+						   staff.college?.shortName ? decryptField(staff.college.shortName) : 'N/A'
+		const departmentName = staff.department?.name ? decryptField(staff.department.name) : 
+							  staff.department?.shortName ? decryptField(staff.department.shortName) : 'N/A'
 
 		return {
 			id: staff.id,
 			name,
+			firstName: firstNameRaw,
+			lastName: lastNameRaw,
+			otherNames: otherNamesRaw,
 			email,
-			staffNumber: staff.staffNumber,
+			staffNumber,
 			role: staff.primaryRole,
 			status: staff.status,
-			college: staff.college?.shortName || staff.college?.name || 'N/A',
-			department: staff.department?.shortName || staff.department?.name || 'N/A',
+			college: collegeName,
+			department: departmentName,
 			courseCount: staff.courseOfferings.length,
 			createdAt: staff.createdAt,
 			lastLoginAt: staff.lastLoginAt,
 		}
-	})
+	}
 
-	const roles = Object.values(StaffRole).filter(r => 
+	let processedLecturers: ReturnType<typeof decryptStaff>[]
+	let totalCount: number
+	let totalPages: number
+
+	if (searchQuery) {
+		const allMatching = await prisma.staff.findMany({
+			where,
+			include: {
+				college: { select: { name: true, shortName: true } },
+				department: { select: { name: true, shortName: true } },
+				courseOfferings: { include: { course: true } }
+			},
+			orderBy: { createdAt: 'desc' },
+		})
+
+		const decrypted = allMatching.map(decryptStaff)
+		const q = searchQuery.toLowerCase()
+		const filtered = decrypted.filter((s) =>
+			s.name.toLowerCase().includes(q) ||
+			s.email.toLowerCase().includes(q) ||
+			s.staffNumber.toLowerCase().includes(q)
+		)
+
+		totalCount = filtered.length
+		totalPages = Math.ceil(totalCount / PAGE_SIZE) || 1
+		const skip = (page - 1) * PAGE_SIZE
+		processedLecturers = filtered.slice(skip, skip + PAGE_SIZE)
+	} else {
+		const skip = (page - 1) * PAGE_SIZE
+		totalCount = await prisma.staff.count({ where })
+		totalPages = Math.ceil(totalCount / PAGE_SIZE) || 1
+
+		const lecturers = await prisma.staff.findMany({
+			where,
+			include: {
+				college: { select: { name: true, shortName: true } },
+				department: { select: { name: true, shortName: true } },
+				courseOfferings: { include: { course: true } }
+			},
+			orderBy: { createdAt: 'desc' },
+			skip,
+			take: PAGE_SIZE,
+		})
+
+		processedLecturers = lecturers.map(decryptStaff)
+	}
+
+	const roles = Object.values(StaffRole).filter(r =>
 		['LECTURER', 'HOD', 'DEAN', 'DEPARTMENT_COORDINATOR', 'DEPARTMENT_EXAM_OFFICER', 'COLLEGE_COORDINATOR', 'COLLEGE_EXAM_OFFICER'].includes(r)
 	)
 
@@ -140,12 +205,16 @@ export const load: PageServerLoad = async ({ locals, url }) => {
 			hasPrev: page > 1,
 		},
 		stats: {
-			total: stats[0],
-			active: stats[1],
-			inactive: stats[2],
-			suspended: stats[3],
+			total: statsRaw[0],
+			active: statsRaw[1],
+			inactive: statsRaw[2],
+			suspended: statsRaw[3],
 		},
-		departments: departments.map(d => ({ id: d.id, name: d.name, shortName: d.shortName })),
+		departments: departments.map(d => ({ 
+			id: d.id, 
+			name: decryptField(d.name), 
+			shortName: decryptField(d.shortName) 
+		})),
 		roles: roles.map(r => ({ value: r, label: r.replace(/_/g, ' ') })),
 		filters: {
 			search: searchQuery,

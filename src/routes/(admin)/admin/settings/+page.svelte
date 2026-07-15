@@ -1,16 +1,15 @@
-<!-- src/routes/(admin)/admin/settings/+page.svelte -->
 <script lang="ts">
 	import { enhance } from '$app/forms';
 	import { toast } from 'svelte-sonner';
 	import { Topbar } from '$lib/components/dashboard';
 	import { Button } from '$lib/components/ui/button/index.js';
 	import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '$lib/components/ui/card/index.js';
-	import { CardContent as CardContentAlias } from '$lib/components/ui/card/index.js';
 	import { Input } from '$lib/components/ui/input/index.js';
 	import { Label } from '$lib/components/ui/label/index.js';
 	import { Badge } from '$lib/components/ui/badge/index.js';
 	import { Alert, AlertDescription } from '$lib/components/ui/alert/index.js';
 	import { Tabs, TabsContent, TabsList, TabsTrigger } from '$lib/components/ui/tabs/index.js';
+	import { Switch } from '$lib/components/ui/switch/index.js';
 	import {
 		AlertCircle,
 		Save,
@@ -31,11 +30,16 @@
 	let permissions = $derived(data?.permissions || { isSuperAdmin: false, canManageRegistration: false });
 
 	let isSaving = $state(false);
-	// Default to whichever tab the user actually has access to.
 	let activeTab = $state(permissions.isSuperAdmin ? 'general' : 'registration');
 
 	let togglingId = $state<string | null>(null);
 	let savingWindowId = $state<string | null>(null);
+	let togglingSecurityKey = $state<string | null>(null);
+
+	// Bound refs so a click anywhere in the row can submit the right form.
+	let twoFactorFormEl: HTMLFormElement;
+	let sessionTimeoutFormEl: HTMLFormElement;
+	let ipRestrictionFormEl: HTMLFormElement;
 
 	async function handleSave() {
 		isSaving = true;
@@ -114,7 +118,7 @@
 </script>
 
 <svelte:head>
-	<title>Settings — EAPS</title>
+	<title>Settings — MOUAU e-Test</title>
 </svelte:head>
 
 <Topbar title="Settings" description="System configuration and preferences">
@@ -141,7 +145,6 @@
 		</Alert>
 	{:else}
 		{#if permissions.isSuperAdmin}
-			<!-- Stats Overview -->
 			<div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
 				<Card>
 					<CardHeader class="flex flex-row items-center justify-between space-y-0 pb-2">
@@ -201,7 +204,6 @@
 			</TabsList>
 
 			{#if permissions.isSuperAdmin}
-				<!-- General Settings -->
 				<TabsContent value="general">
 					<Card>
 						<CardHeader>
@@ -212,7 +214,7 @@
 							<div class="grid gap-4 sm:grid-cols-2">
 								<div class="space-y-2">
 									<Label for="appName">Application Name</Label>
-									<Input id="appName" value={settings?.general?.appName || 'EAPS'} readonly />
+									<Input id="appName" value={settings?.general?.appName || 'MOUAU e-Test'} readonly />
 								</div>
 								<div class="space-y-2">
 									<Label for="version">Version</Label>
@@ -231,7 +233,6 @@
 					</Card>
 				</TabsContent>
 
-				<!-- Academic Settings -->
 				<TabsContent value="academic">
 					<Card>
 						<CardHeader>
@@ -277,7 +278,6 @@
 			{/if}
 
 			{#if permissions.canManageRegistration}
-				<!-- Registration Control -->
 				<TabsContent value="registration">
 					{#if form?.error}
 						<Alert variant="destructive" class="mb-4">
@@ -411,32 +411,117 @@
 							<CardDescription>Configure system security</CardDescription>
 						</CardHeader>
 						<CardContent class="space-y-4">
-							<div class="flex items-center justify-between rounded-lg border p-4">
-								<div>
-									<h4 class="text-sm font-medium">Two-Factor Authentication</h4>
-									<p class="text-sm text-muted-foreground">Require 2FA for all staff accounts</p>
+							<!-- Two-Factor Authentication -->
+							<form
+								method="POST"
+								action="?/updateSecurity"
+								bind:this={twoFactorFormEl}
+								use:enhance={enhanceWithToast({
+									onStart: () => (togglingSecurityKey = 'twoFactorEnabled'),
+									onEnd: () => (togglingSecurityKey = null),
+									pending: settings?.security?.twoFactorEnabled ? 'Disabling 2FA…' : 'Enabling 2FA…',
+									successFallback: 'Updated',
+									errorFallback: 'Failed to update',
+								})}
+							>
+								<input type="hidden" name="key" value="twoFactorEnabled" />
+								<input type="hidden" name="enabled" value={(!settings?.security?.twoFactorEnabled).toString()} />
+								<div
+									role="button"
+									tabindex="0"
+									aria-pressed={settings?.security?.twoFactorEnabled}
+									class="flex w-full items-center justify-between rounded-lg border p-4 text-left cursor-pointer transition-colors hover:bg-muted/50 {togglingSecurityKey === 'twoFactorEnabled' ? 'opacity-60 pointer-events-none' : ''}"
+									onclick={() => twoFactorFormEl.requestSubmit()}
+									onkeydown={(e) => {
+										if (e.key === 'Enter' || e.key === ' ') {
+											e.preventDefault();
+											twoFactorFormEl.requestSubmit();
+										}
+									}}
+								>
+									<div>
+										<h4 class="text-sm font-medium">Two-Factor Authentication</h4>
+										<p class="text-sm text-muted-foreground">Require 2FA for all staff accounts</p>
+									</div>
+									<Switch checked={settings?.security?.twoFactorEnabled ?? false} class="pointer-events-none" />
 								</div>
-								<input type="checkbox" class="h-4 w-4 rounded border-gray-300" />
-							</div>
-							<div class="flex items-center justify-between rounded-lg border p-4">
-								<div>
-									<h4 class="text-sm font-medium">Session Timeout</h4>
-									<p class="text-sm text-muted-foreground">Auto-logout inactive sessions</p>
+							</form>
+
+							<!-- Session Timeout -->
+							<form
+								method="POST"
+								action="?/updateSecurity"
+								bind:this={sessionTimeoutFormEl}
+								use:enhance={enhanceWithToast({
+									onStart: () => (togglingSecurityKey = 'sessionTimeoutEnabled'),
+									onEnd: () => (togglingSecurityKey = null),
+									pending: settings?.security?.sessionTimeoutEnabled ? 'Disabling session timeout…' : 'Enabling session timeout…',
+									successFallback: 'Updated',
+									errorFallback: 'Failed to update',
+								})}
+							>
+								<input type="hidden" name="key" value="sessionTimeoutEnabled" />
+								<input type="hidden" name="enabled" value={(!settings?.security?.sessionTimeoutEnabled).toString()} />
+								<div
+									role="button"
+									tabindex="0"
+									aria-pressed={settings?.security?.sessionTimeoutEnabled}
+									class="flex w-full items-center justify-between rounded-lg border p-4 text-left cursor-pointer transition-colors hover:bg-muted/50 {togglingSecurityKey === 'sessionTimeoutEnabled' ? 'opacity-60 pointer-events-none' : ''}"
+									onclick={() => sessionTimeoutFormEl.requestSubmit()}
+									onkeydown={(e) => {
+										if (e.key === 'Enter' || e.key === ' ') {
+											e.preventDefault();
+											sessionTimeoutFormEl.requestSubmit();
+										}
+									}}
+								>
+									<div>
+										<h4 class="text-sm font-medium">Session Timeout</h4>
+										<p class="text-sm text-muted-foreground">Auto-logout inactive sessions</p>
+									</div>
+									<Switch checked={settings?.security?.sessionTimeoutEnabled ?? true} class="pointer-events-none" />
 								</div>
-								<input type="checkbox" class="h-4 w-4 rounded border-gray-300" checked />
-							</div>
-							<div class="flex items-center justify-between rounded-lg border p-4">
-								<div>
-									<h4 class="text-sm font-medium">IP Restriction</h4>
-									<p class="text-sm text-muted-foreground">Restrict access to specific IP addresses</p>
+							</form>
+
+							<!-- IP Restriction -->
+							<form
+								method="POST"
+								action="?/updateSecurity"
+								bind:this={ipRestrictionFormEl}
+								use:enhance={enhanceWithToast({
+									onStart: () => (togglingSecurityKey = 'ipRestrictionEnabled'),
+									onEnd: () => (togglingSecurityKey = null),
+									pending: settings?.security?.ipRestrictionEnabled ? 'Disabling IP restriction…' : 'Enabling IP restriction…',
+									successFallback: 'Updated',
+									errorFallback: 'Failed to update',
+								})}
+							>
+								<input type="hidden" name="key" value="ipRestrictionEnabled" />
+								<input type="hidden" name="enabled" value={(!settings?.security?.ipRestrictionEnabled).toString()} />
+								<div
+									role="button"
+									tabindex="0"
+									aria-pressed={settings?.security?.ipRestrictionEnabled}
+									class="flex w-full items-center justify-between rounded-lg border p-4 text-left cursor-pointer transition-colors hover:bg-muted/50 {togglingSecurityKey === 'ipRestrictionEnabled' ? 'opacity-60 pointer-events-none' : ''}"
+									onclick={() => ipRestrictionFormEl.requestSubmit()}
+									onkeydown={(e) => {
+										if (e.key === 'Enter' || e.key === ' ') {
+											e.preventDefault();
+											ipRestrictionFormEl.requestSubmit();
+										}
+									}}
+								>
+									<div>
+										<h4 class="text-sm font-medium">IP Restriction</h4>
+										<p class="text-sm text-muted-foreground">Restrict access to specific IP addresses</p>
+									</div>
+									<Switch checked={settings?.security?.ipRestrictionEnabled ?? false} class="pointer-events-none" />
 								</div>
-								<input type="checkbox" class="h-4 w-4 rounded border-gray-300" />
-							</div>
+							</form>
 						</CardContent>
 					</Card>
 				</TabsContent>
 
-				<!-- System Settings -->
 				<TabsContent value="system">
 					<Card>
 						<CardHeader>

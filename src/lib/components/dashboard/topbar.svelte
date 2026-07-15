@@ -149,14 +149,14 @@
 	{#if isNavigating}
 		<div class="relative h-0.5 w-full overflow-hidden bg-muted/20">
 			<div class="absolute inset-0 flex items-center">
-				<div class="h-0.5 w-full animate-marquee bg-gradient-to-r from-transparent via-primary to-transparent" />
+				<div class="h-0.5 w-full animate-marquee bg-linear-to-r from-transparent via-primary to-transparent"></div>
 			</div>
 			<div class="absolute right-3 top-1/2 -translate-y-1/2">
 				<LoaderCircle class="size-3 animate-spin text-primary" />
 			</div>
 		</div>
 	{:else}
-		<div class="h-0.5 w-full" />
+		<div class="h-0.5 w-full"></div>
 	{/if}
 </header>
 

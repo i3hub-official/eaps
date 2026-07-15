@@ -399,7 +399,14 @@ export function hashOtp(code: string): string {
 
 export function isEncrypted(value: string | null): boolean {
 	if (!value) return false
-	// Encrypted values typically contain a colon separator
-	// and look like base64:iv or similar format
-	return value.includes(':') && value.length > 20
+	
+	// Encrypted values are long hex or base64 strings with separators (: or ,)
+	// Plain text fields like names, departments, email are readable ASCII.
+	// If it's long AND contains hex chars OR contains : or , separators, it's encrypted.
+	const hasHexPattern = /^[0-9a-f]{20,}(\s|,)[0-9a-f]{20,}/.test(value); // hex with separator
+	const hasBase64Pattern = /^[A-Za-z0-9+/]{20,}(:|,)[A-Za-z0-9+/]/.test(value); // base64 with separator
+	const hasColonSeparator = value.includes(':') && value.length > 20;
+	const hasCommaSeparator = value.includes(',') && value.length > 20;
+	
+	return hasHexPattern || hasBase64Pattern || hasColonSeparator || hasCommaSeparator;
 }

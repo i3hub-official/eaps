@@ -1,11 +1,8 @@
-// src/routes/(admin)/admin/settings/+page.server.ts
 import { error, fail } from '@sveltejs/kit'
 import type { PageServerLoad, Actions } from './$types'
 import { requireStaff } from '$lib/server/auth/guards.js'
 import { getPrismaClient } from '$lib/server/db/index.js'
 
-// Everyone except LECTURER and INVIGILATOR can manage the registration window.
-// Adjust this list if your intended hierarchy differs.
 const ROLES_ABOVE_LECTURER = [
 	'SUPER_ADMIN',
 	'VC',
@@ -20,6 +17,18 @@ const ROLES_ABOVE_LECTURER = [
 	'DEPARTMENT_EXAM_OFFICER',
 	'DEPARTMENT_COORDINATOR',
 ]
+
+const SECURITY_KEYS = ['twoFactorEnabled', 'sessionTimeoutEnabled', 'ipRestrictionEnabled'] as const
+const SECURITY_LABELS: Record<(typeof SECURITY_KEYS)[number], string> = {
+	twoFactorEnabled: 'Two-factor authentication',
+	sessionTimeoutEnabled: 'Session timeout',
+	ipRestrictionEnabled: 'IP restriction',
+}
+const SECURITY_DEFAULTS: Record<(typeof SECURITY_KEYS)[number], boolean> = {
+	twoFactorEnabled: false,
+	sessionTimeoutEnabled: true,
+	ipRestrictionEnabled: false,
+}
 
 function assertRegistrationManager(user: any) {
 	if (!ROLES_ABOVE_LECTURER.includes(user.primaryRole)) {
@@ -44,10 +53,9 @@ export const load: PageServerLoad = async ({ locals, url }) => {
 
 	const settings: Record<string, any> = {}
 
-	// ─── SUPER_ADMIN-only sections ──────────────────────────────────────
 	if (isSuperAdmin) {
 		settings.general = {
-			appName: 'EAPS',
+			appName: 'MOUAU e-Test',
 			appVersion: '1.0.0',
 			environment: process.env.NODE_ENV || 'development',
 			baseUrl: url.origin,
@@ -59,9 +67,7 @@ export const load: PageServerLoad = async ({ locals, url }) => {
 				orderBy: { startDate: 'desc' },
 				take: 10,
 			}),
-			levels: await prisma.level.findMany({
-				orderBy: { name: 'asc' },
-			}),
+			levels: await prisma.level.findMany({ orderBy: { name: 'asc' } }),
 		}
 
 		settings.system = {
@@ -77,9 +83,19 @@ export const load: PageServerLoad = async ({ locals, url }) => {
 			totalStaff: await prisma.staff.count(),
 			totalCourses: await prisma.course.count(),
 		}
+
+		// ─── Security toggles, persisted ────────────────────────────────
+		const rows = await prisma.systemSetting.findMany({
+			where: { key: { in: SECURITY_KEYS as unknown as string[] } },
+		})
+		const rowMap = Object.fromEntries(rows.map((r) => [r.key, r.value]))
+		settings.security = {
+			twoFactorEnabled: rowMap.twoFactorEnabled ?? SECURITY_DEFAULTS.twoFactorEnabled,
+			sessionTimeoutEnabled: rowMap.sessionTimeoutEnabled ?? SECURITY_DEFAULTS.sessionTimeoutEnabled,
+			ipRestrictionEnabled: rowMap.ipRestrictionEnabled ?? SECURITY_DEFAULTS.ipRestrictionEnabled,
+		}
 	}
 
-	// ─── Registration control (broader role set) ───────────────────────
 	if (canManageRegistration) {
 		const session = await prisma.academicSession.findFirst({ where: { isCurrent: true } })
 
@@ -167,5 +183,30 @@ export const actions: Actions = {
 		})
 
 		return { success: true, message: 'Registration window updated.' }
+	},
+
+	updateSecurity: async ({ request, locals }) => {
+		const user = await requireStaff(locals.user)
+		if (user.primaryRole !== 'SUPER_ADMIN') {
+			return fail(403, { error: 'You do not have permission to change security settings.' })
+		}
+		const prisma = await getPrismaClient()
+
+		const form = await request.formData()
+		const key = form.get('key')?.toString() ?? ''
+		const enabled = form.get('enabled')?.toString() === 'true'
+
+		if (!SECURITY_KEYS.includes(key as any)) {
+			return fail(400, { error: 'Invalid setting key.' })
+		}
+
+		await prisma.systemSetting.upsert({
+			where: { key },
+			update: { value: enabled },
+			create: { key, value: enabled },
+		})
+
+		const label = SECURITY_LABELS[key as (typeof SECURITY_KEYS)[number]]
+		return { success: true, message: `${label} ${enabled ? 'enabled' : 'disabled'}.` }
 	},
 }

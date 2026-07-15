@@ -7,10 +7,54 @@ import {
 	revealName, 
 	revealMatricNumber, 
 	revealEmail, 
+	revealText,
 	isEncrypted 
 } from '$lib/security/dataProtection.js'
 
 const PAGE_SIZE = 20
+
+function safeReveal(fn: () => string, fallback: string): string {
+	try {
+		const result = fn()
+		return result || fallback
+	} catch (e) {
+		console.warn('[students] Failed to decrypt field:', e)
+		return fallback
+	}
+}
+
+// Robust decrypt that tries multiple methods
+function decryptField(value: string | null | undefined): string {
+	if (!value) return 'N/A'
+	
+	// Ensure value is a string
+	const strValue = String(value)
+	
+	// If not encrypted, return as-is
+	if (!isEncrypted(strValue)) return strValue
+	
+	// Try revealName first (most common for names)
+	try {
+		return safeReveal(() => revealName(strValue), strValue)
+	} catch (e) {
+		// Try revealText for generic encrypted fields
+		try {
+			return safeReveal(() => revealText(strValue), strValue)
+		} catch (e2) {
+			// Try revealMatricNumber for matric numbers
+			try {
+				return safeReveal(() => revealMatricNumber(strValue), strValue)
+			} catch (e3) {
+				// Try revealEmail for emails
+				try {
+					return safeReveal(() => revealEmail(strValue), strValue)
+				} catch (e4) {
+					return strValue // Return original if all fail
+				}
+			}
+		}
+	}
+}
 
 export const load: PageServerLoad = async ({ locals, url }) => {
 	const user = await requireStaff(locals.user)
@@ -86,22 +130,49 @@ export const load: PageServerLoad = async ({ locals, url }) => {
 
 	const totalPages = Math.ceil(totalCount / PAGE_SIZE)
 
-	const processedStudents = students.map((student) => {
+	function decryptStudent(student: any) {
 		let name = 'Unknown Student'
 		let matricNumber = 'N/A'
 		let email = 'Unknown'
+		let levelName = 'N/A'
+		let departmentName = 'N/A'
+		let programmeName = 'N/A'
 
 		try {
+			// Decrypt name
 			if (student.firstName && student.lastName) {
-				const firstName = isEncrypted(student.firstName) ? revealName(student.firstName) : student.firstName
-				const lastName = isEncrypted(student.lastName) ? revealName(student.lastName) : student.lastName
-				name = `${firstName} ${lastName}`
+				const firstName = decryptField(student.firstName)
+				const lastName = decryptField(student.lastName)
+				name = `${firstName} ${lastName}`.trim()
 			}
+
+			// Decrypt matric number
 			if (student.matricNumber) {
-				matricNumber = isEncrypted(student.matricNumber) ? revealMatricNumber(student.matricNumber) : student.matricNumber
+				matricNumber = decryptField(student.matricNumber)
 			}
+
+			// Decrypt email
 			if (student.email) {
-				email = isEncrypted(student.email) ? revealEmail(student.email) : student.email
+				email = decryptField(student.email)
+			}
+
+			// Decrypt level name (if encrypted)
+			if (student.currentLevel?.name) {
+				levelName = decryptField(student.currentLevel.name)
+			}
+
+			// Decrypt department name (if encrypted)
+			if (student.department?.name) {
+				departmentName = decryptField(student.department.name)
+			} else if (student.department?.shortName) {
+				departmentName = decryptField(student.department.shortName)
+			}
+
+			// Decrypt programme name (if encrypted)
+			if (student.programme?.name) {
+				programmeName = decryptField(student.programme.name)
+			} else if (student.programme?.shortName) {
+				programmeName = decryptField(student.programme.shortName)
 			}
 		} catch (e) {
 			console.warn('[students] Failed to decrypt student data:', e)
@@ -112,15 +183,17 @@ export const load: PageServerLoad = async ({ locals, url }) => {
 			name,
 			matricNumber,
 			email,
-			level: student.currentLevel?.name || 'N/A',
-			department: student.department?.shortName || student.department?.name || 'N/A',
-			programme: student.programme?.shortName || student.programme?.name || 'N/A',
+			level: levelName,
+			department: departmentName,
+			programme: programmeName,
 			status: student.status,
 			createdAt: student.createdAt,
 			lastLoginAt: student.lastLoginAt,
 			faceEnrolledAt: student.faceEnrolledAt,
 		}
-	})
+	}
+
+	const processedStudents = students.map(decryptStudent)
 
 	return {
 		students: processedStudents,
@@ -138,8 +211,12 @@ export const load: PageServerLoad = async ({ locals, url }) => {
 			suspended: stats[2],
 			graduated: stats[3],
 		},
-		levels: levels.map(l => ({ id: l.id, name: l.name })),
-		departments: departments.map(d => ({ id: d.id, name: d.name, shortName: d.shortName })),
+		levels: levels.map(l => ({ id: l.id, name: decryptField(l.name) })),
+		departments: departments.map(d => ({ 
+			id: d.id, 
+			name: decryptField(d.name), 
+			shortName: decryptField(d.shortName) 
+		})),
 		filters: {
 			search: searchQuery,
 			level: levelFilter,

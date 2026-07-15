@@ -1475,3 +1475,9 @@ model SystemLog {
   @@index([createdAt])
   @@index([level, createdAt])
 }
+
+model SystemSetting {
+  key       String   @id
+  value     Boolean
+  updatedAt DateTime @updatedAt
+}

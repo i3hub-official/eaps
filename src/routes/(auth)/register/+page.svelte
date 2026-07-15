@@ -557,465 +557,463 @@
 	{/if}
 
 	<!-- ══ STEP 1 — verify receipt ══ -->
-{#if currentStep === 1}
-	<div class="flex flex-col gap-8">
-		<!-- Matric Number -->
-		<div class="flex flex-col gap-2">
-			<Label for="s1matric" class="text-sm font-semibold">Matric Number</Label>
-			<div class="relative">
-				<Briefcase class="pointer-events-none absolute left-3.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
-				<Input
-					id="s1matric"
-					bind:value={uniMatric}
-					oninput={onMatricInput}
-					placeholder="MOUAU/PHY/25/001002"
-					class="h-11 pl-10 text-base"
-					aria-invalid={!!matricError}
-				/>
-			</div>
-			{#if matricError}
-				<p class="flex items-center gap-1.5 text-sm text-destructive">
-					<AlertCircle class="size-3.5" /> {matricError}
-				</p>
-			{/if}
-		</div>
-
-		<!-- QR Scan Section -->
-		<div class="rounded-xl border border-border bg-muted/40 p-6 {matricError ? 'pointer-events-none opacity-50' : ''}">
-			<p class="mb-4 flex items-center gap-2 text-sm font-semibold text-muted-foreground">
-				<QrCode class="size-4" /> Scan School Fee QR Code
-				{#if matricError}<span class="font-normal text-xs">— fix matric number first</span>{/if}
-			</p>
-			<div class="flex flex-wrap gap-4">
-				<button
-					type="button"
-					onclick={startWebcam}
-					disabled={!!matricError}
-					class="inline-flex cursor-pointer items-center gap-2 rounded-lg border border-border bg-background px-5 py-2.5 text-sm font-semibold text-muted-foreground transition-colors hover:border-primary hover:text-primary disabled:pointer-events-none disabled:opacity-45"
-				>
-					<Camera class="size-4" /> Live Camera
-				</button>
-				<label class="inline-flex cursor-pointer items-center gap-2 rounded-lg border border-border bg-background px-5 py-2.5 text-sm font-semibold text-muted-foreground transition-colors hover:border-primary hover:text-primary {matricError ? 'pointer-events-none opacity-45' : ''}">
-					<Upload class="size-4" /> Upload Image
-					<input type="file" accept="image/*" class="sr-only" disabled={!!matricError} onchange={handleQrUpload} />
-				</label>
-			</div>
-		</div>
-
-		{#if camError}
-			<p class="flex items-center gap-1.5 text-sm text-destructive">
-				<AlertCircle class="size-3.5" /> {camError}
-			</p>
-		{/if}
-
-		{#if showWebcam}
-			<div class="flex flex-col items-center gap-4">
-				<div class="relative aspect-[4/3] w-full max-w-md overflow-hidden rounded-xl bg-black">
-					<!-- svelte-ignore a11y-media-has-caption -->
-					<video bind:this={videoEl} playsinline autoplay class="size-full object-cover"></video>
-					<div class="pointer-events-none absolute left-1/2 top-1/2 size-[150px] -translate-x-1/2 -translate-y-1/2 rounded-xl border-2 border-primary shadow-[0_0_0_9999px_rgba(0,0,0,0.5)]"></div>
+	{#if currentStep === 1}
+		<div class="flex flex-col gap-8">
+			<!-- Matric Number -->
+			<div class="flex flex-col gap-2">
+				<Label for="s1matric" class="text-sm font-semibold">Matric Number</Label>
+				<div class="relative">
+					<Briefcase class="pointer-events-none absolute left-3.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+					<Input
+						id="s1matric"
+						bind:value={uniMatric}
+						oninput={onMatricInput}
+						placeholder="MOUAU/PHY/25/001002"
+						class="h-11 pl-10 text-base"
+						aria-invalid={!!matricError}
+					/>
 				</div>
-				<p class="text-sm text-muted-foreground">Point at the QR code on your receipt</p>
-				<button
-					type="button"
-					onclick={stopWebcam}
-					class="flex cursor-pointer items-center gap-2 rounded-lg border border-destructive/30 bg-destructive/10 px-4 py-2 text-sm font-semibold text-destructive"
-				>
-					<X class="size-4" /> Cancel Camera
-				</button>
+				{#if matricError}
+					<p class="flex items-center gap-1.5 text-sm text-destructive">
+						<AlertCircle class="size-3.5" /> {matricError}
+					</p>
+				{/if}
 			</div>
-		{/if}
 
-		<!-- Transaction Ref -->
-		<div class="flex flex-col gap-2">
-			<Label class="text-sm font-semibold">
-				Transaction Reference <span class="font-normal text-muted-foreground">(or paste from QR)</span>
-			</Label>
-			<div class="relative">
-				<QrCode class="pointer-events-none absolute left-3.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
-				<input
-					type={refMasked ? 'password' : 'text'}
-					value={refMasked ? '••••••••••••' : refNumber}
-					oninput={(e) => {
-						refNumber = (e.target as HTMLInputElement).value;
-						onRefInput();
-					}}
-					placeholder="Remita RRR Code"
-					disabled={!!matricError || receiptLoading}
-					readonly={refMasked}
-					aria-invalid={!!refError && !receiptFetched}
-					class="h-11 w-full rounded-md border border-input bg-transparent px-3 py-1 pl-10 pr-28 text-base shadow-sm transition-colors placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50 aria-[invalid=true]:border-destructive"
-				/>
-				{#if receiptLoading}
-					<div class="absolute right-3 top-1/2 flex -translate-y-1/2 items-center gap-2 text-sm font-semibold text-primary">
-						<span class="size-3 animate-spin rounded-full border-2 border-primary/30 border-t-primary"></span> Verifying…
-					</div>
-				{:else if !refMasked}
+			<!-- QR Scan Section -->
+			<div class="rounded-xl border border-border bg-muted/40 p-6 {matricError ? 'pointer-events-none opacity-50' : ''}">
+				<p class="mb-4 flex items-center gap-2 text-sm font-semibold text-muted-foreground">
+					<QrCode class="size-4" /> Scan School Fee QR Code
+					{#if matricError}<span class="font-normal text-xs">— fix matric number first</span>{/if}
+				</p>
+				<div class="flex flex-wrap gap-4">
 					<button
 						type="button"
-						onclick={() => fetchReceipt(false)}
-						disabled={!refNumber.trim() || !!matricError}
-						class="absolute right-1.5 top-1/2 -translate-y-1/2 rounded-md bg-primary px-4 py-1.5 text-sm font-semibold text-primary-foreground transition-opacity disabled:opacity-45"
+						onclick={startWebcam}
+						disabled={!!matricError}
+						class="inline-flex cursor-pointer items-center gap-2 rounded-lg border border-border bg-background px-5 py-2.5 text-sm font-semibold text-muted-foreground transition-colors hover:border-primary hover:text-primary disabled:pointer-events-none disabled:opacity-45"
 					>
-						Fetch
+						<Camera class="size-4" /> Live Camera
 					</button>
-				{:else}
+					<label class="inline-flex cursor-pointer items-center gap-2 rounded-lg border border-border bg-background px-5 py-2.5 text-sm font-semibold text-muted-foreground transition-colors hover:border-primary hover:text-primary {matricError ? 'pointer-events-none opacity-45' : ''}">
+						<Upload class="size-4" /> Upload Image
+						<input type="file" accept="image/*" class="sr-only" disabled={!!matricError} onchange={handleQrUpload} />
+					</label>
+				</div>
+			</div>
+
+			{#if camError}
+				<p class="flex items-center gap-1.5 text-sm text-destructive">
+					<AlertCircle class="size-3.5" /> {camError}
+				</p>
+			{/if}
+
+			{#if showWebcam}
+				<div class="flex flex-col items-center gap-4">
+					<div class="relative aspect-[4/3] w-full max-w-md overflow-hidden rounded-xl bg-black">
+						<!-- svelte-ignore a11y_media_has_caption -->
+						<video bind:this={videoEl} playsinline autoplay class="size-full object-cover"></video>
+						<div class="pointer-events-none absolute left-1/2 top-1/2 size-[150px] -translate-x-1/2 -translate-y-1/2 rounded-xl border-2 border-primary shadow-[0_0_0_9999px_rgba(0,0,0,0.5)]"></div>
+					</div>
+					<p class="text-sm text-muted-foreground">Point at the QR code on your receipt</p>
+					<button
+						type="button"
+						onclick={stopWebcam}
+						class="flex cursor-pointer items-center gap-2 rounded-lg border border-destructive/30 bg-destructive/10 px-4 py-2 text-sm font-semibold text-destructive"
+					>
+						<X class="size-4" /> Cancel Camera
+					</button>
+				</div>
+			{/if}
+
+			<!-- Transaction Ref -->
+			<div class="flex flex-col gap-2">
+				<Label class="text-sm font-semibold">
+					Transaction Reference <span class="font-normal text-muted-foreground">(or paste from QR)</span>
+				</Label>
+				<div class="relative">
+					<QrCode class="pointer-events-none absolute left-3.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+					<input
+						type={refMasked ? 'password' : 'text'}
+						value={refMasked ? '••••••••••••' : refNumber}
+						oninput={(e) => {
+							refNumber = (e.target as HTMLInputElement).value;
+							onRefInput();
+						}}
+						placeholder="Remita RRR Code"
+						disabled={!!matricError || receiptLoading}
+						readonly={refMasked}
+						aria-invalid={!!refError && !receiptFetched}
+						class="h-11 w-full rounded-md border border-input bg-transparent px-3 py-1 pl-10 pr-28 text-base shadow-sm transition-colors placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50 aria-[invalid=true]:border-destructive"
+					/>
+					{#if receiptLoading}
+						<div class="absolute right-3 top-1/2 flex -translate-y-1/2 items-center gap-2 text-sm font-semibold text-primary">
+							<span class="size-3 animate-spin rounded-full border-2 border-primary/30 border-t-primary"></span> Verifying…
+						</div>
+					{:else if !refMasked}
+						<button
+							type="button"
+							onclick={() => fetchReceipt(false)}
+							disabled={!refNumber.trim() || !!matricError}
+							class="absolute right-1.5 top-1/2 -translate-y-1/2 rounded-md bg-primary px-4 py-1.5 text-sm font-semibold text-primary-foreground transition-opacity disabled:opacity-45"
+						>
+							Fetch
+						</button>
+					{:else}
+						<button
+							type="button"
+							onclick={() => {
+								refNumber = '';
+								refMasked = false;
+								receiptRaw = null;
+								receiptPreview = null;
+								receiptFetched = false;
+								surname = firstName = otherName = jambRegNo = matricNumber = college = department = '';
+								refError = '';
+								refTouched = false;
+							}}
+							title="Clear"
+							class="absolute right-2 top-1/2 -translate-y-1/2 rounded p-1.5 text-muted-foreground transition-colors hover:text-destructive"
+						>
+							<X class="size-4" />
+						</button>
+					{/if}
+				</div>
+				{#if refError && !receiptFetched}
+					<p class="flex items-center gap-1.5 text-sm text-destructive">
+						<AlertCircle class="size-3.5" /> {refError}
+					</p>
+				{/if}
+				<p class="text-sm text-muted-foreground">Found on your MOUAU portal or school fee receipt</p>
+			</div>
+
+			<!-- Skeleton Loading for Receipt -->
+			{#if receiptLoading}
+				<div class="rounded-xl border border-border bg-card p-5 shadow-sm">
+					<div class="mb-3 flex items-center gap-2">
+						<Skeleton class="size-4" />
+						<Skeleton class="h-3 w-40" />
+					</div>
+					<div class="flex flex-col gap-3">
+						<div class="flex justify-between">
+							<Skeleton class="h-4 w-24" />
+							<Skeleton class="h-4 w-32" />
+						</div>
+						<div class="flex justify-between">
+							<Skeleton class="h-4 w-28" />
+							<Skeleton class="h-4 w-36" />
+						</div>
+						<div class="flex justify-between">
+							<Skeleton class="h-4 w-20" />
+							<Skeleton class="h-4 w-28" />
+						</div>
+						<div class="flex justify-between">
+							<Skeleton class="h-4 w-24" />
+							<Skeleton class="h-4 w-32" />
+						</div>
+						<div class="flex justify-between">
+							<Skeleton class="h-4 w-20" />
+							<Skeleton class="h-4 w-28" />
+						</div>
+					</div>
+				</div>
+			{/if}
+
+			<!-- Receipt Preview -->
+			{#if receiptFetched}
+				<div class="rounded-xl border border-primary/25 bg-primary/5 p-5">
+					<p class="mb-4 flex items-center gap-2 text-xs font-bold uppercase tracking-wide text-primary">
+						<Check class="size-4" /> Verified — Student Details
+					</p>
+					<div class="flex flex-col gap-4">
+						<!-- Full Name -->
+						<div class="flex flex-col gap-0.5">
+							<span class="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">Full Name</span>
+							<span class="text-base font-medium text-foreground">
+								{[surname, firstName, otherName].filter(Boolean).join(' ') || '—'}
+							</span>
+						</div>
+
+						<!-- Matric Number -->
+						<div class="flex flex-col gap-0.5">
+							<span class="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">Matric Number</span>
+							<span class="text-base font-medium text-foreground">{matricNumber || '—'}</span>
+						</div>
+
+						<!-- JAMB Registration -->
+						<div class="flex flex-col gap-0.5">
+							<span class="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">JAMB Registration</span>
+							<span class="text-base font-medium text-foreground">{jambRegNo || '—'}</span>
+						</div>
+
+						<!-- College/Faculty with Short Name -->
+						<div class="flex flex-col gap-0.5">
+							<span class="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">College / Faculty</span>
+							<span class="text-base font-medium text-foreground">
+								{college ? getCollegeDisplayName(college, collegeShortName) : '—'}
+							</span>
+						</div>
+
+						<!-- Department -->
+						<div class="flex flex-col gap-0.5">
+							<span class="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">Department</span>
+							<span class="text-base font-medium text-foreground">{department || '—'}</span>
+						</div>
+
+						<!-- Level -->
+						<div class="flex flex-col gap-0.5">
+							<span class="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">Level</span>
+							<span class="text-base font-medium text-foreground">{level || '—'}</span>
+						</div>
+
+						<!-- Programme -->
+						<div class="flex flex-col gap-0.5">
+							<span class="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">Programme</span>
+							<span class="text-base font-medium text-foreground">UNDERGRADUATE (Regular)</span>
+						</div>
+
+						<!-- Session -->
+						<div class="flex flex-col gap-0.5">
+							<span class="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">Session</span>
+							<span class="text-base font-medium text-foreground">{receiptRaw?.session || '—'}</span>
+						</div>
+
+						<!-- Receipt Number -->
+						<div class="flex flex-col gap-0.5">
+							<span class="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">Receipt Number</span>
+							<span class="text-base font-medium text-foreground">{receiptRaw?.receiptNo || '—'}</span>
+						</div>
+					</div>
+				</div>
+			{/if}
+
+			<Button type="button" size="lg" class="h-12 w-full text-base" onclick={nextStep} disabled={!receiptFetched}>
+				{#if !receiptFetched}Verify Receipt First{:else}Continue →{/if}
+			</Button>
+			<p class="text-center text-sm text-muted-foreground">
+				Already have an account? <a href="/login" class="text-primary hover:underline">Sign in</a>
+			</p>
+		</div>
+	{/if}
+
+	<!-- ══ STEP 2 — details ══ -->
+	{#if currentStep === 2}
+		<div class="flex flex-col gap-6">
+			{#if receiptFetched}
+				<div class="flex flex-wrap items-center gap-2 rounded-lg border border-primary/20 bg-primary/5 px-4 py-3 text-sm text-muted-foreground">
+					<span>Student information has been successfully verified.</span>
+				</div>
+
+				<!-- Re-scan button below -->
+				<div class="flex justify-end">
 					<button
 						type="button"
 						onclick={() => {
-							refNumber = '';
-							refMasked = false;
+							// Clear all receipt data
+							receiptFetched = false;
 							receiptRaw = null;
 							receiptPreview = null;
-							receiptFetched = false;
-							surname = firstName = otherName = jambRegNo = matricNumber = college = department = '';
+
+							// Clear all form fields
+							surname = '';
+							firstName = '';
+							otherName = '';
+							matricNumber = '';
+							jambRegNo = '';
+							college = '';
+							collegeShortName = '';
+							department = '';
+							level = '';
+							uniMatric = '';
+							refNumber = '';
+							refMasked = false;
 							refError = '';
 							refTouched = false;
+							matricError = '';
+							matricTouched = false;
+							errorMessage = '';
+
+							// Reset to step 1
+							currentStep = 1;
 						}}
-						title="Clear"
-						class="absolute right-2 top-1/2 -translate-y-1/2 rounded p-1.5 text-muted-foreground transition-colors hover:text-destructive"
+						class="inline-flex cursor-pointer items-center gap-1.5 text-sm font-semibold text-white transition-colors hover:text-primary/80"
 					>
-						<X class="size-4" />
+						<RefreshCw class="size-3.5" /> Re-verify Information
 					</button>
-				{/if}
-			</div>
-			{#if refError && !receiptFetched}
-				<p class="flex items-center gap-1.5 text-sm text-destructive">
-					<AlertCircle class="size-3.5" /> {refError}
-				</p>
+				</div>
 			{/if}
-			<p class="text-sm text-muted-foreground">Found on your MOUAU portal or school fee receipt</p>
-		</div>
 
-		<!-- Skeleton Loading for Receipt -->
-		{#if receiptLoading}
-			<div class="rounded-xl border border-border bg-card p-5 shadow-sm">
-				<div class="mb-3 flex items-center gap-2">
-					<Skeleton class="size-4" />
-					<Skeleton class="h-3 w-40" />
+			<!-- Contact Information -->
+			<div class="flex flex-col gap-4">
+				<div class="flex flex-col gap-2">
+					<Label for="s2email" class="flex items-center gap-2 text-sm font-semibold">
+						Email Address
+						<span class="font-normal text-muted-foreground text-xs">*</span>
+					</Label>
+					<Input
+						id="s2email"
+						type="email"
+						bind:value={email}
+						placeholder="you@student.mouau.edu.ng"
+						class="h-11 text-base"
+						aria-invalid={!!getError2('email')}
+						onblur={(e: FocusEvent) => validateStep2Field('email', (e.currentTarget as HTMLInputElement).value)}
+						oninput={(e: Event) => {
+							if (touched2.email) validateStep2Field('email', (e.currentTarget as HTMLInputElement).value);
+						}}
+					/>
+					{#if getError2('email')}
+						<p class="text-sm text-destructive">{getError2('email')}</p>
+					{:else}
+						<p class="text-xs text-muted-foreground">Required for account communications</p>
+					{/if}
 				</div>
-				<div class="flex flex-col gap-3">
-					<div class="flex justify-between">
-						<Skeleton class="h-4 w-24" />
-						<Skeleton class="h-4 w-32" />
-					</div>
-					<div class="flex justify-between">
-						<Skeleton class="h-4 w-28" />
-						<Skeleton class="h-4 w-36" />
-					</div>
-					<div class="flex justify-between">
-						<Skeleton class="h-4 w-20" />
-						<Skeleton class="h-4 w-28" />
-					</div>
-					<div class="flex justify-between">
-						<Skeleton class="h-4 w-24" />
-						<Skeleton class="h-4 w-32" />
-					</div>
-					<div class="flex justify-between">
-						<Skeleton class="h-4 w-20" />
-						<Skeleton class="h-4 w-28" />
-					</div>
+
+				<div class="flex flex-col gap-2">
+					<Label for="s2phone" class="text-sm font-semibold">Phone Number</Label>
+					<Input
+						id="s2phone"
+						type="tel"
+						bind:value={phone}
+						placeholder="+234 801 234 5678"
+						class="h-11 text-base"
+					/>
+					<p class="text-xs text-muted-foreground">(Optional)</p>
 				</div>
 			</div>
+
+			<!-- Summary Card -->
+			<div class="flex items-start gap-3 rounded-lg border border-primary/20 bg-primary/5 px-4 py-3.5">
+				<Check class="size-4 shrink-0 text-primary mt-0.5" />
+				<div class="text-sm text-muted-foreground">
+					<p class="font-semibold text-foreground">Student Information Verified</p>
+					<p class="text-xs">All academic details have been confirmed. Please review and proceed with your registration. If any data is incorrect, please contact the administration.</p>
+				</div>
+			</div>
+
+			<Button type="button" size="lg" class="h-12 w-full text-base" onclick={nextStep}>
+				Continue →
+			</Button>
+		</div>
+	{/if}
+
+	{#if showSuccess}
+		<div class="flex flex-col items-center gap-4 py-12">
+			<div class="flex size-16 items-center justify-center rounded-full bg-green-500/10">
+				<Check class="size-8 text-green-500" />
+			</div>
+			<h2 class="text-2xl font-bold">Account Created!</h2>
+			<p class="text-muted-foreground">Redirecting to your dashboard...</p>
+		</div>
+	{:else}
+		<!-- ══ STEP 3 — password ══ -->
+		{#if currentStep === 3}
+			<form
+				method="POST"
+				action="?/signup"
+				use:enhance={({ formElement, formData, action, cancel }) => {
+					// Pre-submit validation
+					touchPassword(password);
+					touchConfirm(confirmPassword);
+					const pErr = validatePassword(password);
+					const cErr = validateConfirm(confirmPassword);
+					if (pErr || cErr) {
+						errorMessage = pErr ?? cErr ?? '';
+						cancel();
+						return;
+					}
+
+					isLoading = true;
+					errorMessage = '';
+
+					return async ({ result, update }) => {
+						isLoading = false;
+
+						if (result.type === 'failure') {
+							// Coerce potential non-string error payloads to string to satisfy TS
+							errorMessage = String(result.data?.error ?? 'Something went wrong.');
+							return;
+						}
+
+						if (result.type === 'error') {
+							errorMessage = result.error?.message ?? 'Server error.';
+							return;
+						}
+
+						if (result.type === 'success' && result.data?.success) {
+							showSuccess = true;
+							// Wait 2 seconds, then navigate
+							await new Promise(r => setTimeout(r, 2000));
+							await goto('/student', { invalidateAll: true });
+							return;
+						}
+
+						await update();
+					};
+				}}
+				class="flex flex-col gap-6"
+			>
+				<!-- Hidden fields -->
+				<input type="hidden" name="matricNumber" value={matricNumber} />
+				<input type="hidden" name="jambRegNo" value={jambRegNo} />
+				<input type="hidden" name="firstName" value={firstName} />
+				<input type="hidden" name="otherName" value={otherName} />
+				<input type="hidden" name="surname" value={surname} />
+				<input type="hidden" name="college" value={college} />
+				<input type="hidden" name="department" value={department} />
+				<input type="hidden" name="level" value={level} />
+				<input type="hidden" name="phone" value={phone} />
+				<input type="hidden" name="email" value={email} />
+				<input type="hidden" name="receiptNo" value={receiptRaw?.receiptNo ?? ''} />
+				<input type="hidden" name="receiptRef" value={refNumber} />
+				<input type="hidden" name="session" value={receiptRaw?.session ?? ''} />
+				<input type="hidden" name="programmeType" value="UNDERGRADUATE" />
+
+				<!-- Password fields -->
+				<div class="flex flex-col gap-2">
+					<Label for="s3pw" class="text-sm font-semibold">Password</Label>
+					<div class="relative">
+						<Input
+							id="s3pw"
+							name="password"
+							type={showPassword ? 'text' : 'password'}
+							bind:value={password}
+							placeholder="Minimum 8 characters"
+							class="h-11 pr-12 text-base"
+						/>
+						<button type="button" onclick={() => (showPassword = !showPassword)} class="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground">
+							{#if showPassword}<EyeOff class="size-5" />{:else}<Eye class="size-5" />{/if}
+						</button>
+					</div>
+				</div>
+
+				<div class="flex flex-col gap-2">
+					<Label for="s3pw2" class="text-sm font-semibold">Confirm Password</Label>
+					<div class="relative">
+						<Input
+							id="s3pw2"
+							name="confirmPassword"
+							type={showConfirmPassword ? 'text' : 'password'}
+							bind:value={confirmPassword}
+							placeholder="Repeat your password"
+							class="h-11 pr-12 text-base"
+						/>
+						<button type="button" onclick={() => (showConfirmPassword = !showConfirmPassword)} class="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground">
+							{#if showConfirmPassword}<EyeOff class="size-5" />{:else}<Eye class="size-5" />{/if}
+						</button>
+					</div>
+				</div>
+
+				<Button type="submit" size="lg" class="h-12 w-full text-base" disabled={isLoading}>
+					{#if isLoading}
+						<span class="size-4 animate-spin rounded-full border-2 border-primary-foreground/30 border-t-primary-foreground"></span>
+						Creating account…
+					{:else}
+						<UserPlus class="size-5" />
+						Create Account
+					{/if}
+				</Button>
+			</form>
 		{/if}
-
-		<!-- Receipt Preview -->
-{#if receiptFetched}
-	<div class="rounded-xl border border-primary/25 bg-primary/5 p-5">
-		<p class="mb-4 flex items-center gap-2 text-xs font-bold uppercase tracking-wide text-primary">
-			<Check class="size-4" /> Verified — Student Details
-		</p>
-		<div class="flex flex-col gap-4">
-			<!-- Full Name -->
-			<div class="flex flex-col gap-0.5">
-				<span class="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">Full Name</span>
-				<span class="text-base font-medium text-foreground">
-					{[surname, firstName, otherName].filter(Boolean).join(' ') || '—'}
-				</span>
-			</div>
-
-			<!-- Matric Number -->
-			<div class="flex flex-col gap-0.5">
-				<span class="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">Matric Number</span>
-				<span class="text-base font-medium text-foreground">{matricNumber || '—'}</span>
-			</div>
-
-			<!-- JAMB Registration -->
-			<div class="flex flex-col gap-0.5">
-				<span class="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">JAMB Registration</span>
-				<span class="text-base font-medium text-foreground">{jambRegNo || '—'}</span>
-			</div>
-
-			<!-- College/Faculty with Short Name -->
-			<div class="flex flex-col gap-0.5">
-				<span class="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">College / Faculty</span>
-				<span class="text-base font-medium text-foreground">
-					{college ? getCollegeDisplayName(college, collegeShortName) : '—'}
-				</span>
-			</div>
-
-			<!-- Department -->
-			<div class="flex flex-col gap-0.5">
-				<span class="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">Department</span>
-				<span class="text-base font-medium text-foreground">{department || '—'}</span>
-			</div>
-
-			<!-- Level -->
-			<div class="flex flex-col gap-0.5">
-				<span class="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">Level</span>
-				<span class="text-base font-medium text-foreground">{level || '—'}</span>
-			</div>
-
-			<!-- Programme -->
-			<div class="flex flex-col gap-0.5">
-				<span class="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">Programme</span>
-				<span class="text-base font-medium text-foreground">UNDERGRADUATE (Regular)</span>
-			</div>
-
-			<!-- Session -->
-			<div class="flex flex-col gap-0.5">
-				<span class="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">Session</span>
-				<span class="text-base font-medium text-foreground">{receiptRaw?.session || '—'}</span>
-			</div>
-
-			<!-- Receipt Number -->
-			<div class="flex flex-col gap-0.5">
-				<span class="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">Receipt Number</span>
-				<span class="text-base font-medium text-foreground">{receiptRaw?.receiptNo || '—'}</span>
-			</div>
-		</div>
-	</div>
-{/if}
-
-		<Button type="button" size="lg" class="h-12 w-full text-base" onclick={nextStep} disabled={!receiptFetched}>
-			{#if !receiptFetched}Verify Receipt First{:else}Continue →{/if}
-		</Button>
-		<p class="text-center text-sm text-muted-foreground">
-			Already have an account? <a href="/login" class="text-primary hover:underline">Sign in</a>
-		</p>
-	</div>
-{/if}
-
-<!-- ══ STEP 2 — details ══ -->
-{#if currentStep === 2}
-	<div class="flex flex-col gap-6">
-		{#if receiptFetched}
-	<div class="flex flex-wrap items-center gap-2 rounded-lg border border-primary/20 bg-primary/5 px-4 py-3 text-sm text-muted-foreground">
-		<span>Student information has been successfully verified.</span>
-	</div>
-
-	<!-- Re-scan button below -->
-	<div class="flex justify-end">
-		<button
-			type="button"
-			onclick={() => {
-				// Clear all receipt data
-				receiptFetched = false;
-				receiptRaw = null;
-				receiptPreview = null;
-
-				// Clear all form fields
-				surname = '';
-				firstName = '';
-				otherName = '';
-				matricNumber = '';
-				jambRegNo = '';
-				college = '';
-				collegeShortName = '';
-				department = '';
-				level = '';
-				uniMatric = '';
-				refNumber = '';
-				refMasked = false;
-				refError = '';
-				refTouched = false;
-				matricError = '';
-				matricTouched = false;
-				errorMessage = '';
-
-				// Reset to step 1
-				currentStep = 1;
-			}}
-			class="inline-flex cursor-pointer items-center gap-1.5 text-sm font-semibold text-white transition-colors hover:text-primary/80"
-		>
-			<RefreshCw class="size-3.5" /> Re-verify Information
-		</button>
-	</div>
-{/if}
-
-		<!-- Contact Information -->
-		<div class="flex flex-col gap-4">
-			<div class="flex flex-col gap-2">
-				<Label for="s2email" class="flex items-center gap-2 text-sm font-semibold">
-					Email Address
-					<span class="font-normal text-muted-foreground text-xs">*</span>
-				</Label>
-				<Input
-					id="s2email"
-					type="email"
-					bind:value={email}
-					placeholder="you@student.mouau.edu.ng"
-					class="h-11 text-base"
-					aria-invalid={!!getError2('email')}
-					onblur={(e: FocusEvent) => validateStep2Field('email', (e.currentTarget as HTMLInputElement).value)}
-					oninput={(e: Event) => {
-						if (touched2.email) validateStep2Field('email', (e.currentTarget as HTMLInputElement).value);
-					}}
-				/>
-				{#if getError2('email')}
-					<p class="text-sm text-destructive">{getError2('email')}</p>
-				{:else}
-					<p class="text-xs text-muted-foreground">Required for account communications</p>
-				{/if}
-			</div>
-
-			<div class="flex flex-col gap-2">
-				<Label for="s2phone" class="text-sm font-semibold">Phone Number</Label>
-				<Input
-					id="s2phone"
-					type="tel"
-					bind:value={phone}
-					placeholder="+234 801 234 5678"
-					class="h-11 text-base"
-				/>
-				<p class="text-xs text-muted-foreground">(Optional)</p>
-			</div>
-		</div>
-
-	<!-- Summary Card -->
-<div class="flex items-start gap-3 rounded-lg border border-primary/20 bg-primary/5 px-4 py-3.5">
-	<Check class="size-4 shrink-0 text-primary mt-0.5" />
-	<div class="text-sm text-muted-foreground">
-		<p class="font-semibold text-foreground">Student Information Verified</p>
-		<p class="text-xs">All academic details have been confirmed. Please review and proceed with your registration. If any data is incorrect, please contact the administration.</p>
-	</div>
-</div>
-
-		<Button type="button" size="lg" class="h-12 w-full text-base" onclick={nextStep}>
-			Continue →
-		</Button>
-	</div>
-{/if}
-
-{#if showSuccess}
-    <div class="flex flex-col items-center gap-4 py-12">
-        <div class="flex size-16 items-center justify-center rounded-full bg-green-500/10">
-            <Check class="size-8 text-green-500" />
-        </div>
-        <h2 class="text-2xl font-bold">Account Created!</h2>
-        <p class="text-muted-foreground">Redirecting to your dashboard...</p>
-    </div>
-{:else}
-    	<!-- ══ STEP 3 — password ══ -->
-	{#if currentStep === 3}
-    <form
-        method="POST"
-        action="?/signup"
-        use:enhance={({ formElement, formData, action, cancel }) => {
-            // Pre-submit validation
-            touchPassword(password);
-            touchConfirm(confirmPassword);
-            const pErr = validatePassword(password);
-            const cErr = validateConfirm(confirmPassword);
-            if (pErr || cErr) {
-                errorMessage = pErr ?? cErr ?? '';
-                cancel();
-                return;
-            }
-
-            isLoading = true;
-            errorMessage = '';
-
-            return async ({ result, update }) => {
-                isLoading = false;
-
-                if (result.type === 'failure') {
-                    // Coerce potential non-string error payloads to string to satisfy TS
-                    errorMessage = String(result.data?.error ?? 'Something went wrong.');
-                    return;
-                }
-
-                if (result.type === 'error') {
-                    errorMessage = result.error?.message ?? 'Server error.';
-                    return;
-                }
-
-                if (result.type === 'success' && result.data?.success) {
-                    showSuccess = true;
-                    // Wait 2 seconds, then navigate
-                    await new Promise(r => setTimeout(r, 2000));
-                    await goto('/student', { invalidateAll: true });
-                    return;
-                }
-
-                await update();
-            };
-        }}
-        class="flex flex-col gap-6"
-    >
-        <!-- Hidden fields -->
-        <input type="hidden" name="matricNumber" value={matricNumber} />
-        <input type="hidden" name="jambRegNo" value={jambRegNo} />
-        <input type="hidden" name="firstName" value={firstName} />
-        <input type="hidden" name="otherName" value={otherName} />
-        <input type="hidden" name="surname" value={surname} />
-        <input type="hidden" name="college" value={college} />
-        <input type="hidden" name="department" value={department} />
-        <input type="hidden" name="level" value={level} />
-        <input type="hidden" name="phone" value={phone} />
-        <input type="hidden" name="email" value={email} />
-        <input type="hidden" name="receiptNo" value={receiptRaw?.receiptNo ?? ''} />
-        <input type="hidden" name="receiptRef" value={refNumber} />
-        <input type="hidden" name="session" value={receiptRaw?.session ?? ''} />
-        <input type="hidden" name="programmeType" value="UNDERGRADUATE" />
-
-        <!-- Password fields -->
-        <div class="flex flex-col gap-2">
-            <Label for="s3pw" class="text-sm font-semibold">Password</Label>
-            <div class="relative">
-                <Input
-                    id="s3pw"
-                    name="password"
-                    type={showPassword ? 'text' : 'password'}
-                    bind:value={password}
-                    placeholder="Minimum 8 characters"
-                    class="h-11 pr-12 text-base"
-                />
-                <button type="button" onclick={() => (showPassword = !showPassword)} class="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground">
-                    {#if showPassword}<EyeOff class="size-5" />{:else}<Eye class="size-5" />{/if}
-                </button>
-            </div>
-        </div>
-
-        <div class="flex flex-col gap-2">
-            <Label for="s3pw2" class="text-sm font-semibold">Confirm Password</Label>
-            <div class="relative">
-                <Input
-                    id="s3pw2"
-                    name="confirmPassword"
-                    type={showConfirmPassword ? 'text' : 'password'}
-                    bind:value={confirmPassword}
-                    placeholder="Repeat your password"
-                    class="h-11 pr-12 text-base"
-                />
-                <button type="button" onclick={() => (showConfirmPassword = !showConfirmPassword)} class="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground">
-                    {#if showConfirmPassword}<EyeOff class="size-5" />{:else}<Eye class="size-5" />{/if}
-                </button>
-            </div>
-        </div>
-
-        <Button type="submit" size="lg" class="h-12 w-full text-base" disabled={isLoading}>
-            {#if isLoading}
-                <span class="size-4 animate-spin rounded-full border-2 border-primary-foreground/30 border-t-primary-foreground"></span>
-                Creating account…
-            {:else}
-                <UserPlus class="size-5" />
-                Create Account
-            {/if}
-        </Button>
-    </form>
-{/if}
-
-{/if}
-
+	{/if}
 </AuthShell>
