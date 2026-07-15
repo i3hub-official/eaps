@@ -12,6 +12,9 @@ import { staffRoleHome } from '$lib/server/auth/roleHome';
 import { searchHashFor, revealName } from '$lib/security/dataProtection';
 import { sendLoginAlertEmail } from '$lib/server/auth/email';
 
+// Must stay in sync with +layout.server.ts
+const ADMIN_ROLES = ['SUPER_ADMIN', 'ADMIN'] as const;
+
 function safeDecrypt(fn: () => string, fallback: string): string {
     try {
         return fn();
@@ -22,7 +25,7 @@ function safeDecrypt(fn: () => string, fallback: string): string {
 
 export const load: PageServerLoad = async ({ locals }) => {
     // Already-authenticated admin goes straight to dashboard
-    if (locals.user?.role === 'admin') {
+    if (locals.user?.role && (ADMIN_ROLES as readonly string[]).includes(locals.user.role)) {
         redirect(302, '/admin');
     }
     return {};
@@ -54,9 +57,14 @@ export const actions: Actions = {
         // Vague error — don't reveal whether the URL, account, or password is wrong
         const denied = () => fail(401, { error: 'Invalid credentials.' });
 
-        if (!staff)                        return denied();
-        if (staff.primaryRole !== 'admin') return denied();
-        if (staff.status !== 'ACTIVE')     return denied();
+        if (!staff) return denied();
+        
+        // Only allow SUPER_ADMIN and ADMIN roles
+        if (!((ADMIN_ROLES as readonly string[]).includes(staff.primaryRole))) {
+            return denied();
+        }
+        
+        if (staff.status !== 'ACTIVE') return denied();
 
         const ok = await verifyPassword(password, staff.passwordHash);
         if (!ok) return denied();

@@ -2,10 +2,12 @@
 import type { LayoutServerLoad } from './$types';
 import { getPrismaClient } from '$lib/server/db/index.js';
 
+// Must stay in sync with admin-access/+page.server.ts
+const ADMIN_ROLES = ['SUPER_ADMIN', 'ADMIN'] as const;
+
 // ── helpers ────────────────────────────────────────────────────────────────
 
 async function getSystemFlags(): Promise<{ maintenance: boolean; shutdown: boolean }> {
-    // .env takes priority — hard-override without needing a DB connection
     if (process.env.SYSTEM_SHUTDOWN === 'true')    return { shutdown: true,  maintenance: false };
     if (process.env.SYSTEM_MAINTENANCE === 'true') return { shutdown: false, maintenance: true  };
 
@@ -18,13 +20,11 @@ async function getSystemFlags(): Promise<{ maintenance: boolean; shutdown: boole
         const get = (k: string) => flags.find((f) => f.key === k)?.value === 'true';
         return { shutdown: get('shutdown'), maintenance: get('maintenance') };
     } catch {
-        // DB unreachable — fail closed, show maintenance screen
         return { shutdown: false, maintenance: true };
     }
 }
 
 async function isVpnOrProxy(ip: string): Promise<boolean> {
-    // Fail closed: unknown or empty IP is blocked
     if (!ip) return true;
 
     try {
@@ -32,11 +32,11 @@ async function isVpnOrProxy(ip: string): Promise<boolean> {
             `https://vpnapi.io/api/${ip}?key=${process.env.VPNAPI_KEY}`,
             { signal: AbortSignal.timeout(4000) }
         );
-        if (!res.ok) return true; // fail closed on non-200
+        if (!res.ok) return true;
         const data = await res.json();
         return !!(data.security?.vpn || data.security?.proxy || data.security?.tor);
     } catch {
-        return true; // fail closed on timeout / network error
+        return true;
     }
 }
 
@@ -56,15 +56,14 @@ export const load: LayoutServerLoad = async ({ request, url, locals }) => {
         return { systemState: null, detectedIp: null };
     }
 
-    // Authenticated admins bypass all screens so they can operate during maintenance
-    if (locals.user?.role === 'admin') {
+    // Permitted admin roles bypass all screens so they can operate during maintenance
+    if (locals.user?.role && (ADMIN_ROLES as readonly string[]).includes(locals.user.role)) {
         return { systemState: null, detectedIp: null };
     }
 
     const ip = getClientIp(request);
     const { shutdown, maintenance } = await getSystemFlags();
 
-    // Shutdown and maintenance take priority — no point checking VPN
     if (shutdown)    return { systemState: 'shutdown'    as const, detectedIp: ip };
     if (maintenance) return { systemState: 'maintenance' as const, detectedIp: ip };
 
