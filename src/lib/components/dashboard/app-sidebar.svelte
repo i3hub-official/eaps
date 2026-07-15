@@ -1,3 +1,4 @@
+<!-- src/lib/components/dashboard/app-sidebar.svelte -->
 <script lang="ts">
 	import * as Sidebar from '$lib/components/ui/sidebar/index.js';
 	import { page } from '$app/state';

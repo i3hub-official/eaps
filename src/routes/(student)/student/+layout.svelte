@@ -9,7 +9,7 @@
 
 <Sidebar.Provider>
 	<AppSidebar role="student" />
-	<Sidebar.Inset>
+	<Sidebar.Inset class="min-w-0 overflow-x-hidden">
 		{@render children()}
 	</Sidebar.Inset>
 </Sidebar.Provider>
