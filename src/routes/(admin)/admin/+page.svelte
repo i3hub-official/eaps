@@ -116,7 +116,7 @@
 	description={`Welcome back, ${user?.firstName || 'Admin'} • ${user?.primaryRole?.replace(/_/g, ' ') || 'Administrator'}`}
 />
 
-<main class="flex flex-1 flex-col gap-6 p-6">
+<main class="flex w-full max-w-full min-w-0 flex-1 flex-col gap-6 overflow-x-hidden p-4 sm:p-6">
 	<!-- ─── Stats Cards ────────────────────────────────────────────────── -->
 	<div class="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
 		{#each statsCards as s (s.label)}
@@ -132,7 +132,7 @@
 	</div>
 
 	<!-- ─── Quick Stats Bar ────────────────────────────────────────────── -->
-	<Card.Root>
+	<Card.Root class="min-w-0">
 		<Card.Content class="py-4">
 			<div class="grid grid-cols-2 gap-4 sm:grid-cols-5">
 				<div class="text-center">
@@ -165,76 +165,78 @@
 	<!-- ─── Main Grid ────────────────────────────────────────────────────── -->
 	<div class="grid grid-cols-1 gap-6 xl:grid-cols-3">
 		<!-- ─── Audit Log ─────────────────────────────────────────────────── -->
-		<Card.Root class="xl:col-span-2">
-			<Card.Header class="flex-row items-center justify-between">
+		<Card.Root class="min-w-0 xl:col-span-2">
+			<Card.Header class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
 				<div>
 					<Card.Title>Recent Audit Activity</Card.Title>
 					<Card.Description>Latest system and staff actions across the platform</Card.Description>
 				</div>
-				<Button variant="outline" size="sm" href="/admin/audit-logs">
+				<Button variant="outline" size="sm" href="/admin/audit-logs" class="w-full sm:w-auto">
 					<Eye class="mr-2 size-4" />
 					View All
 				</Button>
 			</Card.Header>
-			<Card.Content class="p-0">
-				<div class="overflow-x-auto max-h-[400px] overflow-y-auto">
-					<Table.Root>
-						<Table.Header class="sticky top-0 z-10 bg-background">
-							<Table.Row>
-								<Table.Head>Time</Table.Head>
-								<Table.Head>Actor</Table.Head>
-								<Table.Head>Action</Table.Head>
-								<Table.Head>Target</Table.Head>
-								<Table.Head>IP</Table.Head>
-							</Table.Row>
-						</Table.Header>
-						<Table.Body>
-							{#if auditLog.length === 0}
+			<Card.Content class="min-w-0 p-0">
+				<div class="w-full min-w-0 overflow-x-auto">
+					<div class="max-h-[400px] min-w-[640px] overflow-y-auto">
+						<Table.Root>
+							<Table.Header class="sticky top-0 z-10 bg-background">
 								<Table.Row>
-									<Table.Cell colspan="5" class="text-center text-muted-foreground py-8">
-										No recent activity found
-									</Table.Cell>
+									<Table.Head>Time</Table.Head>
+									<Table.Head>Actor</Table.Head>
+									<Table.Head>Action</Table.Head>
+									<Table.Head>Target</Table.Head>
+									<Table.Head>IP</Table.Head>
 								</Table.Row>
-							{:else}
-								{#each auditLog as row (row.time + row.actor)}
-									<Table.Row class="hover:bg-muted/30 transition-colors">
-										<Table.Cell class="font-mono text-xs text-muted-foreground whitespace-nowrap">
-											{row.time}
+							</Table.Header>
+							<Table.Body>
+								{#if auditLog.length === 0}
+									<Table.Row>
+										<Table.Cell colspan="5" class="text-center text-muted-foreground py-8">
+											No recent activity found
 										</Table.Cell>
-										<Table.Cell class="font-medium max-w-[150px] truncate" title={row.actor}>
-											{#if row.actorType === 'staff'}
-												<span class="flex items-center gap-1">
-													<UserCheck class="size-3 text-blue-500" />
-													{row.actor}
-												</span>
-											{:else if row.actorType === 'student'}
-												<span class="flex items-center gap-1">
-													<UsersIcon class="size-3 text-green-500" />
-													{row.actor}
-												</span>
-											{:else}
-												<span class="flex items-center gap-1">
-													<AlertCircle class="size-3 text-gray-500" />
-													{row.actor}
-												</span>
-											{/if}
-										</Table.Cell>
-										<Table.Cell class="text-muted-foreground">{row.action}</Table.Cell>
-										<Table.Cell class="max-w-[150px] truncate" title={row.target}>
-											{row.target}
-										</Table.Cell>
-										<Table.Cell class="font-mono text-xs text-muted-foreground">{row.ip}</Table.Cell>
 									</Table.Row>
-								{/each}
-							{/if}
-						</Table.Body>
-					</Table.Root>
+								{:else}
+									{#each auditLog as row (row.time + row.actor)}
+										<Table.Row class="hover:bg-muted/30 transition-colors">
+											<Table.Cell class="font-mono text-xs text-muted-foreground whitespace-nowrap">
+												{row.time}
+											</Table.Cell>
+											<Table.Cell class="font-medium max-w-[150px] truncate" title={row.actor}>
+												{#if row.actorType === 'staff'}
+													<span class="flex items-center gap-1">
+														<UserCheck class="size-3 text-blue-500" />
+														{row.actor}
+													</span>
+												{:else if row.actorType === 'student'}
+													<span class="flex items-center gap-1">
+														<UsersIcon class="size-3 text-green-500" />
+														{row.actor}
+													</span>
+												{:else}
+													<span class="flex items-center gap-1">
+														<AlertCircle class="size-3 text-gray-500" />
+														{row.actor}
+													</span>
+												{/if}
+											</Table.Cell>
+											<Table.Cell class="text-muted-foreground">{row.action}</Table.Cell>
+											<Table.Cell class="max-w-[150px] truncate" title={row.target}>
+												{row.target}
+											</Table.Cell>
+											<Table.Cell class="font-mono text-xs text-muted-foreground">{row.ip}</Table.Cell>
+										</Table.Row>
+									{/each}
+								{/if}
+							</Table.Body>
+						</Table.Root>
+					</div>
 				</div>
 			</Card.Content>
 		</Card.Root>
 
 		<!-- ─── Live Exam Sessions ───────────────────────────────────────── -->
-		<Card.Root>
+		<Card.Root class="min-w-0">
 			<Card.Header>
 				<Card.Title class="flex items-center gap-2">
 					<Radio class="size-4 text-green-500 animate-pulse" />
@@ -282,8 +284,8 @@
 	</div>
 
 	<!-- ─── Student Enrollment Card ────────────────────────────────────── -->
-	<Card.Root>
-		<Card.Header class="flex-row items-center justify-between">
+	<Card.Root class="min-w-0">
+		<Card.Header class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
 			<div>
 				<Card.Title class="flex items-center gap-2">
 					<GraduationCap class="size-4 text-primary" />
@@ -291,7 +293,7 @@
 				</Card.Title>
 				<Card.Description>Student distribution by level and top departments</Card.Description>
 			</div>
-			<Button variant="outline" size="sm" href="/admin/students">
+			<Button variant="outline" size="sm" href="/admin/students" class="w-full sm:w-auto">
 				<Eye class="mr-2 size-4" />
 				View All Students
 			</Button>
@@ -299,7 +301,7 @@
 		<Card.Content>
 			<div class="grid gap-6 md:grid-cols-2">
 				<!-- By Level -->
-				<div>
+				<div class="min-w-0">
 					<h4 class="text-sm font-medium text-muted-foreground mb-3">By Level</h4>
 					<div class="space-y-2">
 						{#if studentStats?.byLevel?.length > 0}
@@ -320,16 +322,16 @@
 				</div>
 
 				<!-- By Department -->
-				<div>
+				<div class="min-w-0">
 					<h4 class="text-sm font-medium text-muted-foreground mb-3">Top Departments</h4>
 					<div class="space-y-2">
 						{#if studentStats?.topDepartments?.length > 0}
 							{#each studentStats.topDepartments as item}
 								{@const total = stats.totalStudents || 1}
-								<div>
-									<div class="flex items-center justify-between text-sm">
-										<span class="truncate" title={item.department}>{item.department}</span>
-										<span class="font-medium">{item.count}</span>
+								<div class="min-w-0">
+									<div class="flex items-center justify-between gap-2 text-sm">
+										<span class="min-w-0 truncate" title={item.department}>{item.department}</span>
+										<span class="shrink-0 font-medium">{item.count}</span>
 									</div>
 									<Progress value={(item.count / total) * 100} class="h-1.5 mt-0.5" />
 								</div>
@@ -352,8 +354,8 @@
 	<!-- ─── Staff & Team Members Grid ──────────────────────────────────── -->
 	<div class="grid grid-cols-1 gap-6 xl:grid-cols-2">
 		<!-- ─── Recent Staff ────────────────────────────────────────────── -->
-		<Card.Root>
-			<Card.Header class="flex-row items-center justify-between">
+		<Card.Root class="min-w-0">
+			<Card.Header class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
 				<div>
 					<Card.Title class="flex items-center gap-2">
 						<UserCheck class="size-4 text-blue-500" />
@@ -362,11 +364,11 @@
 					<Card.Description>Latest staff members who joined</Card.Description>
 				</div>
 				<div class="flex gap-2">
-					<Button variant="outline" size="sm" href="/admin/staff-invitations">
+					<Button variant="outline" size="sm" href="/admin/staff-invitations" class="flex-1 sm:flex-none">
 						<Mail class="mr-2 size-4" />
 						Invite
 					</Button>
-					<Button variant="outline" size="sm" href="/admin/lecturers">
+					<Button variant="outline" size="sm" href="/admin/lecturers" class="flex-1 sm:flex-none">
 						<Eye class="mr-2 size-4" />
 						View All
 					</Button>
@@ -381,8 +383,8 @@
 				{:else}
 					<div class="space-y-3">
 						{#each recentStaff as staff (staff.id)}
-							<div class="flex items-center justify-between rounded-md border p-3 hover:bg-muted/30 transition-colors">
-								<div class="flex items-center gap-3 min-w-0">
+							<div class="flex flex-col gap-2 rounded-md border p-3 hover:bg-muted/30 transition-colors sm:flex-row sm:items-center sm:justify-between">
+								<div class="flex min-w-0 items-center gap-3">
 									<div class="flex size-8 shrink-0 items-center justify-center rounded-full bg-primary/10 text-xs font-medium text-primary">
 										{staff.name.split(' ').map((n: string) => n[0]).join('').slice(0, 2)}
 									</div>
@@ -402,7 +404,7 @@
 										</div>
 									</div>
 								</div>
-								<div class="flex items-center gap-2 shrink-0">
+								<div class="flex shrink-0 items-center gap-2 pl-11 sm:pl-0">
 									<Badge variant="outline" class="text-[10px]">
 										{staff.role.replace(/_/g, ' ')}
 									</Badge>
@@ -418,8 +420,8 @@
 		</Card.Root>
 
 		<!-- ─── Development Team ────────────────────────────────────────── -->
-		<Card.Root>
-			<Card.Header class="flex-row items-center justify-between">
+		<Card.Root class="min-w-0">
+			<Card.Header class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
 				<div>
 					<Card.Title class="flex items-center gap-2">
 						<Code class="size-4 text-purple-500" />
@@ -428,11 +430,11 @@
 					<Card.Description>Active developers on the platform</Card.Description>
 				</div>
 				<div class="flex gap-2">
-					<Button variant="outline" size="sm" href="/admin/team">
+					<Button variant="outline" size="sm" href="/admin/team" class="flex-1 sm:flex-none">
 						<UserPlus class="mr-2 size-4" />
 						Manage
 					</Button>
-					<Button variant="outline" size="sm" href="/admin/team">
+					<Button variant="outline" size="sm" href="/admin/team" class="flex-1 sm:flex-none">
 						<Eye class="mr-2 size-4" />
 						View All
 					</Button>
@@ -451,8 +453,8 @@
 				{:else}
 					<div class="space-y-3">
 						{#each devTeam as dev (dev.id)}
-							<div class="flex items-center justify-between rounded-md border p-3 hover:bg-muted/30 transition-colors">
-								<div class="flex items-center gap-3 min-w-0">
+							<div class="flex flex-col gap-2 rounded-md border p-3 hover:bg-muted/30 transition-colors sm:flex-row sm:items-center sm:justify-between">
+								<div class="flex min-w-0 items-center gap-3">
 									<div class="flex size-8 shrink-0 items-center justify-center rounded-full bg-purple-500/10 text-xs font-medium text-purple-600 dark:text-purple-400">
 										{dev.name.split(' ').map((n: string) => n[0]).join('').slice(0, 2)}
 									</div>
@@ -467,7 +469,7 @@
 										</div>
 									</div>
 								</div>
-								<div class="flex items-center gap-2 shrink-0">
+								<div class="flex shrink-0 items-center gap-2 pl-11 sm:pl-0">
 									<Badge class={getRoleColor(dev.role)}>
 										{dev.role}
 									</Badge>

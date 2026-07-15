@@ -321,63 +321,82 @@ export const actions: Actions = {
 	},
 
 	autoGrade: async ({ request, locals }) => {
-		const user = await requireLecturer(locals.user)
-		const formData = await request.formData()
-		const answerId = String(formData.get('answerId') ?? '')
+	const user = await requireLecturer(locals.user)
+	const formData = await request.formData()
+	const answerId = String(formData.get('answerId') ?? '')
 
-		if (!answerId) {
-			return fail(400, { error: 'Answer ID is required' })
-		}
+	if (!answerId) {
+		return fail(400, { error: 'Answer ID is required' })
+	}
 
-		const prisma = await getPrismaClient()
+	const prisma = await getPrismaClient()
 
-		const answer = await prisma.studentAnswer.findUnique({
-			where: { id: answerId },
-			include: {
-				session: {
-					include: {
-						assessment: true
-					}
-				},
-				question: {
-					include: {
-						options: true
-					}
+	const answer = await prisma.studentAnswer.findUnique({
+		where: { id: answerId },
+		include: {
+			session: {
+				include: {
+					assessment: true
 				}
+			},
+			question: {
+				include: {
+					options: true
+				}
+			}
+		}
+	})
+
+	if (!answer) {
+		return fail(404, { error: 'Answer not found' })
+	}
+
+	if (answer.session.assessment.createdById !== user.id) {
+		return fail(403, { error: 'You do not have permission to grade this answer' })
+	}
+
+	// ─── Auto-grade logic ──────────────────────────────────────────────────
+	const selectedOptions = answer.selectedOptions as string[] || []
+	const correctOptions = answer.question.options
+		.filter(o => o.isCorrect)
+		.map(o => o.id)
+		.sort()
+	
+	// Sort selected options for comparison
+	const sortedSelected = [...selectedOptions].sort()
+	
+	// Check if selections match exactly
+	const isCorrect = sortedSelected.length === correctOptions.length &&
+		sortedSelected.every((id, index) => id === correctOptions[index])
+
+	// Calculate marks
+	const marks = isCorrect ? Number(answer.question.marks) : 0
+
+	// Determine if it's a manual grade type (essay, fill blank, etc.)
+	const manualGradeTypes = ['ESSAY', 'FILL_BLANK', 'MATCHING', 'ORDERING']
+	const isManualGrade = manualGradeTypes.includes(answer.question.type)
+
+	try {
+		await prisma.studentAnswer.update({
+			where: { id: answerId },
+			data: {
+				marksAwarded: new Decimal(marks),
+				isCorrect,
+				isManualGraded: true,
+				gradedAt: new Date(),
+				gradedById: user.id,
 			}
 		})
 
-		if (!answer) {
-			return fail(404, { error: 'Answer not found' })
+		return { 
+			success: true, 
+			message: `Auto-graded successfully: ${marks} marks`, 
+			marks,
+			isCorrect 
 		}
-
-		if (answer.session.assessment.createdById !== user.id) {
-			return fail(403, { error: 'You do not have permission to grade this answer' })
-		}
-
-		const selectedOptions = answer.selectedOptions as string[] || []
-		const correctOptions = answer.question.options.filter(o => o.isCorrect).map(o => o.id)
-		const isCorrect = selectedOptions.length === correctOptions.length &&
-			selectedOptions.every(id => correctOptions.includes(id))
-
-		const marks = isCorrect ? Number(answer.question.marks) : 0
-
-		try {
-			await prisma.studentAnswer.update({
-				where: { id: answerId },
-				data: {
-					marksAwarded: new Decimal(marks),
-					isCorrect,
-					isManualGraded: true,
-					gradedAt: new Date(),
-					gradedById: user.id,
-				}
-			})
-
-			return { success: true, message: 'Auto-graded successfully', marks }
-		} catch (err) {
-			console.error('[grade] Failed to auto-grade:', err)
-			return fail(500, { error: 'Failed to auto-grade' })
-		}
+	} catch (err) {
+		console.error('[grade] Failed to auto-grade:', err)
+		return fail(500, { error: 'Failed to auto-grade' })
 	}
+}
 }
