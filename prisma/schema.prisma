@@ -1456,3 +1456,21 @@ enum DeveloperRole {
   SUPPORT        // Can view data and help users but no system changes
   OBSERVER       // Read-only access
 }
+
+model SystemLog {
+  id         String   @id @default(cuid())
+  level      String   // error, warn, info, debug, trace
+  message    String
+  source     String   // app, server, auth, api, db, etc.
+  metadata   Json?    // Additional context data
+  ipAddress  String?
+  userAgent  String?
+  userId     String?
+  userType   String?  // staff, student, system
+  createdAt  DateTime @default(now())
+
+  @@index([level])
+  @@index([source])
+  @@index([createdAt])
+  @@index([level, createdAt])
+}

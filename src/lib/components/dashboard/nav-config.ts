@@ -36,6 +36,10 @@ import Award from '@lucide/svelte/icons/award';
 import Shield from '@lucide/svelte/icons/shield';
 import AlertCircle from '@lucide/svelte/icons/alert-circle';
 import Code from '@lucide/svelte/icons/code';
+import Server from '@lucide/svelte/icons/server';
+import Activity from '@lucide/svelte/icons/activity';
+import Cpu from '@lucide/svelte/icons/cpu';
+import HardDrive from '@lucide/svelte/icons/hard-drive';
 
 export type NavItem = { label: string; href: string; icon: Component<any> };
 export type NavSection = { label?: string; items: NavItem[] };
@@ -267,8 +271,8 @@ export const navByRole: Record<Role, NavSection[]> = {
 			items: [
 				{ label: 'Development Team', href: '/admin/team', icon: Code },
 				{ label: 'Staff Invitations', href: '/admin/staff-invitations', icon: Mail },
-				{ label: 'Settings', href: '/admin/settings', icon: Settings },
-				{ label: 'System Logs', href: '/admin/system-logs', icon: FileText }
+				{ label: 'System Logs', href: '/admin/system-logs', icon: Server },
+				{ label: 'Settings', href: '/admin/settings', icon: Settings }
 			]
 		}
 	]

@@ -35,6 +35,8 @@
 		UsersIcon,
 		Code,
 		Laptop,
+		Eye,
+		EyeOff,
 	} from '@lucide/svelte/icons';
 	import { cn } from '$lib/utils.js';
 
@@ -54,6 +56,55 @@
 	let editDialogOpen = $state(false);
 	let editingDeveloper = $state<any>(null);
 
+	// ─── Role-Permission Mapping ────────────────────────────────────────────
+	const ROLE_PERMISSIONS: Record<string, string[]> = {
+		OWNER: [
+			'VIEW_DASHBOARD',
+			'MANAGE_USERS',
+			'MANAGE_COURSES',
+			'MANAGE_ASSESSMENTS',
+			'MANAGE_QUESTIONS',
+			'VIEW_REPORTS',
+			'MANAGE_GRADES',
+			'MANAGE_SETTINGS',
+			'MANAGE_DEVELOPERS',
+			'VIEW_LOGS',
+			'MANAGE_INVITATIONS',
+			'MANAGE_FACE_DATA'
+		],
+		ADMIN: [
+			'VIEW_DASHBOARD',
+			'MANAGE_USERS',
+			'MANAGE_COURSES',
+			'MANAGE_ASSESSMENTS',
+			'MANAGE_QUESTIONS',
+			'VIEW_REPORTS',
+			'MANAGE_GRADES',
+			'MANAGE_SETTINGS',
+			'VIEW_LOGS',
+			'MANAGE_INVITATIONS'
+		],
+		DEVELOPER: [
+			'VIEW_DASHBOARD',
+			'MANAGE_COURSES',
+			'MANAGE_ASSESSMENTS',
+			'MANAGE_QUESTIONS',
+			'VIEW_REPORTS',
+			'MANAGE_GRADES',
+			'VIEW_LOGS'
+		],
+		SUPPORT: [
+			'VIEW_DASHBOARD',
+			'VIEW_REPORTS',
+			'MANAGE_GRADES',
+			'VIEW_LOGS'
+		],
+		OBSERVER: [
+			'VIEW_DASHBOARD',
+			'VIEW_REPORTS'
+		]
+	};
+
 	// ─── Computed ────────────────────────────────────────────────────────────
 	const filteredDevelopers = $derived(
 		(data.developers || []).filter(dev => {
@@ -69,11 +120,57 @@
 		})
 	);
 
+	// ─── Role Change Handler ────────────────────────────────────────────────
+	function handleRoleChange(newRole: string) {
+		role = newRole;
+		// Auto-select permissions based on role
+		selectedPermissions = ROLE_PERMISSIONS[newRole] || [];
+	}
+
+	function handleEditRoleChange(newRole: string) {
+		if (editingDeveloper) {
+			editingDeveloper.role = newRole;
+			editingDeveloper.permissions = ROLE_PERMISSIONS[newRole] || [];
+		}
+	}
+
 	// ─── Handlers ────────────────────────────────────────────────────────────
 	function togglePermission(permission: string) {
+		// For OBSERVER role, prevent unchecking permissions
+		if (role === 'OBSERVER') {
+			const observerPerms = ROLE_PERMISSIONS['OBSERVER'];
+			if (observerPerms.includes(permission) && selectedPermissions.includes(permission)) {
+				toast.info('Observer permissions are fixed and cannot be changed');
+				return;
+			}
+		}
 		selectedPermissions = selectedPermissions.includes(permission)
 			? selectedPermissions.filter((p) => p !== permission)
 			: [...selectedPermissions, permission];
+	}
+
+	function toggleEditPermission(permission: string) {
+		if (!editingDeveloper) return;
+		
+		// For OBSERVER role, prevent unchecking permissions
+		if (editingDeveloper.role === 'OBSERVER') {
+			const observerPerms = ROLE_PERMISSIONS['OBSERVER'];
+			if (observerPerms.includes(permission) && editingDeveloper.permissions.includes(permission)) {
+				toast.info('Observer permissions are fixed and cannot be changed');
+				return;
+			}
+		}
+		
+		if (editingDeveloper.permissions.includes(permission)) {
+			editingDeveloper.permissions = editingDeveloper.permissions.filter((p: string) => p !== permission);
+		} else {
+			editingDeveloper.permissions = [...editingDeveloper.permissions, permission];
+		}
+	}
+
+	function isPermissionDisabled(permission: string, currentRole: string): boolean {
+		const rolePerms = ROLE_PERMISSIONS[currentRole] || [];
+		return rolePerms.includes(permission);
 	}
 
 	async function handleInvite(e: Event) {
@@ -215,7 +312,7 @@
 		});
 	}
 
-	// Pagination
+	// ─── Pagination ──────────────────────────────────────────────────────────
 	function goToPage(page: number) {
 		const url = new URL(window.location.href);
 		url.searchParams.set('page', String(page));
@@ -341,6 +438,7 @@
 							<select 
 								id="role" 
 								bind:value={role}
+								onchange={(e) => handleRoleChange(e.currentTarget.value)}
 								class="h-10 w-full rounded-md border border-input bg-background px-3 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
 							>
 								<option value="">Select role</option>
@@ -355,16 +453,46 @@
 							<Label>Permissions</Label>
 							<div class="max-h-48 overflow-y-auto rounded-md border p-2 space-y-1">
 								{#each data.availablePermissions as perm}
-									<label class="flex items-center gap-2 text-sm cursor-pointer hover:bg-muted/30 p-1 rounded">
+									{@const isDisabled = role === 'OBSERVER' && ROLE_PERMISSIONS['OBSERVER'].includes(perm.name)}
+									{@const isLocked = role === 'OBSERVER' && ROLE_PERMISSIONS['OBSERVER'].includes(perm.name) && selectedPermissions.includes(perm.name)}
+									{@const isSelected = selectedPermissions.includes(perm.name)}
+									
+									<label class={cn(
+										"flex items-center gap-2 text-sm cursor-pointer hover:bg-muted/30 p-1 rounded transition-colors",
+										role === 'OBSERVER' && ROLE_PERMISSIONS['OBSERVER'].includes(perm.name) ? 'bg-muted/20 border border-blue-200 dark:border-blue-800' : '',
+										role && !ROLE_PERMISSIONS[role]?.includes(perm.name) && selectedPermissions.includes(perm.name) ? 'bg-yellow-50/50 border border-yellow-200 dark:border-yellow-800' : ''
+									)}>
 										<Checkbox 
-											checked={selectedPermissions.includes(perm.name)} 
-											onCheckedChange={() => togglePermission(perm.name)} 
+											checked={isSelected}
+											onCheckedChange={() => togglePermission(perm.name)}
+											disabled={role === 'OBSERVER' && ROLE_PERMISSIONS['OBSERVER'].includes(perm.name)}
 										/>
-										<span>{perm.display}</span>
+										<span class={cn(
+											"flex-1",
+											role === 'OBSERVER' && ROLE_PERMISSIONS['OBSERVER'].includes(perm.name) ? 'font-medium' : ''
+										)}>
+											{perm.display}
+											{#if role === 'OBSERVER' && ROLE_PERMISSIONS['OBSERVER'].includes(perm.name)}
+												<span class="text-xs text-blue-500 ml-1">(fixed)</span>
+											{/if}
+										</span>
 										<span class="text-xs text-muted-foreground">— {perm.description}</span>
+										{#if role && ROLE_PERMISSIONS[role]?.includes(perm.name) && !ROLE_PERMISSIONS['OBSERVER'].includes(perm.name)}
+											<Badge variant="outline" class="text-[9px] text-blue-500 border-blue-300">Role</Badge>
+										{/if}
+										{#if role === 'OBSERVER' && ROLE_PERMISSIONS['OBSERVER'].includes(perm.name)}
+											<Badge variant="outline" class="text-[9px] text-gray-500 border-gray-300">View Only</Badge>
+										{/if}
 									</label>
 								{/each}
 							</div>
+							<p class="text-xs text-muted-foreground mt-1">
+								{#if role === 'OBSERVER'}
+									<span class="text-blue-500">🔒 Observer permissions are fixed and cannot be changed</span>
+								{:else if role}
+									<span class="text-muted-foreground">Blue <Badge variant="outline" class="text-[9px] text-blue-500 border-blue-300">Role</Badge> permissions are auto-selected for this role</span>
+								{/if}
+							</p>
 						</div>
 					</div>
 
@@ -472,7 +600,7 @@
 										{#if dev.permissions.length > 0}
 											<div class="flex flex-wrap gap-1 max-w-[150px]">
 												{#each dev.permissions.slice(0, 3) as perm}
-													<Badge variant="outline" class="text-[10px]">{perm}</Badge>
+													<Badge variant="outline" class="text-[10px]">{perm.replace(/_/g, ' ')}</Badge>
 												{/each}
 												{#if dev.permissions.length > 3}
 													<Badge variant="outline" class="text-[10px]">+{dev.permissions.length - 3}</Badge>
@@ -533,7 +661,7 @@
 					</TableBody>
 				</Table>
 
-				<!-- Pagination -->
+				<!-- ─── Pagination ────────────────────────────────────────────── -->
 				{#if data.pagination.totalPages > 1}
 					<div class="flex items-center justify-between border-t pt-4">
 						<div class="text-sm text-muted-foreground">
@@ -587,7 +715,7 @@
 
 		<!-- ─── Edit Developer Dialog ────────────────────────────────────── -->
 		<Dialog bind:open={editDialogOpen}>
-			<DialogContent>
+			<DialogContent class="max-w-2xl">
 				<DialogHeader>
 					<DialogTitle>Edit Developer</DialogTitle>
 					<DialogDescription>
@@ -600,6 +728,7 @@
 							<Label>Role</Label>
 							<select
 								bind:value={editingDeveloper.role}
+								onchange={(e) => handleEditRoleChange(e.currentTarget.value)}
 								class="h-10 w-full rounded-md border border-input bg-background px-3 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
 							>
 								{#each data.developerRoles as r}
@@ -612,21 +741,46 @@
 							<Label>Permissions</Label>
 							<div class="max-h-48 overflow-y-auto rounded-md border p-2 space-y-1">
 								{#each data.availablePermissions as perm}
-									<label class="flex items-center gap-2 text-sm cursor-pointer hover:bg-muted/30 p-1 rounded">
+									{@const isDisabled = editingDeveloper.role === 'OBSERVER' && ROLE_PERMISSIONS['OBSERVER'].includes(perm.name)}
+									{@const isLocked = editingDeveloper.role === 'OBSERVER' && ROLE_PERMISSIONS['OBSERVER'].includes(perm.name) && editingDeveloper.permissions.includes(perm.name)}
+									{@const isSelected = editingDeveloper.permissions.includes(perm.name)}
+									
+									<label class={cn(
+										"flex items-center gap-2 text-sm cursor-pointer hover:bg-muted/30 p-1 rounded transition-colors",
+										editingDeveloper.role === 'OBSERVER' && ROLE_PERMISSIONS['OBSERVER'].includes(perm.name) ? 'bg-muted/20 border border-blue-200 dark:border-blue-800' : '',
+										editingDeveloper.role && !ROLE_PERMISSIONS[editingDeveloper.role]?.includes(perm.name) && editingDeveloper.permissions.includes(perm.name) ? 'bg-yellow-50/50 border border-yellow-200 dark:border-yellow-800' : ''
+									)}>
 										<Checkbox 
-											checked={editingDeveloper.permissions.includes(perm.name)} 
-											onCheckedChange={() => {
-												if (editingDeveloper.permissions.includes(perm.name)) {
-													editingDeveloper.permissions = editingDeveloper.permissions.filter((p: string) => p !== perm.name);
-												} else {
-													editingDeveloper.permissions = [...editingDeveloper.permissions, perm.name];
-												}
-											}}
+											checked={isSelected}
+											onCheckedChange={() => toggleEditPermission(perm.name)}
+											disabled={editingDeveloper.role === 'OBSERVER' && ROLE_PERMISSIONS['OBSERVER'].includes(perm.name)}
 										/>
-										<span>{perm.display}</span>
+										<span class={cn(
+											"flex-1",
+											editingDeveloper.role === 'OBSERVER' && ROLE_PERMISSIONS['OBSERVER'].includes(perm.name) ? 'font-medium' : ''
+										)}>
+											{perm.display}
+											{#if editingDeveloper.role === 'OBSERVER' && ROLE_PERMISSIONS['OBSERVER'].includes(perm.name)}
+												<span class="text-xs text-blue-500 ml-1">(fixed)</span>
+											{/if}
+										</span>
+										<span class="text-xs text-muted-foreground">— {perm.description}</span>
+										{#if editingDeveloper.role && ROLE_PERMISSIONS[editingDeveloper.role]?.includes(perm.name) && !ROLE_PERMISSIONS['OBSERVER'].includes(perm.name)}
+											<Badge variant="outline" class="text-[9px] text-blue-500 border-blue-300">Role</Badge>
+										{/if}
+										{#if editingDeveloper.role === 'OBSERVER' && ROLE_PERMISSIONS['OBSERVER'].includes(perm.name)}
+											<Badge variant="outline" class="text-[9px] text-gray-500 border-gray-300">View Only</Badge>
+										{/if}
 									</label>
 								{/each}
 							</div>
+							<p class="text-xs text-muted-foreground mt-1">
+								{#if editingDeveloper.role === 'OBSERVER'}
+									<span class="text-blue-500">🔒 Observer permissions are fixed and cannot be changed</span>
+								{:else if editingDeveloper.role}
+									<span class="text-muted-foreground">Blue <Badge variant="outline" class="text-[9px] text-blue-500 border-blue-300">Role</Badge> permissions are auto-selected for this role</span>
+								{/if}
+							</p>
 						</div>
 
 						<div class="flex items-center gap-2">
