@@ -13,22 +13,51 @@
 	import {
 		Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 	} from '$lib/components/ui/table/index.js';
-	import { Loader, ChevronLeft, ChevronRight } from '@lucide/svelte/icons';
+	import { Tabs, TabsContent, TabsList, TabsTrigger } from '$lib/components/ui/tabs/index.js';
+	import {
+		Loader,
+		ChevronLeft,
+		ChevronRight,
+		UserPlus,
+		Shield,
+		Mail,
+		Building2,
+		Users,
+		BookOpen,
+		CheckCircle,
+		XCircle,
+		Clock,
+		UserCheck,
+		UserX,
+		Filter,
+		Search,
+		Eye,
+		EyeOff,
+		Copy,
+		Send,
+		Trash2,
+	} from '@lucide/svelte/icons';
+	import { page } from '$app/state';
 
 	let { data } = $props();
 
+	// ─── State ────────────────────────────────────────────────────────────────
 	let email = $state('');
 	let primaryRole = $state(data.roles[0] ?? '');
 	let collegeId = $state('');
 	let departmentId = $state('');
 	let selectedLevels = $state<number[]>([]);
 	let selectedCourseIds = $state<string[]>([]);
+	let selectedPermissions = $state<string[]>([]);
 	let isSubmitting = $state(false);
 	let errors = $state<Record<string, string>>({});
 	let resendingId = $state<string | null>(null);
 	let revokingId = $state<string | null>(null);
+	let searchQuery = $state('');
+	let filterStatus = $state('all');
+	let showToken = $state(false);
 
-	// Check if selected role needs college/department
+	// ─── Computed ────────────────────────────────────────────────────────────
 	const needsCollegeDept = $derived(!data.rolesWithoutCollegeDept.includes(primaryRole));
 
 	const availableDepartments = $derived(
@@ -43,6 +72,18 @@
 		)
 	);
 
+	const filteredInvitations = $derived(
+		data.invitations.filter(inv => {
+			const matchesSearch = searchQuery === '' ||
+				inv.email.toLowerCase().includes(searchQuery.toLowerCase()) ||
+				inv.role.toLowerCase().includes(searchQuery.toLowerCase()) ||
+				(inv.staffName && inv.staffName.toLowerCase().includes(searchQuery.toLowerCase()));
+			const matchesStatus = filterStatus === 'all' || inv.status === filterStatus;
+			return matchesSearch && matchesStatus;
+		})
+	);
+
+	// ─── Handlers ────────────────────────────────────────────────────────────
 	function toggleLevel(level: number) {
 		selectedLevels = selectedLevels.includes(level)
 			? selectedLevels.filter((l) => l !== level)
@@ -53,6 +94,12 @@
 		selectedCourseIds = selectedCourseIds.includes(id)
 			? selectedCourseIds.filter((c) => c !== id)
 			: [...selectedCourseIds, id];
+	}
+
+	function togglePermission(permission: string) {
+		selectedPermissions = selectedPermissions.includes(permission)
+			? selectedPermissions.filter((p) => p !== permission)
+			: [...selectedPermissions, permission];
 	}
 
 	async function handleCreate(e: Event) {
@@ -70,6 +117,9 @@
 			selectedLevels.forEach((l) => fd.append('levels', String(l)));
 			selectedCourseIds.forEach((c) => fd.append('courseIds', c));
 		}
+		
+		// Add permissions
+		selectedPermissions.forEach((p) => fd.append('permissions', p));
 
 		try {
 			const res = await fetch('?/create', { method: 'POST', body: fd });
@@ -82,6 +132,7 @@
 				departmentId = '';
 				selectedLevels = [];
 				selectedCourseIds = [];
+				selectedPermissions = [];
 				await invalidateAll();
 			} else if (result.type === 'failure') {
 				const d = result.data as any;
@@ -139,7 +190,8 @@
 	function statusVariant(status: string) {
 		if (status === 'PENDING') return 'secondary';
 		if (status === 'ACCEPTED') return 'default';
-		return 'destructive';
+		if (status === 'REVOKED') return 'destructive';
+		return 'outline';
 	}
 
 	function formatDate(date: string | Date) {
@@ -150,30 +202,135 @@
 		});
 	}
 
+	function getStatusIcon(status: string) {
+		if (status === 'PENDING') return Clock;
+		if (status === 'ACCEPTED') return CheckCircle;
+		if (status === 'REVOKED') return XCircle;
+		return Clock;
+	}
+
+	function getStatusColor(status: string) {
+		if (status === 'PENDING') return 'text-yellow-500';
+		if (status === 'ACCEPTED') return 'text-green-500';
+		if (status === 'REVOKED') return 'text-red-500';
+		return 'text-gray-500';
+	}
+
+	function getRoleIcon(role: string) {
+		const icons: Record<string, any> = {
+			SUPER_ADMIN: Shield,
+			VC: Shield,
+			DVC: Shield,
+			REGISTRAR: Shield,
+			DEAN: Building2,
+			HOD: Building2,
+			LECTURER: Users,
+			INVIGILATOR: UserCheck,
+			UNIVERSITY_EXAM_OFFICER: Shield,
+			COLLEGE_EXAM_OFFICER: Building2,
+		};
+		return icons[role] || Users;
+	}
+
 	// Pagination
 	function goToPage(page: number) {
 		const url = new URL(window.location.href);
 		url.searchParams.set('page', String(page));
 		window.location.href = url.toString();
 	}
+
+	function copyInvitationLink(invitationId: string) {
+		const link = `${window.location.origin}/onboard/staff/${invitationId}`;
+		navigator.clipboard.writeText(link);
+		toast.success('Invitation link copied to clipboard');
+	}
 </script>
 
-<Topbar title="Staff Invitations" description="Pre-onboard staff before they have an account" />
+<Topbar title="Staff Invitations" description="Pre-onboard staff before they have an account">
+	{#snippet actions()}
+		<Button variant="outline" size="sm" onclick={() => window.location.reload()}>
+			Refresh
+		</Button>
+	{/snippet}
+</Topbar>
 
 <main class="flex flex-1 flex-col gap-6 p-6">
+	<!-- Stats Cards -->
+	<div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+		<Card class="transition-all hover:shadow-md">
+			<CardHeader class="flex flex-row items-center justify-between space-y-0 pb-2">
+				<CardTitle class="text-sm font-medium">Total Invitations</CardTitle>
+				<Mail class="size-4 text-muted-foreground" />
+			</CardHeader>
+			<CardContent>
+				<div class="text-2xl font-bold">{data.pagination.totalItems}</div>
+				<p class="text-xs text-muted-foreground">all invitations</p>
+			</CardContent>
+		</Card>
+
+		<Card class="transition-all hover:shadow-md border-yellow-200 dark:border-yellow-800">
+			<CardHeader class="flex flex-row items-center justify-between space-y-0 pb-2">
+				<CardTitle class="text-sm font-medium">Pending</CardTitle>
+				<Clock class="size-4 text-yellow-500" />
+			</CardHeader>
+			<CardContent>
+				<div class="text-2xl font-bold text-yellow-600 dark:text-yellow-400">
+					{data.invitations.filter(i => i.status === 'PENDING').length}
+				</div>
+				<p class="text-xs text-muted-foreground">awaiting response</p>
+			</CardContent>
+		</Card>
+
+		<Card class="transition-all hover:shadow-md border-green-200 dark:border-green-800">
+			<CardHeader class="flex flex-row items-center justify-between space-y-0 pb-2">
+				<CardTitle class="text-sm font-medium">Accepted</CardTitle>
+				<UserCheck class="size-4 text-green-500" />
+			</CardHeader>
+			<CardContent>
+				<div class="text-2xl font-bold text-green-600 dark:text-green-400">
+					{data.invitations.filter(i => i.status === 'ACCEPTED').length}
+				</div>
+				<p class="text-xs text-muted-foreground">onboarded</p>
+			</CardContent>
+		</Card>
+
+		<Card class="transition-all hover:shadow-md border-red-200 dark:border-red-800">
+			<CardHeader class="flex flex-row items-center justify-between space-y-0 pb-2">
+				<CardTitle class="text-sm font-medium">Revoked</CardTitle>
+				<UserX class="size-4 text-red-500" />
+			</CardHeader>
+			<CardContent>
+				<div class="text-2xl font-bold text-red-600 dark:text-red-400">
+					{data.invitations.filter(i => i.status === 'REVOKED').length}
+				</div>
+				<p class="text-xs text-muted-foreground">cancelled</p>
+			</CardContent>
+		</Card>
+	</div>
+
+	<!-- Invite Form -->
 	<Card>
 		<CardHeader>
-			<CardTitle>Invite Staff</CardTitle>
+			<CardTitle class="flex items-center gap-2">
+				<UserPlus class="size-5" />
+				Invite Staff
+			</CardTitle>
 			<CardDescription>
-				They'll receive an email with an identification token to complete their own onboarding.
+				They'll receive an email with a link to complete their own onboarding.
 			</CardDescription>
 		</CardHeader>
 		<CardContent>
 			<form onsubmit={handleCreate} class="space-y-4">
 				<div class="grid gap-4 md:grid-cols-2">
 					<div class="space-y-2">
-						<Label for="email">Email *</Label>
-						<Input id="email" type="email" bind:value={email} placeholder="staff@mouau.edu.ng" />
+						<Label for="email">Email Address *</Label>
+						<Input 
+							id="email" 
+							type="email" 
+							bind:value={email} 
+							placeholder="staff@mouau.edu.ng"
+							class={errors.email ? 'border-destructive' : ''}
+						/>
 						{#if errors.email}<p class="text-sm text-destructive">{errors.email}</p>{/if}
 					</div>
 
@@ -190,10 +347,10 @@
 									selectedCourseIds = [];
 								}
 							}}
-							class="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
+							class="h-10 w-full rounded-md border border-input bg-background px-3 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
 						>
 							{#each data.roles as role}
-								<option value={role}>{role}</option>
+								<option value={role}>{role.replace(/_/g, ' ')}</option>
 							{/each}
 						</select>
 						{#if errors.primaryRole}<p class="text-sm text-destructive">{errors.primaryRole}</p>{/if}
@@ -206,7 +363,7 @@
 								id="college"
 								bind:value={collegeId}
 								onchange={() => { departmentId = ''; selectedCourseIds = []; }}
-								class="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
+								class="h-10 w-full rounded-md border border-input bg-background px-3 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
 							>
 								<option value="">Select college</option>
 								{#each data.colleges as c}
@@ -223,7 +380,7 @@
 								bind:value={departmentId}
 								disabled={!collegeId}
 								onchange={() => { selectedCourseIds = []; }}
-								class="h-10 w-full rounded-md border border-input bg-background px-3 text-sm disabled:opacity-50"
+								class="h-10 w-full rounded-md border border-input bg-background px-3 text-sm focus:outline-none focus:ring-2 focus:ring-ring disabled:opacity-50"
 							>
 								<option value="">Select department</option>
 								{#each availableDepartments as d}
@@ -236,11 +393,12 @@
 				</div>
 
 				{#if needsCollegeDept}
+					<!-- Levels -->
 					<div class="space-y-2">
-						<Label>Levels they teach (optional — filters course list below)</Label>
+						<Label>Levels They Teach <span class="text-muted-foreground font-normal">(optional — filters course list below)</span></Label>
 						<div class="flex flex-wrap gap-2">
 							{#each availableLevels as level}
-								<label class="flex items-center gap-2 rounded-md border px-3 py-1.5 text-sm cursor-pointer">
+								<label class="flex items-center gap-2 rounded-md border px-3 py-1.5 text-sm cursor-pointer hover:bg-muted/30 transition-colors">
 									<Checkbox checked={selectedLevels.includes(level)} onCheckedChange={() => toggleLevel(level)} />
 									{level}
 								</label>
@@ -248,8 +406,9 @@
 						</div>
 					</div>
 
+					<!-- Courses -->
 					<div class="space-y-2">
-						<Label>Courses they teach</Label>
+						<Label>Courses They Teach <span class="text-muted-foreground font-normal">(select all that apply)</span></Label>
 						{#if !departmentId}
 							<p class="text-sm text-muted-foreground">Select a department to see available courses.</p>
 						{:else if availableCourses.length === 0}
@@ -257,7 +416,7 @@
 						{:else}
 							<div class="max-h-64 overflow-y-auto rounded-md border divide-y">
 								{#each availableCourses as course}
-									<label class="flex items-center gap-3 p-2.5 text-sm cursor-pointer hover:bg-muted/40">
+									<label class="flex items-center gap-3 p-2.5 text-sm cursor-pointer hover:bg-muted/40 transition-colors">
 										<Checkbox checked={selectedCourseIds.includes(course.id)} onCheckedChange={() => toggleCourse(course.id)} />
 										<span>{course.code} — {course.title}</span>
 										<Badge variant="outline" class="ml-auto text-xs">{course.level}L</Badge>
@@ -269,29 +428,82 @@
 					</div>
 				{:else}
 					<div class="rounded-lg bg-muted/50 p-4 text-sm text-muted-foreground">
-						<p>University-wide roles (VC, DVC, Registrar, etc.) do not require college or department assignment.</p>
+						<Shield class="size-4 inline mr-2" />
+						University-wide roles (VC, DVC, Registrar, etc.) do not require college or department assignment.
 					</div>
 				{/if}
 
-				<Button type="submit" disabled={isSubmitting}>
-					{isSubmitting ? 'Sending…' : 'Send Invitation'}
+				<!-- Permissions -->
+				<div class="space-y-2">
+					<Label>Additional Permissions <span class="text-muted-foreground font-normal">(grant specific access rights)</span></Label>
+					<div class="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+						{#each data.permissions || [] as permission}
+							<label class="flex items-center gap-2 rounded-md border px-3 py-2 text-sm cursor-pointer hover:bg-muted/30 transition-colors">
+								<Checkbox checked={selectedPermissions.includes(permission.name)} onCheckedChange={() => togglePermission(permission.name)} />
+								<div>
+									<span>{permission.displayName || permission.name}</span>
+									{#if permission.description}
+										<p class="text-xs text-muted-foreground">{permission.description}</p>
+									{/if}
+								</div>
+							</label>
+						{:else}
+							<p class="text-sm text-muted-foreground col-span-full">No additional permissions available.</p>
+						{/each}
+					</div>
+				</div>
+
+				<Button type="submit" disabled={isSubmitting} class="gap-2">
+					{#if isSubmitting}
+						<Loader class="size-4 animate-spin" />
+						Sending Invitation...
+					{:else}
+						<Mail class="size-4" />
+						Send Invitation
+					{/if}
 				</Button>
 			</form>
 		</CardContent>
 	</Card>
 
+	<!-- Invitations List -->
 	<Card>
 		<CardHeader>
-			<CardTitle>Recent Invitations</CardTitle>
-			<CardDescription>
-				Showing {data.invitations.length} of {data.pagination.totalItems} invitations
-			</CardDescription>
+			<div class="flex flex-wrap items-center justify-between gap-4">
+				<div>
+					<CardTitle>Recent Invitations</CardTitle>
+					<CardDescription>
+						Showing {data.invitations.length} of {data.pagination.totalItems} invitations
+					</CardDescription>
+				</div>
+				
+				<!-- Filters -->
+				<div class="flex flex-wrap gap-2">
+					<div class="relative">
+						<Search class="absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground" />
+						<Input
+							bind:value={searchQuery}
+							placeholder="Search invitations..."
+							class="w-[180px] pl-8 h-8 text-sm"
+						/>
+					</div>
+					<select
+						bind:value={filterStatus}
+						class="h-8 rounded-md border border-input bg-background px-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+					>
+						<option value="all">All Status</option>
+						<option value="PENDING">Pending</option>
+						<option value="ACCEPTED">Accepted</option>
+						<option value="REVOKED">Revoked</option>
+					</select>
+				</div>
+			</div>
 		</CardHeader>
 		<CardContent class="space-y-4">
 			<Table>
 				<TableHeader>
 					<TableRow>
-						<TableHead>Staff Name</TableHead>
+						<TableHead>Staff</TableHead>
 						<TableHead>Email</TableHead>
 						<TableHead>Role</TableHead>
 						<TableHead>College / Dept</TableHead>
@@ -302,15 +514,21 @@
 					</TableRow>
 				</TableHeader>
 				<TableBody>
-					{#if data.invitations.length === 0}
+					{#if filteredInvitations.length === 0}
 						<TableRow>
 							<TableCell colspan="8" class="text-center text-muted-foreground py-8">
-								No invitations found
+								{#if searchQuery || filterStatus !== 'all'}
+									<Search class="mx-auto size-8 text-muted-foreground/50 mb-2" />
+									<p>No invitations match your filters</p>
+								{:else}
+									<Mail class="mx-auto size-8 text-muted-foreground/50 mb-2" />
+									<p>No invitations sent yet</p>
+								{/if}
 							</TableCell>
 						</TableRow>
 					{:else}
-						{#each data.invitations as inv}
-							<TableRow>
+						{#each filteredInvitations as inv}
+							<TableRow class="transition-colors hover:bg-muted/30">
 								<TableCell>
 									{#if inv.staffName}
 										<span class="font-medium">{inv.staffName}</span>
@@ -324,14 +542,39 @@
 									{/if}
 								</TableCell>
 								<TableCell class="font-mono text-sm">{inv.maskedEmail}</TableCell>
-								<TableCell>{inv.role}</TableCell>
-								<TableCell class="text-sm text-muted-foreground">
-									{inv.college === 'N/A' && inv.department === 'N/A' 
-										? '—' 
-										: `${inv.college} / ${inv.department}`}
+								<TableCell>
+									<div class="flex items-center gap-1.5">
+										<svelte:component this={getRoleIcon(inv.role)} class="size-3.5 text-muted-foreground" />
+										<span>{inv.role.replace(/_/g, ' ')}</span>
+									</div>
 								</TableCell>
-								<TableCell class="text-sm">{inv.courses.join(', ') || '—'}</TableCell>
-								<TableCell><Badge variant={statusVariant(inv.status)}>{inv.status}</Badge></TableCell>
+								<TableCell class="text-sm text-muted-foreground">
+									{#if inv.college === 'N/A' && inv.department === 'N/A'}
+										<span class="text-muted-foreground/50">—</span>
+									{:else}
+										{inv.college} / {inv.department}
+									{/if}
+								</TableCell>
+								<TableCell class="text-sm">
+									{#if inv.courses.length > 0}
+										<div class="flex flex-wrap gap-1 max-w-[150px]">
+											{#each inv.courses.slice(0, 3) as course}
+												<Badge variant="outline" class="text-[10px]">{course}</Badge>
+											{/each}
+											{#if inv.courses.length > 3}
+												<Badge variant="outline" class="text-[10px]">+{inv.courses.length - 3}</Badge>
+											{/if}
+										</div>
+									{:else}
+										<span class="text-muted-foreground/50">—</span>
+									{/if}
+								</TableCell>
+								<TableCell>
+									<Badge variant={statusVariant(inv.status)} class="gap-1">
+										<svelte:component this={getStatusIcon(inv.status)} class={cn("size-3", getStatusColor(inv.status))} />
+										{inv.status}
+									</Badge>
+								</TableCell>
 								<TableCell class="text-sm text-muted-foreground">{formatDate(inv.expiresAt)}</TableCell>
 								<TableCell class="text-right">
 									{#if inv.status === 'PENDING'}
@@ -339,27 +582,42 @@
 											<Button 
 												variant="ghost" 
 												size="sm" 
+												onclick={() => copyInvitationLink(inv.id)}
+												class="h-7 w-7 p-0"
+												title="Copy invitation link"
+											>
+												<Copy class="size-3.5" />
+												<span class="sr-only">Copy link</span>
+											</Button>
+											<Button 
+												variant="ghost" 
+												size="sm" 
 												onclick={() => handleResend(inv.id)}
 												disabled={resendingId === inv.id}
+												class="h-7 w-7 p-0"
+												title="Resend invitation"
 											>
 												{#if resendingId === inv.id}
-													<Loader class="size-3 animate-spin" />
+													<Loader class="size-3.5 animate-spin" />
 												{:else}
-													Resend
+													<Send class="size-3.5" />
 												{/if}
+												<span class="sr-only">Resend</span>
 											</Button>
 											<Button 
 												variant="ghost" 
 												size="sm" 
 												onclick={() => handleRevoke(inv.id)}
 												disabled={revokingId === inv.id}
-												class="text-destructive hover:text-destructive"
+												class="h-7 w-7 p-0 text-destructive hover:text-destructive hover:bg-destructive/10"
+												title="Revoke invitation"
 											>
 												{#if revokingId === inv.id}
-													<Loader class="size-3 animate-spin" />
+													<Loader class="size-3.5 animate-spin" />
 												{:else}
-													Revoke
+													<Trash2 class="size-3.5" />
 												{/if}
+												<span class="sr-only">Revoke</span>
 											</Button>
 										</div>
 									{/if}
@@ -388,13 +646,13 @@
 							<ChevronLeft class="size-3.5" />
 							Previous
 						</Button>
-						{#each Array(Math.min(5, data.pagination.totalPages)).fill(0).map((_, i) => i + 1) as page}
+						{#each Array(Math.min(5, data.pagination.totalPages)).fill(0).map((_, i) => i + 1) as p}
 							<Button
-								variant={page === data.pagination.currentPage ? 'default' : 'outline'}
+								variant={p === data.pagination.currentPage ? 'default' : 'outline'}
 								size="sm"
-								on:click={() => goToPage(page)}
+								onclick={() => goToPage(p)}
 							>
-								{page}
+								{p}
 							</Button>
 						{/each}
 						{#if data.pagination.totalPages > 5}

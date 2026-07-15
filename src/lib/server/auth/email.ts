@@ -607,6 +607,61 @@ ${APP_URL}
   return { html: wrapEmail(inner, `You're invited to join ${APP_SHORT}`), text }
 }
 
+// ─── Developer Team Invitation Email ──────────────────────────────────────
+
+export function buildDeveloperInvitationEmail(
+  name: string,
+  email: string,
+  roleDisplayName: string,
+  permissions: string[],
+  token: string,
+  expiryHours: number,
+  origin: string = APP_URL,
+): { html: string; text: string } {
+  const onboardLink = `${origin}/onboard/developer?token=${encodeURIComponent(token)}`
+  const permissionsText = permissions.length > 0 ? permissions.join(', ') : '(none assigned yet)'
+
+  const text = `
+Hello ${name},
+
+You've been invited to join the ${APP_NAME} (${APP_SHORT}) Development Team.
+
+Role: ${roleDisplayName}
+Permissions: ${permissionsText}
+
+To complete your registration, use the link below. This link contains your
+identification token and will expire in ${expiryHours} hours.
+
+${onboardLink}
+
+If you weren't expecting this invitation, you can safely ignore this email.
+
+---
+${APP_NAME} (${APP_SHORT})
+${APP_URL}
+  `.trim()
+
+  const rows: Array<{ label: string; value: string; mono?: boolean }> = [
+    { label: 'Role', value: roleDisplayName },
+    { label: 'Permissions', value: permissionsText },
+  ]
+
+  const inner = `
+    <h1 style="font-size: 18px; margin: 0 0 16px;">You've Been Invited to Join the Development Team</h1>
+    <p style="margin: 0 0 12px;">Hi ${name},</p>
+    <p style="margin: 0 0 4px;">You've been invited to join the ${APP_NAME} development team. Here are the details on file:</p>
+
+    ${detailTable(rows)}
+
+    <p style="margin: 0 0 4px;">Click below to complete your registration. This link contains your identification token and will expire in <strong>${expiryHours} hours</strong>.</p>
+    ${actionButton(onboardLink, 'Accept Invitation')}
+    <p style="margin: 0 0 4px;">This link will expire in <strong>${expiryHours} hours</strong>.</p>
+    <p style="margin: 16px 0 0; font-size: 13px; color: #555555;">If you weren't expecting this invitation, you can safely ignore this email.</p>
+  `
+
+  return { html: wrapEmail(inner, `You're invited to join the ${APP_SHORT} Development Team`), text }
+}
+
 // ─── Send Emails ─────────────────────────────────────────────────────────────
 
 export async function sendResetEmail(
@@ -713,6 +768,29 @@ export async function sendStaffInvitationEmail(
   return sendMail({
     to: email,
     subject: `You're invited to join ${APP_SHORT}`,
+    html,
+    text,
+  })
+}
+
+// ─── Developer Team Invitation Email ──────────────────────────────────────
+
+export async function sendDeveloperInvitationEmail(
+  email: string,
+  name: string,
+  roleDisplayName: string,
+  permissions: string[],
+  token: string,
+  expiryHours: number,
+  origin?: string,
+): Promise<{ success: boolean; error?: string; id?: string }> {
+  const { html, text } = buildDeveloperInvitationEmail(
+    name, email, roleDisplayName, permissions, token, expiryHours, origin
+  )
+
+  return sendMail({
+    to: email,
+    subject: `Join the ${APP_SHORT} Development Team`,
     html,
     text,
   })

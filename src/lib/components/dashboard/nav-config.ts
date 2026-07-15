@@ -33,9 +33,9 @@ import Clock from '@lucide/svelte/icons/clock';
 import UserCheck from '@lucide/svelte/icons/user-check';
 import UserX from '@lucide/svelte/icons/user-x';
 import Award from '@lucide/svelte/icons/award';
-import CreditCard from '@lucide/svelte/icons/credit-card';
 import Shield from '@lucide/svelte/icons/shield';
 import AlertCircle from '@lucide/svelte/icons/alert-circle';
+import Code from '@lucide/svelte/icons/code';
 
 export type NavItem = { label: string; href: string; icon: Component<any> };
 export type NavSection = { label?: string; items: NavItem[] };
@@ -225,8 +225,7 @@ export const navByRole: Record<Role, NavSection[]> = {
 			label: 'User Management',
 			items: [
 				{ label: 'Students', href: '/admin/students', icon: GraduationCap },
-				{ label: 'Lecturers', href: '/admin/lecturers', icon: Users },
-				{ label: 'Invitations', href: '/admin/staff-invitations', icon: Mail }
+				{ label: 'Lecturers', href: '/admin/lecturers', icon: Users }
 			]
 		},
 		
@@ -266,8 +265,10 @@ export const navByRole: Record<Role, NavSection[]> = {
 		{
 			label: 'System',
 			items: [
+				{ label: 'Development Team', href: '/admin/team', icon: Code },
+				{ label: 'Staff Invitations', href: '/admin/staff-invitations', icon: Mail },
 				{ label: 'Settings', href: '/admin/settings', icon: Settings },
-				{ label: 'Logs', href: '/admin/system-logs', icon: FileText }
+				{ label: 'System Logs', href: '/admin/system-logs', icon: FileText }
 			]
 		}
 	]

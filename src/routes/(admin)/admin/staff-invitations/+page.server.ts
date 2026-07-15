@@ -50,7 +50,7 @@ export const load: PageServerLoad = async ({ locals, url }) => {
 	const page = parseInt(url.searchParams.get('page') || '1')
 	const skip = (page - 1) * PAGE_SIZE
 
-	const [colleges, departments, courses, invitations, totalCount] = await Promise.all([
+	const [colleges, departments, courses, invitations, totalCount, permissions] = await Promise.all([
 		prisma.college.findMany({ orderBy: { name: 'asc' } }),
 		prisma.department.findMany({ orderBy: { name: 'asc' } }),
 		prisma.course.findMany({ include: { level: true }, orderBy: { code: 'asc' } }),
@@ -66,6 +66,15 @@ export const load: PageServerLoad = async ({ locals, url }) => {
 			take: PAGE_SIZE,
 		}),
 		prisma.staffInvitation.count(),
+		// ─── FIX: Remove displayName ──────────────────────────────────────
+		prisma.permission.findMany({
+			select: {
+				name: true,
+				description: true,
+				group: true,
+			},
+			orderBy: { group: 'asc' },
+		}),
 	])
 
 	const totalPages = Math.ceil(totalCount / PAGE_SIZE)
@@ -81,6 +90,12 @@ export const load: PageServerLoad = async ({ locals, url }) => {
 			title: c.title,
 			level: c.level.name,
 			departmentId: c.departmentId,
+		})),
+		permissions: permissions.map((p) => ({
+			name: p.name,
+			displayName: p.name.replace(/_/g, ' '), // Generate display name from name
+			description: p.description,
+			group: p.group,
 		})),
 		invitations: invitations.map((inv) => {
 			let staffName = null
@@ -135,6 +150,7 @@ export const actions: Actions = {
 		const departmentId = String(formData.get('departmentId') ?? '')
 		const levels = formData.getAll('levels').map((v) => Number(v)).filter((n) => !Number.isNaN(n))
 		const courseIds = formData.getAll('courseIds').map(String).filter(Boolean)
+		const permissions = formData.getAll('permissions').map(String).filter(Boolean)
 
 		const errors: Record<string, string> = {}
 		if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) errors.email = 'A valid email is required'
@@ -184,6 +200,17 @@ export const actions: Actions = {
 				if (outOfScope) {
 					return fail(400, { errors: { courseIds: 'One or more selected courses fall outside the selected levels' } })
 				}
+			}
+		}
+
+		// Verify permissions exist
+		if (permissions.length > 0) {
+			const validPermissions = await prisma.permission.findMany({
+				where: { name: { in: permissions } },
+				select: { name: true },
+			})
+			if (validPermissions.length !== permissions.length) {
+				return fail(400, { errors: { permissions: 'One or more selected permissions are invalid' } })
 			}
 		}
 

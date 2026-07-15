@@ -1428,3 +1428,31 @@ model StaffPreference {
 
   @@map("staff_preferences")
 }
+
+model DeveloperTeam {
+  id            String   @id @default(cuid())
+  email         String   @unique
+  name          String
+  role          DeveloperRole
+  permissions   String[] // List of permission names
+  isActive      Boolean  @default(true)
+  lastLoginAt   DateTime?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  invitedBy     String?
+  invitedAt     DateTime?
+  acceptedAt    DateTime?
+  tokenHash     String?  // For invitation
+  tokenExpiresAt DateTime?
+
+  @@index([email])
+  @@index([isActive])
+}
+
+enum DeveloperRole {
+  OWNER          // Full access - can manage everything including other developers
+  ADMIN          // Can manage the system but not other developers
+  DEVELOPER      // Can develop features but limited system access
+  SUPPORT        // Can view data and help users but no system changes
+  OBSERVER       // Read-only access
+}
