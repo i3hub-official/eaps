@@ -13,6 +13,16 @@ import {
 
 const PAGE_SIZE = 20
 
+// Tier 1 fields each use their own fixed IV (see FIXED_IV in encryption.ts),
+// so decryption must be routed to the matching reveal function -- calling
+// revealName() on a matricNumber ciphertext decrypts with the wrong IV and
+// fails PKCS7 padding validation on the first/only block.
+const TIER1_REVEALERS: Record<string, (v: string) => string> = {
+	name: revealName,
+	matricNo: revealMatricNumber,
+	email: revealEmail,
+}
+
 function safeReveal(fn: () => string, fallback: string): string {
 	try {
 		const result = fn()
@@ -23,37 +33,29 @@ function safeReveal(fn: () => string, fallback: string): string {
 	}
 }
 
-// Robust decrypt that tries multiple methods
-function decryptField(value: string | null | undefined): string {
+// Detects which encryption tier produced a value and calls the matching
+// decrypt function.
+//   Tier 1 (searchable, fixed IV): pure hex, no separator       -> tier1Field-specific revealer
+//   Tier 2 (field, random IV):     "iv:ciphertext"   (1 colon)  -> decryptField (revealText)
+//   Tier 3 (secure, GCM):          "iv:tag:ciphertext" (2 colons)
+function decryptField(value: string | null | undefined, tier1Field: keyof typeof TIER1_REVEALERS = 'name'): string {
 	if (!value) return 'N/A'
-	
-	// Ensure value is a string
+
 	const strValue = String(value)
-	
-	// If not encrypted, return as-is
 	if (!isEncrypted(strValue)) return strValue
-	
-	// Try revealName first (most common for names)
-	try {
-		return safeReveal(() => revealName(strValue), strValue)
-	} catch (e) {
-		// Try revealText for generic encrypted fields
-		try {
-			return safeReveal(() => revealText(strValue), strValue)
-		} catch (e2) {
-			// Try revealMatricNumber for matric numbers
-			try {
-				return safeReveal(() => revealMatricNumber(strValue), strValue)
-			} catch (e3) {
-				// Try revealEmail for emails
-				try {
-					return safeReveal(() => revealEmail(strValue), strValue)
-				} catch (e4) {
-					return strValue // Return original if all fail
-				}
-			}
-		}
+
+	const colonCount = (strValue.match(/:/g) || []).length
+
+	if (colonCount >= 1) {
+		// Tier 2 (or Tier 3) format -- random IV, not the fixed-IV
+		// searchable format. This is what mismatched-encryption rows contain.
+		return safeReveal(() => revealText(strValue), '[Encrypted - format mismatch]')
 	}
+
+	// No colon -- pure hex, Tier 1 searchable format. Must use the revealer
+	// matching this specific field's fixed IV.
+	const revealer = TIER1_REVEALERS[tier1Field] || revealName
+	return safeReveal(() => revealer(strValue), '[Decrypt failed]')
 }
 
 export const load: PageServerLoad = async ({ locals, url }) => {
@@ -141,19 +143,19 @@ export const load: PageServerLoad = async ({ locals, url }) => {
 		try {
 			// Decrypt name
 			if (student.firstName && student.lastName) {
-				const firstName = decryptField(student.firstName)
-				const lastName = decryptField(student.lastName)
+				const firstName = decryptField(student.firstName, 'name')
+				const lastName = decryptField(student.lastName, 'name')
 				name = `${firstName} ${lastName}`.trim()
 			}
 
 			// Decrypt matric number
 			if (student.matricNumber) {
-				matricNumber = decryptField(student.matricNumber)
+				matricNumber = decryptField(student.matricNumber, 'matricNo')
 			}
 
 			// Decrypt email
 			if (student.email) {
-				email = decryptField(student.email)
+				email = decryptField(student.email, 'email')
 			}
 
 			// Decrypt level name (if encrypted)

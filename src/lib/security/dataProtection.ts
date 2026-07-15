@@ -399,14 +399,22 @@ export function hashOtp(code: string): string {
 
 export function isEncrypted(value: string | null): boolean {
 	if (!value) return false
-	
-	// Encrypted values are long hex or base64 strings with separators (: or ,)
-	// Plain text fields like names, departments, email are readable ASCII.
-	// If it's long AND contains hex chars OR contains : or , separators, it's encrypted.
-	const hasHexPattern = /^[0-9a-f]{20,}(\s|,)[0-9a-f]{20,}/.test(value); // hex with separator
-	const hasBase64Pattern = /^[A-Za-z0-9+/]{20,}(:|,)[A-Za-z0-9+/]/.test(value); // base64 with separator
-	const hasColonSeparator = value.includes(':') && value.length > 20;
-	const hasCommaSeparator = value.includes(',') && value.length > 20;
-	
-	return hasHexPattern || hasBase64Pattern || hasColonSeparator || hasCommaSeparator;
+	const v = value.trim()
+
+	// Tier 2 ("iv:ciphertext") / Tier 3 ("iv:tag:ciphertext"): colon-separated
+	// hex segments, each at least one AES block.
+	const colonParts = v.split(':')
+	if (colonParts.length === 2 || colonParts.length === 3) {
+		return colonParts.every(p => /^[0-9a-fA-F]+$/.test(p) && p.length >= 16)
+	}
+
+	// Tier 1 (searchable, fixed IV): continuous hex, no separator at all --
+	// this is encryptSearchable()'s actual output format and was previously
+	// never matched by any branch here, since every branch required a
+	// colon/comma/space. Minimum length is one AES block (16 bytes = 32 hex chars).
+	if (/^[0-9a-fA-F]+$/.test(v) && v.length >= 32 && v.length % 2 === 0) {
+		return true
+	}
+
+	return false
 }

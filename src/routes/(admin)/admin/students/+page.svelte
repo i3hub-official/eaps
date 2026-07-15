@@ -112,29 +112,32 @@
 
 <Topbar title="Students" description="Manage all student accounts">
 	{#snippet actions()}
-		<Button variant="outline" size="sm" href="/admin/students/registration-control">
-			Registration Control
-		</Button>
-		<Button
-			variant="outline"
-			size="sm"
-			onclick={handleRefresh}
-			disabled={isRefreshing}
-		>
-			{#if isRefreshing}
-				<LoaderCircle class="size-4 animate-spin" />
-			{:else}
-				<RefreshCw class="size-4" />
-			{/if}
-			Refresh
-		</Button>
-		<Button size="sm">
-			Add Student
-		</Button>
+		<div class="flex flex-wrap items-center gap-2">
+			<Button variant="outline" size="sm" href="/admin/students/registration-control" class="whitespace-nowrap">
+				Registration Control
+			</Button>
+			<Button
+				variant="outline"
+				size="sm"
+				onclick={handleRefresh}
+				disabled={isRefreshing}
+				class="whitespace-nowrap"
+			>
+				{#if isRefreshing}
+					<LoaderCircle class="size-4 animate-spin" />
+				{:else}
+					<RefreshCw class="size-4" />
+				{/if}
+				Refresh
+			</Button>
+			<Button size="sm" class="whitespace-nowrap">
+				Add Student
+			</Button>
+		</div>
 	{/snippet}
 </Topbar>
 
-<main class="flex flex-1 flex-col gap-6 p-6">
+<main class="flex w-full max-w-full flex-1 flex-col gap-6 overflow-x-hidden p-4 sm:p-6">
 	{#if data?.error}
 		<Alert variant="destructive">
 			<AlertCircle class="size-4" />
@@ -191,76 +194,74 @@
 		<!-- Filters -->
 		<Card>
 			<CardContent class="pt-6">
-				<div class="flex flex-col gap-4">
-					<div class="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-						<div class="relative flex-1">
-							<Search class="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
-							<Input
-								bind:value={searchQuery}
-								placeholder="Search by name, matric, or email..."
-								class="pl-9"
-								onkeydown={(e) => e.key === 'Enter' && applyFilters()}
-							/>
-						</div>
-						<div class="flex flex-wrap gap-2">
-							<Select type="single" bind:value={filterLevel}>
-								<SelectTrigger class="w-[130px]">
-									<span class="truncate">
-										{filterLevel === 'all' ? 'All Levels' : `${filterLevel} Level`}
-									</span>
-								</SelectTrigger>
-								<SelectContent>
-									<SelectItem value="all">All Levels</SelectItem>
-									{#each data?.levels || [] as level}
-										<SelectItem value={level.id}>{level.name}</SelectItem>
-									{/each}
-								</SelectContent>
-							</Select>
-
-							<Select type="single" bind:value={filterStatus}>
-								<SelectTrigger class="w-[130px]">
-									<span class="truncate">
-										{filterStatus === 'all' ? 'All Status' : filterStatus}
-									</span>
-								</SelectTrigger>
-								<SelectContent>
-									<SelectItem value="all">All Status</SelectItem>
-									<SelectItem value="ACTIVE">Active</SelectItem>
-									<SelectItem value="SUSPENDED">Suspended</SelectItem>
-									<SelectItem value="GRADUATED">Graduated</SelectItem>
-									<SelectItem value="WITHDRAWN">Withdrawn</SelectItem>
-									<SelectItem value="DEFERRED">Deferred</SelectItem>
-									<SelectItem value="EXPELLED">Expelled</SelectItem>
-								</SelectContent>
-							</Select>
-
-							<Select type="single" bind:value={filterDepartment}>
-								<SelectTrigger class="w-[130px]">
-									<span class="truncate">
-										{filterDepartment === 'all' ? 'All Depts' : 
-											data?.departments?.find(d => d.id === filterDepartment)?.shortName || 'All Depts'}
-									</span>
-								</SelectTrigger>
-								<SelectContent>
-									<SelectItem value="all">All Departments</SelectItem>
-									{#each data?.departments || [] as dept}
-										<SelectItem value={dept.id}>{dept.shortName}</SelectItem>
-									{/each}
-								</SelectContent>
-							</Select>
-
-							{#if searchQuery || filterLevel !== 'all' || filterStatus !== 'all' || filterDepartment !== 'all'}
-								<Button variant="ghost" size="sm" onclick={clearFilters}>
-									Clear
-								</Button>
-							{/if}
-						</div>
+				<div class="flex min-w-0 flex-col gap-4">
+					<div class="relative w-full min-w-0">
+						<Search class="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+						<Input
+							bind:value={searchQuery}
+							placeholder="Search by name, matric, or email..."
+							class="w-full pl-9"
+							onkeydown={(e) => e.key === 'Enter' && applyFilters()}
+						/>
 					</div>
-					<div class="flex items-center justify-between">
+					<div class="grid min-w-0 grid-cols-2 gap-2 sm:grid-cols-3 lg:flex lg:flex-wrap">
+						<Select type="single" bind:value={filterLevel}>
+							<SelectTrigger class="w-full min-w-0 lg:w-[130px]">
+								<span class="truncate">
+									{filterLevel === 'all' ? 'All Levels' : `${filterLevel} Level`}
+								</span>
+							</SelectTrigger>
+							<SelectContent>
+								<SelectItem value="all">All Levels</SelectItem>
+								{#each data?.levels || [] as level}
+									<SelectItem value={level.id}>{level.name}</SelectItem>
+								{/each}
+							</SelectContent>
+						</Select>
+
+						<Select type="single" bind:value={filterStatus}>
+							<SelectTrigger class="w-full min-w-0 lg:w-[130px]">
+								<span class="truncate">
+									{filterStatus === 'all' ? 'All Status' : filterStatus}
+								</span>
+							</SelectTrigger>
+							<SelectContent>
+								<SelectItem value="all">All Status</SelectItem>
+								<SelectItem value="ACTIVE">Active</SelectItem>
+								<SelectItem value="SUSPENDED">Suspended</SelectItem>
+								<SelectItem value="GRADUATED">Graduated</SelectItem>
+								<SelectItem value="WITHDRAWN">Withdrawn</SelectItem>
+								<SelectItem value="DEFERRED">Deferred</SelectItem>
+								<SelectItem value="EXPELLED">Expelled</SelectItem>
+							</SelectContent>
+						</Select>
+
+						<Select type="single" bind:value={filterDepartment}>
+							<SelectTrigger class="w-full min-w-0 lg:w-[130px]">
+								<span class="truncate">
+									{filterDepartment === 'all' ? 'All Depts' : 
+										data?.departments?.find(d => d.id === filterDepartment)?.shortName || 'All Depts'}
+								</span>
+							</SelectTrigger>
+							<SelectContent>
+								<SelectItem value="all">All Departments</SelectItem>
+								{#each data?.departments || [] as dept}
+									<SelectItem value={dept.id}>{dept.shortName}</SelectItem>
+								{/each}
+							</SelectContent>
+						</Select>
+
+						{#if searchQuery || filterLevel !== 'all' || filterStatus !== 'all' || filterDepartment !== 'all'}
+							<Button variant="ghost" size="sm" onclick={clearFilters} class="w-full lg:w-auto">
+								Clear
+							</Button>
+						{/if}
+					</div>
+					<div class="flex flex-col-reverse items-stretch gap-2 sm:flex-row sm:items-center sm:justify-between">
 						<p class="text-sm text-muted-foreground">
 							Showing {data?.students?.length || 0} of {data?.pagination?.totalItems || 0} students
 						</p>
-						<Button variant="outline" size="sm" onclick={applyFilters}>
+						<Button variant="outline" size="sm" onclick={applyFilters} class="w-full sm:w-auto">
 							Apply Filters
 						</Button>
 					</div>
@@ -269,10 +270,10 @@
 		</Card>
 
 		<!-- Students Table -->
-		<Card>
-			<CardContent class="p-0">
-				<div class="overflow-x-auto">
-					<div class="max-h-[600px] overflow-y-auto">
+		<Card class="min-w-0">
+			<CardContent class="min-w-0 p-0">
+				<div class="w-full min-w-0 overflow-x-auto">
+					<div class="max-h-[600px] min-w-[720px] overflow-y-auto">
 						<Table>
 							<TableHeader class="sticky top-0 z-10 bg-background">
 								<TableRow>
@@ -322,11 +323,11 @@
 													{getStatusBadge(student.status).label}
 												</Badge>
 											</TableCell>
-											<TableCell className="text-sm text-muted-foreground">
+											<TableCell class="whitespace-nowrap text-sm text-muted-foreground">
 												{formatDate(student.createdAt)}
 											</TableCell>
-											<TableCell className="text-right">
-												<div className="flex justify-end gap-1">
+											<TableCell class="text-right">
+												<div class="flex justify-end gap-1">
 													<Button variant="ghost" size="sm" class="h-7 w-7 p-0" href={`/admin/students/${student.id}`}>
 														<Eye class="size-3.5" />
 														<span class="sr-only">View</span>
@@ -347,13 +348,13 @@
 
 				<!-- Pagination -->
 				{#if data?.pagination && data.pagination.totalPages > 1}
-					<div class="flex items-center justify-between border-t border-border px-4 py-3">
+					<div class="flex flex-col gap-2 border-t border-border px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
 						<div class="text-sm text-muted-foreground">
 							Page {data.pagination.currentPage} of {data.pagination.totalPages}
 							<span class="mx-2">•</span>
 							{data.pagination.totalItems} total
 						</div>
-						<div class="flex gap-1">
+						<div class="flex flex-wrap gap-1">
 							<Button
 								variant="outline"
 								size="sm"
