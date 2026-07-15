@@ -8,7 +8,7 @@
 </script>
 
 <svelte:head>
-	<title>Create Multiple Choice Question — MOUAU e-Test</title>
+	<title>Create Multiple Choice Question — EAPS</title>
 </svelte:head>
 
 <Topbar title="Create Multiple Choice Question" description="Create a question with multiple answer options">

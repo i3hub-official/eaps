@@ -514,7 +514,7 @@
 </script>
 
 <svelte:head>
-	<title>Register — MOUAU e-Test</title>
+	<title>Register — EAPS</title>
 </svelte:head>
 
 <AuthShell

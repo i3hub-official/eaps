@@ -376,7 +376,7 @@
 </script>
 
 <svelte:head>
-	<title>Assessments — MOUAU e-Test</title>
+	<title>Assessments — EAPS</title>
 </svelte:head>
 
 <Topbar title="Assessments" description="Manage and monitor all your assessments">

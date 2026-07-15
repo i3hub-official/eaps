@@ -153,7 +153,7 @@
 </script>
 
 <svelte:head>
-	<title>Dashboard — MOUAU e-Test</title>
+	<title>Dashboard — EAPS</title>
 </svelte:head>
 
 <Topbar title="Dashboard" />

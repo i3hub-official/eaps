@@ -121,7 +121,7 @@
 </script>
 
 <svelte:head>
-	<title>Staff Onboarding — MOUAU e-Test</title>
+	<title>Staff Onboarding — EAPS</title>
 </svelte:head>
 
 <div class="flex min-h-screen flex-col items-center justify-center bg-gradient-to-b from-background to-muted/30 p-4">
@@ -135,7 +135,7 @@
 			</div>
 			<h1 class="text-3xl font-bold">Staff Onboarding</h1>
 			<p class="mt-2 text-sm text-muted-foreground">
-				Complete your profile to start using MOUAU e-Test
+				Complete your profile to start using EAPS
 			</p>
 		</div>
 

@@ -85,7 +85,7 @@
 </script>
 
 <svelte:head>
-	<title>{a.title} — MOUAU e-Test</title>
+	<title>{a.title} — EAPS</title>
 </svelte:head>
 
 <Topbar title={a.title} description="{a.course.code} — {a.course.title}">

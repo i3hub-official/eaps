@@ -174,7 +174,7 @@
 </script>
 
 <svelte:head>
-	<title>Messages — MOUAU e-Test</title>
+	<title>Messages — EAPS</title>
 </svelte:head>
 
 <Topbar title="Messages" description="Communicate with your students">

@@ -23,7 +23,7 @@
 </script>
 
 <svelte:head>
-	<title>Your verification code — MOUAU e-Test</title>
+	<title>Your verification code — EAPS</title>
 </svelte:head>
 
 <AuthShell

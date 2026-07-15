@@ -174,7 +174,7 @@
 </script>
 
 <svelte:head>
-	<title>Developer Onboarding — MOUAU e-Test</title>
+	<title>Developer Onboarding — EAPS</title>
 </svelte:head>
 
 <div class="flex min-h-screen flex-col items-center justify-center bg-gradient-to-b from-background to-muted/30 p-4">
@@ -188,7 +188,7 @@
 			</div>
 			<h1 class="text-3xl font-bold">Developer Onboarding</h1>
 			<p class="mt-2 text-sm text-muted-foreground">
-				Join the MOUAU e-Test development team
+				Join the EAPS development team
 			</p>
 		</div>
 

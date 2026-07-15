@@ -37,7 +37,7 @@
 		window.addEventListener('appinstalled', () => {
 			canInstall = false;
 			deferredPrompt = null;
-			toast.success('MOUAU e-Test installed');
+			toast.success('EAPS e-Test installed');
 		});
 	});
 

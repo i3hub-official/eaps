@@ -23,7 +23,7 @@
 </script>
 
 <svelte:head>
-	<title>Face Duplicate Detection — MOUAU e-Test</title>
+	<title>Face Duplicate Detection — EAPS</title>
 </svelte:head>
 
 <Topbar title="Face Duplicate Detection" description="Scan for students sharing an enrolled face across accounts" />

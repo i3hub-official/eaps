@@ -78,7 +78,7 @@
 </script>
 
 <svelte:head>
-	<title>Reports — MOUAU e-Test</title>
+	<title>Reports — EAPS</title>
 </svelte:head>
 
 <Topbar title="Reports" description="Overview of assessment performance and analytics">

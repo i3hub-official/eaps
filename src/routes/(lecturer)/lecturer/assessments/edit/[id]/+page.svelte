@@ -145,7 +145,7 @@
 </script>
 
 <svelte:head>
-	<title>Edit Assessment — MOUAU e-Test</title>
+	<title>Edit Assessment — EAPS</title>
 </svelte:head>
 
 <Topbar

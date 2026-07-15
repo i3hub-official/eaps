@@ -205,7 +205,7 @@
 </script>
 
 <svelte:head>
-	<title>Grade Submissions — MOUAU e-Test</title>
+	<title>Grade Submissions — EAPS</title>
 </svelte:head>
 
 <Topbar title="Grade Submissions" description="Review and grade student submissions">

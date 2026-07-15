@@ -189,7 +189,7 @@
 </script>
 
 <svelte:head>
-	<title>Attendance Tracking — MOUAU e-Test</title>
+	<title>Attendance Tracking — EAPS</title>
 </svelte:head>
 
 <Topbar title="Attendance Tracking" description="Monitor student attendance and participation">

@@ -83,7 +83,7 @@
 </script>
 
 <svelte:head>
-	<title>Sign in — MOUAU e-Test</title>
+	<title>Sign in — EAPS</title>
 </svelte:head>
 
 <AuthShell

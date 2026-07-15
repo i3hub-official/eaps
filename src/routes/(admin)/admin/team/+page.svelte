@@ -321,7 +321,7 @@
 </script>
 
 <svelte:head>
-	<title>Development Team — MOUAU e-Test</title>
+	<title>Development Team — EAPS</title>
 </svelte:head>
 
 <Topbar title="Development Team" description="Manage your development team members">

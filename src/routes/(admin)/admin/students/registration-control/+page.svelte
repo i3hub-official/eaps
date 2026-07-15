@@ -48,7 +48,7 @@
 </script>
 
 <svelte:head>
-	<title>Registration Control — MOUAU e-Test</title>
+	<title>Registration Control — EAPS</title>
 </svelte:head>
 
 <Topbar title="Course Registration Control" description="Open or close course registration for the current session" />

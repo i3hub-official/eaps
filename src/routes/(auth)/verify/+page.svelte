@@ -37,7 +37,7 @@
 </script>
 
 <svelte:head>
-	<title>Verify your email — MOUAU e-Test</title>
+	<title>Verify your email — EAPS</title>
 </svelte:head>
 
 <AuthShell

@@ -48,7 +48,7 @@
 </script>
 
 <svelte:head>
-	<title>Edit Course — MOUAU e-Test</title>
+	<title>Edit Course — EAPS</title>
 </svelte:head>
 
 <Topbar 

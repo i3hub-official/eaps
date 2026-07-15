@@ -102,7 +102,7 @@
 </script>
 
 <svelte:head>
-	<title>Create Assignment — MOUAU e-Test</title>
+	<title>Create Assignment — EAPS</title>
 </svelte:head>
 
 <Topbar title="Create Assignment" description="Create a new assignment for your students">

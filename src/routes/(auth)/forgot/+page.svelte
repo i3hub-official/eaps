@@ -113,7 +113,7 @@
 </script>
 
 <svelte:head>
-	<title>Reset password — MOUAU e-Test</title>
+	<title>Reset password — EAPS</title>
 </svelte:head>
 
 <AuthShell 

@@ -107,7 +107,7 @@
 </script>
 
 <svelte:head>
-	<title>Create Exam — MOUAU e-Test</title>
+	<title>Create Exam — EAPS</title>
 </svelte:head>
 
 <Topbar title="Create Exam" description="Set up a new examination">

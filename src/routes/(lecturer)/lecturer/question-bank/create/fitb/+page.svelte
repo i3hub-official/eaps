@@ -8,7 +8,7 @@
 </script>
 
 <svelte:head>
-	<title>Create Fill in the Blank Question — MOUAU e-Test</title>
+	<title>Create Fill in the Blank Question — EAPS</title>
 </svelte:head>
 
 <Topbar title="Create Fill in the Blank Question" description="Create a question with a missing word or phrase">

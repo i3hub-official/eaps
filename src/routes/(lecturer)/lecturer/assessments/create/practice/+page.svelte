@@ -101,7 +101,7 @@
 </script>
 
 <svelte:head>
-	<title>Create Practice Set — MOUAU e-Test</title>
+	<title>Create Practice Set — EAPS</title>
 </svelte:head>
 
 <Topbar title="Create Practice Set" description="Create a practice set for students to study">

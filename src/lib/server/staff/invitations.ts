@@ -96,10 +96,10 @@ export async function sendInvitationEmail(
 	const emailResult = await resend.emails.send({
 		from: 'noreply@mouau.edu.ng',
 		to: email,
-		subject: 'Complete Your MOUAU e-Test Staff Account',
+		subject: 'Complete Your EAPS Staff Account',
 		html: `
 			<h1>Welcome, ${firstName}!</h1>
-			<p>You've been invited to join MOUAU e-Test as a lecturer.</p>
+			<p>You've been invited to join EAPS as a lecturer.</p>
 			<p><a href="${onboardingUrl}">Complete your account setup here</a></p>
 			<p>This link expires in 7 days.</p>
 		`

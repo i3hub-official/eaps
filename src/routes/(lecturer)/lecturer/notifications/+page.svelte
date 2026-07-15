@@ -280,7 +280,7 @@
 </script>
 
 <svelte:head>
-	<title>Notifications — MOUAU e-Test</title>
+	<title>Notifications — EAPS</title>
 </svelte:head>
 
 <Topbar title="Notifications" description="Stay updated with your latest notifications">

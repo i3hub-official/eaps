@@ -239,7 +239,7 @@ Marks: 1`
 </script>
 
 <svelte:head>
-	<title>Create Single Choice Question — MOUAU e-Test</title>
+	<title>Create Single Choice Question — EAPS</title>
 </svelte:head>
 
 <Topbar title="Create Single Choice Question" description="Create a question with one correct answer">

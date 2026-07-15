@@ -70,7 +70,7 @@
 					<ShieldCheck class="size-4.5 text-primary-foreground" />
 				</div>
 				<div class="flex min-w-0 flex-col leading-tight">
-					<span class="truncate text-sm font-semibold">MOUAU e-Test</span>
+					<span class="truncate text-sm font-semibold">EAPS</span>
 					<span class="truncate text-[11px] text-muted-foreground">{roleLabel[role]}</span>
 				</div>
 			</div>

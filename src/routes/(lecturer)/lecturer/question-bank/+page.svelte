@@ -351,7 +351,7 @@
 </script>
 
 <svelte:head>
-	<title>Question Bank — MOUAU e-Test</title>
+	<title>Question Bank — EAPS</title>
 </svelte:head>
 
 <Topbar title="Question Bank" description="Manage and organize your question repository">

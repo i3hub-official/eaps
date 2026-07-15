@@ -29,7 +29,7 @@
 </script>
 
 <svelte:head>
-	<title>Signing out — MOUAU e-Test</title>
+	<title>Signing out — EAPS</title>
 </svelte:head>
 
 <!-- Hidden form that auto-submits to the server action -->

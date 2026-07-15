@@ -43,7 +43,7 @@
 </script>
 
 <svelte:head>
-	<title>Question Analytics — MOUAU e-Test</title>
+	<title>Question Analytics — EAPS</title>
 </svelte:head>
 
 <Topbar title="Question Analytics" description="Insights into your question bank and usage">

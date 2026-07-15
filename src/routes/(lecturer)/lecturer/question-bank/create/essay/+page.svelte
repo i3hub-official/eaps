@@ -8,7 +8,7 @@
 </script>
 
 <svelte:head>
-	<title>Create Essay Question — MOUAU e-Test</title>
+	<title>Create Essay Question — EAPS</title>
 </svelte:head>
 
 <Topbar title="Create Essay Question" description="Create a question that requires a written response">

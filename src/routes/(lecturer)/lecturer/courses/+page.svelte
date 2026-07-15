@@ -188,7 +188,7 @@
 </script>
 
 <svelte:head>
-	<title>My Courses — MOUAU e-Test</title>
+	<title>My Courses — EAPS</title>
 </svelte:head>
 
 <Topbar title="My Courses" description="Manage all courses you're teaching">

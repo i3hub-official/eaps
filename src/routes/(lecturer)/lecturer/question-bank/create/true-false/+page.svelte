@@ -8,7 +8,7 @@
 </script>
 
 <svelte:head>
-	<title>Create True/False Question — MOUAU e-Test</title>
+	<title>Create True/False Question — EAPS</title>
 </svelte:head>
 
 <Topbar title="Create True/False Question" description="Create a question with a true or false answer">

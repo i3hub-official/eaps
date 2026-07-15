@@ -579,7 +579,7 @@ import { toast } from 'svelte-sonner';
 </style>
 
 <svelte:head>
-	<title>Create Test — MOUAU e-Test</title>
+	<title>Create Test — EAPS</title>
 </svelte:head>
 
 <Topbar title="Create Test" description="Create a new test for your students">

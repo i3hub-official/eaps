@@ -255,7 +255,7 @@
 </script>
 
 <svelte:head>
-	<title>Audit Logs — MOUAU e-Test</title>
+	<title>Audit Logs — EAPS</title>
 </svelte:head>
 
 <Topbar title="Audit Logs" description="Monitor system activity and user actions">

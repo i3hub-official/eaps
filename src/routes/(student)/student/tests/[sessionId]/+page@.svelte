@@ -407,7 +407,7 @@
 </script>
 
 <svelte:head>
-	<title>{data.assessment.title} — MOUAU e-Test</title>
+	<title>{data.assessment.title} — EAPS</title>
 </svelte:head>
 
 <!--

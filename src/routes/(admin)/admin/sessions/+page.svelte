@@ -234,7 +234,7 @@
 </script>
 
 <svelte:head>
-	<title>User Sessions — MOUAU e-Test</title>
+	<title>User Sessions — EAPS</title>
 </svelte:head>
 
 <Topbar title="User Sessions" description="Monitor and manage active user sessions">

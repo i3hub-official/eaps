@@ -49,7 +49,7 @@
 </script>
 
 <svelte:head>
-	<title>Review: {data.assessment.title} — MOUAU e-Test</title>
+	<title>Review: {data.assessment.title} — EAPS</title>
 </svelte:head>
 
 <div class="flex min-h-screen flex-col bg-background">

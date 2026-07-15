@@ -237,7 +237,7 @@
 </script>
 
 <svelte:head>
-	<title>System Logs — MOUAU e-Test</title>
+	<title>System Logs — EAPS</title>
 </svelte:head>
 
 <Topbar title="System Logs" description="Monitor system activity and server logs">
