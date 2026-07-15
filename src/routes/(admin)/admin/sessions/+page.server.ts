@@ -4,7 +4,12 @@ import { fail } from '@sveltejs/kit'
 import { requireStaff } from '$lib/server/auth/guards.js'
 import { getPrismaClient } from '$lib/server/db/index.js'
 import { StaffRole } from '@prisma/client'
-import { revealName, revealMatricNumber, revealEmail } from '$lib/security/dataProtection.js'
+import { 
+	revealName, 
+	revealMatricNumber, 
+	revealEmail,
+	isEncrypted 
+} from '$lib/security/dataProtection.js'
 
 const PAGE_SIZE = 20
 
@@ -16,6 +21,58 @@ const CAN_VIEW_SESSIONS: StaffRole[] = [
 	'REGISTRAR',
 	'UNIVERSITY_EXAM_OFFICER'
 ]
+
+// ─── Email Masking ──────────────────────────────────────────────────────────
+function maskEmail(email: string): string {
+	if (!email) return 'Unknown'
+	
+	// If it's already masked or doesn't have @, return as-is
+	if (!email.includes('@')) return email
+	
+	const [localPart, domain] = email.split('@')
+	
+	// If local part is short, mask differently
+	if (localPart.length <= 3) {
+		return `${localPart.charAt(0)}***@${domain}`
+	}
+	
+	// Keep first and last character, mask the middle
+	const first = localPart.charAt(0)
+	const last = localPart.charAt(localPart.length - 1)
+	const middle = '*'.repeat(Math.min(localPart.length - 2, 4))
+	return `${first}${middle}${last}@${domain}`
+}
+
+// Helper to safely decrypt a name field
+function decryptNameField(value: string | null): string {
+	if (!value) return 'Unknown'
+	try {
+		return revealName(value)
+	} catch (e) {
+		return value
+	}
+}
+
+// Helper to safely decrypt and mask an email
+function decryptAndMaskEmail(value: string | null): string {
+	if (!value) return 'Unknown'
+	try {
+		const decrypted = revealEmail(value)
+		return maskEmail(decrypted)
+	} catch (e) {
+		return value ? maskEmail(value) : 'Unknown'
+	}
+}
+
+// Helper to safely decrypt a matric number
+function decryptMatricField(value: string | null): string {
+	if (!value) return 'N/A'
+	try {
+		return revealMatricNumber(value)
+	} catch (e) {
+		return value
+	}
+}
 
 export const load: PageServerLoad = async ({ locals, url }) => {
 	const user = await requireStaff(locals.user)
@@ -59,7 +116,7 @@ export const load: PageServerLoad = async ({ locals, url }) => {
 	}
 
 	// ─── Fetch sessions ──────────────────────────────────────────────────
-	const [staffSessions, studentSessions, staffCount, studentCount] = await Promise.all([
+	const [staffSessions, studentSessions] = await Promise.all([
 		prisma.staffSession.findMany({
 			where: staffWhere,
 			include: {
@@ -96,8 +153,6 @@ export const load: PageServerLoad = async ({ locals, url }) => {
 			skip: userTypeFilter === 'staff' ? 0 : skip,
 			take: userTypeFilter === 'staff' ? 0 : PAGE_SIZE,
 		}),
-		prisma.staffSession.count({ where: staffWhere }),
-		prisma.studentSession.count({ where: studentWhere }),
 	])
 
 	// ─── Process and combine sessions with decryption ──────────────────
@@ -105,24 +160,26 @@ export const load: PageServerLoad = async ({ locals, url }) => {
 
 	// Process staff sessions
 	for (const session of staffSessions) {
-		let name = 'Unknown Staff'
-		let email = session.staff.email || 'Unknown'
+		// Decrypt staff name
+		let firstName = 'Unknown'
+		let lastName = 'Unknown'
 		
 		try {
-			// Decrypt staff name
-			if (session.staff.firstName && session.staff.lastName) {
-				const firstName = revealName(session.staff.firstName)
-				const lastName = revealName(session.staff.lastName)
-				name = `${firstName} ${lastName}`
+			if (session.staff.firstName) {
+				firstName = revealName(session.staff.firstName)
 			}
-			// Decrypt email if encrypted
-			if (session.staff.email && isEncrypted(session.staff.email)) {
-				email = revealEmail(session.staff.email)
+			if (session.staff.lastName) {
+				lastName = revealName(session.staff.lastName)
 			}
 		} catch (e) {
-			console.error('[sessions] Failed to decrypt staff data:', e)
-			name = 'Staff (Decryption Error)'
+			firstName = session.staff.firstName || 'Unknown'
+			lastName = session.staff.lastName || 'Unknown'
 		}
+		
+		const name = `${firstName} ${lastName}`.trim()
+		
+		// Decrypt and mask email
+		const email = decryptAndMaskEmail(session.staff.email)
 
 		const isActive = session.expiresAt > now
 		const timeRemaining = isActive ? session.expiresAt.getTime() - now.getTime() : 0
@@ -149,29 +206,36 @@ export const load: PageServerLoad = async ({ locals, url }) => {
 
 	// Process student sessions
 	for (const session of studentSessions) {
-		let name = 'Unknown Student'
-		let matricNumber = 'N/A'
-		let email = session.student.email || 'Unknown'
+		// Decrypt student name
+		let firstName = 'Unknown'
+		let lastName = 'Unknown'
 		
 		try {
-			// Decrypt student name
-			if (session.student.firstName && session.student.lastName) {
-				const firstName = revealName(session.student.firstName)
-				const lastName = revealName(session.student.lastName)
-				name = `${firstName} ${lastName}`
+			if (session.student.firstName) {
+				firstName = revealName(session.student.firstName)
 			}
-			// Decrypt matric number
+			if (session.student.lastName) {
+				lastName = revealName(session.student.lastName)
+			}
+		} catch (e) {
+			firstName = session.student.firstName || 'Unknown'
+			lastName = session.student.lastName || 'Unknown'
+		}
+		
+		const name = `${firstName} ${lastName}`.trim()
+		
+		// Decrypt matric number
+		let matricNumber = 'N/A'
+		try {
 			if (session.student.matricNumber) {
 				matricNumber = revealMatricNumber(session.student.matricNumber)
 			}
-			// Decrypt email if encrypted
-			if (session.student.email && isEncrypted(session.student.email)) {
-				email = revealEmail(session.student.email)
-			}
 		} catch (e) {
-			console.error('[sessions] Failed to decrypt student data:', e)
-			name = 'Student (Decryption Error)'
+			matricNumber = session.student.matricNumber || 'N/A'
 		}
+		
+		// Decrypt and mask email
+		const email = decryptAndMaskEmail(session.student.email)
 
 		const isActive = session.expiresAt > now
 		const timeRemaining = isActive ? session.expiresAt.getTime() - now.getTime() : 0
@@ -354,11 +418,4 @@ export const actions: Actions = {
 			return fail(500, { error: 'Failed to revoke all sessions' })
 		}
 	}
-}
-
-// ─── Helper to check if value is encrypted ──────────────────────────────
-function isEncrypted(value: string | null): boolean {
-	if (!value) return false
-	// Encrypted values contain a colon separator
-	return value.includes(':') && value.length > 20
 }
