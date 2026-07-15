@@ -5,7 +5,7 @@ import { getPrismaClient } from '$lib/server/db/index.js'
 import { hashInvitationToken } from '$lib/server/auth/invitationToken'
 import { hashPassword, validatePasswordStrength, createStaffSession, STAFF_COOKIE, cookieOptions } from '$lib/server/auth'
 import { staffRoleHome } from '$lib/server/auth/roleHome'
-import { protectStaffData } from '$lib/security/dataProtection.js'
+import { protectStaffData, searchHashFor } from '$lib/security/dataProtection.js'
 import { StaffRole } from '@prisma/client'
 
 export const load: PageServerLoad = async ({ locals }) => {
@@ -49,7 +49,7 @@ export const actions: Actions = {
 
 		console.log('[developer/onboard] Looking for invitation with hash:', tokenHash)
 
-		// ─── IMPORTANT: Check for invitation with tokenHash AND that it hasn't been accepted ───
+		// ─── Find the invitation ──────────────────────────────────────────
 		const invitation = await prisma.developerTeam.findFirst({
 			where: {
 				tokenHash: tokenHash,
@@ -79,9 +79,11 @@ export const actions: Actions = {
 
 		console.log('[developer/onboard] Invitation found:', invitation.email)
 
-		// Check if a staff member already exists with this email
+		// ─── Check if a staff member already exists with this email ──────
+		// IMPORTANT: Staff uses emailHash, not email directly
+		const emailHash = await searchHashFor(invitation.email, 'email')
 		const existingStaff = await prisma.staff.findUnique({
-			where: { email: invitation.email },
+			where: { emailHash },
 		})
 
 		if (existingStaff) {
@@ -133,8 +135,8 @@ export const actions: Actions = {
 					console.log('[developer/onboard] SUPER_ADMIN role assigned')
 				}
 
-				// ─── CRITICAL: Update invitation to accepted state ───
-				const updatedInvitation = await tx.developerTeam.update({
+				// ─── Mark invitation as accepted ──────────────────────────
+				await tx.developerTeam.update({
 					where: { id: invitation.id },
 					data: { 
 						isActive: true,
@@ -144,7 +146,7 @@ export const actions: Actions = {
 					},
 				})
 
-				console.log('[developer/onboard] Invitation marked as accepted:', updatedInvitation.id)
+				console.log('[developer/onboard] Invitation marked as accepted')
 
 				return createdStaff
 			})
