@@ -1535,17 +1535,16 @@ flushViolations(); // best-effort final flush — not awaited, cleanup shouldn't
 {/if}
 
 <!-- Monitor Panel (bottom-right): live camera preview + alerts + status pill -->
-<div class="fixed bottom-4 right-4 z-40 flex flex-col items-end gap-3">
+<div class="fixed bottom-24 right-2 z-40 flex flex-col items-end gap-3 md:bottom-4 md:right-4">
 	<!-- Camera Feed -->
 	<div
-		class="relative overflow-hidden rounded-lg border-2 shadow-lg transition-all duration-300"
+		class="relative w-20 h-[60px] overflow-hidden rounded-lg border-2 shadow-lg transition-all duration-300 md:w-28 md:h-[84px]"
 		class:border-green-500={isStudentVerified && !isScreenBlurred}
 		class:border-red-500={isScreenBlurred}
 		class:border-primary={status === 'ok' && !isStudentVerified && !isScreenBlurred}
 		class:border-yellow-500={status === 'warning' && !isStudentVerified && !isScreenBlurred}
 		class:border-destructive={status === 'violation' && !isStudentVerified && !isScreenBlurred}
 		class:opacity-50={isScreenBlurred}
-		style="width:112px;height:84px;"
 	>
 		<!-- svelte-ignore a11y_media_has_caption -->
 		<video bind:this={videoEl} class="h-full w-full object-cover" muted playsinline></video>

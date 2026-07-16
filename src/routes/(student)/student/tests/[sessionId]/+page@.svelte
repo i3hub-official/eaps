@@ -61,7 +61,6 @@
 	let remainingSeconds = $state(data.timeRemainingSeconds ?? data.assessment.durationMinutes * 60)
 	let isSubmitting = $state(false)
 	let showSubmitConfirm = $state(false)
-	let monitorExpanded = $state(false)
 
 	let timerInterval: ReturnType<typeof setInterval> | null = null
 	let syncInterval: ReturnType<typeof setInterval> | null = null
@@ -657,32 +656,12 @@
 					</p>
 				</div>
 				<div class="flex shrink-0 items-center gap-3">
-					<!-- Mobile: monitor lives inline in the header, never floats over the
-					     question controls. Desktop keeps the floating corner preview. -->
-					<button
-						type="button"
-						class="md:hidden"
-						onclick={() => (monitorExpanded = !monitorExpanded)}
-						aria-label="Toggle proctoring preview"
-					>
-						<div class="h-9 w-9 overflow-hidden rounded-md border">
-							<ExamMonitor sessionId={data.sessionId} />
-						</div>
-					</button>
 					<div class="flex items-center gap-2 font-mono text-lg font-bold {remainingSeconds < 60 ? 'text-destructive' : ''}">
 						<Clock class="size-5" />
 						{formatTime(remainingSeconds)}
 					</div>
 				</div>
 			</div>
-
-			{#if monitorExpanded}
-				<div class="border-t px-4 py-3 md:hidden">
-					<div class="mx-auto w-40">
-						<ExamMonitor sessionId={data.sessionId} />
-					</div>
-				</div>
-			{/if}
 
 			<!-- Mobile question number strip — horizontally scrollable, always visible -->
 			<div
@@ -832,14 +811,14 @@
 			</main>
 		</div>
 
-		<!-- Desktop-only floating proctoring preview. On mobile this lives in the
-		     sticky header instead (see above) so it can never overlap the
-		     Previous/Next controls at the bottom of the question. -->
-		<div class="pointer-events-none fixed right-4 top-20 z-30 hidden md:block">
-			<div class="pointer-events-auto">
-				<ExamMonitor sessionId={data.sessionId} />
-			</div>
-		</div>
+		<!-- ExamMonitor mounts exactly once. It positions its own camera/alert/status
+		     panel with fixed CSS internally (see ExamMonitor.svelte), sitting clear
+		     of the bottom Previous/Next row on mobile and bottom-right on desktop.
+		     Do not add a second instance elsewhere on this page — each mount opens
+		     its own camera + mic stream, and two competing instances is what caused
+		     the "camera unavailable" full-screen lock overlay to appear over the
+		     question controls. -->
+		<ExamMonitor sessionId={data.sessionId} />
 
 		{#if showSubmitConfirm}
 			<div class="fixed inset-0 z-40 flex items-center justify-center bg-black/60 p-4">
