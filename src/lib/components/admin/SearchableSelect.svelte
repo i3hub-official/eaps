@@ -1,3 +1,4 @@
+<!-- src/lib/components/admin/SearchableSelect.svelte -->
 <script lang="ts">
 	import { Popover, PopoverContent, PopoverTrigger } from '$lib/components/ui/popover/index.js';
 	import { Command, CommandInput, CommandList, CommandEmpty, CommandGroup, CommandItem } from '$lib/components/ui/command/index.js';
