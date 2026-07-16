@@ -235,7 +235,7 @@
 
 			<!-- Bottom: Copyright -->
 			<div class="mt-4 border-t border-border/50 pt-4 text-center text-[10px] text-muted-foreground/60 md:text-left">
-				&copy; {new Date().getFullYear()} EAPS — All rights reserved. MOUAU - Evaluation Assessment & Proctor System
+				&copy; {new Date().getFullYear()} EAPS — All rights reserved. EAPS - Evaluation Assessment & Proctor System
 			</div>
 		</div>
 	</footer>

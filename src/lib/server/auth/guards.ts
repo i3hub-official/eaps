@@ -1,32 +1,8 @@
 // src/lib/server/auth/guards.ts
-// Role/permission guards that operate on the already-hydrated
-// event.locals.user (populated once per request in hooks.server.ts).
-//
-// Role checks look at `user.roles` — the full set of active
-// StaffRoleAssignment names for this staff member — not `primaryRole`.
-// A staff member can legitimately hold more than one role (e.g. an HOD
-// who is also assigned as a LECTURER); primaryRole only affects routing
-// (see routeGuard.ts / roleHome.ts), it is never a substitute for an
-// actual role assignment.
-//
-// These guards are for capability checks *inside* a route or portal —
-// e.g. a LECTURER-only action nested somewhere under a broader tree.
-// To gate an entire route group by a staff member's primaryRole
-// (redirecting wrong-role staff to their own home instead of a 403),
-// use requireStaffRole from routeGuard.ts instead. Don't reach for
-// these when what you actually want is routeGuard's primaryRole gate,
-// and vice versa — they answer different questions and fail differently
-// (403 error page here vs. redirect there).
-//
-// Usage:
-//   const student = await requireStudent(locals.user)
-//   const staff   = await requireStaff(locals.user)
-//   const staff   = await requireLecturer(locals.user)
-//   const staff   = await requirePermission(locals.user, 'exam:create')
-
 import { error, redirect } from '@sveltejs/kit'
 import type { User, AuthenticatedStaff, AuthenticatedStudent } from './types'
 import type { StaffRole } from '@prisma/client'
+import { ADMIN_ROLES } from './roles'
 
 // ─── Base checks ──────────────────────────────────────────────────────────
 
@@ -56,7 +32,8 @@ function hasRole(user: AuthenticatedStaff, role: StaffRole): boolean {
 
 export async function requireAdmin(user: User | null): Promise<AuthenticatedStaff> {
   const staff = await requireStaff(user)
-  if (!hasRole(staff, 'SUPER_ADMIN')) {
+  // Admin access = SUPER_ADMIN OR ADMIN — must stay in sync with ADMIN_ROLES.
+  if (!(ADMIN_ROLES as readonly StaffRole[]).some((r) => hasRole(staff, r))) {
     throw error(403, 'Access denied')
   }
   return staff

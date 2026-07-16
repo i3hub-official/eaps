@@ -11,9 +11,7 @@ import {
 import { staffRoleHome } from '$lib/server/auth/roleHome';
 import { searchHashFor, revealName } from '$lib/security/dataProtection';
 import { sendLoginAlertEmail } from '$lib/server/auth/email';
-
-// Must stay in sync with +layout.server.ts
-const ADMIN_ROLES = ['SUPER_ADMIN', 'ADMIN'] as const;
+import { isAdminRole } from '$lib/server/auth/roles';
 
 function safeDecrypt(fn: () => string, fallback: string): string {
     try {
@@ -24,8 +22,11 @@ function safeDecrypt(fn: () => string, fallback: string): string {
 }
 
 export const load: PageServerLoad = async ({ locals }) => {
-    // Already-authenticated admin goes straight to dashboard
-    if (locals.user?.role && (ADMIN_ROLES as readonly string[]).includes(locals.user.role)) {
+    // Already-authenticated admin goes straight to dashboard.
+    // Checks .roles (actual role assignments), not primaryRole — see
+    // guards.ts header comment on why primaryRole is routing-only.
+    const userRoles = locals.user?.type === 'staff' ? locals.user.roles : [];
+    if (isAdminRole(userRoles)) {
         redirect(302, '/admin');
     }
     return {};
@@ -33,9 +34,9 @@ export const load: PageServerLoad = async ({ locals }) => {
 
 export const actions: Actions = {
     default: async ({ request, cookies, getClientAddress }) => {
-        const form       = await request.formData();
-        const rawEmail   = String(form.get('identifier') ?? '').trim();
-        const password   = String(form.get('password')   ?? '');
+        const form     = await request.formData();
+        const rawEmail = String(form.get('identifier') ?? '').trim();
+        const password = String(form.get('password')   ?? '');
 
         if (!rawEmail || !password) {
             return fail(400, { error: 'Enter your email and password.' });
@@ -58,12 +59,14 @@ export const actions: Actions = {
         const denied = () => fail(401, { error: 'Invalid credentials.' });
 
         if (!staff) return denied();
-        
-        // Only allow SUPER_ADMIN and ADMIN roles
-        if (!((ADMIN_ROLES as readonly string[]).includes(staff.primaryRole))) {
-            return denied();
-        }
-        
+
+        // Only allow SUPER_ADMIN and ADMIN roles. staff.primaryRole is a single
+        // string from a fresh DB row (not locals.user), so isAdminRole's string
+        // overload applies here — this is a legitimate use of primaryRole since
+        // it's the field actually being validated, not a stand-in for role
+        // assignments on an authenticated session.
+        if (!isAdminRole(staff.primaryRole)) return denied();
+
         if (staff.status !== 'ACTIVE') return denied();
 
         const ok = await verifyPassword(password, staff.passwordHash);

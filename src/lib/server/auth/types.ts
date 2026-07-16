@@ -24,6 +24,7 @@ export interface AuthenticatedStudent {
   programmeId: string;
   currentLevelId: string;
   status: StudentStatus;
+  role: string;
 }
 
 export interface AuthenticatedStaff {
