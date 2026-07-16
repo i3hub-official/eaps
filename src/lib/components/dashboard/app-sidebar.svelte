@@ -7,12 +7,13 @@
 	import LoaderCircle from '@lucide/svelte/icons/loader-circle';
 	import { cn } from '$lib/utils.js';
 	import { goto } from '$app/navigation';
+	
 
 	let { role }: { role: Role } = $props();
 	const sections = $derived(navByRole[role]);
 
 	const sidebar = Sidebar.useSidebar();
-	
+
 	let loadingHref = $state<string | null>(null);
 
 	function isActive(href: string) {
@@ -29,34 +30,25 @@
 
 	async function handleNavigation(e: MouseEvent, href: string) {
 		e.preventDefault();
-		
-		// Don't navigate if already on this page or already loading
-		if (isActive(href) || loadingHref) return;
-		
-		// Set loading state
+
+		if (page.url.pathname === href || loadingHref) return;
+
 		loadingHref = href;
-		
-		// Close mobile sidebar
+
 		if (sidebar.isMobile) {
 			sidebar.setOpenMobile(false);
 		}
-		
-		// Navigate
+
 		await goto(href);
-		
-		// Reset loading state after a small delay to ensure smooth transition
+
 		setTimeout(() => {
 			loadingHref = null;
 		}, 300);
 	}
 
-	// Reset loading state when page changes
 	$effect(() => {
-		if (loadingHref) {
-			// If the URL matches the loading href, reset
-			if (page.url.pathname === loadingHref || page.url.pathname === loadingHref + '/') {
-				loadingHref = null;
-			}
+		if (loadingHref && page.url.pathname === loadingHref) {
+			loadingHref = null;
 		}
 	});
 </script>
@@ -102,8 +94,11 @@
 									{#snippet child({ props }: { props: Record<string, unknown> })}
 										<a
 											href={item.href}
-											{...props}
 											class={menuLinkClass(props.class)}
+											data-slot={props['data-slot'] as string}
+											data-sidebar={props['data-sidebar'] as string}
+											data-size={props['data-size'] as string}
+											data-active={props['data-active'] as boolean}
 											onclick={(e) => handleNavigation(e, item.href)}
 										>
 											{#if loadingHref === item.href}
