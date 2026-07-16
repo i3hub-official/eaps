@@ -85,41 +85,43 @@
 			<TabsContent value="students">
 				<Card>
 					<CardHeader>
-						<CardTitle className="flex items-center gap-2">
+						<CardTitle class="flex items-center gap-2">
 							<Users class="size-4" />
 							Student Report
 						</CardTitle>
 						<CardDescription>Student distribution by status and department</CardDescription>
 					</CardHeader>
-					<CardContent>
-						<Table>
-							<TableHeader>
-								<TableRow>
-									<TableHead>Department</TableHead>
-									<TableHead>Status</TableHead>
-									<TableHead class="text-right">Count</TableHead>
-								</TableRow>
-							</TableHeader>
-							<TableBody>
-								{#each reports?.students || [] as item}
+					<CardContent class="p-0">
+						<div class="max-h-[600px] overflow-y-auto">
+							<Table>
+								<TableHeader class="sticky top-0 z-10 bg-background">
 									<TableRow>
-										<TableCell>{item.departmentId || 'N/A'}</TableCell>
-										<TableCell>
-											<Badge variant="outline" class={getStatusColor(item.status)}>
-												{item.status}
-											</Badge>
-										</TableCell>
-										<TableCell class="text-right font-bold">{item._count.status}</TableCell>
+										<TableHead>Department</TableHead>
+										<TableHead>Status</TableHead>
+										<TableHead class="text-right">Count</TableHead>
 									</TableRow>
-								{:else}
-									<TableRow>
-										<TableCell colspan="3" class="text-center text-muted-foreground py-8">
-											No student data available
-										</TableCell>
-									</TableRow>
-								{/each}
-							</TableBody>
-						</Table>
+								</TableHeader>
+								<TableBody>
+									{#each reports?.students || [] as item}
+										<TableRow>
+											<TableCell>{item.department || 'N/A'}</TableCell>
+											<TableCell>
+												<Badge variant="outline" class={getStatusColor(item.status)}>
+													{item.status}
+												</Badge>
+											</TableCell>
+											<TableCell class="text-right font-bold">{item.count}</TableCell>
+										</TableRow>
+									{:else}
+										<TableRow>
+											<TableCell colspan="3" class="text-center text-muted-foreground py-8">
+												No student data available
+											</TableCell>
+										</TableRow>
+									{/each}
+								</TableBody>
+							</Table>
+						</div>
 					</CardContent>
 				</Card>
 			</TabsContent>
@@ -128,45 +130,47 @@
 			<TabsContent value="courses">
 				<Card>
 					<CardHeader>
-						<CardTitle className="flex items-center gap-2">
+						<CardTitle class="flex items-center gap-2">
 							<BookOpen class="size-4" />
 							Course Report
 						</CardTitle>
 						<CardDescription>Course distribution by status, type, and level</CardDescription>
 					</CardHeader>
-					<CardContent>
-						<Table>
-							<TableHeader>
-								<TableRow>
-									<TableHead>Level</TableHead>
-									<TableHead>Type</TableHead>
-									<TableHead>Status</TableHead>
-									<TableHead class="text-right">Count</TableHead>
-								</TableRow>
-							</TableHeader>
-							<TableBody>
-								{#each reports?.courses || [] as item}
+					<CardContent class="p-0">
+						<div class="max-h-[600px] overflow-y-auto">
+							<Table>
+								<TableHeader class="sticky top-0 z-10 bg-background">
 									<TableRow>
-										<TableCell>{item.levelId || 'N/A'}</TableCell>
-										<TableCell>
-											<Badge variant="outline">{item.type}</Badge>
-										</TableCell>
-										<TableCell>
-											<Badge variant="outline" class={getStatusColor(item.status)}>
-												{item.status}
-											</Badge>
-										</TableCell>
-										<TableCell class="text-right font-bold">{item._count.status}</TableCell>
+										<TableHead>Level</TableHead>
+										<TableHead>Type</TableHead>
+										<TableHead>Status</TableHead>
+										<TableHead class="text-right">Count</TableHead>
 									</TableRow>
-								{:else}
-									<TableRow>
-										<TableCell colspan="4" class="text-center text-muted-foreground py-8">
-											No course data available
-										</TableCell>
-									</TableRow>
-								{/each}
-							</TableBody>
-						</Table>
+								</TableHeader>
+								<TableBody>
+									{#each reports?.courses || [] as item}
+										<TableRow>
+											<TableCell>{item.level || 'N/A'}</TableCell>
+											<TableCell>
+												<Badge variant="outline">{item.type}</Badge>
+											</TableCell>
+											<TableCell>
+												<Badge variant="outline" class={getStatusColor(item.status)}>
+													{item.status}
+												</Badge>
+											</TableCell>
+											<TableCell class="text-right font-bold">{item.count}</TableCell>
+										</TableRow>
+									{:else}
+										<TableRow>
+											<TableCell colspan="4" class="text-center text-muted-foreground py-8">
+												No course data available
+											</TableCell>
+										</TableRow>
+									{/each}
+								</TableBody>
+							</Table>
+						</div>
 					</CardContent>
 				</Card>
 			</TabsContent>
@@ -175,43 +179,45 @@
 			<TabsContent value="assessments">
 				<Card>
 					<CardHeader>
-						<CardTitle className="flex items-center gap-2">
+						<CardTitle class="flex items-center gap-2">
 							<ClipboardList class="size-4" />
 							Assessment Report
 						</CardTitle>
 						<CardDescription>Assessment distribution by status and type</CardDescription>
 					</CardHeader>
-					<CardContent>
-						<Table>
-							<TableHeader>
-								<TableRow>
-									<TableHead>Type</TableHead>
-									<TableHead>Status</TableHead>
-									<TableHead class="text-right">Count</TableHead>
-								</TableRow>
-							</TableHeader>
-							<TableBody>
-								{#each reports?.assessments || [] as item}
+					<CardContent class="p-0">
+						<div class="max-h-[600px] overflow-y-auto">
+							<Table>
+								<TableHeader class="sticky top-0 z-10 bg-background">
 									<TableRow>
-										<TableCell>
-											<Badge variant="outline">{item.type}</Badge>
-										</TableCell>
-										<TableCell>
-											<Badge variant="outline" class={getStatusColor(item.status)}>
-												{item.status}
-											</Badge>
-										</TableCell>
-										<TableCell class="text-right font-bold">{item._count.status}</TableCell>
+										<TableHead>Type</TableHead>
+										<TableHead>Status</TableHead>
+										<TableHead class="text-right">Count</TableHead>
 									</TableRow>
-								{:else}
-									<TableRow>
-										<TableCell colspan="3" class="text-center text-muted-foreground py-8">
-											No assessment data available
-										</TableCell>
-									</TableRow>
-								{/each}
-							</TableBody>
-						</Table>
+								</TableHeader>
+								<TableBody>
+									{#each reports?.assessments || [] as item}
+										<TableRow>
+											<TableCell>
+												<Badge variant="outline">{item.type}</Badge>
+											</TableCell>
+											<TableCell>
+												<Badge variant="outline" class={getStatusColor(item.status)}>
+													{item.status}
+												</Badge>
+											</TableCell>
+											<TableCell class="text-right font-bold">{item.count}</TableCell>
+										</TableRow>
+									{:else}
+										<TableRow>
+											<TableCell colspan="3" class="text-center text-muted-foreground py-8">
+												No assessment data available
+											</TableCell>
+										</TableRow>
+									{/each}
+								</TableBody>
+							</Table>
+						</div>
 					</CardContent>
 				</Card>
 			</TabsContent>
@@ -220,43 +226,45 @@
 			<TabsContent value="registrations">
 				<Card>
 					<CardHeader>
-						<CardTitle className="flex items-center gap-2">
+						<CardTitle class="flex items-center gap-2">
 							<FileText class="size-4" />
 							Registration Report
 						</CardTitle>
 						<CardDescription>Registration distribution by status and type</CardDescription>
 					</CardHeader>
-					<CardContent>
-						<Table>
-							<TableHeader>
-								<TableRow>
-									<TableHead>Type</TableHead>
-									<TableHead>Status</TableHead>
-									<TableHead class="text-right">Count</TableHead>
-								</TableRow>
-							</TableHeader>
-							<TableBody>
-								{#each reports?.registrations || [] as item}
+					<CardContent class="p-0">
+						<div class="max-h-[600px] overflow-y-auto">
+							<Table>
+								<TableHeader class="sticky top-0 z-10 bg-background">
 									<TableRow>
-										<TableCell>
-											<Badge variant="outline">{item.type}</Badge>
-										</TableCell>
-										<TableCell>
-											<Badge variant="outline" class={getStatusColor(item.status)}>
-												{item.status}
-											</Badge>
-										</TableCell>
-										<TableCell class="text-right font-bold">{item._count.status}</TableCell>
+										<TableHead>Type</TableHead>
+										<TableHead>Status</TableHead>
+										<TableHead class="text-right">Count</TableHead>
 									</TableRow>
-								{:else}
-									<TableRow>
-										<TableCell colspan="3" class="text-center text-muted-foreground py-8">
-											No registration data available
-										</TableCell>
-									</TableRow>
-								{/each}
-							</TableBody>
-						</Table>
+								</TableHeader>
+								<TableBody>
+									{#each reports?.registrations || [] as item}
+										<TableRow>
+											<TableCell>
+												<Badge variant="outline">{item.type}</Badge>
+											</TableCell>
+											<TableCell>
+												<Badge variant="outline" class={getStatusColor(item.status)}>
+													{item.status}
+												</Badge>
+											</TableCell>
+											<TableCell class="text-right font-bold">{item.count}</TableCell>
+										</TableRow>
+									{:else}
+										<TableRow>
+											<TableCell colspan="3" class="text-center text-muted-foreground py-8">
+												No registration data available
+											</TableCell>
+										</TableRow>
+									{/each}
+								</TableBody>
+							</Table>
+						</div>
 					</CardContent>
 				</Card>
 			</TabsContent>
@@ -265,43 +273,45 @@
 			<TabsContent value="staff">
 				<Card>
 					<CardHeader>
-						<CardTitle className="flex items-center gap-2">
+						<CardTitle class="flex items-center gap-2">
 							<GraduationCap class="size-4" />
 							Staff Report
 						</CardTitle>
 						<CardDescription>Staff distribution by role and status</CardDescription>
 					</CardHeader>
-					<CardContent>
-						<Table>
-							<TableHeader>
-								<TableRow>
-									<TableHead>Role</TableHead>
-									<TableHead>Status</TableHead>
-									<TableHead class="text-right">Count</TableHead>
-								</TableRow>
-							</TableHeader>
-							<TableBody>
-								{#each reports?.staff || [] as item}
+					<CardContent class="p-0">
+						<div class="max-h-[600px] overflow-y-auto">
+							<Table>
+								<TableHeader class="sticky top-0 z-10 bg-background">
 									<TableRow>
-										<TableCell>
-											<Badge variant="outline">{item.primaryRole.replace(/_/g, ' ')}</Badge>
-										</TableCell>
-										<TableCell>
-											<Badge variant="outline" class={getStatusColor(item.status)}>
-												{item.status}
-											</Badge>
-										</TableCell>
-										<TableCell class="text-right font-bold">{item._count.primaryRole}</TableCell>
+										<TableHead>Role</TableHead>
+										<TableHead>Status</TableHead>
+										<TableHead class="text-right">Count</TableHead>
 									</TableRow>
-								{:else}
-									<TableRow>
-										<TableCell colspan="3" class="text-center text-muted-foreground py-8">
-											No staff data available
-										</TableCell>
-									</TableRow>
-								{/each}
-							</TableBody>
-						</Table>
+								</TableHeader>
+								<TableBody>
+									{#each reports?.staff || [] as item}
+										<TableRow>
+											<TableCell>
+												<Badge variant="outline">{item.primaryRole.replace(/_/g, ' ')}</Badge>
+											</TableCell>
+											<TableCell>
+												<Badge variant="outline" class={getStatusColor(item.status)}>
+													{item.status}
+												</Badge>
+											</TableCell>
+											<TableCell class="text-right font-bold">{item.count}</TableCell>
+										</TableRow>
+									{:else}
+										<TableRow>
+											<TableCell colspan="3" class="text-center text-muted-foreground py-8">
+												No staff data available
+											</TableCell>
+										</TableRow>
+									{/each}
+								</TableBody>
+							</Table>
+						</div>
 					</CardContent>
 				</Card>
 			</TabsContent>

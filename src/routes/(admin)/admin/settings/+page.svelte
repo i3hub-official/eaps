@@ -118,7 +118,7 @@
 </script>
 
 <svelte:head>
-	<title>Settings — MOUAU e-Test</title>
+	<title>Settings — EA Proctoring System</title>
 </svelte:head>
 
 <Topbar title="Settings" description="System configuration and preferences">
@@ -214,7 +214,7 @@
 							<div class="grid gap-4 sm:grid-cols-2">
 								<div class="space-y-2">
 									<Label for="appName">Application Name</Label>
-									<Input id="appName" value={settings?.general?.appName || 'MOUAU e-Test'} readonly />
+									<Input id="appName" value={settings?.general?.appName || 'EA Proctoring System'} readonly />
 								</div>
 								<div class="space-y-2">
 									<Label for="version">Version</Label>

@@ -51,7 +51,7 @@
         <!-- Divider + footer note -->
         <div class="w-full border-t border-border pt-6">
             <p class="text-xs text-muted-foreground">
-                MOUAU e-Test &mdash; Michael Okpara University of Agriculture, Umudike
+                EA Proctoring System &mdash; Michael Okpara University of Agriculture, Umudike
             </p>
         </div>
     </div>

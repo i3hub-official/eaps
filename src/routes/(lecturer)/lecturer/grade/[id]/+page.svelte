@@ -128,7 +128,7 @@
 </script>
 
 <svelte:head>
-	<title>Grade Submission — MOUAU e-Test</title>
+	<title>Grade Submission — EA Proctoring System</title>
 </svelte:head>
 
 <Topbar 

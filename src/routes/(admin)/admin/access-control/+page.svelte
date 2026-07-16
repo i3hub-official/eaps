@@ -114,7 +114,7 @@
 </script>
 
 <svelte:head>
-	<title>Access Control — MOUAU e-Test</title>
+	<title>Access Control — EA Proctoring System</title>
 </svelte:head>
 
 <Topbar title="Access Control" description="Manage roles and permissions">

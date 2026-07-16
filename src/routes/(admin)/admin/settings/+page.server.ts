@@ -55,7 +55,7 @@ export const load: PageServerLoad = async ({ locals, url }) => {
 
 	if (isSuperAdmin) {
 		settings.general = {
-			appName: 'MOUAU e-Test',
+			appName: 'EA Proctoring System',
 			appVersion: '1.0.0',
 			environment: process.env.NODE_ENV || 'development',
 			baseUrl: url.origin,

@@ -103,7 +103,7 @@
 
     function credsToText(list: Credential[]): string {
         return [
-            'MOUAU e-Test — Seeded Login Credentials',
+            'EA Proctoring System — Seeded Login Credentials',
             `Generated : ${new Date().toISOString()}`,
             '─'.repeat(60),
             '',

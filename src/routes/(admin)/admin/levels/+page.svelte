@@ -86,7 +86,7 @@
 </script>
 
 <svelte:head>
-	<title>Levels — MOUAU e-Test</title>
+	<title>Levels — EA Proctoring System</title>
 </svelte:head>
 
 <Topbar title="Levels" description="Manage academic levels">

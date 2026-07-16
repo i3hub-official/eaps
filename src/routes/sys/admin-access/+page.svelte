@@ -78,7 +78,7 @@
         </form>
 
         <p class="mt-8 text-center text-xs text-muted-foreground">
-            MOUAU e-Test &mdash; Michael Okpara University of Agriculture, Umudike
+            EA Proctoring System &mdash; Michael Okpara University of Agriculture, Umudike
         </p>
     </div>
 </div>

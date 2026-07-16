@@ -159,7 +159,7 @@
 </script>
 
 <svelte:head>
-	<title>Suspicious Activity — MOUAU e-Test</title>
+	<title>Suspicious Activity — EA Proctoring System</title>
 </svelte:head>
 
 <Topbar title="Suspicious Activity" description="Monitor and investigate suspicious behavior">

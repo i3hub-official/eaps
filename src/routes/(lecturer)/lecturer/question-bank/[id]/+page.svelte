@@ -130,7 +130,7 @@
 </script>
 
 <svelte:head>
-	<title>Question Details — MOUAU e-Test</title>
+	<title>Question Details — EA Proctoring System</title>
 </svelte:head>
 
 <Topbar 
