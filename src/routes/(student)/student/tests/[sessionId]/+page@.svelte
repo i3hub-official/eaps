@@ -65,7 +65,7 @@
 	let timerInterval: ReturnType<typeof setInterval> | null = null
 	let syncInterval: ReturnType<typeof setInterval> | null = null
 	let saveTimers = new Map<string, ReturnType<typeof setTimeout>>()
-	let questionNavRef = $state<HTMLDivElement | null>(null)
+	let mobileQuestionNavRef = $state<HTMLDivElement | null>(null)
 
 	const currentQuestion = $derived(questions[currentIndex])
 	const answeredCount = $derived(

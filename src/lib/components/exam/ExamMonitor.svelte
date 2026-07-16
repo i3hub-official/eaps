@@ -23,31 +23,31 @@
 	// ─── AI Analysis Thresholds ──────────────────────────────────────────────
 	const AI_THRESHOLDS = {
 		// Eye tracking
-		EYE_GAZE_THRESHOLD: 0.35,          // 35% off-center gaze (looking away)
-		EYE_CLOSURE_THRESHOLD: 0.5,         // 50% eye closure (looking down/closed)
-		RAPID_BLINK_THRESHOLD: 25,          // >25 blinks per minute (suspicious)
-		SUSTAINED_GAZE_THRESHOLD: 4000,     // 4 seconds looking away
-		LOOKING_DOWN_THRESHOLD: 0.6,        // 60% looking down (phone/notes)
+		EYE_GAZE_THRESHOLD: 0.45,           // was 0.35 — mobile front cams read wider gaze swings as normal
+		EYE_CLOSURE_THRESHOLD: 0.5,
+		RAPID_BLINK_THRESHOLD: 35,           // was 25 — now measured per rolling 60s window (see fix below)
+		SUSTAINED_GAZE_THRESHOLD: 6000,      // was 4000
+		LOOKING_DOWN_THRESHOLD: 0.75,        // was 0.6 — was firing on normal phone-holding angle
 		
 		// Head pose
-		HEAD_TILT_THRESHOLD: 20,             // 20 degrees tilt
-		HEAD_TURN_THRESHOLD: 15,             // 15 degrees turn
-		SUSTAINED_HEAD_TURN: 3000,           // 3 seconds head turned
-		HEAD_NOD_THRESHOLD: 10,              // 10 degrees nod
+		HEAD_TILT_THRESHOLD: 28,             // was 20
+		HEAD_TURN_THRESHOLD: 22,             // was 15
+		SUSTAINED_HEAD_TURN: 5000,           // was 3000
+		HEAD_NOD_THRESHOLD: 10,
 		
 		// Mouth
-		MOUTH_OPEN_THRESHOLD: 0.5,           // 50% mouth open (talking)
-		MOUTH_MOVEMENT_THRESHOLD: 0.25,      // 25% mouth movement
-		SUSTAINED_MOUTH_OPEN: 2000,          // 2 seconds mouth open
+		MOUTH_OPEN_THRESHOLD: 0.65,          // was 0.5 — was firing on normal reading-aloud/lip movement
+		MOUTH_MOVEMENT_THRESHOLD: 0.25,
+		SUSTAINED_MOUTH_OPEN: 3500,          // was 2000
 		WHISPER_DETECTION: true,
 		
 		// Gestures
-		SUSPICIOUS_GESTURE_THRESHOLD: 0.5,   // 50% gesture confidence
-		HAND_OVER_MOUTH_THRESHOLD: 0.4,      // 40% hand over mouth
+		SUSPICIOUS_GESTURE_THRESHOLD: 0.5,
+		HAND_OVER_MOUTH_THRESHOLD: 0.4,
 		
 		// Facial expressions
-		EXPRESSION_CHANGE_THRESHOLD: 0.4,    // 40% expression change
-		STRESS_SIGNAL_THRESHOLD: 0.6,        // 60% stress indicators
+		EXPRESSION_CHANGE_THRESHOLD: 0.4,
+		STRESS_SIGNAL_THRESHOLD: 0.6,
 	};
 
 	// ─── Violation Cooldown ──────────────────────────────────────────────────
@@ -74,14 +74,14 @@
 		IDLE_TIMEOUT: 300000,
 		
 		// AI violations
-		SUSPICIOUS_GAZE: 10000,
-		RAPID_BLINKING: 10000,
-		HEAD_TURNING: 10000,
-		SUSPICIOUS_MOUTH: 10000,
-		LOOKING_DOWN: 10000,
+		SUSPICIOUS_GAZE: 15000,      // was 10000
+		RAPID_BLINKING: 20000,       // was 10000
+		HEAD_TURNING: 15000,         // was 10000
+		SUSPICIOUS_MOUTH: 18000,     // was 10000
+		LOOKING_DOWN: 18000,         // was 10000
 		SUSPICIOUS_GESTURE: 10000,
-		SUSTAINED_HEAD_TURN: 15000,
-		SUSTAINED_GAZE: 15000,
+		SUSTAINED_HEAD_TURN: 20000,  // was 15000
+		SUSTAINED_GAZE: 20000,       // was 15000
 		STRESS_SIGNALS: 20000,
 		HAND_OVER_MOUTH: 12000,
 	};
@@ -148,6 +148,7 @@ const FLUSH_INTERVAL_MS = 5000;
 	// Eye tracking
 	let gazeHistory: Array<{ x: number; y: number; timestamp: number }> = [];
 	let blinkCount = 0;
+	let blinkWindowStart = Date.now();   // NEW — anchors the rolling per-minute window
 	let lastBlinkTime = Date.now();
 	let sustainedGazeStart: number | null = null;
 	let lookingDownStart: number | null = null;
@@ -409,17 +410,23 @@ async function checkStudentVerification() {
 				}
 			}
 
-			// Check rapid blinking
-			const timeWindow = 60000; // 1 minute
-			const now = Date.now();
-			const recentBlinks = blinkCount;
-			
-			if (recentBlinks > AI_THRESHOLDS.RAPID_BLINK_THRESHOLD && canLog('RAPID_BLINKING')) {
-				await logViolation('RAPID_BLINKING', 2, { 
-					blinkRate: recentBlinks,
-					timeWindow: '1min'
+			// Check rapid blinking — measured over a real rolling 60s window,
+			// not a lifetime total that only resets when it fires (that bug
+			// meant a perfectly normal blink rate would eventually cross the
+			// threshold just from accumulating over a long exam).
+			const now2 = Date.now();
+			if (now2 - blinkWindowStart > 60000) {
+				blinkCount = 0;
+				blinkWindowStart = now2;
+			}
+
+			if (blinkCount > AI_THRESHOLDS.RAPID_BLINK_THRESHOLD && canLog('RAPID_BLINKING')) {
+				await logViolation('RAPID_BLINKING', 1, {
+					blinkRate: blinkCount,
+					timeWindow: '60s',
 				});
 				blinkCount = 0;
+				blinkWindowStart = now2;
 			}
 
 			// Detect gaze direction
@@ -428,7 +435,7 @@ async function checkStudentVerification() {
 				const gazeY = face.gaze.y || 0;
 				
 				// Track gaze history
-				gazeHistory.push({ x: gazeX, y: gazeY, timestamp: now });
+				gazeHistory.push({ x: gazeX, y: gazeY, timestamp: now2 });
 				if (gazeHistory.length > 100) gazeHistory.shift();
 
 				// Check if looking away from screen
@@ -436,12 +443,12 @@ async function checkStudentVerification() {
 								   Math.abs(gazeY) > AI_THRESHOLDS.EYE_GAZE_THRESHOLD;
 
 				if (lookingAway) {
-					if (!sustainedGazeStart) sustainedGazeStart = now;
+					if (!sustainedGazeStart) sustainedGazeStart = now2;
 					
 					// Check sustained gaze away
-					if (now - sustainedGazeStart > AI_THRESHOLDS.SUSTAINED_GAZE_THRESHOLD && canLog('SUSTAINED_GAZE')) {
-						await logViolation('SUSTAINED_GAZE', 2, { 
-							duration: now - sustainedGazeStart,
+					if (now2 - sustainedGazeStart > AI_THRESHOLDS.SUSTAINED_GAZE_THRESHOLD && canLog('SUSTAINED_GAZE')) {
+						await logViolation('SUSTAINED_GAZE', 2, {
+							duration: now2 - sustainedGazeStart,
 							gazeX, gazeY
 						});
 						sustainedGazeStart = null;
@@ -452,10 +459,10 @@ async function checkStudentVerification() {
 
 				// Check looking down (phone/notes)
 				if (gazeY < -AI_THRESHOLDS.LOOKING_DOWN_THRESHOLD) {
-					if (!lookingDownStart) lookingDownStart = now;
+					if (!lookingDownStart) lookingDownStart = now2;
 					
-					if (now - lookingDownStart > 2000 && canLog('LOOKING_DOWN')) {
-						await logViolation('LOOKING_DOWN', 2, { duration: now - lookingDownStart });
+					if (now2 - lookingDownStart > 3500 && canLog('LOOKING_DOWN')) {
+						await logViolation('LOOKING_DOWN', 1, { duration: now2 - lookingDownStart });
 						lookingDownStart = null;
 					}
 				} else {
@@ -547,22 +554,17 @@ async function checkStudentVerification() {
 			mouthOpenHistory.push({ open: mouthOpen, timestamp: now });
 			if (mouthOpenHistory.length > 30) mouthOpenHistory.shift();
 
-			// Check if mouth is open (talking)
+			// Only log after the mouth has been open continuously for
+			// SUSTAINED_MOUTH_OPEN ms — a single open frame (reading a
+			// question aloud, a normal expression) is not a violation on
+			// its own and was previously double-counted here.
 			if (mouthOpen > AI_THRESHOLDS.MOUTH_OPEN_THRESHOLD) {
 				if (!mouthMovementStart) mouthMovementStart = now;
-				
-				if (canLog('SUSPICIOUS_MOUTH')) {
-					await logViolation('SUSPICIOUS_MOUTH', 2, { 
-						mouthOpen, 
-						duration: now - mouthMovementStart 
-					});
-				}
-				
-				// Check sustained mouth open (talking for too long)
+
 				if (now - mouthMovementStart > AI_THRESHOLDS.SUSTAINED_MOUTH_OPEN && canLog('SUSPICIOUS_MOUTH')) {
-					await logViolation('SUSPICIOUS_MOUTH', 2, { 
+					await logViolation('SUSPICIOUS_MOUTH', 1, {
 						duration: now - mouthMovementStart,
-						type: 'sustained_talking'
+						type: 'sustained_talking',
 					});
 					mouthMovementStart = null;
 				}
@@ -1534,8 +1536,8 @@ flushViolations(); // best-effort final flush — not awaited, cleanup shouldn't
 	</div>
 {/if}
 
-<!-- Monitor Panel (bottom-right): live camera preview + alerts + status pill -->
-<div class="fixed bottom-24 right-2 z-40 flex flex-col items-end gap-3 md:bottom-4 md:right-4">
+<!-- Monitor Panel (top-right): live camera preview + alerts + status pill -->
+<div class="fixed top-16 right-2 z-40 flex flex-col items-end gap-3 md:top-20 md:right-4">
 	<!-- Camera Feed -->
 	<div
 		class="relative w-20 h-[60px] overflow-hidden rounded-lg border-2 shadow-lg transition-all duration-300 md:w-28 md:h-[84px]"
