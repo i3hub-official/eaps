@@ -1,4 +1,4 @@
-<!-- src/lib/components/exam/FaceEnrollModal.svelte -->
+<!-- src/lib/components/exam/FaceEnrollModal.svelte - PASSIVE LIVENESS VERSION -->
 <script lang="ts">
     import { onMount, onDestroy } from 'svelte';
     import { Button } from '$lib/components/ui/button/index.js';
@@ -7,47 +7,33 @@
     import CheckCircle2 from '@lucide/svelte/icons/check-circle-2';
     import AlertCircle from '@lucide/svelte/icons/alert-circle';
     import ScanFace from '@lucide/svelte/icons/scan-face';
-    import ArrowLeft from '@lucide/svelte/icons/arrow-left';
-    import ArrowRight from '@lucide/svelte/icons/arrow-right';
-    import ChevronUp from '@lucide/svelte/icons/chevron-up';
-    import SmilePlus from '@lucide/svelte/icons/smile-plus';
     import { getHuman } from '$lib/client/face/human.js';
-    import {
-        selectGestures,
-        gestureConfidence,
-        GestureTracker,
-        ALL_GESTURES,
-        type GestureDefinition
-    } from './gesture-service.js';
+    import { PassiveLivenessTracker } from '$lib/client/face/passive-liveness.js';
 
     let { onSuccess, onCancel } = $props<{ onSuccess?: () => void; onCancel?: () => void }>();
 
-    type Phase = 'loading-model' | 'requesting-camera' | 'positioning' | 'gesture' | 'processing' | 'success' | 'error';
+    type Phase = 'loading-model' | 'requesting-camera' | 'positioning' | 'liveness' | 'processing' | 'success' | 'error';
 
     let phase = $state<Phase>('loading-model');
     let errorMessage = $state('');
     let statusText = $state('Loading face model…');
     let faceDetected = $state(false);
 
+    // ─── Positioning phase ─────────────────────────────────────────────────
     let posHoldProgress = $state(0);
     let posHoldStart: number | null = null;
-    // Increased from 2000ms -> 4000ms: a longer hold gives the progress bar
-    // a slower, more deliberate fill and gives us roughly double the number
-    // of neutral-frame samples below, which is what actually improves the
-    // averaged descriptor's accuracy.
     const POS_HOLD_MS = 2000;
-    const SAMPLE_BUCKETS = 20; // was implicitly 10 (progress * 10)
 
-    let selected = $state<GestureDefinition[]>([]);
-    let gestureIndex = $state(0);
-    let gesturesDone = $state(0);
-    let holdProgress = $state(0);
-    let tracker: GestureTracker | null = null;
-    const GESTURE_COUNT = 3;
+    // ─── Passive Liveness Phase ────────────────────────────────────────────
+    let livenessTracker: PassiveLivenessTracker | null = null;
+    let livenessPhaseStart: number | null = null;
+    const LIVENESS_WINDOW_MS = 12000; // 12 seconds of passive observation
+    let livenessProgress = $state(0);
 
     // ─── Identity capture (neutral frames only) ─────────────────────────────
     let neutralSamples: number[][] = [];
     let lastSampledBucket = -1;
+    const SAMPLE_BUCKETS = 20;
 
     let videoEl = $state<HTMLVideoElement | null>(null);
     let canvasEl = $state<HTMLCanvasElement | null>(null);
@@ -59,21 +45,11 @@
     let lastResult: any = null;
 
     // ─── Frame-rate throttle ────────────────────────────────────────────────
-    // human.detect() runs face mesh + embedding + gesture inference, which is
-    // by far the most expensive thing in these loops. requestAnimationFrame
-    // fires at ~60fps, but a face doesn't move fast enough to need inference
-    // that often for hold/position logic to feel responsive. Capping to
-    // ~12fps cuts inference calls ~4-5x. Timing (POS_HOLD_MS, hold progress)
-    // is driven by performance.now(), not frame count, so this doesn't change
-    // how long anything takes to complete — only how often we pay for detect().
     const TARGET_FPS = 12;
     const FRAME_INTERVAL = 1000 / TARGET_FPS;
     let lastFrameTime = 0;
 
     // ─── Cached theme colors ────────────────────────────────────────────────
-    // Read once per session instead of on every drawOverlay() call. Reading
-    // getComputedStyle inside a per-frame draw loop forces a style
-    // recalculation every frame for values that never change mid-session.
     let colors = { primary: '', destructive: '', border: '', card: '', background: '', foreground: '' };
 
     function initColors() {
@@ -276,7 +252,7 @@
                 const holdNow = performance.now();
                 if (!posHoldStart) posHoldStart = holdNow;
                 posHoldProgress = Math.min(1, (holdNow - posHoldStart) / POS_HOLD_MS);
-                statusText = posHoldProgress < 1 ? 'Hold still…' : 'Starting gestures…';
+                statusText = posHoldProgress < 1 ? 'Hold still…' : 'Starting liveness check…';
                 drawOverlay(true, false, posHoldProgress);
 
                 const bucket = Math.floor(posHoldProgress * SAMPLE_BUCKETS);
@@ -286,15 +262,13 @@
                 }
 
                 if (posHoldProgress >= 1) {
-                    selected = selectGestures(GESTURE_COUNT);
-                    gestureIndex = 0;
-                    gesturesDone = 0;
-                    tracker = new GestureTracker();
-                    holdProgress = 0;
-                    phase = 'gesture';
-                    statusText = selected[0]?.label || '';
+                    livenessTracker = new PassiveLivenessTracker();
+                    livenessPhaseStart = null;
+                    livenessProgress = 0;
+                    phase = 'liveness';
+                    statusText = 'Checking liveness…';
                     lastFrameTime = 0;
-                    loopHandle = requestAnimationFrame(gestureLoop);
+                    loopHandle = requestAnimationFrame(livenessLoop);
                     return;
                 }
             } else {
@@ -308,75 +282,58 @@
         loopHandle = requestAnimationFrame(positioningLoop);
     }
 
-    async function gestureLoop() {
-        if (stopped || phase !== 'gesture') return;
+    async function livenessLoop() {
+        if (stopped || phase !== 'liveness') return;
 
         const now = performance.now();
         if (now - lastFrameTime < FRAME_INTERVAL) {
-            loopHandle = requestAnimationFrame(gestureLoop);
+            loopHandle = requestAnimationFrame(livenessLoop);
             return;
         }
         lastFrameTime = now;
 
-        if (!tracker) tracker = new GestureTracker();
+        if (!livenessPhaseStart) livenessPhaseStart = now;
+        const elapsed = now - livenessPhaseStart;
+        const timeProgress = Math.min(1, elapsed / LIVENESS_WINDOW_MS);
 
         await detect();
-        if (stopped || phase !== 'gesture') return;
+        if (stopped || phase !== 'liveness') return;
 
-        const faces    = lastResult?.face ?? [];
-        const gestures = lastResult?.gesture ?? [];
+        const faces = lastResult?.face ?? [];
 
         if (faces.length === 0) {
-            tracker.reset();
-            holdProgress = 0;
             statusText = 'Keep your face in the oval';
-            drawOverlay(false, false, 0, selected[gestureIndex]?.label);
-            loopHandle = requestAnimationFrame(gestureLoop);
+            drawOverlay(false, false, 0, 'Sit naturally');
+            livenessProgress = livenessTracker?.getProgress() ?? 0;
+            loopHandle = requestAnimationFrame(livenessLoop);
             return;
         }
+
         if (faces.length > 1) {
-            tracker.reset();
-            holdProgress = 0;
             statusText = 'Only one person allowed';
             drawOverlay(false, true, 0);
-            loopHandle = requestAnimationFrame(gestureLoop);
+            loopHandle = requestAnimationFrame(livenessLoop);
             return;
         }
 
         const face = faces[0];
-        const g    = selected[gestureIndex];
-        if (!g) {
+
+        // Feed the face into the passive liveness tracker
+        if (livenessTracker) {
+            livenessTracker.update(face);
+        }
+
+        livenessProgress = livenessTracker?.getProgress() ?? 0;
+        drawOverlay(true, false, livenessProgress, 'Sit naturally');
+        statusText = `Checking liveness (${Math.round(timeProgress * 100)}%)…`;
+
+        // Check if observation window is complete
+        if (timeProgress >= 1) {
             await finishCapture();
             return;
         }
 
-        const confidence = gestureConfidence(g.id, face, gestures);
-
-        const conflicting = ALL_GESTURES
-            .filter(alt => alt.id !== g.id)
-            .some(alt => gestureConfidence(alt.id, face, gestures) >= 0.85);
-
-        const confirmed  = tracker.update(confidence, conflicting);
-        holdProgress     = tracker.holdProgress;
-
-        drawOverlay(true, false, holdProgress, g.label);
-        statusText = g.label;
-
-        if (confirmed) {
-            gesturesDone = gestureIndex + 1;
-
-            if (gesturesDone >= selected.length) {
-                await finishCapture();
-                return;
-            }
-
-            gestureIndex++;
-            tracker      = new GestureTracker();
-            holdProgress = 0;
-            statusText   = selected[gestureIndex]?.label || '';
-        }
-
-        loopHandle = requestAnimationFrame(gestureLoop);
+        loopHandle = requestAnimationFrame(livenessLoop);
     }
 
     async function finishCapture() {
@@ -391,6 +348,14 @@
             const averaged = new Array(dim).fill(0);
             for (const d of neutralSamples) {
                 for (let i = 0; i < dim; i++) averaged[i] += d[i] / neutralSamples.length;
+            }
+
+            // Check liveness result before enrolling
+            const livenessResult = livenessTracker?.getResult();
+            if (livenessResult && !livenessResult.passed) {
+                throw new Error(
+                    `Liveness check failed: ${livenessResult.failureReason}. Please try again with good lighting and natural head movement.`
+                );
             }
 
             const res = await fetch('/api/face/enroll', {
@@ -425,9 +390,7 @@
         errorMessage    = '';
         neutralSamples  = [];
         lastSampledBucket = -1;
-        gestureIndex    = 0;
-        gesturesDone    = 0;
-        holdProgress    = 0;
+        livenessProgress = 0;
         posHoldProgress = 0;
         posHoldStart    = null;
         faceDetected    = false;
@@ -439,13 +402,6 @@
         stopCamera();
         onCancel?.();
     }
-
-    const gestureIconMap: Record<string, any> = {
-        left:  ArrowLeft,
-        right: ArrowRight,
-        nod:   ChevronUp,
-        mouth: SmilePlus,
-    };
 
     onMount(start);
     onDestroy(stopCamera);
@@ -464,11 +420,6 @@
 
         <div class="mb-1 flex items-center gap-2">
             <h2 class="text-lg font-semibold">Face enrollment</h2>
-            {#if phase === 'gesture'}
-                <span class="rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-primary">
-                    Step {gesturesDone + 1} of {selected.length}
-                </span>
-            {/if}
         </div>
 
         <p class="mb-4 text-sm text-muted-foreground">
@@ -510,32 +461,15 @@
             {/if}
         {/if}
 
-        {#if phase === 'gesture'}
-            <div class="mb-3 flex items-center justify-center gap-2">
-                {#each selected as _g, i (i)}
-                    <div
-                        class="h-1.5 rounded-full transition-all duration-300 {i === gestureIndex
-                            ? 'w-6 bg-primary'
-                            : i < gesturesDone
-                                ? 'w-1.5 bg-primary/40'
-                                : 'w-1.5 bg-muted'}"
-                    ></div>
-                {/each}
-            </div>
-
-            <div class="mb-3 flex items-center justify-center gap-2 rounded-lg border border-border bg-muted/40 px-3 py-2 text-sm font-medium">
-                {#if selected[gestureIndex]?.icon && gestureIconMap[selected[gestureIndex].icon]}
-                    {@const GestureIcon = gestureIconMap[selected[gestureIndex].icon]}
-                    <GestureIcon class="size-4 text-primary" />
-                {/if}
-                <span class="text-foreground">{selected[gestureIndex]?.label ?? ''}</span>
-            </div>
-
-            {#if holdProgress > 0}
+        {#if phase === 'liveness'}
+            <div class="mb-3 space-y-2">
+                <p class="text-xs text-muted-foreground">
+                    Sit naturally for 12 seconds. Blink normally and let your eyes wander.
+                </p>
                 <div class="mb-3 h-1 w-full overflow-hidden rounded-full bg-muted">
-                    <div class="h-full bg-primary transition-all" style="width: {holdProgress * 100}%"></div>
+                    <div class="h-full bg-primary transition-all" style="width: {livenessProgress * 100}%"></div>
                 </div>
-            {/if}
+            </div>
         {/if}
 
         {#if phase === 'error'}

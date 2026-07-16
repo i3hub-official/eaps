@@ -24,11 +24,16 @@
 	let logs = $state<string[]>([]);
 
 	// Real assessment ID selected from the student's actual eligible tests
-	// (data.assessments, loaded server-side in +page.server.ts) — no more
-	// fabricated 'test-session-<timestamp>' string. Face verification will
-	// now genuinely look up and update a real AssessmentSession row, since
-	// /api/face/verify-session matches on { assessmentId, studentId }.
+	// (data.assessments, loaded server-side in +page.server.ts) — used for
+	// face enrollment/verification, which key off assessmentId.
 	let selectedAssessmentId = $state(data.assessments[0]?.id ?? '');
+
+	// Real AssessmentSession ID — this is what ExamMonitor's violation
+	// batching endpoint actually needs (it looks up AssessmentSession, not
+	// Assessment). Distinct from selectedAssessmentId on purpose: an
+	// Assessment can exist with no session started yet, and the monitor
+	// has nothing valid to attach to until a session row exists.
+	let selectedSessionId = $state(data.activeSessions[0]?.id ?? '');
 
 	function addLog(message: string) {
 		const timestamp = new Date().toLocaleTimeString();
@@ -101,7 +106,11 @@
 			addLog('⚠️ Cannot start monitor: face not enrolled yet');
 			return;
 		}
-		addLog('👁️ Starting exam monitor...');
+		if (!selectedSessionId) {
+			addLog('⚠️ No active AssessmentSession to monitor — start a real session first (via the kiosk flow or /api/assessment/session/create), then reload this page.');
+			return;
+		}
+		addLog(`👁️ Starting exam monitor for session ${selectedSessionId}...`);
 		showMonitor = true;
 	}
 
@@ -167,10 +176,25 @@
 				</p>
 			{/if}
 			{#if data.activeSessions.length > 0}
-				<p class="text-xs text-slate-500 mt-2">
-					You have {data.activeSessions.length} active session(s) in progress — select the matching assessment above to resume verifying against it.
-				</p>
-			{/if}
+	<div class="mb-6 rounded-xl border border-slate-700 bg-slate-800/50 backdrop-blur p-4">
+		<label class="text-sm text-slate-300 block mb-1" for="session-select">
+			Test monitor against session
+		</label>
+		<select
+			id="session-select"
+			bind:value={selectedSessionId}
+			class="w-full rounded-md border border-slate-600 bg-slate-900 px-3 py-2 text-white text-sm"
+		>
+			{#each data.activeSessions as s}
+				<option value={s.id}>{s.status} — {s.id}</option>
+			{/each}
+		</select>
+	</div>
+{:else}
+	<div class="mb-6 rounded-xl border border-yellow-700/50 bg-yellow-900/20 p-4 text-sm text-yellow-300">
+		No active AssessmentSession found. The monitor needs a real session row to attach to — start one via the kiosk flow first, or hit <code>/api/assessment/session/create</code> for the selected assessment.
+	</div>
+{/if}
 		</div>
 
 		<!-- Main Grid -->
@@ -296,12 +320,12 @@
 					</Button>
 				{:else}
 					<Button
-						class="w-full"
-						onclick={openMonitor}
-						disabled={!isEnrolled}
-					>
-						{isEnrolled ? 'Start Monitor' : 'Enroll First'}
-					</Button>
+	class="w-full"
+	onclick={openMonitor}
+	disabled={!isEnrolled || !selectedSessionId}
+>
+	{isEnrolled ? (selectedSessionId ? 'Start Monitor' : 'No Session Available') : 'Enroll First'}
+</Button>
 				{/if}
 			</div>
 		</div>
@@ -611,6 +635,7 @@
 {/if}
 
 <!-- Exam Monitor -->
-{#if showMonitor}
-	<ExamMonitor sessionId={selectedAssessmentId} />
+<!-- Exam Monitor -->
+{#if showMonitor && selectedSessionId}
+	<ExamMonitor sessionId={selectedSessionId} />
 {/if}

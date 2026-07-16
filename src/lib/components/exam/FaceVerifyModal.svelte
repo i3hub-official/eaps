@@ -1,4 +1,4 @@
-<!-- src/lib/components/exam/FaceVerifyModal.svelte -->
+<!-- src/lib/components/exam/FaceVerifyModal.svelte - PASSIVE LIVENESS VERSION -->
 <script lang="ts">
     import { onMount, onDestroy } from 'svelte';
     import { Button } from '$lib/components/ui/button/index.js';
@@ -8,13 +8,7 @@
     import AlertCircle from '@lucide/svelte/icons/alert-circle';
     import ScanFace from '@lucide/svelte/icons/scan-face';
     import { getHuman, cosineSimilarity } from '$lib/client/face/human.js';
-    import {
-        selectGestures,
-        gestureConfidence,
-        GestureTracker,
-        ALL_GESTURES,
-        type GestureDefinition,
-    } from './gesture-service.js';
+    import { PassiveLivenessTracker } from '$lib/client/face/passive-liveness.js';
 
     let {
         examId,
@@ -22,7 +16,7 @@
         onCancel,
     }: { examId: string; onSuccess: () => void; onCancel: () => void } = $props();
 
-    type Phase = 'loading-model' | 'requesting-camera' | 'positioning' | 'gesture' | 'checking' | 'success' | 'failed' | 'error';
+    type Phase = 'loading-model' | 'requesting-camera' | 'positioning' | 'liveness' | 'checking' | 'success' | 'failed' | 'error';
 
     let phase = $state<Phase>('loading-model');
     let errorMessage = $state('');
@@ -30,43 +24,26 @@
     let faceDetected = $state(false);
     let similarityPercent = $state<number | null>(null);
 
-    // ─── Position Hold ─────────────────────────────────────────────────────
+    // ─── Positioning phase ─────────────────────────────────────────────────
     let posHoldProgress = $state(0);
     let posHoldStart: number | null = null;
     const POS_HOLD_MS = 2000;
 
-    // ─── Gesture Phase (liveness challenge only — see finishCapture) ───────
-    let selected: GestureDefinition[] = [];
-    let gestureIndex = $state(0);
-    let gesturesDone = $state(0);
-    let holdProgress = $state(0);
-    let tracker: GestureTracker | null = null;
-    const GESTURE_COUNT = 3;
+    // ─── Passive Liveness Phase ────────────────────────────────────────────
+    let livenessTracker: PassiveLivenessTracker | null = null;
+    let livenessPhaseStart: number | null = null;
+    const LIVENESS_WINDOW_MS = 12000; // 12 seconds of passive observation
+    let livenessProgress = $state(0);
 
     // ─── Identity capture (neutral frames only) ─────────────────────────────
-    // Sampled during the positioning hold, while the face is centred,
-    // front-facing, and at rest — matching exactly how FaceEnrollModal now
-    // builds its reference descriptor. Comparing neutral-to-neutral is what
-    // fixed the enroll↔verify mismatches: embeddings taken mid-gesture
-    // (turned head, open mouth) are measurably lower quality and were
-    // previously being averaged into both sides of the comparison.
     let neutralSamples: number[][] = [];
     let lastSampledBucket = -1;
     let enrolledDescriptor: number[] | null = null;
 
-    // ─── Liveness/Anti-spoof Tracking (still driven by gestures) ───────────
-    // Accumulate the BEST real/live scores seen across every gesture frame
-    // rather than reading the last frame alone (which may be stale or
-    // mid-blink). A real face will produce at least a few high-scoring
-    // frames; a spoof will consistently fail across all of them.
-    let bestRealScore = 0;
-    let bestLiveScore = 0;
-
     const MATCH_THRESHOLD = 0.78;
-    const MIN_ANTISPOOF = 0.55;   // Lowered: peak score across all frames, not per-frame
-    const MIN_LIVENESS  = 0.55;   // Lowered: same rationale
+    const MIN_ANTISPOOF = 0.55;
+    const MIN_LIVENESS = 0.55;
 
-    // ─── DOM Refs ─────────────────────────────────────────────────────────
     let videoEl = $state<HTMLVideoElement | null>(null);
     let canvasEl = $state<HTMLCanvasElement | null>(null);
     let ctx: CanvasRenderingContext2D | null = null;
@@ -77,10 +54,6 @@
     let lastResult: any = null;
 
     // ─── Frame-rate throttle ────────────────────────────────────────────────
-    // Same rationale as FaceEnrollModal: cap inference to ~12fps instead of
-    // the ~60fps requestAnimationFrame gives us for free. Hold timing is
-    // driven by performance.now(), so this only reduces how often detect()
-    // runs, not how long any phase takes.
     const TARGET_FPS = 12;
     const FRAME_INTERVAL = 1000 / TARGET_FPS;
     let lastFrameTime = 0;
@@ -189,8 +162,6 @@
             stopped = false;
             phase = 'loading-model';
             statusText = 'Loading face model…';
-            bestRealScore = 0;
-            bestLiveScore = 0;
             initColors();
             human = await getHuman();
 
@@ -297,9 +268,6 @@
                 statusText = posHoldProgress < 1 ? 'Hold still…' : 'Starting liveness check…';
                 drawOverlay(true, false, posHoldProgress);
 
-                // Sample the identity embedding roughly every 10% of the hold
-                // — same neutral-frame approach as enrollment, so both sides
-                // of the comparison are built from comparable, low-noise data.
                 const bucket = Math.floor(posHoldProgress * 10);
                 if (bucket !== lastSampledBucket && face.embedding) {
                     lastSampledBucket = bucket;
@@ -307,15 +275,13 @@
                 }
 
                 if (posHoldProgress >= 1) {
-                    selected = selectGestures(GESTURE_COUNT);
-                    gestureIndex = 0;
-                    gesturesDone = 0;
-                    tracker = new GestureTracker();
-                    holdProgress = 0;
-                    phase = 'gesture';
-                    statusText = selected[0]?.label || 'Gesture';
+                    livenessTracker = new PassiveLivenessTracker();
+                    livenessPhaseStart = null;
+                    livenessProgress = 0;
+                    phase = 'liveness';
+                    statusText = 'Checking liveness…';
                     lastFrameTime = 0;
-                    loopHandle = requestAnimationFrame(gestureLoop);
+                    loopHandle = requestAnimationFrame(livenessLoop);
                     return;
                 }
             } else {
@@ -328,83 +294,58 @@
         loopHandle = requestAnimationFrame(positioningLoop);
     }
 
-    async function gestureLoop() {
-        if (stopped || phase !== 'gesture') return;
+    async function livenessLoop() {
+        if (stopped || phase !== 'liveness') return;
 
         const now = performance.now();
         if (now - lastFrameTime < FRAME_INTERVAL) {
-            loopHandle = requestAnimationFrame(gestureLoop);
+            loopHandle = requestAnimationFrame(livenessLoop);
             return;
         }
         lastFrameTime = now;
 
+        if (!livenessPhaseStart) livenessPhaseStart = now;
+        const elapsed = now - livenessPhaseStart;
+        const timeProgress = Math.min(1, elapsed / LIVENESS_WINDOW_MS);
+
         await detect();
-        if (stopped || phase !== 'gesture') return;
+        if (stopped || phase !== 'liveness') return;
 
         const faces = lastResult?.face ?? [];
-        const gestures = lastResult?.gesture ?? [];
 
         if (faces.length === 0) {
-            if (tracker) tracker.reset();
-            holdProgress = 0;
             statusText = 'Keep your face in the oval';
-            drawOverlay(false, false, 0, selected[gestureIndex]?.label);
-            loopHandle = requestAnimationFrame(gestureLoop);
+            drawOverlay(false, false, 0, 'Sit naturally');
+            livenessProgress = livenessTracker?.getProgress() ?? 0;
+            loopHandle = requestAnimationFrame(livenessLoop);
             return;
         }
+
         if (faces.length > 1) {
-            if (tracker) tracker.reset();
-            holdProgress = 0;
             statusText = 'Only one person allowed';
             drawOverlay(false, true, 0);
-            loopHandle = requestAnimationFrame(gestureLoop);
+            loopHandle = requestAnimationFrame(livenessLoop);
             return;
         }
 
         const face = faces[0];
 
-        // Accumulate best liveness/antispoof scores seen this session — this
-        // stays driven by gesture frames since it's proving the person is
-        // live and responsive, which is exactly what mid-gesture frames are
-        // good for (unlike identity matching, which needs neutral frames).
-        const frameReal = face.real ?? face.antispoof ?? 0;
-        const frameLive = face.live ?? 0;
-        if (frameReal > bestRealScore) bestRealScore = frameReal;
-        if (frameLive > bestLiveScore) bestLiveScore = frameLive;
+        // Feed the face into the passive liveness tracker
+        if (livenessTracker) {
+            livenessTracker.update(face);
+        }
 
-        const g = selected[gestureIndex];
-        if (!g || !tracker) {
+        livenessProgress = livenessTracker?.getProgress() ?? 0;
+        drawOverlay(true, false, livenessProgress, 'Sit naturally');
+        statusText = `Checking liveness (${Math.round(timeProgress * 100)}%)…`;
+
+        // Check if observation window is complete
+        if (timeProgress >= 1) {
             await finishCapture();
             return;
         }
 
-        const confidence = gestureConfidence(g.id, face, gestures);
-        const conflictingActionDetected = ALL_GESTURES
-            .filter(alt => alt.id !== g.id)
-            .some(alt => gestureConfidence(alt.id, face, gestures) > 0.60);
-
-        const confirmed = tracker.update(confidence, conflictingActionDetected);
-        holdProgress = tracker.holdProgress;
-
-        drawOverlay(true, false, holdProgress, g.label);
-        statusText = g.label;
-
-        // NOTE: no embedding capture here on purpose — see neutralSamples
-        // above. This gesture only needs to be performed, not photographed.
-        if (confirmed) {
-            gesturesDone = gestureIndex + 1;
-
-            if (gesturesDone >= selected.length) {
-                await finishCapture();
-                return;
-            }
-
-            gestureIndex++;
-            tracker = new GestureTracker();
-            holdProgress = 0;
-            statusText = selected[gestureIndex]?.label || 'Gesture';
-        }
-        loopHandle = requestAnimationFrame(gestureLoop);
+        loopHandle = requestAnimationFrame(livenessLoop);
     }
 
     async function finishCapture() {
@@ -428,12 +369,16 @@
             const similarity = cosineSimilarity(averaged, enrolledDescriptor);
             similarityPercent = Math.round(similarity * 100);
 
-            // Use the best liveness scores accumulated across all gesture
-            // frames, not the stale scores from the final (possibly frozen)
-            // frame.
+            // Get liveness results
+            const livenessResult = livenessTracker?.getResult();
+            if (!livenessResult) {
+                throw new Error('Liveness assessment incomplete.');
+            }
+
+            // Check all criteria
             const matchPassed = similarity >= MATCH_THRESHOLD;
-            const realPassed  = bestRealScore >= MIN_ANTISPOOF;
-            const livePassed  = bestLiveScore >= MIN_LIVENESS;
+            const realPassed  = livenessResult.antispoofScore >= MIN_ANTISPOOF;
+            const livePassed  = livenessResult.livenessScore >= MIN_LIVENESS;
             const clientVerified = matchPassed && realPassed && livePassed;
 
             const verifyRes = await fetch('/api/face/verify-session', {
@@ -442,8 +387,8 @@
                 body: JSON.stringify({
                     verified: clientVerified,
                     similarityScore: similarityPercent,
-                    antispoofScore: Math.round(bestRealScore * 100),
-                    livenessScore: Math.round(bestLiveScore * 100),
+                    antispoofScore: Math.round(livenessResult.antispoofScore * 100),
+                    livenessScore: Math.round(livenessResult.livenessScore * 100),
                     examId,
                 }),
             });
@@ -460,8 +405,10 @@
                 stopCamera();
                 if (!matchPassed) {
                     statusText = 'The captured face does not match the enrolled profile.';
-                } else if (!realPassed || !livePassed) {
-                    statusText = 'Liveness check failed. Ensure you are in good lighting and your face is clearly visible.';
+                } else if (!realPassed) {
+                    statusText = 'Spoof detection failed. Ensure you are in good lighting.';
+                } else if (!livePassed) {
+                    statusText = 'Liveness check failed. Blink naturally and move your head slightly.';
                 } else {
                     statusText = serverVerdict.message || 'Identity verification rejected by authentication gateway.';
                 }
@@ -486,11 +433,7 @@
         faceDetected = false;
         neutralSamples = [];
         lastSampledBucket = -1;
-        bestRealScore = 0;
-        bestLiveScore = 0;
-        gestureIndex = 0;
-        gesturesDone = 0;
-        holdProgress = 0;
+        livenessProgress = 0;
         posHoldProgress = 0;
         posHoldStart = null;
         stopped = false;
@@ -517,34 +460,14 @@
             <X class="size-5" />
         </button>
 
-        <!-- Header -->
         <div class="mb-1 flex items-center gap-2">
             <h2 class="text-lg font-semibold">Verify your identity</h2>
-            {#if phase === 'gesture'}
-                <span class="rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-primary">
-                    Step {gesturesDone + 1} of {selected.length}
-                </span>
-            {/if}
         </div>
 
-        <!-- Instruction line — always visible during active phases -->
         <p class="mb-4 text-sm text-muted-foreground">
-            {#if phase === 'loading-model' || phase === 'requesting-camera'}
-                {statusText}
-            {:else if phase === 'positioning'}
-                {statusText}
-            {:else if phase === 'gesture'}
-                {statusText}
-            {:else if phase === 'checking'}
-                Verifying your identity, please wait…
-            {:else if phase === 'success'}
-                Identity confirmed. Proceeding…
-            {:else}
-                Follow the on-screen instructions to verify your identity.
-            {/if}
+            Sit naturally for 12 seconds. Blink and let your eyes move naturally.
         </p>
 
-        <!-- Camera viewport -->
         <div class="relative mb-4 aspect-video overflow-hidden rounded-lg bg-black">
             <video bind:this={videoEl} class="h-full w-full -scale-x-100 object-cover" muted playsinline></video>
             <canvas bind:this={canvasEl} class="pointer-events-none absolute inset-0 h-full w-full"></canvas>
@@ -563,7 +486,6 @@
             {/if}
         </div>
 
-        <!-- Phase-specific feedback below the video -->
         {#if phase === 'positioning'}
             <div class="mb-3 flex items-center justify-center gap-2 text-sm font-medium">
                 {#if faceDetected}
@@ -581,26 +503,10 @@
             {/if}
         {/if}
 
-        {#if phase === 'gesture'}
-            <div class="mb-3 flex items-center justify-center gap-2">
-                {#each selected as _g, i (i)}
-                    <div
-                        class="h-1.5 rounded-full transition-all duration-300 {i === gestureIndex
-                            ? 'w-6 bg-primary'
-                            : i < gesturesDone
-                                ? 'w-1.5 bg-primary/40'
-                                : 'w-1.5 bg-muted'}"
-                    ></div>
-                {/each}
+        {#if phase === 'liveness'}
+            <div class="mb-4 h-1 w-full overflow-hidden rounded-full bg-muted">
+                <div class="h-full bg-primary transition-all" style="width: {livenessProgress * 100}%"></div>
             </div>
-            <div class="mb-3 flex items-center justify-center gap-2 rounded-lg border border-border bg-muted/40 px-3 py-2 text-sm font-medium">
-                <span class="text-foreground">{selected[gestureIndex]?.label ?? ''}</span>
-            </div>
-            {#if holdProgress > 0}
-                <div class="mb-4 h-1 w-full overflow-hidden rounded-full bg-muted">
-                    <div class="h-full bg-primary transition-all" style="width: {holdProgress * 100}%"></div>
-                </div>
-            {/if}
         {/if}
 
         {#if phase === 'error' || phase === 'failed'}
@@ -610,7 +516,6 @@
             </div>
         {/if}
 
-        <!-- Actions -->
         <div class="flex gap-2">
             {#if phase === 'error' || phase === 'failed'}
                 <Button variant="outline" class="flex-1" onclick={handleCancel}>Cancel</Button>

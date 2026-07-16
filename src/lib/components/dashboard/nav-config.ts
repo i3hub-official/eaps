@@ -127,7 +127,8 @@ export const navByRole: Record<Role, NavSection[]> = {
 		{
 			label: 'Insights',
 			items: [
-				{ label: 'Reports', href: '/lecturer/report', icon: BarChart3 }
+				{ label: 'Reports', href: '/lecturer/reports', icon: BarChart3 },
+				{ label: 'Assessment Reports', href: '/lecturer/reports/assessments', icon: BarChart3 }
 			]
 		},
 		

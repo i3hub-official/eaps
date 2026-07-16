@@ -12,6 +12,7 @@
 	import XCircle from '@lucide/svelte/icons/x-circle';
 	import AlertCircle from '@lucide/svelte/icons/alert-circle';
 	import { getHuman, cosineSimilarity } from '$lib/client/face/human.js';
+	import { calculateEyeOpennessMesh } from '$lib/client/face/passive-liveness.js';
 
 	let { sessionId }: { sessionId: string } = $props();
 
@@ -24,27 +25,30 @@
 	const AI_THRESHOLDS = {
 		// Eye tracking
 		EYE_GAZE_THRESHOLD: 0.45,           // was 0.35 — mobile front cams read wider gaze swings as normal
-		EYE_CLOSURE_THRESHOLD: 0.5,
+		EYE_CLOSURE_THRESHOLD: 0.2,          // recalibrated for mesh-based EAR (0-1 ratio, ~0.2 = closed)
 		RAPID_BLINK_THRESHOLD: 35,           // was 25 — now measured per rolling 60s window (see fix below)
 		SUSTAINED_GAZE_THRESHOLD: 6000,      // was 4000
 		LOOKING_DOWN_THRESHOLD: 0.75,        // was 0.6 — was firing on normal phone-holding angle
-		
-		// Head pose
+
+		// Head pose (degrees)
 		HEAD_TILT_THRESHOLD: 28,             // was 20
 		HEAD_TURN_THRESHOLD: 22,             // was 15
 		SUSTAINED_HEAD_TURN: 5000,           // was 3000
 		HEAD_NOD_THRESHOLD: 10,
-		
-		// Mouth
-		MOUTH_OPEN_THRESHOLD: 0.65,          // was 0.5 — was firing on normal reading-aloud/lip movement
+
+		// Mouth — NOTE: recalibrate after first live session. This metric
+		// never actually ran before (see fix notes), so 0.65 is inherited
+		// from a different, non-functional calculation and is likely too
+		// high for the mesh-based vertical/horizontal ratio used now.
+		MOUTH_OPEN_THRESHOLD: 0.35,
 		MOUTH_MOVEMENT_THRESHOLD: 0.25,
 		SUSTAINED_MOUTH_OPEN: 3500,          // was 2000
 		WHISPER_DETECTION: true,
-		
+
 		// Gestures
 		SUSPICIOUS_GESTURE_THRESHOLD: 0.5,
 		HAND_OVER_MOUTH_THRESHOLD: 0.4,
-		
+
 		// Facial expressions
 		EXPRESSION_CHANGE_THRESHOLD: 0.4,
 		STRESS_SIGNAL_THRESHOLD: 0.6,
@@ -72,7 +76,7 @@
 		RAPID_FACE_CHANGE: 12000,
 		BACKGROUND_CHANGE: 8000,
 		IDLE_TIMEOUT: 300000,
-		
+
 		// AI violations
 		SUSPICIOUS_GAZE: 15000,      // was 10000
 		RAPID_BLINKING: 20000,       // was 10000
@@ -87,13 +91,13 @@
 	};
 
 	type Status = 'ok' | 'warning' | 'violation';
-	type AlertType = 
-		| 'face' 
-		| 'tab' 
-		| 'fullscreen' 
-		| 'devtools' 
-		| 'clipboard' 
-		| 'network' 
+	type AlertType =
+		| 'face'
+		| 'tab'
+		| 'fullscreen'
+		| 'devtools'
+		| 'clipboard'
+		| 'network'
 		| 'idle'
 		| 'recording'
 		| 'monitor'
@@ -113,7 +117,7 @@
 	let violationCount = $state(0);
 	let cameraReady = $state(false);
 	let isStudentVerified = $state(false);
-	
+
 	// ─── Screen Blur State ──────────────────────────────────────────────────────
 	let isScreenBlurred = $state(false);
 	let blurMessage = $state('');
@@ -130,13 +134,13 @@
 
 	// Other violation tracking
 	// ─── Violation Batching ─────────────────────────────────────────────────────
-// Violations are queued client-side and flushed together every 5s instead
-// of one HTTP request per event — at high concurrent user counts, this
-// turns bursty per-violation traffic into a steady, much lower request
-// rate against the server.
-let violationQueue: Array<{ type: string; severity: number; metadata?: Record<string, unknown> }> = [];
-let flushIntervalHandle: ReturnType<typeof setInterval> | null = null;
-const FLUSH_INTERVAL_MS = 5000;
+	// Violations are queued client-side and flushed together every 5s instead
+	// of one HTTP request per event — at high concurrent user counts, this
+	// turns bursty per-violation traffic into a steady, much lower request
+	// rate against the server.
+	let violationQueue: Array<{ type: string; severity: number; metadata?: Record<string, unknown> }> = [];
+	let flushIntervalHandle: ReturnType<typeof setInterval> | null = null;
+	const FLUSH_INTERVAL_MS = 5000;
 
 	let isFullscreen = false;
 	let devtoolsOpen = false;
@@ -148,22 +152,22 @@ const FLUSH_INTERVAL_MS = 5000;
 	// Eye tracking
 	let gazeHistory: Array<{ x: number; y: number; timestamp: number }> = [];
 	let blinkCount = 0;
-	let blinkWindowStart = Date.now();   // NEW — anchors the rolling per-minute window
+	let blinkWindowStart = Date.now();   // anchors the rolling per-minute window
 	let lastBlinkTime = Date.now();
 	let sustainedGazeStart: number | null = null;
 	let lookingDownStart: number | null = null;
-	
+
 	// Head pose
 	let headPoseHistory: Array<{ yaw: number; pitch: number; roll: number; timestamp: number }> = [];
 	let sustainedHeadTurnStart: number | null = null;
-	
+
 	// Mouth
 	let mouthOpenHistory: Array<{ open: number; timestamp: number }> = [];
 	let mouthMovementStart: number | null = null;
-	
+
 	// Gestures
 	let gestureHistory: Array<{ type: string; confidence: number; timestamp: number }> = [];
-	
+
 	// Facial expressions
 	let expressionHistory: Array<{ expression: string; confidence: number; timestamp: number }> = [];
 	let stressSignalCount = 0;
@@ -207,6 +211,14 @@ const FLUSH_INTERVAL_MS = 5000;
 	const BLOCKED_KEYS = ['a', 'b', 'c', 'd', 'n', 'y', 'r', 'p', 't', 'f'];
 	const BLOCKED_KEY_CODES = ['KeyA', 'KeyB', 'KeyC', 'KeyD', 'KeyN', 'KeyY', 'KeyR', 'KeyP', 'KeyT', 'KeyF'];
 
+	// ─── Face Mesh Landmark Indices (MediaPipe FaceMesh, human.js face.mesh) ───
+	// Mouth: top/bottom center, left/right corner — used for openness ratio
+	// and for locating the mouth region for hand-over-mouth detection.
+	const MOUTH_TOP = 13;
+	const MOUTH_BOTTOM = 14;
+	const MOUTH_LEFT = 61;
+	const MOUTH_RIGHT = 291;
+
 	// ─── Utility Functions ──────────────────────────────────────────────────────
 
 	function canLog(type: string): boolean {
@@ -218,55 +230,57 @@ const FLUSH_INTERVAL_MS = 5000;
 	}
 
 	async function logViolation(type: string, severity: number, metadata?: Record<string, unknown>) {
-	if (!canLog(type)) return;
+		if (!canLog(type)) return;
 
-	violationCount++;
-	status = severity >= 3 ? 'violation' : 'warning';
+		violationCount++;
+		status = severity >= 3 ? 'violation' : 'warning';
 
-	// Show local alert immediately — UI feedback should never wait on a
-	// network round trip.
-	showAlert(type as AlertType, getViolationMessage(type), severity);
+		// Show local alert immediately — UI feedback should never wait on a
+		// network round trip.
+		showAlert(type as AlertType, getViolationMessage(type), severity);
 
-	// Queue for batched delivery rather than posting immediately.
-	violationQueue.push({ type, severity, metadata });
+		// Queue for batched delivery rather than posting immediately.
+		violationQueue.push({ type, severity, metadata });
 
-	// Critical violations (severity 3) flush immediately rather than
-	// waiting up to 5s — auto-disqualification logic depends on the
-	// server seeing these promptly, and a student shouldn't be able to
-	// close the tab within the flush window to dodge a critical log.
-	if (severity >= 3) {
-		await flushViolations();
-	}
-}
-
-async function flushViolations() {
-	if (violationQueue.length === 0) return;
-	const batch = violationQueue;
-	violationQueue = [];
-
-	try {
-		const res = await fetch(`/api/assessment/session/${sessionId}/violation/batch`, {
-			method: 'POST',
-			headers: { 'Content-Type': 'application/json' },
-			body: JSON.stringify({ violations: batch }),
-		});
-		if (!res.ok) throw new Error(`Batch flush failed: ${res.status}`);
-
-		const result = await res.json().catch(() => null);
-		if (result?.autoSubmitted) {
-			console.log('[Monitor] Session was auto-disqualified by the server.');
-			// The kiosk page itself is responsible for reacting to a closed
-			// session (e.g. redirecting to a "session ended" screen) — this
-			// monitor only needs to stop generating further violations.
-			stopped = true;
+		// Critical violations (severity 3) flush immediately rather than
+		// waiting up to 5s — auto-disqualification logic depends on the
+		// server seeing these promptly, and a student shouldn't be able to
+		// close the tab within the flush window to dodge a critical log.
+		if (severity >= 3) {
+			await flushViolations();
 		}
-	} catch (err) {
-		console.error('[Monitor] Batch flush failed, re-queueing:', err);
-		// Put the failed batch back at the front so it's retried on the
-		// next flush rather than silently lost.
-		violationQueue = [...batch, ...violationQueue];
 	}
-}
+
+	async function flushViolations() {
+		if (violationQueue.length === 0) return;
+		const batch = violationQueue;
+			console.log('[Monitor] flushViolations sessionId:', JSON.stringify(sessionId));
+
+		violationQueue = [];
+
+		try {
+const res = await fetch(`/api/assessment/session/${sessionId}/violation/batch`, {
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({ violations: batch }),
+			});
+			if (!res.ok) throw new Error(`Batch flush failed: ${res.status}`);
+
+			const result = await res.json().catch(() => null);
+			if (result?.autoSubmitted) {
+				console.log('[Monitor] Session was auto-disqualified by the server.');
+				// The kiosk page itself is responsible for reacting to a closed
+				// session (e.g. redirecting to a "session ended" screen) — this
+				// monitor only needs to stop generating further violations.
+				stopped = true;
+			}
+		} catch (err) {
+			console.error('[Monitor] Batch flush failed, re-queueing:', err);
+			// Put the failed batch back at the front so it's retried on the
+			// next flush rather than silently lost.
+			violationQueue = [...batch, ...violationQueue];
+		}
+	}
 
 	function getViolationMessage(type: string): string {
 		const messages: Record<string, string> = {
@@ -290,7 +304,7 @@ async function flushViolations() {
 			AUDIO_DETECTION: 'Suspicious audio detected',
 			RAPID_FACE_CHANGE: 'Rapid face change detected',
 			BACKGROUND_CHANGE: 'Background change detected',
-			
+
 			// AI violations
 			SUSPICIOUS_GAZE: 'Suspicious eye gaze detected - looking away from screen',
 			RAPID_BLINKING: 'Rapid blinking detected - possible cheating attempt',
@@ -322,7 +336,7 @@ async function flushViolations() {
 			isScreenBlurred = true;
 			blurMessage = message;
 			console.log('[Monitor] Screen blurred:', message);
-			
+
 			if (message.includes('not detected') || message.includes('covered')) {
 				logViolation('FACE_NOT_DETECTED', 3);
 			}
@@ -337,69 +351,85 @@ async function flushViolations() {
 		}
 	}
 
-// ─── Student Verification Check ────────────────────────────────────────────
-async function checkStudentVerification() {
-	try {
-		// First check if the session has been verified via the existing endpoint
-		const res = await fetch(`/api/face/verify-session`, {
-			method: 'POST',
-			headers: { 'Content-Type': 'application/json' },
-			body: JSON.stringify({ 
-				examId: sessionId,
-				verified: true, // We're just checking status, not performing verification
-				similarityScore: 0,
-				antispoofScore: 0,
-				livenessScore: 0
-			})
-		});
-		
-		if (res.ok) {
-			const data = await res.json();
-			// The verify-session endpoint returns success: true when verified
-			isStudentVerified = data.success === true;
-			console.log('[Monitor] Student verification status:', isStudentVerified);
-		} else {
-			// If the session hasn't been verified, check local session state
-			if (typeof window !== 'undefined') {
-				// Check if we have cached verification status
-				const cached = sessionStorage.getItem(`face_verified_${sessionId}`);
-				if (cached) {
-					isStudentVerified = cached === 'true';
-					console.log('[Monitor] Student verification status (cached):', isStudentVerified);
-					return;
+	// ─── Student Verification Check ────────────────────────────────────────────
+	async function checkStudentVerification() {
+		try {
+			// First check if the session has been verified via the existing endpoint
+			const res = await fetch(`/api/face/verify-session`, {
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({
+					examId: sessionId,
+					verified: true, // We're just checking status, not performing verification
+					similarityScore: 0,
+					antispoofScore: 0,
+					livenessScore: 0
+				})
+			});
+
+			if (res.ok) {
+				const data = await res.json();
+				// The verify-session endpoint returns success: true when verified
+				isStudentVerified = data.success === true;
+				console.log('[Monitor] Student verification status:', isStudentVerified);
+			} else {
+				// If the session hasn't been verified, check local session state
+				if (typeof window !== 'undefined') {
+					// Check if we have cached verification status
+					const cached = sessionStorage.getItem(`face_verified_${sessionId}`);
+					if (cached) {
+						isStudentVerified = cached === 'true';
+						console.log('[Monitor] Student verification status (cached):', isStudentVerified);
+						return;
+					}
 				}
+
+				// Check if the current session has faceVerified flag
+				// This could be stored in a global state or context
+				isStudentVerified = false;
+				console.log('[Monitor] Student not verified for this session');
 			}
-			
-			// Check if the current session has faceVerified flag
-			// This could be stored in a global state or context
+
+		} catch (err) {
+			console.error('[Monitor] Failed to check verification:', err);
+			// Don't fail completely - just assume not verified
 			isStudentVerified = false;
-			console.log('[Monitor] Student not verified for this session');
 		}
-		
-	} catch (err) {
-		console.error('[Monitor] Failed to check verification:', err);
-		// Don't fail completely - just assume not verified
-		isStudentVerified = false;
 	}
-}
 
 	// ─── AI Analysis Functions ──────────────────────────────────────────────────
 
+	function radiansToDegrees(radians: number): number {
+		return radians * (180 / Math.PI);
+	}
+
+	function meshDistance(p1: number[], p2: number[]): number {
+		const dx = (p2[0] || 0) - (p1[0] || 0);
+		const dy = (p2[1] || 0) - (p1[1] || 0);
+		return Math.sqrt(dx * dx + dy * dy);
+	}
+
+	function calculateMouthOpennessMesh(mesh: number[][]): number {
+		const top = mesh[MOUTH_TOP];
+		const bottom = mesh[MOUTH_BOTTOM];
+		const left = mesh[MOUTH_LEFT];
+		const right = mesh[MOUTH_RIGHT];
+		if (!top || !bottom || !left || !right) return 0;
+
+		const vertical = meshDistance(top, bottom);
+		const horizontal = meshDistance(left, right);
+		return vertical / (horizontal + 0.001);
+	}
+
 	// ─── Eye Tracking Analysis ─────────────────────────────────────────────────
 	async function analyzeEyes(face: any) {
-		if (!face.landmarks) return;
+		if (!face.mesh || !Array.isArray(face.mesh)) return;
 
 		try {
-			// Get eye landmarks
-			const leftEye = face.landmarks.getLeftEye();
-			const rightEye = face.landmarks.getRightEye();
-			
-			if (!leftEye || !rightEye) return;
-
-			// Calculate eye openness
-			const leftOpenness = calculateEyeOpenness(leftEye);
-			const rightOpenness = calculateEyeOpenness(rightEye);
-			const avgOpenness = (leftOpenness + rightOpenness) / 2;
+			// Eye openness from facial mesh geometry (EAR). human.js does not
+			// expose face.landmarks.getLeftEye()/.getRightEye() — that is a
+			// face-api.js API shape, not human.js.
+			const avgOpenness = calculateEyeOpennessMesh(face.mesh);
 
 			// Detect blinks (eyes closed)
 			if (avgOpenness < AI_THRESHOLDS.EYE_CLOSURE_THRESHOLD) {
@@ -411,9 +441,7 @@ async function checkStudentVerification() {
 			}
 
 			// Check rapid blinking — measured over a real rolling 60s window,
-			// not a lifetime total that only resets when it fires (that bug
-			// meant a perfectly normal blink rate would eventually cross the
-			// threshold just from accumulating over a long exam).
+			// not a lifetime total that only resets when it fires.
 			const now2 = Date.now();
 			if (now2 - blinkWindowStart > 60000) {
 				blinkCount = 0;
@@ -429,23 +457,24 @@ async function checkStudentVerification() {
 				blinkWindowStart = now2;
 			}
 
-			// Detect gaze direction
-			if (face.gaze) {
-				const gazeX = face.gaze.x || 0;
-				const gazeY = face.gaze.y || 0;
-				
-				// Track gaze history
+			// Gaze lives at face.rotation.gaze = { bearing, strength } — a polar
+			// angle + magnitude pair, not a top-level face.gaze = { x, y }.
+			// Convert to a Cartesian vector so the existing threshold logic
+			// (authored for x/y) still applies unchanged.
+			const gaze = face.rotation?.gaze;
+			if (gaze && typeof gaze.bearing === 'number' && typeof gaze.strength === 'number') {
+				const gazeX = Math.cos(gaze.bearing) * gaze.strength;
+				const gazeY = Math.sin(gaze.bearing) * gaze.strength;
+
 				gazeHistory.push({ x: gazeX, y: gazeY, timestamp: now2 });
 				if (gazeHistory.length > 100) gazeHistory.shift();
 
-				// Check if looking away from screen
-				const lookingAway = Math.abs(gazeX) > AI_THRESHOLDS.EYE_GAZE_THRESHOLD || 
+				const lookingAway = Math.abs(gazeX) > AI_THRESHOLDS.EYE_GAZE_THRESHOLD ||
 								   Math.abs(gazeY) > AI_THRESHOLDS.EYE_GAZE_THRESHOLD;
 
 				if (lookingAway) {
 					if (!sustainedGazeStart) sustainedGazeStart = now2;
-					
-					// Check sustained gaze away
+
 					if (now2 - sustainedGazeStart > AI_THRESHOLDS.SUSTAINED_GAZE_THRESHOLD && canLog('SUSTAINED_GAZE')) {
 						await logViolation('SUSTAINED_GAZE', 2, {
 							duration: now2 - sustainedGazeStart,
@@ -460,7 +489,7 @@ async function checkStudentVerification() {
 				// Check looking down (phone/notes)
 				if (gazeY < -AI_THRESHOLDS.LOOKING_DOWN_THRESHOLD) {
 					if (!lookingDownStart) lookingDownStart = now2;
-					
+
 					if (now2 - lookingDownStart > 3500 && canLog('LOOKING_DOWN')) {
 						await logViolation('LOOKING_DOWN', 1, { duration: now2 - lookingDownStart });
 						lookingDownStart = null;
@@ -474,54 +503,34 @@ async function checkStudentVerification() {
 		}
 	}
 
-	function calculateEyeOpenness(eyePoints: any[]): number {
-		if (!eyePoints || eyePoints.length < 6) return 1;
-		
-		// Calculate eye aspect ratio
-		const p1 = eyePoints[1];
-		const p2 = eyePoints[2];
-		const p3 = eyePoints[3];
-		const p4 = eyePoints[5];
-		const p5 = eyePoints[4];
-		
-		const vertical1 = distance(p1, p2);
-		const vertical2 = distance(p3, p4);
-		const horizontal = distance(p5, eyePoints[0]);
-		
-		return (vertical1 + vertical2) / (2 * horizontal);
-	}
-
-	function distance(p1: any, p2: any): number {
-		return Math.sqrt(Math.pow(p2.x - p1.x, 2) + Math.pow(p2.y - p1.y, 2));
-	}
-
 	// ─── Head Pose Analysis ────────────────────────────────────────────────────
 	async function analyzeHeadPose(face: any) {
-		if (!face.rotation) return;
+		const angle = face.rotation?.angle;
+		if (!angle) return;
 
 		try {
-			const yaw = face.rotation.yaw || 0;
-			const pitch = face.rotation.pitch || 0;
-			const roll = face.rotation.roll || 0;
+			// human.js yaw/pitch/roll live under face.rotation.angle (not
+			// face.rotation directly) and are returned in radians. Thresholds
+			// below are authored in degrees, so convert before comparing.
+			const yaw = radiansToDegrees(angle.yaw ?? 0);
+			const pitch = radiansToDegrees(angle.pitch ?? 0);
+			const roll = radiansToDegrees(angle.roll ?? 0);
 			const now = Date.now();
 
-			// Track head pose
 			headPoseHistory.push({ yaw, pitch, roll, timestamp: now });
 			if (headPoseHistory.length > 50) headPoseHistory.shift();
 
-			// Check head turn (looking sideways)
 			const headTurned = Math.abs(yaw) > AI_THRESHOLDS.HEAD_TURN_THRESHOLD;
-			
+
 			if (headTurned) {
 				if (!sustainedHeadTurnStart) sustainedHeadTurnStart = now;
-				
+
 				if (canLog('HEAD_TURNING')) {
 					await logViolation('HEAD_TURNING', 2, { yaw, pitch, roll });
 				}
-				
-				// Check sustained head turn
+
 				if (now - sustainedHeadTurnStart > AI_THRESHOLDS.SUSTAINED_HEAD_TURN && canLog('SUSTAINED_HEAD_TURN')) {
-					await logViolation('SUSTAINED_HEAD_TURN', 3, { 
+					await logViolation('SUSTAINED_HEAD_TURN', 3, {
 						duration: now - sustainedHeadTurnStart,
 						yaw, pitch, roll
 					});
@@ -531,7 +540,6 @@ async function checkStudentVerification() {
 				sustainedHeadTurnStart = null;
 			}
 
-			// Check extreme head tilt
 			if (Math.abs(roll) > AI_THRESHOLDS.HEAD_TILT_THRESHOLD && canLog('HEAD_TURNING')) {
 				await logViolation('HEAD_TURNING', 2, { roll, type: 'tilt' });
 			}
@@ -542,13 +550,10 @@ async function checkStudentVerification() {
 
 	// ─── Mouth Analysis ────────────────────────────────────────────────────────
 	async function analyzeMouth(face: any) {
-		if (!face.landmarks) return;
+		if (!face.mesh || !Array.isArray(face.mesh)) return;
 
 		try {
-			const mouth = face.landmarks.getMouth();
-			if (!mouth) return;
-
-			const mouthOpen = calculateMouthOpenness(mouth);
+			const mouthOpen = calculateMouthOpennessMesh(face.mesh);
 			const now = Date.now();
 
 			mouthOpenHistory.push({ open: mouthOpen, timestamp: now });
@@ -557,7 +562,7 @@ async function checkStudentVerification() {
 			// Only log after the mouth has been open continuously for
 			// SUSTAINED_MOUTH_OPEN ms — a single open frame (reading a
 			// question aloud, a normal expression) is not a violation on
-			// its own and was previously double-counted here.
+			// its own.
 			if (mouthOpen > AI_THRESHOLDS.MOUTH_OPEN_THRESHOLD) {
 				if (!mouthMovementStart) mouthMovementStart = now;
 
@@ -576,46 +581,29 @@ async function checkStudentVerification() {
 		}
 	}
 
-	function calculateMouthOpenness(mouthPoints: any[]): number {
-		if (!mouthPoints || mouthPoints.length < 6) return 0;
-		
-		const top = mouthPoints[2];
-		const bottom = mouthPoints[5];
-		const left = mouthPoints[0];
-		const right = mouthPoints[3];
-		
-		const vertical = distance(top, bottom);
-		const horizontal = distance(left, right);
-		
-		return vertical / (horizontal + 0.001);
-	}
-
 	// ─── Gesture Analysis ──────────────────────────────────────────────────────
 	async function analyzeGestures(face: any, video: HTMLVideoElement) {
-		if (!face.landmarks) return;
+		if (!face.mesh || !Array.isArray(face.mesh) || !face.box) return;
 
 		try {
-			// Check for hand over mouth
-			const mouth = face.landmarks.getMouth();
-			if (mouth) {
-				const mouthCenter = {
-					x: (mouth[0].x + mouth[3].x) / 2,
-					y: (mouth[0].y + mouth[3].y) / 2
-				};
+			const left = face.mesh[MOUTH_LEFT];
+			const right = face.mesh[MOUTH_RIGHT];
+			if (!left || !right) return;
 
-				// Get face bounding box for hand detection
-				const faceBounds = face.box;
-				if (faceBounds) {
-					// Check if anything is covering the mouth area
-					// This is a simplified approach - in production you'd use hand detection
-					const hasHandOverMouth = await detectHandOverMouth(video, faceBounds);
-					
-					if (hasHandOverMouth && canLog('HAND_OVER_MOUTH')) {
-						await logViolation('HAND_OVER_MOUTH', 2, { 
-							confidence: 0.7 
-						});
-					}
-				}
+			// human.js face.box is [x, y, width, height] — not {x, y, width,
+			// height}. Normalize to an object so detectHandOverMouth's
+			// property access works correctly instead of reading undefined.
+			const box = face.box;
+			const faceBounds = Array.isArray(box)
+				? { x: box[0], y: box[1], width: box[2], height: box[3] }
+				: box;
+
+			const hasHandOverMouth = await detectHandOverMouth(video, faceBounds);
+
+			if (hasHandOverMouth && canLog('HAND_OVER_MOUTH')) {
+				await logViolation('HAND_OVER_MOUTH', 2, {
+					confidence: 0.7
+				});
 			}
 		} catch (err) {
 			console.error('[Monitor] Gesture analysis error:', err);
@@ -629,7 +617,7 @@ async function checkStudentVerification() {
 			canvas.height = video.videoHeight;
 			const ctx = canvas.getContext('2d')!;
 			ctx.drawImage(video, 0, 0);
-			
+
 			// Get region around mouth
 			const mouthRegion = ctx.getImageData(
 				faceBounds.x - faceBounds.width * 0.2,
@@ -637,26 +625,26 @@ async function checkStudentVerification() {
 				faceBounds.width * 0.4,
 				faceBounds.height * 0.3
 			);
-			
+
 			// Check for skin tone or texture changes (simplified)
 			// In production, use proper hand detection model
 			const data = mouthRegion.data;
 			let skinPixels = 0;
 			let totalPixels = data.length / 4;
-			
+
 			for (let i = 0; i < data.length; i += 4) {
 				const r = data[i];
 				const g = data[i + 1];
 				const b = data[i + 2];
-				
+
 				// Simple skin color detection
-				if (r > 80 && g > 40 && b > 20 && 
-					r > g && r > b && 
+				if (r > 80 && g > 40 && b > 20 &&
+					r > g && r > b &&
 					Math.abs(r - g) > 15) {
 					skinPixels++;
 				}
 			}
-			
+
 			return (skinPixels / totalPixels) > 0.3;
 		} catch (err) {
 			return false;
@@ -665,34 +653,35 @@ async function checkStudentVerification() {
 
 	// ─── Facial Expression Analysis ────────────────────────────────────────────
 	async function analyzeExpression(face: any) {
-		if (!face.expressions) return;
+		// human.ts currently has emotion.enabled: false, so face.emotion will
+		// always be empty here and this is a safe no-op. To enable stress
+		// signal detection, set face.emotion.enabled: true in human.ts (and
+		// add 'emotion' to the required-models check in checkModelsLoaded).
+		// human.js emotion shape is an array of { emotion, score } objects
+		// (Oarriaga model: angry, disgust, fear, happy, sad, surprise,
+		// neutral) — not a flat face.expressions.anger map.
+		if (!face.emotion || !Array.isArray(face.emotion) || face.emotion.length === 0) return;
 
 		try {
-			const expressions = face.expressions;
 			const now = Date.now();
-			
-			// Check for stress signals
+			const scores: Record<string, number> = {};
+			for (const e of face.emotion) {
+				scores[e.emotion] = e.score;
+			}
+
 			let stressScore = 0;
-			
-			// Common stress indicators in facial expressions
-			if (expressions.anger > 0.3) stressScore += 0.3;
-			if (expressions.fear > 0.3) stressScore += 0.3;
-			if (expressions.sadness > 0.3) stressScore += 0.2;
-			if (expressions.surprise > 0.4) stressScore += 0.2;
-			
-			// Track stress signals
+			if ((scores.angry ?? 0) > 0.3) stressScore += 0.3;
+			if ((scores.fear ?? 0) > 0.3) stressScore += 0.3;
+			if ((scores.sad ?? 0) > 0.3) stressScore += 0.2;
+			if ((scores.surprise ?? 0) > 0.4) stressScore += 0.2;
+
 			if (stressScore > AI_THRESHOLDS.STRESS_SIGNAL_THRESHOLD) {
 				stressSignalCount++;
-				
+
 				if (stressSignalCount > 3 && canLog('STRESS_SIGNALS')) {
-					await logViolation('STRESS_SIGNALS', 2, { 
+					await logViolation('STRESS_SIGNALS', 2, {
 						stressScore,
-						expressions: {
-							anger: expressions.anger,
-							fear: expressions.fear,
-							sadness: expressions.sadness,
-							surprise: expressions.surprise
-						}
+						expressions: scores
 					});
 					stressSignalCount = 0;
 				}
@@ -760,7 +749,7 @@ async function checkStudentVerification() {
 			if (isCameraCovered) {
 				noFaceStrikes++;
 				blurScreen('Camera appears to be covered or blocked');
-				
+
 				if (noFaceStrikes >= NO_FACE_STRIKES_BEFORE_LOG && canLog('FACE_NOT_DETECTED')) {
 					status = 'violation';
 					await logViolation('FACE_NOT_DETECTED', 3, { reason: 'camera_covered' });
@@ -886,7 +875,7 @@ async function checkStudentVerification() {
 	async function detectRapidFaceChange(embedding: number[]) {
 		if (previousEmbedding) {
 			const changeRate = cosineSimilarity(embedding, previousEmbedding);
-			
+
 			if (changeRate < RAPID_CHANGE_THRESHOLD && canLog('RAPID_FACE_CHANGE')) {
 				status = 'violation';
 				await logViolation('RAPID_FACE_CHANGE', 3, { changeRate });
@@ -896,7 +885,7 @@ async function checkStudentVerification() {
 
 		previousEmbedding = embedding;
 		embeddingHistory.push({ embedding, timestamp: Date.now() });
-		
+
 		if (embeddingHistory.length > MAX_EMBEDDING_HISTORY) {
 			embeddingHistory = embeddingHistory.slice(-MAX_EMBEDDING_HISTORY);
 		}
@@ -916,10 +905,10 @@ async function checkStudentVerification() {
 				let diffCount = 0;
 				const data1 = previousFrameData.data;
 				const data2 = imageData.data;
-				
+
 				for (let i = 0; i < data1.length; i += 4) {
-					const diff = Math.abs(data1[i] - data2[i]) + 
-								   Math.abs(data1[i+1] - data2[i+1]) + 
+					const diff = Math.abs(data1[i] - data2[i]) +
+								   Math.abs(data1[i+1] - data2[i+1]) +
 								   Math.abs(data1[i+2] - data2[i+2]);
 					if (diff > 30) diffCount++;
 				}
@@ -940,11 +929,11 @@ async function checkStudentVerification() {
 	// ─── Screen Recording Detection ─────────────────────────────────────────────
 	async function detectScreenRecording() {
 		if (stopped) return;
-		
+
 		try {
 			const devices = await navigator.mediaDevices.enumerateDevices();
 			const videoDevices = devices.filter(d => d.kind === 'videoinput');
-			
+
 			if (knownDeviceLabels.length === 0) {
 				knownDeviceLabels = videoDevices.map(d => d.label.toLowerCase());
 				return;
@@ -954,7 +943,7 @@ async function checkStudentVerification() {
 			for (const device of videoDevices) {
 				const label = device.label.toLowerCase();
 				const isVirtual = virtualKeywords.some(keyword => label.includes(keyword));
-				
+
 				if (isVirtual && canLog('SCREEN_RECORDING')) {
 					status = 'violation';
 					await logViolation('SCREEN_RECORDING', 3, { deviceLabel: device.label });
@@ -976,8 +965,8 @@ async function checkStudentVerification() {
 				if (screens && screens.screens && screens.screens.length > 1) {
 					if (canLog('EXTERNAL_MONITOR')) {
 						status = 'violation';
-						await logViolation('EXTERNAL_MONITOR', 3, { 
-							screenCount: screens.screens.length 
+						await logViolation('EXTERNAL_MONITOR', 3, {
+							screenCount: screens.screens.length
 						});
 						return;
 					}
@@ -987,11 +976,11 @@ async function checkStudentVerification() {
 			const primaryScreenWidth = window.screen.width;
 			const currentWidth = window.outerWidth;
 			const currentHeight = window.outerHeight;
-			
+
 			if (currentWidth > primaryScreenWidth * 1.1) {
 				if (canLog('EXTERNAL_MONITOR')) {
 					status = 'warning';
-					await logViolation('EXTERNAL_MONITOR', 2, { 
+					await logViolation('EXTERNAL_MONITOR', 2, {
 						primaryWidth: primaryScreenWidth,
 						currentWidth,
 						currentHeight
@@ -1010,18 +999,18 @@ async function checkStudentVerification() {
 		try {
 			const devices = await navigator.mediaDevices.enumerateDevices();
 			const videoDevices = devices.filter(d => d.kind === 'videoinput');
-			
+
 			const virtualKeywords = ['virtual', 'obs', 'snap', 'manycam', 'webcamoid', 'vcam'];
-			const hasVirtualCamera = videoDevices.some(device => 
-				virtualKeywords.some(keyword => 
+			const hasVirtualCamera = videoDevices.some(device =>
+				virtualKeywords.some(keyword =>
 					device.label.toLowerCase().includes(keyword)
 				)
 			);
 
 			if (hasVirtualCamera && canLog('VIRTUAL_CAMERA')) {
 				status = 'violation';
-				await logViolation('VIRTUAL_CAMERA', 3, { 
-					devices: videoDevices.map(d => d.label) 
+				await logViolation('VIRTUAL_CAMERA', 3, {
+					devices: videoDevices.map(d => d.label)
 				});
 			}
 		} catch (err) {
@@ -1063,10 +1052,10 @@ async function checkStudentVerification() {
 				const dy1 = curr.y - prev.y;
 				const dx2 = next.x - curr.x;
 				const dy2 = next.y - curr.y;
-				
+
 				const slope1 = dx1 !== 0 ? dy1 / dx1 : Infinity;
 				const slope2 = dx2 !== 0 ? dy2 / dx2 : Infinity;
-				
+
 				const slopeDiff = Math.abs(slope1 - slope2);
 				if (slopeDiff < 0.1) {
 					linearCount++;
@@ -1107,13 +1096,13 @@ async function checkStudentVerification() {
 
 			if (suspicious) {
 				status = 'warning';
-				await logViolation('SUSPICIOUS_MOUSE', 2, { 
+				await logViolation('SUSPICIOUS_MOUSE', 2, {
 					linearPercentage: Math.round(linearPercentage * 100),
 					maxSpeed: Math.round(maxSpeed),
 					avgSpeed: Math.round(avgSpeed),
 					reason
 				});
-				
+
 				mousePositions = [];
 			}
 		} catch (err) {
@@ -1125,23 +1114,23 @@ async function checkStudentVerification() {
 	async function initAudioDetection() {
 		try {
 			audioContext = new AudioContext();
-			
+
 			if (audioContext.state === 'suspended') {
 				await audioContext.resume();
 			}
-			
+
 			analyser = audioContext.createAnalyser();
 			analyser.fftSize = 2048;
 			analyser.smoothingTimeConstant = 0.8;
 
-			audioStream = await navigator.mediaDevices.getUserMedia({ 
-				audio: { 
+			audioStream = await navigator.mediaDevices.getUserMedia({
+				audio: {
 					echoCancellation: false,
 					noiseSuppression: false,
 					autoGainControl: false
-				} 
+				}
 			});
-			
+
 			const source = audioContext.createMediaStreamSource(audioStream);
 			source.connect(analyser);
 
@@ -1174,12 +1163,12 @@ async function checkStudentVerification() {
 			const history = (audioContext as any).loudnessHistory as number[];
 			history.push(dbVolume);
 			if (history.length > 5) history.shift();
-			
+
 			const avg = history.reduce((a, b) => a + b, 0) / history.length;
-			
+
 			if (avg > AUDIO_VOLUME_THRESHOLD && canLog('AUDIO_DETECTION')) {
 				status = 'warning';
-				logViolation('AUDIO_DETECTION', 1, { 
+				logViolation('AUDIO_DETECTION', 1, {
 					volume: dbVolume,
 					averageVolume: Math.round(avg),
 					threshold: AUDIO_VOLUME_THRESHOLD
@@ -1266,14 +1255,14 @@ async function checkStudentVerification() {
 		if (isScreenBlurred) {
 			const key = e.key.toLowerCase();
 			const code = e.code;
-			
+
 			if (BLOCKED_KEYS.includes(key) || BLOCKED_KEY_CODES.includes(code)) {
 				e.preventDefault();
 				e.stopPropagation();
 				console.log(`[Monitor] Blocked key: ${key} (screen blurred)`);
 				return;
 			}
-			
+
 			if (key.length === 1 && key.match(/[a-zA-Z0-9]/)) {
 				e.preventDefault();
 				e.stopPropagation();
@@ -1343,7 +1332,7 @@ async function checkStudentVerification() {
 	// ─── Idle Detection ───────────────────────────────────────────────────────
 	function resetIdleTimer() {
 		if (isScreenBlurred) return;
-		
+
 		if (idleTimeoutHandle) clearTimeout(idleTimeoutHandle);
 
 		idleTimeoutHandle = setTimeout(() => {
@@ -1416,6 +1405,8 @@ async function checkStudentVerification() {
 	// ─── Initialization ───────────────────────────────────────────────────────
 	async function init() {
 		console.log('[Monitor] Initializing exam monitor with AI analysis...');
+			console.log('[Monitor] init() sessionId prop:', JSON.stringify(sessionId));
+
 		stopped = false;
 
 		await checkStudentVerification();
@@ -1465,7 +1456,7 @@ async function checkStudentVerification() {
 
 		console.log('[Monitor] Cleaning up...');
 		stopped = true;
-		
+
 		cleanupIntervals();
 		cleanupAudio();
 
@@ -1498,10 +1489,10 @@ async function checkStudentVerification() {
 		window.removeEventListener('offline', handleOffline);
 		window.removeEventListener('error', handleGlobalError);
 		if (flushIntervalHandle) {
-	clearInterval(flushIntervalHandle);
-	flushIntervalHandle = null;
-}
-flushViolations(); // best-effort final flush — not awaited, cleanup shouldn't block on it
+			clearInterval(flushIntervalHandle);
+			flushIntervalHandle = null;
+		}
+		flushViolations(); // best-effort final flush — not awaited, cleanup shouldn't block on it
 
 		console.log('[Monitor] Cleanup complete');
 	}
@@ -1512,7 +1503,7 @@ flushViolations(); // best-effort final flush — not awaited, cleanup shouldn't
 
 <!-- ─── SCREEN BLUR OVERLAY ──────────────────────────────────────────────────── -->
 {#if isScreenBlurred}
-	<div 
+	<div
 		class="fixed inset-0 z-50 flex items-center justify-center"
 		style="background: rgba(0, 0, 0, 0.85); backdrop-filter: blur(20px);"
 	>
@@ -1580,20 +1571,20 @@ flushViolations(); // best-effort final flush — not awaited, cleanup shouldn't
 	{#each alerts.slice(-3) as alert (alert.id)}
 		<div
 			class="flex items-start gap-2 rounded-lg border px-3 py-2 text-xs shadow-lg animate-in fade-in slide-in-from-right-2 duration-200"
-			style:border-color={alert.severity >= 3 
-				? 'hsl(var(--destructive) / 0.3)' 
-				: alert.severity === 2 
-					? 'hsl(43 96% 56% / 0.3)' 
+			style:border-color={alert.severity >= 3
+				? 'hsl(var(--destructive) / 0.3)'
+				: alert.severity === 2
+					? 'hsl(43 96% 56% / 0.3)'
 					: 'hsl(var(--primary) / 0.3)'}
-			style:background-color={alert.severity >= 3 
-				? 'hsl(var(--destructive) / 0.1)' 
-				: alert.severity === 2 
-					? 'hsl(43 96% 56% / 0.1)' 
+			style:background-color={alert.severity >= 3
+				? 'hsl(var(--destructive) / 0.1)'
+				: alert.severity === 2
+					? 'hsl(43 96% 56% / 0.1)'
 					: 'hsl(var(--primary) / 0.1)'}
-			style:color={alert.severity >= 3 
-				? 'hsl(var(--destructive))' 
-				: alert.severity === 2 
-					? 'hsl(43 96% 56% / 0.9)' 
+			style:color={alert.severity >= 3
+				? 'hsl(var(--destructive))'
+				: alert.severity === 2
+					? 'hsl(43 96% 56% / 0.9)'
 					: 'hsl(var(--primary))'}
 		>
 			{#if alert.type === 'face'}

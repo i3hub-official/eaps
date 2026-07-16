@@ -15,29 +15,37 @@ export async function getHuman(): Promise<Human> {
       }
 
       const { default: HumanClass } = await import('@vladmandic/human');
-      
+
       const human = new HumanClass({
         backend: 'webgl',
-        modelBasePath: '/models/human/', 
+        modelBasePath: '/models/human/',
         face: {
           enabled: true,
           detector: { rotation: true, maxDetected: 3 },
           mesh: { enabled: true },
           iris: { enabled: true },
           description: { enabled: true },
-          emotion: { enabled: false },
+          emotion: { enabled: true },
           antispoof: { enabled: true },
           liveness: { enabled: true },
         },
         body: { enabled: false },
         hand: { enabled: false },
-        // CRITICAL FIX: Enabled so humanGestureContains filters function perfectly
-        gesture: { enabled: true }, 
+        gesture: { enabled: true },
         filter: { enabled: false },
       });
 
       await human.load();
-      
+
+      // human.models is a namespace (load/list/loaded/reset/stats/validate),
+      // not a plain object — use .loaded() to check actual loaded model names.
+      // NOTE: some models load lazily on first detect() rather than eagerly
+      // here, so this check right after .load() is informational only —
+      // see checkModelsLoaded() below for the authoritative post-detect check.
+      const loadedModels = human.models.loaded();
+      console.log('[Human] Loaded models after .load():', loadedModels);
+      console.log('[Human] Model stats:', human.models.stats());
+
       human.warmup({ width: 640, height: 480 }).catch((err) => {
         console.warn('Human non-blocking warmup failed:', err);
       });
@@ -45,7 +53,7 @@ export async function getHuman(): Promise<Human> {
       humanInstance = human;
       return human;
     } catch (err) {
-      loadPromise = null; 
+      loadPromise = null;
       throw err;
     }
   })();
@@ -53,10 +61,33 @@ export async function getHuman(): Promise<Human> {
   return loadPromise;
 }
 
+/**
+ * Call this once after your first successful human.detect() in the
+ * detection loop. Some models (notably antispoof/liveness) can load lazily
+ * on first use rather than eagerly during human.load(), so this is the
+ * authoritative point to confirm everything required is actually present.
+ */
+export function checkModelsLoaded(human: Human): { loaded: string[]; missing: string[] } {
+  const required = ['blazeface', 'facemesh', 'faceres', 'iris', 'antispoof', 'liveness'];
+  const loaded = human.models.loaded();
+  const missing = required.filter((m) => !loaded.includes(m));
+
+  if (missing.length > 0) {
+    console.error(
+      '[Human] Still missing after first detect():', missing,
+      '\nCheck Network tab for failed requests to /models/human/* (404s or CSP blocks).'
+    );
+  } else {
+    console.log('[Human] All required models confirmed loaded:', loaded);
+  }
+
+  return { loaded, missing };
+}
+
 export function cosineSimilarity(a: number[] | Float32Array, b: number[] | Float32Array): number {
   const len = a.length;
   if (len !== b.length || len === 0) return 0;
-  
+
   let dot = 0, magA = 0, magB = 0;
   for (let i = 0; i < len; i++) {
     const valA = a[i];
@@ -65,7 +96,7 @@ export function cosineSimilarity(a: number[] | Float32Array, b: number[] | Float
     magA += valA * valA;
     magB += valB * valB;
   }
-  
+
   if (magA === 0 || magB === 0) return 0;
   return dot / (Math.sqrt(magA) * Math.sqrt(magB));
 }
