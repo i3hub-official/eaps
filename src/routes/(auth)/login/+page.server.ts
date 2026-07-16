@@ -24,6 +24,21 @@ function safeDecrypt(fn: () => string, fallback: string): string {
 	}
 }
 
+// getClientAddress() can throw — most commonly in Vite dev, where certain
+// requests don't carry a real underlying socket for SvelteKit to read
+// remoteAddress from (see the +layout.server.ts fix for the same issue).
+// Login is a security-sensitive audit point (session meta, alert emails),
+// so on failure we log it clearly and fall back to 'unknown' rather than
+// letting it 500 the whole login action.
+function safeClientAddress(getClientAddress: () => string): string {
+	try {
+		return getClientAddress()
+	} catch (err) {
+		console.warn('[login] Could not determine clientAddress, falling back to "unknown":', err)
+		return 'unknown'
+	}
+}
+
 export const actions: Actions = {
 	default: async ({ request, cookies, getClientAddress }) => {
 		const form = await request.formData()
@@ -37,7 +52,7 @@ export const actions: Actions = {
 			return fail(400, { error: 'Enter a valid email address.', identifier: rawEmail })
 		}
 		const meta = {
-			ipAddress: getClientAddress(),
+			ipAddress: safeClientAddress(getClientAddress),
 			userAgent: request.headers.get('user-agent') ?? undefined,
 		}
 

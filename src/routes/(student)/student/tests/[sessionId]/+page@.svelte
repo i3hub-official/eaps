@@ -53,6 +53,7 @@
 	let submittingFace = $state(false)
 
 	const NUMBER_SIZE_CLASS = 'size-12 text-base font-bold'
+	const NUMBER_SIZE_CLASS_MOBILE = 'size-10 shrink-0 text-sm font-bold'
 
 	// ─── Kiosk state ─────────────────────────────────────────────────────────
 	let questions = $state(data.questions.map((q) => ({ ...q })))
@@ -60,10 +61,12 @@
 	let remainingSeconds = $state(data.timeRemainingSeconds ?? data.assessment.durationMinutes * 60)
 	let isSubmitting = $state(false)
 	let showSubmitConfirm = $state(false)
+	let monitorExpanded = $state(false)
 
 	let timerInterval: ReturnType<typeof setInterval> | null = null
 	let syncInterval: ReturnType<typeof setInterval> | null = null
 	let saveTimers = new Map<string, ReturnType<typeof setTimeout>>()
+	let questionNavRef = $state<HTMLDivElement | null>(null)
 
 	const currentQuestion = $derived(questions[currentIndex])
 	const answeredCount = $derived(
@@ -76,6 +79,13 @@
 		}).length
 	)
 	const allAnswered = $derived(answeredCount === questions.length)
+
+	function isQuestionAnswered(q: (typeof questions)[number]) {
+		if (q.type === 'ESSAY' || q.type === 'FILL_BLANK') return q.textAnswer.trim().length > 0
+		if (q.type === 'MATCHING') return Object.keys(q.matchAnswer).length > 0
+		if (q.type === 'ORDERING') return true
+		return q.selectedOptions.length > 0
+	}
 
 	function formatTime(totalSeconds: number) {
 		const m = Math.floor(totalSeconds / 60)
@@ -381,6 +391,15 @@
 		}
 	}
 
+	// Keep the active question button scrolled into view on the mobile strip
+	$effect(() => {
+		if (step !== 'kiosk') return
+		const idx = currentIndex
+		if (!questionNavRef) return
+		const btn = questionNavRef.querySelectorAll('button')[idx] as HTMLElement | undefined
+		btn?.scrollIntoView({ behavior: 'smooth', inline: 'center', block: 'nearest' })
+	})
+
 	onMount(() => {
 		document.addEventListener('fullscreenchange', handleFullscreenChange)
 		document.addEventListener('visibilitychange', handleVisibilityChange)
@@ -626,19 +645,60 @@
 
 {:else if step === 'kiosk' && currentQuestion}
 	<div class="flex min-h-screen flex-col">
-		<div class="sticky top-0 z-10 flex items-center justify-between border-b bg-background/95 px-6 py-3 backdrop-blur">
-			<div>
-				<p class="text-sm font-semibold">{data.assessment.title}</p>
-				<p class="text-xs text-muted-foreground">
-					{data.assessment.course.code} · {answeredCount}/{questions.length} answered
-					{#if data.attemptInfo.attemptNumber > 1}
-						· Attempt {data.attemptInfo.attemptNumber}
-					{/if}
-				</p>
+		<div class="sticky top-0 z-20 border-b bg-background/95 backdrop-blur">
+			<div class="flex items-center justify-between px-4 py-3 md:px-6">
+				<div class="min-w-0">
+					<p class="truncate text-sm font-semibold">{data.assessment.title}</p>
+					<p class="truncate text-xs text-muted-foreground">
+						{data.assessment.course.code} · {answeredCount}/{questions.length} answered
+						{#if data.attemptInfo.attemptNumber > 1}
+							· Attempt {data.attemptInfo.attemptNumber}
+						{/if}
+					</p>
+				</div>
+				<div class="flex shrink-0 items-center gap-3">
+					<!-- Mobile: monitor lives inline in the header, never floats over the
+					     question controls. Desktop keeps the floating corner preview. -->
+					<button
+						type="button"
+						class="md:hidden"
+						onclick={() => (monitorExpanded = !monitorExpanded)}
+						aria-label="Toggle proctoring preview"
+					>
+						<div class="h-9 w-9 overflow-hidden rounded-md border">
+							<ExamMonitor sessionId={data.sessionId} />
+						</div>
+					</button>
+					<div class="flex items-center gap-2 font-mono text-lg font-bold {remainingSeconds < 60 ? 'text-destructive' : ''}">
+						<Clock class="size-5" />
+						{formatTime(remainingSeconds)}
+					</div>
+				</div>
 			</div>
-			<div class="flex items-center gap-2 font-mono text-lg font-bold {remainingSeconds < 60 ? 'text-destructive' : ''}">
-				<Clock class="size-5" />
-				{formatTime(remainingSeconds)}
+
+			{#if monitorExpanded}
+				<div class="border-t px-4 py-3 md:hidden">
+					<div class="mx-auto w-40">
+						<ExamMonitor sessionId={data.sessionId} />
+					</div>
+				</div>
+			{/if}
+
+			<!-- Mobile question number strip — horizontally scrollable, always visible -->
+			<div
+				bind:this={questionNavRef}
+				class="flex gap-2 overflow-x-auto border-t px-4 py-2 md:hidden"
+			>
+				{#each questions as q, i (q.questionId)}
+					<button
+						type="button"
+						onclick={() => goTo(i)}
+						class="flex items-center justify-center rounded-md border font-semibold {NUMBER_SIZE_CLASS_MOBILE}
+							{i === currentIndex ? 'border-primary bg-primary text-primary-foreground' : isQuestionAnswered(q) ? 'border-primary/40 bg-primary/10' : 'border-border'}"
+					>
+						{i + 1}
+					</button>
+				{/each}
 			</div>
 		</div>
 
@@ -646,19 +706,11 @@
 			<aside class="hidden w-56 shrink-0 border-r p-4 md:block">
 				<div class="grid grid-cols-5 gap-2">
 					{#each questions as q, i (q.questionId)}
-						{@const answered =
-							q.type === 'ESSAY' || q.type === 'FILL_BLANK'
-								? q.textAnswer.trim().length > 0
-								: q.type === 'MATCHING'
-									? Object.keys(q.matchAnswer).length > 0
-									: q.type === 'ORDERING'
-										? true
-										: q.selectedOptions.length > 0}
 						<button
 							type="button"
 							onclick={() => goTo(i)}
 							class="flex items-center justify-center rounded-md border font-semibold {NUMBER_SIZE_CLASS}
-								{i === currentIndex ? 'border-primary bg-primary text-primary-foreground' : answered ? 'border-primary/40 bg-primary/10' : 'border-border'}"
+								{i === currentIndex ? 'border-primary bg-primary text-primary-foreground' : isQuestionAnswered(q) ? 'border-primary/40 bg-primary/10' : 'border-border'}"
 						>
 							{i + 1}
 						</button>
@@ -761,18 +813,18 @@
 
 				<div class="mt-auto flex items-center justify-between gap-2 pt-4">
 					<Button variant="outline" onclick={() => goTo(currentIndex - 1)} disabled={currentIndex === 0} class="text-base">
-						<ArrowLeft class="mr-2 size-4" /> Previous <span class="ml-1 text-[10px] opacity-60">(P)</span>
+						<ArrowLeft class="mr-2 size-4" /> Previous <span class="ml-1 hidden text-[10px] opacity-60 sm:inline">(P)</span>
 					</Button>
 
 					<div class="flex items-center gap-2">
 						{#if allAnswered || currentIndex === questions.length - 1}
 							<Button onclick={openSubmitConfirm} disabled={isSubmitting} class="text-base font-semibold">
-								{isSubmitting ? 'Submitting…' : 'Submit Test'} <span class="ml-1 text-[10px] opacity-70">(Y)</span>
+								{isSubmitting ? 'Submitting…' : 'Submit Test'} <span class="ml-1 hidden text-[10px] opacity-70 sm:inline">(Y)</span>
 							</Button>
 						{/if}
 						{#if currentIndex < questions.length - 1}
 							<Button variant={allAnswered ? 'outline' : 'default'} onclick={() => goTo(currentIndex + 1)} class="text-base">
-								Next <ArrowRight class="ml-2 size-4" /> <span class="ml-1 text-[10px] opacity-60">(N)</span>
+								Next <ArrowRight class="ml-2 size-4" /> <span class="ml-1 hidden text-[10px] opacity-60 sm:inline">(N)</span>
 							</Button>
 						{/if}
 					</div>
@@ -780,7 +832,10 @@
 			</main>
 		</div>
 
-		<div class="pointer-events-none fixed right-4 top-20 z-30">
+		<!-- Desktop-only floating proctoring preview. On mobile this lives in the
+		     sticky header instead (see above) so it can never overlap the
+		     Previous/Next controls at the bottom of the question. -->
+		<div class="pointer-events-none fixed right-4 top-20 z-30 hidden md:block">
 			<div class="pointer-events-auto">
 				<ExamMonitor sessionId={data.sessionId} />
 			</div>

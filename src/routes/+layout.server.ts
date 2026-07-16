@@ -41,6 +41,28 @@ async function getSystemFlags(): Promise<{ maintenance: boolean; shutdown: boole
     }
 }
 
+// ── client IP resolution ─────────────────────────────────────────────────
+//
+// getClientAddress() can throw — most commonly in Vite dev, where certain
+// requests (HMR-internal fetches, some Windows/WSL proxy setups) don't carry
+// a real underlying socket for SvelteKit to read remoteAddress from. Since
+// this load function runs on every navigation via the root layout, an
+// unguarded call takes down the entire app rather than one route.
+//
+// If we can't resolve an IP, we deliberately do NOT fail closed into
+// vpn_blocked — that would lock people out (including in dev) any time the
+// address happens to be unresolvable. Instead we skip VPN screening for that
+// request only; shutdown/maintenance checks are unaffected since they don't
+// depend on IP.
+function safeClientAddress(getClientAddress: () => string): string | null {
+    try {
+        return getClientAddress();
+    } catch (err) {
+        console.warn('[layout] Could not determine clientAddress, skipping VPN check for this request:', err);
+        return null;
+    }
+}
+
 // ── VPN check, cached in a signed cookie so we don't call the API every nav ─
 
 function sign(payload: string): string {
@@ -98,11 +120,17 @@ export const load: LayoutServerLoad = async ({ request, url, locals, getClientAd
     // headers are attacker-controlled unless the adapter is configured to
     // strip/overwrite them from a trusted proxy hop (see ADDRESS_HEADER /
     // XFF_DEPTH for adapter-node; adapter-vercel handles this automatically).
-    const ip = getClientAddress();
+    const ip = safeClientAddress(getClientAddress);
 
     const { shutdown, maintenance } = await getSystemFlags();
     if (shutdown)    return { systemState: 'shutdown'    as const, detectedIp: ip };
     if (maintenance) return { systemState: 'maintenance' as const, detectedIp: ip };
+
+    // No resolvable IP for this request — skip VPN screening rather than
+    // fail closed (see safeClientAddress comment above).
+    if (ip === null) {
+        return { systemState: null, detectedIp: null };
+    }
 
     let vpnBlocked = readVpnCookie(cookies.get(VPN_COOKIE), ip);
     if (vpnBlocked === null) {
