@@ -7,7 +7,7 @@
     import CheckCircle2 from '@lucide/svelte/icons/check-circle-2';
     import AlertCircle from '@lucide/svelte/icons/alert-circle';
     import ScanFace from '@lucide/svelte/icons/scan-face';
-    import { getHuman, cosineSimilarity } from '$lib/client/face/human.js';
+    import { getHuman, cosineSimilarity, setDetectionProfile } from '$lib/client/face/human.js';
     import { PassiveLivenessTracker } from '$lib/client/face/passive-liveness.js';
 
     let {
@@ -40,9 +40,15 @@
     let lastSampledBucket = -1;
     let enrolledDescriptor: number[] | null = null;
 
+    // ─── Sustained identity check (guards against a face swap after the
+    // initial neutral capture but before liveness finishes) ─────────────────
+    let livenessIdentitySamples: number[][] = [];
+    let lastIdentitySampleAt = 0;
+    const IDENTITY_SAMPLE_INTERVAL_MS = 1500; // ~8 samples over 12s
+    const SUSTAINED_MATCH_CONSISTENCY = 0.8;   // 80% of liveness-window samples must match
+    const MIN_SUSTAINED_SAMPLES = 4;
+
     const MATCH_THRESHOLD = 0.78;
-    const MIN_ANTISPOOF = 0.55;
-    const MIN_LIVENESS = 0.55;
 
     let videoEl = $state<HTMLVideoElement | null>(null);
     let canvasEl = $state<HTMLCanvasElement | null>(null);
@@ -164,6 +170,7 @@
             statusText = 'Loading face model…';
             initColors();
             human = await getHuman();
+            setDetectionProfile(human, 'full');
 
             if (stopped) return;
 
@@ -278,6 +285,9 @@
                     livenessTracker = new PassiveLivenessTracker();
                     livenessPhaseStart = null;
                     livenessProgress = 0;
+                    livenessIdentitySamples = [];
+                    lastIdentitySampleAt = 0;
+                    if (human) setDetectionProfile(human, 'liveness-lite');
                     phase = 'liveness';
                     statusText = 'Checking liveness…';
                     lastFrameTime = 0;
@@ -330,6 +340,13 @@
 
         const face = faces[0];
 
+        // Sustained identity sampling — catches a face swap that happens
+        // after the initial neutral capture but before liveness completes.
+        if (face.embedding && now - lastIdentitySampleAt > IDENTITY_SAMPLE_INTERVAL_MS) {
+            lastIdentitySampleAt = now;
+            livenessIdentitySamples.push(Array.from(face.embedding as number[]));
+        }
+
         // Feed the face into the passive liveness tracker
         if (livenessTracker) {
             livenessTracker.update(face);
@@ -369,6 +386,32 @@
             const similarity = cosineSimilarity(averaged, enrolledDescriptor);
             similarityPercent = Math.round(similarity * 100);
 
+            // Sustained identity check across the whole liveness window —
+            // require the same identity to be present most of the time, not
+            // just at the moment of the initial neutral capture.
+            let sustainedMatches = 0;
+            for (const sample of livenessIdentitySamples) {
+                const s = cosineSimilarity(sample, enrolledDescriptor);
+                if (s >= MATCH_THRESHOLD) sustainedMatches++;
+            }
+            const sustainedRatio = livenessIdentitySamples.length > 0
+                ? sustainedMatches / livenessIdentitySamples.length
+                : 0;
+            const sustainedMatchOk =
+                livenessIdentitySamples.length >= MIN_SUSTAINED_SAMPLES &&
+                sustainedRatio >= SUSTAINED_MATCH_CONSISTENCY;
+
+            console.log('[Verify Debug]', {
+                similarity,
+                similarityPercent,
+                enrolledLength: enrolledDescriptor?.length,
+                capturedLength: averaged.length,
+                sustainedSampleCount: livenessIdentitySamples.length,
+                sustainedMatches,
+                sustainedRatio: Math.round(sustainedRatio * 100) / 100,
+                sustainedMatchOk,
+            });
+
             // Get liveness results
             const livenessResult = livenessTracker?.getResult();
             if (!livenessResult) {
@@ -377,9 +420,9 @@
 
             // Check all criteria
             const matchPassed = similarity >= MATCH_THRESHOLD;
-            const realPassed  = livenessResult.antispoofScore >= MIN_ANTISPOOF;
-            const livePassed  = livenessResult.livenessScore >= MIN_LIVENESS;
-            const clientVerified = matchPassed && realPassed && livePassed;
+            const realPassed  = livenessResult.antispoofScore >= 0.75; // consistency ratio, see PassiveLivenessTracker
+            const livePassed  = livenessResult.livenessScore >= 0.75;
+            const clientVerified = matchPassed && realPassed && livePassed && sustainedMatchOk;
 
             const verifyRes = await fetch('/api/face/verify-session', {
                 method: 'POST',
@@ -389,6 +432,7 @@
                     similarityScore: similarityPercent,
                     antispoofScore: Math.round(livenessResult.antispoofScore * 100),
                     livenessScore: Math.round(livenessResult.livenessScore * 100),
+                    sustainedMatchScore: Math.round(sustainedRatio * 100),
                     examId,
                 }),
             });
@@ -405,8 +449,10 @@
                 stopCamera();
                 if (!matchPassed) {
                     statusText = 'The captured face does not match the enrolled profile.';
+                } else if (!sustainedMatchOk) {
+                    statusText = 'Identity could not be confirmed consistently throughout the check. Please stay in frame the whole time.';
                 } else if (!realPassed) {
-                    statusText = 'Spoof detection failed. Ensure you are in good lighting.';
+                    statusText = 'Spoof detection failed. Ensure you are in good lighting with no screen or photo in view.';
                 } else if (!livePassed) {
                     statusText = 'Liveness check failed. Blink naturally and move your head slightly.';
                 } else {
@@ -433,6 +479,8 @@
         faceDetected = false;
         neutralSamples = [];
         lastSampledBucket = -1;
+        livenessIdentitySamples = [];
+        lastIdentitySampleAt = 0;
         livenessProgress = 0;
         posHoldProgress = 0;
         posHoldStart = null;

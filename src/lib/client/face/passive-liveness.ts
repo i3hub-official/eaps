@@ -4,12 +4,12 @@
  * PassiveLivenessTracker: Measures liveness and antispoofing by observing natural behavior
  * during a 12–15 second window. No choreography required — just sit naturally.
  *
- * Criteria:
- * - ✓ At least 1 natural blink
- * - ✓ Head yaw variance ≥ 5° (natural side-to-side head movement)
- * - ✓ Gaze shift variance ≥ 0.1 (eyes naturally wander)
- * - ✓ Antispoof score (texture/lighting analysis) ≥ 0.4
- * - ✓ Liveness score (movement patterns) ≥ 0.4
+ * Antispoof/liveness scoring is CONSISTENCY-based, not peak-based: a sample
+ * frame with a good score doesn't carry the whole window. This matters
+ * specifically against phone/photo replay attacks — a phone held up to the
+ * camera will fail antispoof on most frames even if an occasional frame
+ * (glare, angle) reads favorably. Requiring the majority of frames to pass
+ * closes that gap; taking a max score does not.
  */
 
 export interface PassiveLivenessResult {
@@ -18,18 +18,23 @@ export interface PassiveLivenessResult {
 	headPitchVariance: number;
 	headRollVariance: number;
 	gazeVariance: number;
-	antispoofScore: number;
-	livenessScore: number;
+	antispoofScore: number;       // consistency ratio (0-1) of frames clearing PER_FRAME_ANTISPOOF_MIN
+	livenessScore: number;        // consistency ratio (0-1) of frames clearing PER_FRAME_LIVENESS_MIN
+	antispoofSampleCount: number;
+	livenessSampleCount: number;
 	passed: boolean;
 	failureReason?: string;
 }
 
 export class PassiveLivenessTracker {
 	private blinkCount = 0;
+	private minEyeOpennessSeen = 1; // fallback signal for sparse sampling
 	private headHistory: Array<{ yaw: number; pitch: number; roll: number }> = [];
 	private gazeHistory: Array<{ x: number; y: number }> = [];
-	private antispoofScores: number[] = [];
-	private livenessScores: number[] = [];
+
+	private antispoofSamples: number[] = [];
+	private livenessSamples: number[] = [];
+
 	private frameCount = 0;
 	private debugLogged = false;
 
@@ -39,17 +44,23 @@ export class PassiveLivenessTracker {
 	private readonly MIN_BLINKS = 1;
 	private readonly MIN_HEAD_YAW_VARIANCE = 5; // degrees
 	private readonly MIN_GAZE_VARIANCE = 0.05; // normalized magnitude
-	private readonly MIN_ANTISPOOF = 0.4; // 0–1
-	private readonly MIN_LIVENESS = 0.4; // 0–1
+
+	// Per-frame pass threshold — a frame must clear this to count as "real"/"live"
+	private readonly PER_FRAME_ANTISPOOF_MIN = 0.5;
+	private readonly PER_FRAME_LIVENESS_MIN = 0.5;
+
+	// Fraction of sampled frames that must clear the per-frame threshold.
+	private readonly REQUIRED_CONSISTENCY = 0.75;
+	private readonly MIN_SAMPLES_REQUIRED = 15; // guard against too-short/sparse window
 
 	update(face: any): void {
 		if (!face) return;
-
 		this.frameCount++;
 
 		// ─── Blink detection (mesh-based) ──────────────────────────────────
 		if (face.mesh && Array.isArray(face.mesh)) {
 			const openness = calculateEyeOpennessMesh(face.mesh);
+			this.minEyeOpennessSeen = Math.min(this.minEyeOpennessSeen, openness);
 			if (openness < this.EYE_CLOSURE_THRESHOLD && this.lastEyeOpenness >= this.EYE_CLOSURE_THRESHOLD) {
 				this.blinkCount++;
 				console.log(`[Liveness] Blink detected (#${this.blinkCount})`);
@@ -85,8 +96,7 @@ export class PassiveLivenessTracker {
 		}
 
 		// ─── Gaze direction variance ────────────────────────────────────────
-		// human.js gaze lives at face.rotation.gaze = { bearing, strength } — a polar
-		// angle + magnitude pair, not top-level face.gaze and not {x, y}.
+		// human.js gaze lives at face.rotation.gaze = { bearing, strength }.
 		const gaze = face.rotation?.gaze ?? null;
 
 		if (gaze && typeof gaze.bearing === 'number' && typeof gaze.strength === 'number') {
@@ -96,24 +106,25 @@ export class PassiveLivenessTracker {
 			});
 		}
 
-		// ─── Antispoof score ─────────────────────────────────────────────────
+		// ─── Antispoof / liveness — collect every sampled frame ────────────
+		// Pushed unconditionally (not just on "good" frames) so consistency
+		// scoring reflects the whole window, not a cherry-picked subset.
 		const antiSpoofRaw = face.real ?? face.antispoof ?? 0;
 		if (antiSpoofRaw > 0) {
-			this.antispoofScores.push(antiSpoofRaw);
+			this.antispoofSamples.push(antiSpoofRaw);
 		}
 
-		// ─── Liveness score ────────────────────────────────────────────────
 		const livenessRaw = face.live ?? face.liveness ?? 0;
 		if (livenessRaw > 0) {
-			this.livenessScores.push(livenessRaw);
+			this.livenessSamples.push(livenessRaw);
 		}
 
 		if (this.frameCount === 10) {
 			console.log('[Liveness Debug] Antispoof/liveness sample at frame 10:', {
 				real: face.real,
 				live: face.live,
-				antispoofScoresCollected: this.antispoofScores.length,
-				livenessScoresCollected: this.livenessScores.length,
+				antispoofSamplesCollected: this.antispoofSamples.length,
+				livenessSamplesCollected: this.livenessSamples.length,
 			});
 		}
 	}
@@ -124,48 +135,49 @@ export class PassiveLivenessTracker {
 		const headRollVariance = this.calculateVariance(this.headHistory.map(h => h.roll));
 		const gazeVariance = this.calculateGazeVariance();
 
-		const antispoofScore = this.antispoofScores.length > 0
-			? Math.max(...this.antispoofScores)
-			: 0;
-		const livenessScore = this.livenessScores.length > 0
-			? Math.max(...this.livenessScores)
-			: 0;
+		const antispoofConsistency = this.consistencyRatio(this.antispoofSamples, this.PER_FRAME_ANTISPOOF_MIN);
+		const livenessConsistency = this.consistencyRatio(this.livenessSamples, this.PER_FRAME_LIVENESS_MIN);
 
-		const blinkOk = this.blinkCount >= this.MIN_BLINKS;
+		const blinkOk = this.blinkCount >= this.MIN_BLINKS || this.minEyeOpennessSeen < this.EYE_CLOSURE_THRESHOLD;
 		const headOk = radiansToDegrees(headYawVariance) >= this.MIN_HEAD_YAW_VARIANCE;
 		const gazeOk = gazeVariance >= this.MIN_GAZE_VARIANCE;
-		const antiSpoofOk = antispoofScore >= this.MIN_ANTISPOOF;
-		const livenessOk = livenessScore >= this.MIN_LIVENESS;
+
+		const antiSpoofOk =
+			this.antispoofSamples.length >= this.MIN_SAMPLES_REQUIRED &&
+			antispoofConsistency >= this.REQUIRED_CONSISTENCY;
+		const livenessOk =
+			this.livenessSamples.length >= this.MIN_SAMPLES_REQUIRED &&
+			livenessConsistency >= this.REQUIRED_CONSISTENCY;
 
 		const passed = blinkOk && headOk && gazeOk && antiSpoofOk && livenessOk;
 
 		console.log('[Liveness] Assessment:', {
 			blinkCount: this.blinkCount,
 			blinkOk,
+			minEyeOpennessSeen: Math.round(this.minEyeOpennessSeen * 1000) / 1000,
 			headYawVarianceDegrees: Math.round(radiansToDegrees(headYawVariance) * 100) / 100,
 			headHistorySize: this.headHistory.length,
 			headOk,
 			gazeVariance: Math.round(gazeVariance * 1000) / 1000,
 			gazeHistorySize: this.gazeHistory.length,
 			gazeOk,
-			antispoofScore: Math.round(antispoofScore * 100) / 100,
+			antispoofConsistency: Math.round(antispoofConsistency * 100) / 100,
+			antispoofSampleCount: this.antispoofSamples.length,
 			antiSpoofOk,
-			livenessScore: Math.round(livenessScore * 100) / 100,
+			livenessConsistency: Math.round(livenessConsistency * 100) / 100,
+			livenessSampleCount: this.livenessSamples.length,
 			livenessOk,
 			passed,
-			minThresholds: {
+			config: {
+				perFrameAntispoofMin: this.PER_FRAME_ANTISPOOF_MIN,
+				perFrameLivenessMin: this.PER_FRAME_LIVENESS_MIN,
+				requiredConsistency: this.REQUIRED_CONSISTENCY,
+				minSamplesRequired: this.MIN_SAMPLES_REQUIRED,
 				blinkMin: this.MIN_BLINKS,
 				headMin: this.MIN_HEAD_YAW_VARIANCE,
 				gazeMin: this.MIN_GAZE_VARIANCE,
-				antispoofMin: this.MIN_ANTISPOOF,
-				livenessMin: this.MIN_LIVENESS,
-			}
-            
+			},
 		});
-
-
-        console.log('[Liveness] Raw gaze samples:', this.gazeHistory);
-console.log('[Liveness] Gaze variance (unrounded):', gazeVariance);
 
 		let failureReason = '';
 		if (!blinkOk) {
@@ -176,9 +188,9 @@ console.log('[Liveness] Gaze variance (unrounded):', gazeVariance);
 		} else if (!gazeOk) {
 			failureReason = `Eye movement variance (${Math.round(gazeVariance * 100)}/${Math.round(this.MIN_GAZE_VARIANCE * 100)})`;
 		} else if (!antiSpoofOk) {
-			failureReason = `Spoof detection (${Math.round(antispoofScore * 100)}%/${Math.round(this.MIN_ANTISPOOF * 100)}% - check lighting)`;
+			failureReason = `Spoof detection (${Math.round(antispoofConsistency * 100)}% consistent, ${this.antispoofSamples.length} samples - need ${Math.round(this.REQUIRED_CONSISTENCY * 100)}%+; check lighting and remove any screen/photo from view)`;
 		} else if (!livenessOk) {
-			failureReason = `Liveness detection (${Math.round(livenessScore * 100)}%/${Math.round(this.MIN_LIVENESS * 100)}%)`;
+			failureReason = `Liveness detection (${Math.round(livenessConsistency * 100)}% consistent, ${this.livenessSamples.length} samples - need ${Math.round(this.REQUIRED_CONSISTENCY * 100)}%+)`;
 		}
 
 		return {
@@ -187,8 +199,10 @@ console.log('[Liveness] Gaze variance (unrounded):', gazeVariance);
 			headPitchVariance: radiansToDegrees(headPitchVariance),
 			headRollVariance: radiansToDegrees(headRollVariance),
 			gazeVariance,
-			antispoofScore,
-			livenessScore,
+			antispoofScore: antispoofConsistency,
+			livenessScore: livenessConsistency,
+			antispoofSampleCount: this.antispoofSamples.length,
+			livenessSampleCount: this.livenessSamples.length,
 			passed,
 			failureReason,
 		};
@@ -197,7 +211,7 @@ console.log('[Liveness] Gaze variance (unrounded):', gazeVariance);
 	getProgress(): number {
 		let criteria = 0;
 
-		if (this.blinkCount >= this.MIN_BLINKS) {
+		if (this.blinkCount >= this.MIN_BLINKS || this.minEyeOpennessSeen < this.EYE_CLOSURE_THRESHOLD) {
 			criteria++;
 		} else {
 			criteria += Math.min(1, this.blinkCount / this.MIN_BLINKS) * 0.2;
@@ -217,21 +231,27 @@ console.log('[Liveness] Gaze variance (unrounded):', gazeVariance);
 			criteria += Math.min(1, gazeVar / this.MIN_GAZE_VARIANCE) * 0.2;
 		}
 
-		const maxAntispoof = this.antispoofScores.length > 0 ? Math.max(...this.antispoofScores) : 0;
-		if (maxAntispoof >= this.MIN_ANTISPOOF) {
+		const antispoofConsistency = this.consistencyRatio(this.antispoofSamples, this.PER_FRAME_ANTISPOOF_MIN);
+		if (antispoofConsistency >= this.REQUIRED_CONSISTENCY) {
 			criteria++;
 		} else {
-			criteria += Math.min(1, maxAntispoof / this.MIN_ANTISPOOF) * 0.2;
+			criteria += Math.min(1, antispoofConsistency / this.REQUIRED_CONSISTENCY) * 0.2;
 		}
 
-		const maxLiveness = this.livenessScores.length > 0 ? Math.max(...this.livenessScores) : 0;
-		if (maxLiveness >= this.MIN_LIVENESS) {
+		const livenessConsistency = this.consistencyRatio(this.livenessSamples, this.PER_FRAME_LIVENESS_MIN);
+		if (livenessConsistency >= this.REQUIRED_CONSISTENCY) {
 			criteria++;
 		} else {
-			criteria += Math.min(1, maxLiveness / this.MIN_LIVENESS) * 0.2;
+			criteria += Math.min(1, livenessConsistency / this.REQUIRED_CONSISTENCY) * 0.2;
 		}
 
 		return Math.min(1, criteria / 5);
+	}
+
+	private consistencyRatio(samples: number[], perFrameMin: number): number {
+		if (samples.length === 0) return 0;
+		const passing = samples.filter(s => s >= perFrameMin).length;
+		return passing / samples.length;
 	}
 
 	private calculateVariance(values: number[]): number {
@@ -256,7 +276,7 @@ console.log('[Liveness] Gaze variance (unrounded):', gazeVariance);
  */
 export function calculateEyeOpennessMesh(mesh: number[][]): number {
 	const LEFT_EYE_INDICES = [33, 160, 158, 133, 153, 144];
-	const RIGHT_EYE_INDICES = [362, 385, 387, 263, 380, 373]; // fixed duplicate 362 → 263
+	const RIGHT_EYE_INDICES = [362, 385, 387, 263, 380, 373];
 
 	try {
 		const leftPoints = LEFT_EYE_INDICES.map(i => mesh[i]).filter(p => p);

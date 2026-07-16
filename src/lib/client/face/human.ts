@@ -100,3 +100,17 @@ export function cosineSimilarity(a: number[] | Float32Array, b: number[] | Float
   if (magA === 0 || magB === 0) return 0;
   return dot / (Math.sqrt(magA) * Math.sqrt(magB));
 }
+
+export function setDetectionProfile(human: Human, profile: 'full' | 'liveness-lite') {
+  human.config.face.description!.enabled = true; // see note below re: sustained identity check
+  human.config.face.emotion!.enabled = false;      // confirmed unused (ExamMonitor's own analyzeExpression is a no-op)
+  if (profile === 'full') {
+    human.config.face.description!.enabled = true;
+  } else {
+    // Keep description enabled but the caller should only read/act on the
+    // embedding periodically (see sustainedIdentityCheck in the modal),
+    // not disable it — a fully-disabled description means no mid-session
+    // face-swap detection at all, which reopens the impersonation gap.
+    human.config.face.description!.enabled = true;
+  }
+}
