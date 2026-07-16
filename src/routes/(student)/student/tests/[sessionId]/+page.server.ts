@@ -59,6 +59,24 @@ export const load: PageServerLoad = async ({ locals, params }) => {
 		orderBy: { submittedAt: 'desc' },
 	})
 
+	// Prisma's Decimal fields (marksObtained, totalMarks, percentage) are not
+	// plain objects — they're decimal.js instances. SvelteKit's devalue
+	// serializer throws "Cannot stringify arbitrary non-POJOs" when a `load`
+	// function returns them directly. Convert to plain numbers here, before
+	// they ever reach `data`.
+	const serializedPreviousAttempts = previousAttempts.map((attempt) => ({
+		...attempt,
+		result: attempt.result
+			? {
+					...attempt.result,
+					marksObtained: Number(attempt.result.marksObtained),
+					totalMarks: Number(attempt.result.totalMarks),
+					percentage:
+						attempt.result.percentage === null ? null : Number(attempt.result.percentage),
+				}
+			: null,
+	}))
+
 	const attemptInfo = {
 		attemptNumber: previousAttempts.length + 1,
 		maxAttempts: session.assessment.maxAttempts,
@@ -70,7 +88,7 @@ export const load: PageServerLoad = async ({ locals, params }) => {
 		canRetake: true,
 		retakeBlockedUntil: null as Date | null,
 		attemptLimitReached: false,
-		previousAttempts: [] as typeof previousAttempts,
+		previousAttempts: [] as typeof serializedPreviousAttempts,
 	}
 
 	if (
@@ -102,7 +120,7 @@ export const load: PageServerLoad = async ({ locals, params }) => {
 	}
 
 	if (session.assessment.showPreviousAttempts) {
-		attemptInfo.previousAttempts = previousAttempts
+		attemptInfo.previousAttempts = serializedPreviousAttempts
 	}
 
 	const answerMap = new Map(session.answers.map((a) => [a.questionId, a]))
