@@ -43,8 +43,8 @@ export async function getHuman(): Promise<Human> {
       // here, so this check right after .load() is informational only —
       // see checkModelsLoaded() below for the authoritative post-detect check.
       const loadedModels = human.models.loaded();
-      console.log('[Human] Loaded models after .load():', loadedModels);
-      console.log('[Human] Model stats:', human.models.stats());
+      // console.log('[Human] Loaded models after .load():', loadedModels);
+      // console.log('[Human] Model stats:', human.models.stats());
 
       human.warmup({ width: 640, height: 480 }).catch((err) => {
         console.warn('Human non-blocking warmup failed:', err);
@@ -78,7 +78,7 @@ export function checkModelsLoaded(human: Human): { loaded: string[]; missing: st
       '\nCheck Network tab for failed requests to /models/human/* (404s or CSP blocks).'
     );
   } else {
-    console.log('[Human] All required models confirmed loaded:', loaded);
+    // console.log('[Human] All required models confirmed loaded:', loaded);
   }
 
   return { loaded, missing };
