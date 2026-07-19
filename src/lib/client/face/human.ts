@@ -47,7 +47,7 @@ export async function getHuman(): Promise<Human> {
       // console.log('[Human] Model stats:', human.models.stats());
 
       human.warmup({ width: 640, height: 480 }).catch((err) => {
-        console.warn('Human non-blocking warmup failed:', err);
+        // console.warn('Human non-blocking warmup failed:', err);
       });
 
       humanInstance = human;
@@ -101,16 +101,23 @@ export function cosineSimilarity(a: number[] | Float32Array, b: number[] | Float
   return dot / (Math.sqrt(magA) * Math.sqrt(magB));
 }
 
+/**
+ * description (face embedding) must stay on in BOTH profiles:
+ * - 'full' (positioning phase): needed for the neutral-frame identity capture
+ * - 'liveness-lite' (12s liveness window): FaceVerifyModal's sustained-
+ *   identity check reads face.embedding periodically (every ~1.5s) to
+ *   catch a face swap mid-window. Turning description off here would
+ *   make face.embedding undefined at those sample points and silently
+ *   disable that check.
+ *
+ * If you want liveness-lite to actually be lighter, the model to drop is
+ * antispoof/liveness's own resolution or frame rate — not description.
+ * There's currently no real difference between the two profiles; this
+ * function is a placeholder for that until that's built. Left as one
+ * enabled/disabled pair rather than duplicated if/else branches so the
+ * no-op is obvious rather than looking like a working switch.
+ */
 export function setDetectionProfile(human: Human, profile: 'full' | 'liveness-lite') {
-  human.config.face.description!.enabled = true; // see note below re: sustained identity check
-  human.config.face.emotion!.enabled = false;      // confirmed unused (ExamMonitor's own analyzeExpression is a no-op)
-  if (profile === 'full') {
-    human.config.face.description!.enabled = true;
-  } else {
-    // Keep description enabled but the caller should only read/act on the
-    // embedding periodically (see sustainedIdentityCheck in the modal),
-    // not disable it — a fully-disabled description means no mid-session
-    // face-swap detection at all, which reopens the impersonation gap.
-    human.config.face.description!.enabled = true;
-  }
+  human.config.face.description!.enabled = true;
+  human.config.face.emotion!.enabled = false; // confirmed unused (ExamMonitor's own analyzeExpression is a no-op)
 }

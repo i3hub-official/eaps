@@ -98,15 +98,16 @@ export default defineConfig(() => {
     },
 
     optimizeDeps: {
-      include: [
-        '@vladmandic/human',
-        '@tensorflow/tfjs',
-        '@tensorflow/tfjs-backend-webgl',
-        '@tensorflow/tfjs-core',
-      ],
-      // tfjs-node / tfjs-node-gpu removed — resolve.alias below already
-      // redirects them to '@tensorflow/tfjs' before optimizeDeps sees them.
-      exclude: ['@prisma/client', '.prisma/client'],
+      // Do NOT pre-bundle these huge libraries.
+  exclude: [
+    '@vladmandic/human',
+    '@tensorflow/tfjs',
+    '@tensorflow/tfjs-core',
+    '@tensorflow/tfjs-backend-webgl',
+    '@tensorflow/tfjs-converter',
+    '@prisma/client',
+    '.prisma/client',
+  ],
     },
 
     ssr: {

@@ -115,6 +115,15 @@ class MemoryCache {
   invalidate(key: string): void {
     this.cache.delete(key);
   }
+
+  // Alias for invalidate() — some call sites (and the commented-out Redis
+  // implementation above, which uses .del()) expect a `delete` method.
+  // Keeping this as a thin alias rather than renaming invalidate() avoids
+  // having to touch every existing caller right now.
+  delete(key: string): void {
+    this.invalidate(key);
+  }
 }
 
 export const serverCache = new MemoryCache();
+

@@ -391,13 +391,13 @@
 	}
 
 	// Keep the active question button scrolled into view on the mobile strip
-	$effect(() => {
-		if (step !== 'kiosk') return
-		const idx = currentIndex
-		if (!questionNavRef) return
-		const btn = questionNavRef.querySelectorAll('button')[idx] as HTMLElement | undefined
-		btn?.scrollIntoView({ behavior: 'smooth', inline: 'center', block: 'nearest' })
-	})
+$effect(() => {
+	if (step !== 'kiosk') return
+	const idx = currentIndex
+	if (!mobileQuestionNavRef) return
+	const btn = mobileQuestionNavRef.querySelectorAll('button')[idx] as HTMLElement | undefined
+	btn?.scrollIntoView({ behavior: 'smooth', inline: 'center', block: 'nearest' })
+})
 
 	onMount(() => {
 		document.addEventListener('fullscreenchange', handleFullscreenChange)
@@ -635,9 +635,9 @@
 		</Card>
 	</div>
 
-{:else if step === 'faceverify'}
+	{:else if step === 'faceverify'}
 	<FaceVerifyModal
-		examId={data.assessment.id}
+		examId={data.sessionId}
 		onSuccess={onFaceVerified}
 		onCancel={onFaceVerifyCancel}
 	/>
@@ -664,10 +664,10 @@
 			</div>
 
 			<!-- Mobile question number strip — horizontally scrollable, always visible -->
-			<div
-				bind:this={questionNavRef}
-				class="flex gap-2 overflow-x-auto border-t px-4 py-2 md:hidden"
-			>
+<div
+	bind:this={mobileQuestionNavRef}
+	class="flex gap-2 overflow-x-auto border-t px-4 py-2 md:hidden"
+>
 				{#each questions as q, i (q.questionId)}
 					<button
 						type="button"

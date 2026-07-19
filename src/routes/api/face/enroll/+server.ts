@@ -5,6 +5,8 @@ import { requireStudent } from '$lib/server/auth/guards.js';
 import { getPrismaClient } from '$lib/server/db/index.js';
 import { encryptDescriptor, findDuplicateEnrollment } from '$lib/server/face/crypto.js';
 import { audit } from '$lib/server/audit.js';
+import { serverCache } from '$lib/server/cache.js';
+import { faceDescriptorCacheKey } from '$lib/server/face/cache-key.js';
 
 // Enforced floor to guarantee matching accuracy constraints
 const MIN_DESCRIPTOR_LENGTH = 128;
@@ -47,6 +49,13 @@ export const POST: RequestHandler = async ({ request, locals, getClientAddress }
         where: { id: student.id },
         data: { faceEnrolledAt: new Date() },
     });
+
+    // Invalidate the cached decrypted descriptor — without this, a student
+    // who re-enrolls (e.g. after a failed match, or the "delete + redo"
+    // flow) keeps being verified against their OLD face for up to
+    // CACHE_TTL, because /api/face/descriptor would keep serving the
+    // stale cache entry instead of re-reading the row we just wrote.
+    serverCache.delete(faceDescriptorCacheKey(student.id));
 
     // 4. Trace Log Tracking Event Registry
     await audit.student(student.id, 'FACE_ENROLLED', 'FaceDescriptor', { ipAddress: ip });

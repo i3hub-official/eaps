@@ -64,10 +64,18 @@ export const load: PageServerLoad = async ({ locals, params }) => {
 		const passMark = Number(session.assessment.passMark)
 		const passed = percentage >= passMark
 
+		// NOTE: field names below (marksObtained / totalMarks / isReleased)
+		// match the AssessmentResult shape used elsewhere in this app (see
+		// the previousAttempts query on the test-taking page, which selects
+		// marksObtained/totalMarks/percentage/grade/isReleased). There is no
+		// `score` or `releasedAt` field on this model — using those names
+		// silently produces `undefined` rather than an error, which is what
+		// caused the NaN score on this page.
 		result = await prisma.assessmentResult.upsert({
 			where: { sessionId: session.id },
 			update: {
-				score: earned,
+				marksObtained: earned,
+				totalMarks: total,
 				percentage,
 				passed,
 			},
@@ -75,11 +83,26 @@ export const load: PageServerLoad = async ({ locals, params }) => {
 				sessionId: session.id,
 				studentId: student.id,
 				assessmentId: session.assessmentId,
-				score: earned,
+				marksObtained: earned,
+				totalMarks: total,
 				percentage,
 				passed,
 			},
 		})
+	}
+
+	// ─── Time used ────────────────────────────────────────────────────────
+	// startedAt is stamped when the student first accepts terms (see
+	// acceptTerms action) or enters kiosk mode; submittedAt is stamped by
+	// the submit endpoint (manual or auto-submit on timeout/disqualify).
+	// Both should be present for any terminal-status session, but guard
+	// against nulls defensively rather than crashing the result page.
+	let timeUsedSeconds: number | null = null
+	if (session.startedAt && session.submittedAt) {
+		timeUsedSeconds = Math.max(
+			0,
+			Math.round((session.submittedAt.getTime() - session.startedAt.getTime()) / 1000)
+		)
 	}
 
 	return {
@@ -89,13 +112,16 @@ export const load: PageServerLoad = async ({ locals, params }) => {
 			totalMarks: session.assessment.totalMarks.toString(),
 			passMark: session.assessment.passMark.toString(),
 			allowReview: session.assessment.allowReview,
+			durationMinutes: session.assessment.durationMinutes,
 			course: { code: session.assessment.course.code, title: session.assessment.course.title },
 		},
 		result: {
-			score: Number(result.score),
+			score: Number(result.marksObtained),
+			totalMarks: Number(result.totalMarks),
 			percentage: Number(result.percentage).toFixed(1),
 			passed: result.passed,
-			releasedAt: result.releasedAt ?? null,
+			released: Boolean(result.isReleased) || session.status !== 'SUBMITTED',
 		},
+		timeUsedSeconds,
 	}
 }

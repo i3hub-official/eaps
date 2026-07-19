@@ -7,7 +7,7 @@
     import CheckCircle2 from '@lucide/svelte/icons/check-circle-2';
     import AlertCircle from '@lucide/svelte/icons/alert-circle';
     import ScanFace from '@lucide/svelte/icons/scan-face';
-  import { getHuman, setDetectionProfile } from '$lib/client/face/human.js';
+    import { getHuman, setDetectionProfile } from '$lib/client/face/human.js';
     import { PassiveLivenessTracker } from '$lib/client/face/passive-liveness.js';
 
     let { onSuccess, onCancel } = $props<{ onSuccess?: () => void; onCancel?: () => void }>();
@@ -158,19 +158,6 @@
             human = await getHuman();
             setDetectionProfile(human, 'full');
 
-// in positioningLoop(), right where phase flips to 'liveness':
-if (posHoldProgress >= 1) {
-    livenessTracker = new PassiveLivenessTracker();
-    livenessPhaseStart = null;
-    livenessProgress = 0;
-    if (human) setDetectionProfile(human, 'liveness-lite');
-    phase = 'liveness';
-    statusText = 'Checking liveness…';
-    lastFrameTime = 0;
-    loopHandle = requestAnimationFrame(livenessLoop);
-    return;
-}
-
             if (stopped) return;
 
             phase = 'requesting-camera';
@@ -279,6 +266,7 @@ if (posHoldProgress >= 1) {
                     livenessTracker = new PassiveLivenessTracker();
                     livenessPhaseStart = null;
                     livenessProgress = 0;
+                    if (human) setDetectionProfile(human, 'liveness-lite');
                     phase = 'liveness';
                     statusText = 'Checking liveness…';
                     lastFrameTime = 0;

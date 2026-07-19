@@ -10,6 +10,13 @@
     import { getHuman, cosineSimilarity, setDetectionProfile } from '$lib/client/face/human.js';
     import { PassiveLivenessTracker } from '$lib/client/face/passive-liveness.js';
 
+    // NOTE: `examId` is used as the identifier for the *specific attempt*,
+    // not the Assessment definition. It's passed straight through to
+    // POST /api/face/verify-session, which now looks up an AssessmentSession
+    // row by this id and writes faceVerifiedAt/faceScore onto it. Whoever
+    // renders this modal must pass the current AssessmentSession.id here
+    // (the value some callers may be calling "sessionId") — passing the
+    // Assessment.id instead will 404 against the session lookup server-side.
     let {
         examId,
         onSuccess,
@@ -23,6 +30,17 @@
     let statusText = $state('Loading face model…');
     let faceDetected = $state(false);
     let similarityPercent = $state<number | null>(null);
+
+    // ─── Success phase ───────────────────────────────────────────────────────
+    // We deliberately do NOT auto-advance from 'success' via setTimeout.
+    // onSuccess() triggers requestFullscreen() upstream (in the parent page),
+    // and requestFullscreen() is only honored by the browser when called
+    // synchronously within a real user gesture (click/tap). A setTimeout
+    // callback — even one scheduled from inside a click handler — does not
+    // count, so the previous "auto-continue after 1.2s" pattern silently
+    // failed to enter fullscreen. Showing an explicit "Continue" button and
+    // calling onSuccess() directly from its onclick preserves the gesture.
+    let successReady = $state(false);
 
     // ─── Positioning phase ─────────────────────────────────────────────────
     let posHoldProgress = $state(0);
@@ -443,7 +461,11 @@
             if (clientVerified && serverVerdict.success) {
                 phase = 'success';
                 stopCamera();
-                setTimeout(() => onSuccess(), 1200);
+                // No setTimeout auto-advance here — see `successReady` comment
+                // above. The "Continue to exam" button calls onSuccess()
+                // directly from its onclick handler, preserving the click as
+                // a genuine user gesture for the fullscreen request upstream.
+                successReady = true;
             } else {
                 phase = 'failed';
                 stopCamera();
@@ -484,6 +506,7 @@
         livenessProgress = 0;
         posHoldProgress = 0;
         posHoldStart = null;
+        successReady = false;
         stopped = false;
         start();
     }
@@ -528,8 +551,9 @@
             {/if}
 
             {#if phase === 'success'}
-                <div class="absolute inset-0 flex items-center justify-center bg-black/50">
+                <div class="absolute inset-0 flex flex-col items-center justify-center gap-2 bg-black/50">
                     <CheckCircle2 class="size-12 text-primary" />
+                    <p class="text-xs text-white/70">Identity verified</p>
                 </div>
             {/if}
         </div>
@@ -568,7 +592,11 @@
             {#if phase === 'error' || phase === 'failed'}
                 <Button variant="outline" class="flex-1" onclick={handleCancel}>Cancel</Button>
                 <Button class="flex-1" onclick={retry}>Try again</Button>
-            {:else if phase !== 'success'}
+            {:else if phase === 'success'}
+                <Button class="w-full" onclick={onSuccess} disabled={!successReady}>
+                    Continue to exam
+                </Button>
+            {:else}
                 <Button variant="outline" class="w-full" onclick={handleCancel}>Cancel</Button>
             {/if}
         </div>
