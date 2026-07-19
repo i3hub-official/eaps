@@ -5,13 +5,15 @@
 	import { toast } from 'svelte-sonner'
 	import { Button } from '$lib/components/ui/button/index.js'
 	import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '$lib/components/ui/card/index.js'
-	import { Checkbox } from '$lib/components/ui/checkbox/index.js'
+	import { Checkbox } from '$lib/components/ui/checkbox/index.js' // still used for MULTIPLE_CHOICE options below
 	import { RadioGroup, RadioGroupItem } from '$lib/components/ui/radio-group/index.js'
 	import { Textarea } from '$lib/components/ui/textarea/index.js'
 	import { Input } from '$lib/components/ui/input/index.js'
 	import { Badge } from '$lib/components/ui/badge/index.js'
 	import FaceVerifyModal from '$lib/components/exam/FaceVerifyModal.svelte'
 	import DeviceCheckPanel from '$lib/components/exam/DeviceCheckPanel.svelte'
+	import TermsStep from '$lib/components/exam/TermsStep.svelte'
+	import MathText from '$lib/components/MathText.svelte'
 	import AlertCircle from '@lucide/svelte/icons/alert-circle'
 	import Clock from '@lucide/svelte/icons/clock'
 	import ArrowLeft from '@lucide/svelte/icons/arrow-left'
@@ -62,6 +64,16 @@
 	let isSubmitting = $state(false)
 	let showSubmitConfirm = $state(false)
 
+	// Tracks whether the browser has actually confirmed fullscreen engaged
+	// at least once during this kiosk session. Without this, a
+	// requestFullscreen() call that silently fails (e.g. the automatic call
+	// in onMount when resuming an already-IN_PROGRESS session — that call
+	// has no user gesture behind it, so browsers reject it) would still
+	// trigger the 'fullscreenchange' listener seeing no fullscreenElement,
+	// and get logged as if the student had exited fullscreen — a false
+	// FULLSCREEN_EXIT violation at test start, before they ever entered.
+	let hasEnteredFullscreen = $state(false)
+
 	let timerInterval: ReturnType<typeof setInterval> | null = null
 	let syncInterval: ReturnType<typeof setInterval> | null = null
 	let saveTimers = new Map<string, ReturnType<typeof setTimeout>>()
@@ -78,6 +90,15 @@
 		}).length
 	)
 	const allAnswered = $derived(answeredCount === questions.length)
+
+	// Whether ExamMonitor should be mounted. False as soon as a submission
+	// starts, so the camera stream, detection intervals, and violation
+	// flushing are torn down (see ExamMonitor's onDestroy cleanup()) BEFORE
+	// handleSubmit() gets to the exitFullscreen() call — otherwise the
+	// monitor's own listeners/checks can still be live for the brief window
+	// between "submit clicked" and "actually left fullscreen", and the
+	// fullscreen exit itself would previously get flagged as a violation.
+	const monitorActive = $derived(step === 'kiosk' && !isSubmitting)
 
 	function isQuestionAnswered(q: (typeof questions)[number]) {
 		if (q.type === 'ESSAY' || q.type === 'FILL_BLANK') return q.textAnswer.trim().length > 0
@@ -144,7 +165,9 @@
 	}
 
 	function onFaceVerifySuccess() {
-		// Same reasoning — fire fullscreen synchronously first.
+		// Same reasoning — fire fullscreen synchronously first. This now
+		// runs from a real click (FaceVerifyModal's "Continue to exam"
+		// button), not a setTimeout, so the gesture is preserved.
 		requestFullscreen()
 
 		if (data.status === 'IN_PROGRESS' || data.status === 'PAUSED') {
@@ -187,7 +210,23 @@
 	}
 
 	function handleFullscreenChange() {
-		if (step === 'kiosk' && !document.fullscreenElement && data.assessment.fullscreenRequired) {
+		const isCurrentlyFullscreen = !!document.fullscreenElement
+
+		if (isCurrentlyFullscreen) {
+			// Confirmed engaged — from now on, losing fullscreen is a real
+			// exit and can legitimately be logged.
+			hasEnteredFullscreen = true
+			return
+		}
+
+		// Not in fullscreen. Only treat this as a violation if:
+		//  - we're actually in kiosk mode, AND
+		//  - we had genuinely entered fullscreen before (guards against the
+		//    false positive described above), AND
+		//  - we're not in the middle of submitting (submit intentionally
+		//    exits fullscreen itself — see handleSubmit), AND
+		//  - the assessment actually requires fullscreen.
+		if (step === 'kiosk' && hasEnteredFullscreen && !isSubmitting && data.assessment.fullscreenRequired) {
 			logViolation('FULLSCREEN_EXIT', 2)
 			toast.warning('You exited fullscreen mode — this has been logged')
 		}
@@ -359,6 +398,13 @@
 
 	async function handleSubmit(auto = false) {
 		if (isSubmitting) return
+		// Setting isSubmitting here immediately flips `monitorActive` to
+		// false (see the $derived above), which unmounts <ExamMonitor>,
+		// running its onDestroy cleanup — stopping the camera/audio
+		// streams, clearing all its intervals, and doing a final best-effort
+		// violation flush — well before we ever get to exitFullscreen()
+		// below. This is what stops the monitor from still being "live"
+		// (and its own checks/logging) during the fullscreen exit.
 		isSubmitting = true
 		submitError = null
 		stopTimers()
@@ -391,13 +437,13 @@
 	}
 
 	// Keep the active question button scrolled into view on the mobile strip
-$effect(() => {
-	if (step !== 'kiosk') return
-	const idx = currentIndex
-	if (!mobileQuestionNavRef) return
-	const btn = mobileQuestionNavRef.querySelectorAll('button')[idx] as HTMLElement | undefined
-	btn?.scrollIntoView({ behavior: 'smooth', inline: 'center', block: 'nearest' })
-})
+	$effect(() => {
+		if (step !== 'kiosk') return
+		const idx = currentIndex
+		if (!mobileQuestionNavRef) return
+		const btn = mobileQuestionNavRef.querySelectorAll('button')[idx] as HTMLElement | undefined
+		btn?.scrollIntoView({ behavior: 'smooth', inline: 'center', block: 'nearest' })
+	})
 
 	onMount(() => {
 		document.addEventListener('fullscreenchange', handleFullscreenChange)
@@ -601,41 +647,17 @@ $effect(() => {
 	</div>
 
 {:else if step === 'terms'}
-	<div class="mx-auto flex min-h-screen max-w-lg flex-col justify-center p-6">
-		<Card>
-			<CardHeader>
-				<CardTitle>Rules &amp; Regulations</CardTitle>
-				<CardDescription>Read carefully before starting</CardDescription>
-			</CardHeader>
-			<CardContent class="space-y-4">
-				<div class="max-h-[320px] overflow-y-auto rounded-lg border p-4 text-sm space-y-2">
-					<p>By starting this test, you agree to the following:</p>
-					<ul class="list-disc pl-5 space-y-1 text-muted-foreground">
-						<li>You will remain alone and unassisted for the full duration.</li>
-						<li>You will not leave fullscreen mode, switch tabs, or use another device.</li>
-						<li>You will not copy, paste, or share test content.</li>
-						<li>Your camera must remain on if face verification is required.</li>
-						<li>Violations may be logged and can result in disqualification.</li>
-					</ul>
-					{#if data.assessment.instructions}
-						<p class="pt-2 font-medium text-foreground">Additional instructions from your lecturer:</p>
-						<p class="text-muted-foreground">{data.assessment.instructions}</p>
-					{/if}
-				</div>
+	<TermsStep
+		instructions={data.assessment.instructions}
+		examTitle={data.assessment.title}
+		courseCode={data.assessment.course.code}
+		durationMinutes={data.assessment.durationMinutes}
+		bind:accepted={termsAccepted}
+		submitting={submittingTerms}
+		onContinue={proceedFromTerms}
+	/>
 
-				<label class="flex items-start gap-2 text-sm">
-					<Checkbox checked={termsAccepted} onCheckedChange={(v) => (termsAccepted = !!v)} class="mt-0.5" />
-					<span>I have read and agree to the rules above.</span>
-				</label>
-
-				<Button class="w-full" onclick={proceedFromTerms} disabled={!termsAccepted || submittingTerms}>
-					{submittingTerms ? 'Saving…' : 'Continue'}
-				</Button>
-			</CardContent>
-		</Card>
-	</div>
-
-	{:else if step === 'faceverify'}
+{:else if step === 'faceverify'}
 	<FaceVerifyModal
 		examId={data.sessionId}
 		onSuccess={onFaceVerified}
@@ -664,10 +686,10 @@ $effect(() => {
 			</div>
 
 			<!-- Mobile question number strip — horizontally scrollable, always visible -->
-<div
-	bind:this={mobileQuestionNavRef}
-	class="flex gap-2 overflow-x-auto border-t px-4 py-2 md:hidden"
->
+			<div
+				bind:this={mobileQuestionNavRef}
+				class="flex gap-2 overflow-x-auto border-t px-4 py-2 md:hidden"
+			>
 				{#each questions as q, i (q.questionId)}
 					<button
 						type="button"
@@ -705,7 +727,7 @@ $effect(() => {
 					<p class="text-sm font-medium uppercase tracking-wide text-muted-foreground">
 						Question {currentIndex + 1} of {questions.length} · {currentQuestion.marks} mark{currentQuestion.marks === 1 ? '' : 's'}
 					</p>
-					<p class="mt-3 text-2xl font-semibold leading-relaxed">{currentQuestion.body}</p>
+					<p class="mt-3 text-2xl font-semibold leading-relaxed"><MathText text={currentQuestion.body} /></p>
 				</div>
 
 				{#if currentQuestion.type === 'SINGLE_CHOICE' || currentQuestion.type === 'TRUE_FALSE'}
@@ -716,7 +738,7 @@ $effect(() => {
 								<span class="flex size-6 shrink-0 items-center justify-center rounded border font-bold text-sm">
 									{String.fromCharCode(65 + i)}
 								</span>
-								<span class="text-base font-medium">{opt.body}</span>
+								<span class="text-base font-medium"><MathText text={opt.body} /></span>
 							</label>
 						{/each}
 					</RadioGroup>
@@ -732,7 +754,7 @@ $effect(() => {
 								<span class="flex size-6 shrink-0 items-center justify-center rounded border font-bold text-sm">
 									{String.fromCharCode(65 + i)}
 								</span>
-								<span class="text-base font-medium">{opt.body}</span>
+								<span class="text-base font-medium"><MathText text={opt.body} /></span>
 							</label>
 						{/each}
 					</div>
@@ -759,7 +781,7 @@ $effect(() => {
 						{#each currentQuestion.orderAnswer as optId, i (optId)}
 							<div class="flex items-center gap-3 rounded-lg border p-3">
 								<span class="w-6 text-sm font-semibold text-muted-foreground">{i + 1}</span>
-								<span class="flex-1 text-base font-medium">{optionBody(optId)}</span>
+								<span class="flex-1 text-base font-medium"><MathText text={optionBody(optId)} /></span>
 								<Button variant="ghost" size="sm" class="h-7 w-7 p-0" onclick={() => moveOrderItem(i, -1)} disabled={i === 0}>
 									<ArrowUp class="size-3.5" />
 								</Button>
@@ -774,7 +796,7 @@ $effect(() => {
 					<div class="space-y-2">
 						{#each currentQuestion.leftItems ?? [] as leftBody (leftBody)}
 							<div class="flex items-center gap-3 rounded-lg border p-3">
-								<span class="flex-1 text-base font-medium">{leftBody}</span>
+								<span class="flex-1 text-base font-medium"><MathText text={leftBody} /></span>
 								<select
 									class="h-10 rounded-md border border-input bg-background px-2 text-base font-medium"
 									value={currentQuestion.matchAnswer[leftBody] ?? ''}
@@ -811,14 +833,24 @@ $effect(() => {
 			</main>
 		</div>
 
-		<!-- ExamMonitor mounts exactly once. It positions its own camera/alert/status
-		     panel with fixed CSS internally (see ExamMonitor.svelte), sitting clear
-		     of the bottom Previous/Next row on mobile and bottom-right on desktop.
-		     Do not add a second instance elsewhere on this page — each mount opens
-		     its own camera + mic stream, and two competing instances is what caused
-		     the "camera unavailable" full-screen lock overlay to appear over the
-		     question controls. -->
-		<ExamMonitor sessionId={data.sessionId} />
+		<!-- ExamMonitor mounts only while `monitorActive` is true — i.e. while
+		     in kiosk mode AND not currently submitting. As soon as
+		     handleSubmit() sets isSubmitting = true, this condition flips to
+		     false and Svelte unmounts ExamMonitor immediately, running its
+		     onDestroy cleanup() (camera/audio stream teardown, interval
+		     clearing, best-effort final violation flush) well before
+		     handleSubmit() reaches its own exitFullscreen() call further down
+		     in the script. This is what stops the monitor from still being
+		     "live" — and able to log its own violations — during the
+		     intentional fullscreen exit at submit time.
+
+		     Do not add a second instance elsewhere on this page — each mount
+		     opens its own camera + mic stream, and two competing instances is
+		     what caused the "camera unavailable" full-screen lock overlay to
+		     appear over the question controls. -->
+		{#if monitorActive}
+			<ExamMonitor sessionId={data.sessionId} />
+		{/if}
 
 		{#if showSubmitConfirm}
 			<div class="fixed inset-0 z-40 flex items-center justify-center bg-black/60 p-4">

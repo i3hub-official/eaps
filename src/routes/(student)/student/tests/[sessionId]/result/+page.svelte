@@ -70,7 +70,7 @@
 					{data.result.passed ? 'Passed' : 'Not passed'} · Pass mark {data.assessment.passMark}%
 				</Badge>
 				<p class="text-xs text-muted-foreground">
-					{data.result.score} / {data.result.totalMarks} marks
+					{Math.round(data.result.score)} / {Math.round(data.result.totalMarks)} marks
 				</p>
 			{:else}
 				<p class="text-sm text-muted-foreground">

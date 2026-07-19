@@ -129,6 +129,10 @@
 	});
 </script>
 
+<svelte:head>
+	<title>Tests — EAPS</title>
+</svelte:head>
+
 <Topbar title="Tests" description={data?.currentSemester ? `Current semester: ${data.currentSemester.name}` : 'No active semester'} />
 
 <main class="flex flex-1 flex-col gap-6 p-6">
