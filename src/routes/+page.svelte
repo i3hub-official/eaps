@@ -2,33 +2,28 @@
 <script lang="ts">
 	import { ThemeToggle } from '$lib/components/ui/theme-toggle/index.js';
 	import { Button } from '$lib/components/ui/button/index.js';
-	import ArrowRight from '@lucide/svelte/icons/arrow-right';
-	import PenLine from '@lucide/svelte/icons/pen-line';
-	import ClipboardCheck from '@lucide/svelte/icons/clipboard-check';
-	import ShieldCheck from '@lucide/svelte/icons/shield-check';
-	import { LoaderCircle } from '@lucide/svelte/icons';
+	import { PenLine, ClipboardCheck, ShieldCheck, LoaderCircle, ArrowRight } from '@lucide/svelte';
 	import { goto } from '$app/navigation';
-	import { page } from '$app/state';
 
 	const modes = [
 		{
 			n: '01',
 			title: 'Practice',
 			desc: 'Work through past questions and topic sets at your own pace. Untimed, ungraded, no record kept.',
-			Icon: PenLine
+			Icon: PenLine,
 		},
 		{
 			n: '02',
 			title: 'Test',
 			desc: 'Timed self-assessment under close-to-real conditions. Results are recorded to track your progress.',
-			Icon: ClipboardCheck
+			Icon: ClipboardCheck,
 		},
 		{
 			n: '03',
 			title: 'Examination',
 			desc: 'Invigilated, identity-verified, and time-locked. Used for continuous assessment and end-of-semester exams.',
-			Icon: ShieldCheck
-		}
+			Icon: ShieldCheck,
+		},
 	];
 
 	let isNavigating = $state(false);
@@ -45,198 +40,771 @@
 </script>
 
 <svelte:head>
-	<title>EAPS — MOUAU - Evaluation Assessment & Proctor System</title>
+	<title>EAPS — MOUAU · Evaluation, Assessment &amp; Proctor System</title>
+	<link rel="preconnect" href="https://fonts.googleapis.com" />
+	<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="anonymous" />
+	<link
+		href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,600;0,700;0,900;1,600&display=swap"
+		rel="stylesheet"
+	/>
 </svelte:head>
 
-<div class="min-h-svh bg-background text-foreground">
-	<!-- Header -->
-	<header class="border-b border-border">
-		<div class="flex items-center justify-between px-4 py-3 sm:px-6 md:px-12 lg:px-20 md:py-4">
-			<div class="flex items-center gap-2.5">
-				<div class="flex size-8 items-center justify-center rounded-md bg-primary text-xs font-bold text-primary-foreground">
-					E
-				</div>
-				<span class="text-sm font-semibold tracking-tight">
-					EAPS <span class="font-normal text-muted-foreground hidden sm:inline">· MOUAU</span>
+<div class="root">
+
+	<!-- ─── Header ─────────────────────────────────────────────────────────── -->
+	<header class="site-header">
+		<div class="site-header-inner">
+			<div class="logo">
+				<!-- amber accent #1: the logo mark -->
+				<div class="logo-mark" aria-hidden="true">E</div>
+				<span class="logo-wordmark">
+					EAPS
+					<span class="logo-sub">· MOUAU</span>
 				</span>
 			</div>
-			<div class="flex items-center gap-2 sm:gap-3">
+
+			<div class="header-actions">
 				<ThemeToggle />
-				<Button 
-					variant="ghost" 
-					size="sm" 
+				<button
+					class="signin-btn"
 					onclick={() => handleNavigation('/login')}
 					disabled={isNavigating}
-					class="text-sm font-medium"
 				>
 					{#if isNavigating}
-						<LoaderCircle class="mr-2 size-3 animate-spin" />
+						<LoaderCircle class="size-3 animate-spin" />
 					{/if}
 					Sign in
-				</Button>
+				</button>
 			</div>
 		</div>
 	</header>
 
-	<!-- Hero -->
-	<section class="px-4 py-12 sm:px-6 md:px-12 md:py-16 lg:px-20 lg:py-24">
-		<div class="grid gap-8 md:grid-cols-[1.1fr_0.9fr] md:items-center lg:gap-16">
-			<div>
-				<p class="mb-3 font-mono text-[10px] uppercase tracking-[0.15em] text-muted-foreground sm:text-xs">
+	<!-- ─── Hero ───────────────────────────────────────────────────────────── -->
+	<section class="hero">
+		<div class="hero-inner">
+
+			<div class="hero-copy">
+				<p class="hero-eyebrow">
 					Michael Okpara University of Agriculture, Umudike
 				</p>
-				<h1
-					class="text-3xl leading-[1.08] tracking-tight sm:text-4xl md:text-4xl lg:text-5xl xl:text-6xl"
-					style="font-family: 'Fraunces', ui-serif, Georgia, serif; font-weight: 560;"
-				>
-					One platform, three stages of readiness.
+
+				<h1 class="hero-headline">
+					One platform,<br />
+					<em>three stages</em><br />
+					of readiness.
 				</h1>
-				<p class="mt-4 max-w-md text-sm leading-relaxed text-muted-foreground sm:text-[15px] lg:text-base">
+
+				<p class="hero-body">
 					EAPS carries a student from practice questions to timed self-tests to
-					invigilated examinations — the same courses, the same question bank, increasing
-					stakes.
+					invigilated examinations — the same courses, the same question bank,
+					increasing stakes.
 				</p>
-				<div class="mt-6 flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center">
-					<Button 
-						onclick={() => handleNavigation('/login')} 
-						size="lg" 
-						class="h-11 w-full text-sm sm:w-auto md:h-12 md:text-base"
+
+				<div class="hero-ctas">
+					<!-- amber accent #2: primary CTA -->
+					<button
+						class="cta-primary"
+						onclick={() => handleNavigation('/login')}
 						disabled={isNavigating}
 					>
 						{#if isNavigating}
-							<LoaderCircle class="mr-2 size-4 animate-spin" />
+							<LoaderCircle class="size-4 animate-spin" />
 							Loading…
 						{:else}
 							Sign in to continue
 							<ArrowRight class="size-4" />
 						{/if}
-					</Button>
-					<Button 
-						onclick={() => handleNavigation('/register')} 
-						variant="outline" 
-						size="lg" 
-						class="h-11 w-full text-sm sm:w-auto md:h-12 md:text-base"
+					</button>
+
+					<button
+						class="cta-secondary"
+						onclick={() => handleNavigation('/register')}
 						disabled={isNavigating}
 					>
 						Register
-					</Button>
+					</button>
 				</div>
 			</div>
 
-			<!-- Signature element: exam script cover sheet motif -->
-			<div class="relative md:justify-self-end md:w-full md:max-w-sm">
-				<div class="rounded-sm border border-border bg-card p-4 shadow-sm sm:p-6">
-					<div class="flex items-center justify-between border-b border-dashed border-border pb-2 sm:pb-3">
-						<span class="font-mono text-[10px] uppercase tracking-wider text-muted-foreground">
-							Answer Script
-						</span>
-						<span class="font-mono text-[10px] text-muted-foreground">Serial No. —</span>
+			<!-- Answer script card — amber accent #3: the stamp/serial mark -->
+			<div class="script-wrap" aria-hidden="true">
+				<div class="script-card">
+					<div class="script-noise"></div>
+
+					<div class="script-top">
+						<span class="script-label">Answer Script</span>
+						<span class="script-serial">EAPS / {new Date().getFullYear()}</span>
 					</div>
-					<dl class="mt-3 space-y-2 sm:mt-4 sm:space-y-3">
-						<div class="flex items-baseline justify-between border-b border-border/60 pb-1.5">
-							<dt class="font-mono text-[10px] uppercase text-muted-foreground">Candidate Name</dt>
-							<dd class="h-3 w-20 border-b border-dotted border-muted-foreground/40 sm:w-28"></dd>
-						</div>
-						<div class="flex items-baseline justify-between border-b border-border/60 pb-1.5">
-							<dt class="font-mono text-[10px] uppercase text-muted-foreground">Matric No.</dt>
-							<dd class="h-3 w-20 border-b border-dotted border-muted-foreground/40 sm:w-28"></dd>
-						</div>
-						<div class="flex items-baseline justify-between border-b border-border/60 pb-1.5">
-							<dt class="font-mono text-[10px] uppercase text-muted-foreground">Course Code</dt>
-							<dd class="h-3 w-20 border-b border-dotted border-muted-foreground/40 sm:w-28"></dd>
-						</div>
-						<div class="flex items-baseline justify-between pb-1.5">
-							<dt class="font-mono text-[10px] uppercase text-muted-foreground">Session</dt>
-							<dd class="h-3 w-20 border-b border-dotted border-muted-foreground/40 sm:w-28"></dd>
-						</div>
+
+					<dl class="script-fields">
+						{#each ['Candidate Name', 'Matric No.', 'Course Code', 'Department', 'Session'] as field}
+							<div class="script-field">
+								<dt>{field}</dt>
+								<dd></dd>
+							</div>
+						{/each}
 					</dl>
-					<p class="mt-4 border-t border-border pt-3 text-[10px] leading-relaxed text-muted-foreground sm:mt-5">
-						Every session on EAPS is bound to a verified identity and a fixed time
-						window, whether practice, test, or examination.
-					</p>
+
+					<div class="script-footer">
+						<p>
+							Every session is bound to a verified identity and a fixed time
+							window — whether practice, test, or examination.
+						</p>
+						<!-- amber accent #3: stamp -->
+						<div class="script-stamp">
+							<span class="script-stamp-text">EAPS</span>
+							<span class="script-stamp-sub">VERIFIED</span>
+						</div>
+					</div>
 				</div>
+				<!-- Shadow stack — stacked paper effect -->
+				<div class="script-shadow script-shadow-1" aria-hidden="true"></div>
+				<div class="script-shadow script-shadow-2" aria-hidden="true"></div>
 			</div>
 		</div>
 	</section>
 
-	<!-- Three modes -->
-	<section class="border-t border-border bg-card">
-		<div class="px-4 py-12 sm:px-6 md:px-12 md:py-16 lg:px-20">
-			<h2 class="text-xs font-semibold uppercase tracking-wide text-muted-foreground sm:text-sm">
-				How assessment works here
-			</h2>
-			<div class="mt-6 grid gap-px overflow-hidden rounded-sm border border-border bg-border md:grid-cols-3 sm:mt-8">
-				{#each modes as m}
-					<div class="bg-card p-4 sm:p-6 lg:p-8">
-						<div class="flex items-center justify-between">
-							<span class="font-mono text-xs text-muted-foreground">{m.n}</span>
-							<m.Icon class="size-4 text-primary" />
+	<!-- ─── Three modes ─────────────────────────────────────────────────────── -->
+	<section class="modes-section">
+		<div class="modes-inner">
+			<h2 class="section-label">How assessment works here</h2>
+
+			<div class="modes-grid">
+				{#each modes as m, i}
+					<div class="mode-card">
+						<div class="mode-top">
+							<span class="mode-num">{m.n}</span>
+							<m.Icon class="mode-icon" />
 						</div>
-						<h3 class="mt-3 text-base font-semibold sm:mt-4">{m.title}</h3>
-						<p class="mt-1 text-sm leading-relaxed text-muted-foreground sm:mt-2">{m.desc}</p>
+						<h3 class="mode-title">{m.title}</h3>
+						<p class="mode-desc">{m.desc}</p>
+						<!-- Divider between cards on mobile -->
+						{#if i < modes.length - 1}
+							<div class="mode-divider" aria-hidden="true"></div>
+						{/if}
 					</div>
 				{/each}
 			</div>
 		</div>
 	</section>
 
-	<!-- Access -->
-	<section class="px-4 py-12 sm:px-6 md:px-12 md:py-16 lg:px-20">
-		<div class="grid gap-6 md:grid-cols-2 lg:gap-12">
-			<div>
-				<h2 class="text-xs font-semibold uppercase tracking-wide text-muted-foreground sm:text-sm">
-					Who this is for
-				</h2>
-				<p class="mt-2 max-w-md text-sm leading-relaxed text-muted-foreground sm:mt-3">
-					Students, lecturers, invigilators, HODs, and deans each get a portal scoped to
-					what they're responsible for — setting papers, granting exam authority,
-					invigilating a hall, or sitting a test.
+	<!-- ─── Who / Getting in ────────────────────────────────────────────────── -->
+	<section class="info-section">
+		<div class="info-inner">
+			<div class="info-block">
+				<h2 class="section-label">Who this is for</h2>
+				<p class="info-body">
+					Students, lecturers, invigilators, HODs, and deans each get a portal
+					scoped to what they're responsible for — setting papers, granting exam
+					authority, invigilating a hall, or sitting a test.
 				</p>
 			</div>
-			<div>
-				<h2 class="text-xs font-semibold uppercase tracking-wide text-muted-foreground sm:text-sm">
-					Getting in
-				</h2>
-				<p class="mt-2 max-w-md text-sm leading-relaxed text-muted-foreground sm:mt-3">
-					Sign in with your university email or matric number. New students register with
-					their admission details and are verified against departmental records before
-					first access.
+			<div class="info-block">
+				<h2 class="section-label">Getting in</h2>
+				<p class="info-body">
+					Sign in with your university email or matric number. New students
+					register with their admission details and are verified against
+					departmental records before first access.
 				</p>
 			</div>
 		</div>
 	</section>
 
-	<!-- Footer -->
-	<footer class="border-t border-border bg-card/50">
-		<div class="px-4 py-8 sm:px-6 md:px-12 md:py-10 lg:px-20">
-			<div class="flex flex-col items-center gap-4 md:flex-row md:justify-between">
-				<!-- Left: Brand & Description -->
-				<div class="flex flex-col items-center gap-1 text-center md:items-start md:text-left">
-					<div class="flex items-center gap-2">
-						<div class="flex size-6 items-center justify-center rounded bg-primary/10 text-[10px] font-bold text-primary">
-							EAPS
-						</div>
-						<span class="text-xs font-semibold text-foreground">
-							MOUAU - Evaluation Assessment & Proctor System
-						</span>
-					</div>
-					<p class="text-[10px] text-muted-foreground/70 sm:text-[11px]">
-						Michael Okpara University of Agriculture, Umudike
-					</p>
+	<!-- ─── Footer ─────────────────────────────────────────────────────────── -->
+	<footer class="site-footer">
+		<div class="site-footer-inner">
+			<div class="footer-brand">
+				<div class="logo">
+					<div class="logo-mark logo-mark--sm" aria-hidden="true">E</div>
+					<span class="logo-wordmark logo-wordmark--sm">
+						EAPS · MOUAU
+					</span>
 				</div>
-
-				<!-- Center: Built by REAi -->
-				<div class="flex items-center gap-2 text-xs text-muted-foreground">
-					<span class="h-px w-4 bg-border sm:w-6"></span>
-					<span><span class="font-medium text-foreground">REAi</span></span>
-					<span class="h-px w-4 bg-border sm:w-6"></span>
-				</div>
+				<p class="footer-sub">
+					Michael Okpara University of Agriculture, Umudike
+				</p>
 			</div>
 
-			<!-- Bottom: Copyright -->
-			<div class="mt-4 border-t border-border/50 pt-4 text-center text-[10px] text-muted-foreground/60 md:text-left">
-				&copy; {new Date().getFullYear()} EAPS — All rights reserved. EAPS - Evaluation Assessment & Proctor System
-			</div>
+			<p class="footer-built">
+				Built by <strong>REAi</strong>
+			</p>
+		</div>
+
+		<div class="footer-copy">
+			&copy; {new Date().getFullYear()} EAPS — Evaluation, Assessment &amp; Proctor System.
+			All rights reserved.
 		</div>
 	</footer>
 </div>
+
+<style>
+	@import url('https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,600;0,700;0,900;1,600&display=swap');
+
+	/* ─── Tokens ───────────────────────────────────────────────────────────── */
+	:root {
+		--gold: #f59e0b;
+		--gold-dim: rgba(245, 158, 11, 0.15);
+		--gold-border: rgba(245, 158, 11, 0.3);
+		--ink: #0f172a;
+		--ink-mid: #334155;
+		--ink-muted: #64748b;
+		--ink-faint: #94a3b8;
+		--paper: #f8fafc;
+		--card-dark: #0f172a;
+		--card-dark-2: #1e293b;
+	}
+
+	/* ─── Root ─────────────────────────────────────────────────────────────── */
+	.root {
+		min-height: 100svh;
+		background: hsl(var(--background));
+		color: hsl(var(--foreground));
+		display: flex;
+		flex-direction: column;
+	}
+
+	/* ─── Header ───────────────────────────────────────────────────────────── */
+	.site-header {
+		border-bottom: 1px solid hsl(var(--border));
+		position: sticky;
+		top: 0;
+		z-index: 40;
+		background: hsl(var(--background) / 0.92);
+		backdrop-filter: blur(8px);
+	}
+
+	.site-header-inner {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		padding: 0.85rem 1.5rem;
+		max-width: 1280px;
+		margin: 0 auto;
+		width: 100%;
+	}
+
+	.logo {
+		display: flex;
+		align-items: center;
+		gap: 0.6rem;
+	}
+
+	/* amber accent #1 */
+	.logo-mark {
+		width: 2rem;
+		height: 2rem;
+		border-radius: 0.4rem;
+		background: var(--gold);
+		color: #000;
+		font-size: 0.75rem;
+		font-weight: 900;
+		font-family: 'Playfair Display', Georgia, serif;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		letter-spacing: 0;
+		flex-shrink: 0;
+	}
+
+	.logo-mark--sm {
+		width: 1.4rem;
+		height: 1.4rem;
+		font-size: 0.6rem;
+		border-radius: 0.25rem;
+	}
+
+	.logo-wordmark {
+		font-size: 0.85rem;
+		font-weight: 700;
+		letter-spacing: -0.01em;
+		color: hsl(var(--foreground));
+	}
+
+	.logo-wordmark--sm {
+		font-size: 0.78rem;
+	}
+
+	.logo-sub {
+		font-weight: 400;
+		color: hsl(var(--muted-foreground));
+	}
+
+	.header-actions {
+		display: flex;
+		align-items: center;
+		gap: 0.75rem;
+	}
+
+	.signin-btn {
+		display: inline-flex;
+		align-items: center;
+		gap: 0.4rem;
+		font-size: 0.85rem;
+		font-weight: 600;
+		color: hsl(var(--foreground));
+		background: none;
+		border: 1px solid hsl(var(--border));
+		border-radius: 0.45rem;
+		padding: 0.45rem 1rem;
+		cursor: pointer;
+		transition: border-color 0.15s ease, background 0.15s ease;
+	}
+
+	.signin-btn:hover {
+		border-color: var(--gold);
+		background: var(--gold-dim);
+	}
+
+	.signin-btn:disabled { opacity: 0.6; cursor: not-allowed; }
+
+	/* ─── Hero ─────────────────────────────────────────────────────────────── */
+	.hero {
+		flex: 1;
+		padding: 5rem 1.5rem 4rem;
+	}
+
+	.hero-inner {
+		max-width: 1280px;
+		margin: 0 auto;
+		display: grid;
+		grid-template-columns: 1.15fr 0.85fr;
+		gap: 5rem;
+		align-items: center;
+	}
+
+	.hero-eyebrow {
+		font-size: 0.65rem;
+		font-weight: 700;
+		letter-spacing: 0.2em;
+		text-transform: uppercase;
+		color: hsl(var(--muted-foreground));
+		margin-bottom: 1.25rem;
+	}
+
+	.hero-headline {
+		font-family: 'Playfair Display', Georgia, serif;
+		font-size: clamp(2.8rem, 6vw, 5rem);
+		font-weight: 900;
+		line-height: 1.04;
+		letter-spacing: -0.02em;
+		color: hsl(var(--foreground));
+		margin: 0 0 1.5rem;
+	}
+
+	/* italic "three stages" — the one typographic flourish */
+	.hero-headline em {
+		font-style: italic;
+		font-weight: 600;
+		color: hsl(var(--foreground));
+	}
+
+	.hero-body {
+		max-width: 440px;
+		font-size: 1rem;
+		line-height: 1.7;
+		color: hsl(var(--muted-foreground));
+		margin: 0 0 2rem;
+	}
+
+	.hero-ctas {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 0.75rem;
+		align-items: center;
+	}
+
+	/* amber accent #2 */
+	.cta-primary {
+		display: inline-flex;
+		align-items: center;
+		gap: 0.5rem;
+		padding: 0.75rem 1.5rem;
+		font-size: 0.9rem;
+		font-weight: 700;
+		color: #000;
+		background: var(--gold);
+		border: none;
+		border-radius: 0.5rem;
+		cursor: pointer;
+		transition: opacity 0.15s ease, transform 0.15s ease;
+		white-space: nowrap;
+	}
+
+	.cta-primary:hover { opacity: 0.9; transform: translateY(-1px); }
+	.cta-primary:disabled { opacity: 0.6; cursor: not-allowed; transform: none; }
+
+	.cta-secondary {
+		display: inline-flex;
+		align-items: center;
+		padding: 0.75rem 1.5rem;
+		font-size: 0.9rem;
+		font-weight: 600;
+		color: hsl(var(--foreground));
+		background: none;
+		border: 1px solid hsl(var(--border));
+		border-radius: 0.5rem;
+		cursor: pointer;
+		transition: border-color 0.15s ease, background 0.15s ease;
+	}
+
+	.cta-secondary:hover {
+		border-color: hsl(var(--foreground) / 0.4);
+		background: hsl(var(--muted) / 0.5);
+	}
+
+	.cta-secondary:disabled { opacity: 0.6; cursor: not-allowed; }
+
+	/* ─── Answer script card ────────────────────────────────────────────────── */
+	.script-wrap {
+		position: relative;
+		justify-self: end;
+		width: 100%;
+		max-width: 360px;
+	}
+
+	/* Stacked paper shadows */
+	.script-shadow {
+		position: absolute;
+		inset: 0;
+		border-radius: 0.6rem;
+		border: 1px solid rgba(245, 158, 11, 0.08);
+	}
+
+	.script-shadow-1 {
+		background: #1a2540;
+		transform: rotate(2.5deg) translateY(6px);
+		z-index: -1;
+	}
+
+	.script-shadow-2 {
+		background: #131d35;
+		transform: rotate(4.5deg) translateY(10px);
+		z-index: -2;
+	}
+
+	.script-card {
+		position: relative;
+		overflow: hidden;
+		border-radius: 0.6rem;
+		background: linear-gradient(145deg, #0f172a 0%, #1e293b 100%);
+		border: 1px solid rgba(245, 158, 11, 0.18);
+		box-shadow:
+			0 0 0 1px rgba(255,255,255,0.04) inset,
+			0 32px 64px -16px rgba(0,0,0,0.6);
+		padding: 1.75rem;
+		z-index: 1;
+	}
+
+	.script-noise {
+		position: absolute;
+		inset: 0;
+		pointer-events: none;
+		opacity: 0.025;
+		background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.75' numOctaves='4' stitchTiles='stitch'/></filter><rect width='100%25' height='100%25' filter='url(%23n)'/></svg>");
+	}
+
+	.script-top {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		padding-bottom: 1rem;
+		border-bottom: 1px dashed rgba(245, 158, 11, 0.25);
+		margin-bottom: 1.25rem;
+	}
+
+	.script-label {
+		font-size: 0.62rem;
+		font-weight: 700;
+		letter-spacing: 0.2em;
+		text-transform: uppercase;
+		color: var(--gold);
+	}
+
+	.script-serial {
+		font-family: 'Courier New', monospace;
+		font-size: 0.65rem;
+		color: #475569;
+		letter-spacing: 0.06em;
+	}
+
+	.script-fields {
+		display: flex;
+		flex-direction: column;
+		gap: 0.85rem;
+		margin-bottom: 1.5rem;
+	}
+
+	.script-field {
+		display: flex;
+		align-items: baseline;
+		justify-content: space-between;
+		gap: 1rem;
+		border-bottom: 1px solid rgba(255,255,255,0.06);
+		padding-bottom: 0.6rem;
+	}
+
+	.script-field:last-child { border-bottom: none; }
+
+	.script-field dt {
+		font-size: 0.62rem;
+		font-weight: 600;
+		letter-spacing: 0.1em;
+		text-transform: uppercase;
+		color: #475569;
+		white-space: nowrap;
+	}
+
+	.script-field dd {
+		flex: 1;
+		height: 1px;
+		background: rgba(255,255,255,0.08);
+		border: none;
+		margin: 0 0 0 1rem;
+		border-bottom: 1px dotted rgba(255,255,255,0.12);
+	}
+
+	.script-footer {
+		display: flex;
+		align-items: flex-end;
+		justify-content: space-between;
+		gap: 1rem;
+		padding-top: 1.25rem;
+		border-top: 1px solid rgba(255,255,255,0.06);
+	}
+
+	.script-footer p {
+		font-size: 0.7rem;
+		line-height: 1.55;
+		color: #475569;
+		max-width: 200px;
+	}
+
+	/* amber accent #3 — stamp */
+	.script-stamp {
+		flex-shrink: 0;
+		width: 58px;
+		height: 58px;
+		border-radius: 9999px;
+		border: 2px solid var(--gold);
+		display: flex;
+		flex-direction: column;
+		align-items: center;
+		justify-content: center;
+		color: var(--gold);
+		opacity: 0.7;
+		transform: rotate(-12deg);
+	}
+
+	.script-stamp-text {
+		font-family: 'Playfair Display', Georgia, serif;
+		font-size: 0.7rem;
+		font-weight: 700;
+		letter-spacing: 0.12em;
+	}
+
+	.script-stamp-sub {
+		font-size: 0.45rem;
+		font-weight: 700;
+		letter-spacing: 0.2em;
+		text-transform: uppercase;
+	}
+
+	/* ─── Modes section ────────────────────────────────────────────────────── */
+	.modes-section {
+		border-top: 1px solid hsl(var(--border));
+		background: hsl(var(--card));
+	}
+
+	.modes-inner {
+		max-width: 1280px;
+		margin: 0 auto;
+		padding: 4rem 1.5rem;
+	}
+
+	.section-label {
+		font-size: 0.62rem;
+		font-weight: 700;
+		letter-spacing: 0.2em;
+		text-transform: uppercase;
+		color: hsl(var(--muted-foreground));
+		margin: 0 0 2rem;
+	}
+
+	.modes-grid {
+		display: grid;
+		grid-template-columns: repeat(3, 1fr);
+		border: 1px solid hsl(var(--border));
+		border-radius: 0.5rem;
+		overflow: hidden;
+	}
+
+	.mode-card {
+		position: relative;
+		padding: 2rem;
+		background: hsl(var(--card));
+		border-right: 1px solid hsl(var(--border));
+		transition: background 0.2s ease;
+	}
+
+	.mode-card:last-child { border-right: none; }
+
+	.mode-card:hover { background: hsl(var(--muted) / 0.4); }
+
+	.mode-top {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		margin-bottom: 1.25rem;
+	}
+
+	.mode-num {
+		font-family: 'Courier New', monospace;
+		font-size: 0.7rem;
+		font-weight: 700;
+		letter-spacing: 0.06em;
+		color: hsl(var(--muted-foreground));
+	}
+
+	:global(.mode-icon) {
+		width: 1.1rem;
+		height: 1.1rem;
+		color: hsl(var(--foreground));
+		opacity: 0.5;
+	}
+
+	.mode-title {
+		font-family: 'Playfair Display', Georgia, serif;
+		font-size: 1.35rem;
+		font-weight: 700;
+		color: hsl(var(--foreground));
+		margin: 0 0 0.6rem;
+	}
+
+	.mode-desc {
+		font-size: 0.85rem;
+		line-height: 1.65;
+		color: hsl(var(--muted-foreground));
+		margin: 0;
+	}
+
+	/* ─── Info section ─────────────────────────────────────────────────────── */
+	.info-section {
+		border-top: 1px solid hsl(var(--border));
+	}
+
+	.info-inner {
+		max-width: 1280px;
+		margin: 0 auto;
+		padding: 4rem 1.5rem;
+		display: grid;
+		grid-template-columns: 1fr 1fr;
+		gap: 4rem;
+	}
+
+	.info-body {
+		font-size: 0.9rem;
+		line-height: 1.75;
+		color: hsl(var(--muted-foreground));
+		margin: 0.75rem 0 0;
+	}
+
+	/* ─── Footer ───────────────────────────────────────────────────────────── */
+	.site-footer {
+		border-top: 1px solid hsl(var(--border));
+		background: hsl(var(--card) / 0.5);
+		padding: 2.5rem 1.5rem 1.5rem;
+	}
+
+	.site-footer-inner {
+		max-width: 1280px;
+		margin: 0 auto;
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		flex-wrap: wrap;
+		gap: 1rem;
+		margin-bottom: 1.5rem;
+	}
+
+	.footer-brand {
+		display: flex;
+		flex-direction: column;
+		gap: 0.35rem;
+	}
+
+	.footer-sub {
+		font-size: 0.7rem;
+		color: hsl(var(--muted-foreground) / 0.6);
+		margin: 0;
+	}
+
+	.footer-built {
+		font-size: 0.78rem;
+		color: hsl(var(--muted-foreground));
+		margin: 0;
+	}
+
+	.footer-built strong {
+		color: hsl(var(--foreground));
+		font-weight: 700;
+	}
+
+	.footer-copy {
+		max-width: 1280px;
+		margin: 0 auto;
+		padding-top: 1rem;
+		border-top: 1px solid hsl(var(--border) / 0.5);
+		font-size: 0.68rem;
+		color: hsl(var(--muted-foreground) / 0.55);
+	}
+
+	/* ─── Responsive ───────────────────────────────────────────────────────── */
+	@media (max-width: 1024px) {
+		.hero-inner {
+			grid-template-columns: 1fr;
+			gap: 3rem;
+		}
+
+		.script-wrap {
+			justify-self: start;
+			max-width: 400px;
+		}
+	}
+
+	@media (max-width: 768px) {
+		.hero { padding: 3.5rem 1.25rem 3rem; }
+
+		.modes-grid {
+			grid-template-columns: 1fr;
+		}
+
+		.mode-card {
+			border-right: none;
+			border-bottom: 1px solid hsl(var(--border));
+		}
+
+		.mode-card:last-child { border-bottom: none; }
+
+		.info-inner {
+			grid-template-columns: 1fr;
+			gap: 2.5rem;
+			padding: 3rem 1.25rem;
+		}
+
+		.modes-inner { padding: 3rem 1.25rem; }
+
+		.site-footer-inner { flex-direction: column; align-items: flex-start; }
+	}
+
+	@media (max-width: 480px) {
+		.hero-headline { font-size: 2.5rem; }
+		.script-wrap { max-width: 100%; }
+		.hero-ctas { flex-direction: column; }
+		.cta-primary, .cta-secondary { width: 100%; justify-content: center; }
+	}
+
+	@media (prefers-reduced-motion: reduce) {
+		.cta-primary { transition: none; }
+		.cta-primary:hover { transform: none; }
+	}
+</style>
