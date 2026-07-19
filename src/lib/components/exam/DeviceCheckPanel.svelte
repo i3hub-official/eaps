@@ -3,42 +3,42 @@
 	import { onMount, onDestroy, tick } from 'svelte'
 	import { Button } from '$lib/components/ui/button/index.js'
 	import { Badge } from '$lib/components/ui/badge/index.js'
-	import Camera from '@lucide/svelte/icons/camera'
-	import Mic from '@lucide/svelte/icons/mic'
-	import MapPin from '@lucide/svelte/icons/map-pin'
-	import Monitor from '@lucide/svelte/icons/monitor'
-	import CheckCircle2 from '@lucide/svelte/icons/check-circle-2'
-	import AlertCircle from '@lucide/svelte/icons/alert-circle'
-	import Loader2 from '@lucide/svelte/icons/loader-2'
+	import {
+		Camera,
+		Mic,
+		MapPin,
+		Monitor,
+		CircleCheck,
+		AlertCircle,
+		Loader,
+	} from '@lucide/svelte'
 	import { getHuman } from '$lib/client/face/human.js'
 	import { isMobileDevice } from '$lib/utils/permissions.js'
 
-	interface Props {
+	type CheckStatus = 'idle' | 'checking' | 'passed' | 'failed' | 'skipped'
+
+	let {
 		/**
 		 * When false, the camera + face detection check is skipped entirely
 		 * and the mic check is also skipped (no proctoring audio needed).
 		 * Defaults to true so the panel is safe to drop in without props.
 		 */
-		requireFaceVerify?: boolean
+		requireFaceVerify = true,
 		/**
 		 * Called once every required check has passed. The parent uses this
 		 * to advance past the device-check step.
 		 */
-		onDeviceCheckComplete?: () => void
+		onDeviceCheckComplete,
 		/**
 		 * Bindable mirror of the "all passed" state — kept for parents that
 		 * prefer two-way binding over a callback.
 		 */
-		allPassed?: boolean
-	}
-
-	let {
-		requireFaceVerify = true,
-		onDeviceCheckComplete,
 		allPassed = $bindable(false),
-	}: Props = $props()
-
-	type CheckStatus = 'idle' | 'checking' | 'passed' | 'failed' | 'skipped'
+	}: {
+		requireFaceVerify?: boolean
+		onDeviceCheckComplete?: () => void
+		allPassed?: boolean
+	} = $props()
 
 	// ─── Camera + face ──────────────────────────────────────────────────────
 	let cameraStatus = $state<CheckStatus>('idle')
@@ -85,8 +85,6 @@
 	let stopped = false
 
 	// ─── "All passed" derivation ─────────────────────────────────────────────
-	// A check that was never required resolves as 'skipped', which counts as
-	// passing for the purposes of gating the Continue button.
 	function isOk(s: CheckStatus) {
 		return s === 'passed' || s === 'skipped'
 	}
@@ -120,7 +118,7 @@
 			cameraStream = await navigator.mediaDevices.getUserMedia({
 				video: { facingMode: 'user', width: { ideal: 640 }, height: { ideal: 480 } },
 			})
-			await tick() // wait for Svelte to bind videoEl
+			await tick()
 			if (!videoEl) throw new Error('Video preview not ready')
 			videoEl.srcObject = cameraStream
 			await videoEl.play()
@@ -142,12 +140,12 @@
 			if (faces.length === 1) {
 				faceDetected = true
 				cameraStatus = 'passed'
-				return // stop polling — preview stays live for the student
+				return
 			}
 			faceDetected = false
 			cameraStatus = 'checking'
 		} catch {
-			// transient detection hiccups are fine — keep trying
+			// transient detection hiccups — keep trying
 		}
 		faceLoopHandle = requestAnimationFrame(() => faceLoop(human, el))
 	}
@@ -155,7 +153,6 @@
 	// ─── Microphone ──────────────────────────────────────────────────────────
 	async function runMicCheck() {
 		if (!requireFaceVerify) {
-			// No proctoring audio needed if face verify is off
 			micStatus = 'skipped'
 			return
 		}
@@ -247,13 +244,11 @@
 
 	// ─── Window / screen management ───────────────────────────────────────────
 	async function runWindowCheck() {
-		// Mobile devices never have a multi-screen risk — skip silently.
 		if (isMobile) {
 			windowStatus = 'skipped'
 			return
 		}
 
-		// Unsupported browser (Firefox, Safari) — auto-pass rather than blocking.
 		if (!windowMgmtSupported) {
 			windowStatus = 'passed'
 			windowError = ''
@@ -267,7 +262,6 @@
 			const screenDetails = await (window as any).getScreenDetails()
 			screenCount = screenDetails.screens?.length ?? 1
 			multiScreenDetected = screenCount > 1
-			// Multiple screens is a proctoring signal, not a hard block.
 			windowStatus = 'passed'
 		} catch (err) {
 			windowStatus = 'failed'
@@ -316,7 +310,7 @@
 				></video>
 				{#if cameraStatus === 'checking'}
 					<div class="absolute inset-0 flex items-center justify-center bg-black/40">
-						<Loader2 class="size-6 animate-spin text-white" />
+						<Loader class="size-6 animate-spin text-white" />
 					</div>
 				{/if}
 			</div>
@@ -331,7 +325,7 @@
 					<Camera class="size-4" /> Camera &amp; face check
 				</div>
 				{#if cameraStatus === 'passed'}
-					<Badge><CheckCircle2 class="mr-1 size-3" /> Passed</Badge>
+					<Badge><CircleCheck class="mr-1 size-3" /> Passed</Badge>
 				{:else if cameraStatus === 'failed'}
 					<Button size="sm" variant="outline" onclick={runCameraCheck}>Retry</Button>
 				{:else}
@@ -354,7 +348,7 @@
 					<Mic class="size-4" /> Microphone check
 				</div>
 				{#if micStatus === 'passed'}
-					<Badge><CheckCircle2 class="mr-1 size-3" /> Passed</Badge>
+					<Badge><CircleCheck class="mr-1 size-3" /> Passed</Badge>
 				{:else if micStatus === 'failed'}
 					<Button size="sm" variant="outline" onclick={runMicCheck}>Retry</Button>
 				{:else}
@@ -381,7 +375,7 @@
 				<MapPin class="size-4" /> Location check
 			</div>
 			{#if locationStatus === 'passed'}
-				<Badge><CheckCircle2 class="mr-1 size-3" /> Passed</Badge>
+				<Badge><CircleCheck class="mr-1 size-3" /> Passed</Badge>
 			{:else if locationStatus === 'failed'}
 				<Button size="sm" variant="outline" onclick={runLocationCheck}>Retry</Button>
 			{:else}
@@ -413,7 +407,7 @@
 
 				{#if isFetchingAddress}
 					<div class="flex items-center gap-2 text-muted-foreground">
-						<Loader2 class="size-3 animate-spin" />
+						<Loader class="size-3 animate-spin" />
 						<span>Fetching address…</span>
 					</div>
 				{:else if locationData.address}
@@ -452,7 +446,7 @@
 					<Monitor class="size-4" /> Window management check
 				</div>
 				{#if windowStatus === 'passed'}
-					<Badge><CheckCircle2 class="mr-1 size-3" /> Passed</Badge>
+					<Badge><CircleCheck class="mr-1 size-3" /> Passed</Badge>
 				{:else if windowStatus === 'failed'}
 					<Button size="sm" variant="outline" onclick={runWindowCheck}>Retry</Button>
 				{:else}

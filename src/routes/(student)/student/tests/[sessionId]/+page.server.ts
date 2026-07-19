@@ -11,6 +11,8 @@ export const load: PageServerLoad = async ({ locals, params }) => {
 	const student = await requireStudent(locals.user)
 	const prisma = await getPrismaClient()
 
+	const nameParts = [student.firstName, student.otherNames, student.lastName].filter(Boolean)
+
 	const session = await prisma.assessmentSession.findUnique({
 		where: { id: params.sessionId },
 		include: {
@@ -204,6 +206,7 @@ export const load: PageServerLoad = async ({ locals, params }) => {
 	return {
 		sessionId: session.id,
 		status: session.status,
+		candidateName: nameParts.join(' '),
 		expiresAt: session.expiresAt,
 		timeRemainingSeconds: session.timeRemainingSeconds,
 		termsAcceptedAt: session.termsAcceptedAt,

@@ -14,13 +14,26 @@
 	import DeviceCheckPanel from '$lib/components/exam/DeviceCheckPanel.svelte'
 	import TermsStep from '$lib/components/exam/TermsStep.svelte'
 	import MathText from '$lib/components/MathText.svelte'
-	import AlertCircle from '@lucide/svelte/icons/alert-circle'
-	import Clock from '@lucide/svelte/icons/clock'
-	import ArrowLeft from '@lucide/svelte/icons/arrow-left'
-	import ArrowRight from '@lucide/svelte/icons/arrow-right'
-	import ArrowUp from '@lucide/svelte/icons/arrow-up'
-	import ArrowDown from '@lucide/svelte/icons/arrow-down'
-	import RotateCw from '@lucide/svelte/icons/rotate-cw'
+import {
+  AlertCircle,
+  Archive,
+  ArrowDown,
+  ArrowLeft,
+  ArrowRight,
+  ArrowUp,
+  BookOpen,
+  CircleCheck,      // was check-circle-2 / CheckCircle2
+  CircleX,          // was x-circle / XCircle
+  Clock,
+  Eye,
+  Loader,
+  RotateCcw,
+  RotateCw,
+  ScanFace,
+  ShieldCheck,
+  TriangleAlert,    // was alert-triangle / AlertTriangle
+} from '@lucide/svelte';
+ 
 	import ExamMonitor from '$lib/components/exam/ExamMonitor.svelte'
 	import type { PageData } from './$types'
 
@@ -648,14 +661,15 @@
 
 {:else if step === 'terms'}
 	<TermsStep
-		instructions={data.assessment.instructions}
-		examTitle={data.assessment.title}
-		courseCode={data.assessment.course.code}
-		durationMinutes={data.assessment.durationMinutes}
-		bind:accepted={termsAccepted}
-		submitting={submittingTerms}
-		onContinue={proceedFromTerms}
-	/>
+	instructions={data.assessment.instructions}
+	examTitle={data.assessment.title}
+	courseCode={data.assessment.course.code}
+	durationMinutes={data.assessment.durationMinutes}
+	candidateName={data.candidateName}
+	bind:accepted={termsAccepted}
+	submitting={submittingTerms}
+	onContinue={proceedFromTerms}
+/>
 
 {:else if step === 'faceverify'}
 	<FaceVerifyModal

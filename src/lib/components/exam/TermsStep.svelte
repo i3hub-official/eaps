@@ -1,21 +1,31 @@
+<!-- src/lib/components/exam/TermsStep.svelte -->
+ 
 <script lang="ts">
 	import { Button } from '$lib/components/ui/button';
 	import { Checkbox } from '$lib/components/ui/checkbox';
 	import MathText from '$lib/components/MathText.svelte';
 
-	import ShieldCheck from '@lucide/svelte/icons/shield-check';
+	import BadgeCheck from '@lucide/svelte/icons/badge-check';
 	import FileSignature from '@lucide/svelte/icons/file-signature';
-	import GraduationCap from '@lucide/svelte/icons/graduation-cap';
+	import ShieldCheck from '@lucide/svelte/icons/shield-check';
+	import Clock from '@lucide/svelte/icons/clock';
+	import BookOpen from '@lucide/svelte/icons/book-open';
 
 	let {
 		instructions = null,
 		candidateName = null,
+		examTitle = null,
+		courseCode = null,
+		durationMinutes = null,
 		accepted = $bindable(false),
 		submitting = false,
 		onContinue,
 	}: {
 		instructions?: string | null;
 		candidateName?: string | null;
+		examTitle?: string | null;
+		courseCode?: string | null;
+		durationMinutes?: number | null;
 		accepted?: boolean;
 		submitting?: boolean;
 		onContinue: () => void;
@@ -103,13 +113,36 @@
 				<div class="seal">
 					<div class="seal-ticks"></div>
 					<div class="seal-ring">
-						<GraduationCap class="seal-icon" />
+						<BadgeCheck class="seal-icon" />
 					</div>
 				</div>
 
 				<p class="eyebrow">Michael Okpara University of Agriculture, Umudike</p>
 				<h1 class="doc-title">Examination Declaration</h1>
 				<p class="doc-subtitle">Evaluation, Assessment &amp; Proctor System — Candidate Regulations</p>
+
+				<!-- ─── Exam summary pills ───────────────────────────────── -->
+				{#if examTitle || courseCode || durationMinutes}
+					<div class="exam-meta">
+						{#if courseCode}
+							<span class="exam-pill">
+								<BookOpen class="size-3" />
+								{courseCode}
+							</span>
+						{/if}
+						{#if examTitle}
+							<span class="exam-pill exam-pill-title">
+								{examTitle}
+							</span>
+						{/if}
+						{#if durationMinutes}
+							<span class="exam-pill">
+								<Clock class="size-3" />
+								{durationMinutes} min
+							</span>
+						{/if}
+					</div>
+				{/if}
 
 				<div class="letterhead-meta">
 					<span>Form No. EAPS/DEC&#8209;1</span>
@@ -324,6 +357,46 @@
 		letter-spacing: 0.03em;
 		color: hsl(var(--muted-foreground));
 	}
+
+	/* ---------- EXAM META PILLS ---------- */
+
+	.exam-meta {
+		margin-top: 1rem;
+		display: flex;
+		flex-wrap: wrap;
+		align-items: center;
+		justify-content: center;
+		gap: 0.5rem;
+	}
+
+	.exam-pill {
+		display: inline-flex;
+		align-items: center;
+		gap: 0.35rem;
+		padding: 0.25rem 0.75rem;
+		border-radius: 9999px;
+		border: 1px solid hsl(var(--border));
+		background: hsl(var(--muted) / 0.4);
+		font-family: 'Oswald', sans-serif;
+		font-size: 0.72rem;
+		font-weight: 500;
+		letter-spacing: 0.1em;
+		text-transform: uppercase;
+		color: hsl(var(--foreground));
+	}
+
+	.exam-pill-title {
+		font-family: 'Cormorant Garamond', Georgia, serif;
+		font-size: 0.85rem;
+		font-weight: 600;
+		letter-spacing: 0.03em;
+		text-transform: none;
+		border-color: hsl(var(--primary) / 0.3);
+		background: hsl(var(--primary) / 0.06);
+		color: hsl(var(--foreground));
+	}
+
+	/* ---------- META ROW ---------- */
 
 	.letterhead-meta {
 		margin-top: 1rem;
@@ -675,6 +748,10 @@
 		.regs-list,
 		.signature-block {
 			padding: 1rem;
+		}
+
+		.exam-meta {
+			gap: 0.4rem;
 		}
 	}
 

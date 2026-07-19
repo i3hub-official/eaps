@@ -135,24 +135,18 @@
 
 <Topbar title="Tests" description={data?.currentSemester ? `Current semester: ${data.currentSemester.name}` : 'No active semester'} />
 
-<main class="flex flex-1 flex-col gap-6 p-6">
+<main class="exam-board flex flex-1 flex-col gap-6 p-6">
+
 	{#if !data.currentSemester}
-		<div
-			class="flex items-start gap-3 rounded-lg border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-700 dark:text-amber-400"
-			role="alert"
-		>
-			<AlertCircle class="mt-0.5 size-4 shrink-0" />
+		<div class="notice notice-amber" role="alert">
+			<AlertCircle class="notice-icon" />
 			<span>No active semester found. Please contact your HOD or the registrar.</span>
 		</div>
 	{/if}
 
-	<!-- Only show face enrollment warning if NOT enrolled -->
 	{#if !data.faceEnrolled}
-		<div
-			class="flex items-start gap-3 rounded-lg border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-700 dark:text-amber-400"
-			role="alert"
-		>
-			<ScanFace class="mt-0.5 size-4 shrink-0" />
+		<div class="notice notice-amber" role="alert">
+			<ScanFace class="notice-icon" />
 			<span>
 				Face enrollment is required before you can take any test. Enroll your face from your
 				profile settings to unlock tests below.
@@ -161,21 +155,17 @@
 	{/if}
 
 	{#if form?.startError}
-		<div
-			class="flex items-start gap-3 rounded-lg border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive"
-			role="alert"
-		>
-			<AlertCircle class="mt-0.5 size-4 shrink-0" />
+		<div class="notice notice-destructive" role="alert">
+			<AlertCircle class="notice-icon" />
 			<span>{form.startError}</span>
 		</div>
 	{/if}
 
 	{#if data.currentSemester}
-		<div class="rounded-lg border border-border bg-muted/30 px-4 py-2 text-sm">
-			<div class="flex flex-wrap items-center justify-between gap-2">
-				<span class="text-muted-foreground">
-					Current semester: <strong>{data.currentSemester.name}</strong>
-				</span>
+		<div class="session-strip">
+			<span class="session-eyebrow">Academic Session</span>
+			<div class="session-row">
+				<span class="session-name">{data.currentSemester.name}</span>
 				{#if data.currentSemester.isWithinDateRange}
 					<Badge variant="default" class="gap-1">
 						<CheckCircle2 class="size-3" />
@@ -192,7 +182,7 @@
 	{/if}
 
 	{#if data.tests.length === 0}
-		<Card class="flex flex-col items-center gap-3 border-dashed p-12 text-center">
+		<Card class="empty-board flex flex-col items-center gap-3 border-dashed p-12 text-center">
 			<div class="flex size-10 items-center justify-center rounded-md bg-muted text-muted-foreground">
 				<ShieldCheck class="size-5" />
 			</div>
@@ -213,13 +203,18 @@
 		<!-- ─── Available Tests ────────────────────────────────────────────── -->
 		{#if availableTests.length > 0}
 			<div class="flex flex-col gap-4">
-				<h2 class="text-sm font-semibold text-muted-foreground">Available Tests</h2>
+				<div class="board-section-label">
+					<span>Available Tests</span>
+					<div class="board-rule"></div>
+				</div>
 				<div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
 					{#each availableTests as t (t.id)}
 						{@const badge = statusBadge(t)}
 						{@const blocked = resumeBlocked(t)}
 						{@const lowAttempts = t.maxAttempts > 0 && t.attemptsRemaining !== null && t.attemptsRemaining <= 2}
-						<Card class="flex flex-col gap-4 p-5 {t.cancelled ? 'opacity-70' : ''} {lowAttempts ? 'ring-2 ring-amber-500/30' : ''}">
+						<Card class="ticket flex flex-col gap-4 p-5 {t.cancelled ? 'opacity-70' : ''} {lowAttempts ? 'ring-2 ring-amber-500/30' : ''}">
+							<div class="ticket-perf" aria-hidden="true"></div>
+
 							<div class="flex items-start justify-between gap-2">
 								<div>
 									{#if t.course}
@@ -228,7 +223,7 @@
 											{t.course.code} • Level {t.course.level}
 										</Badge>
 									{/if}
-									<p class="font-semibold leading-snug">{t.title}</p>
+									<p class="ticket-title">{t.title}</p>
 								</div>
 								<Badge variant={badge.variant} class="whitespace-nowrap">{badge.label}</Badge>
 							</div>
@@ -312,7 +307,7 @@
 									<input type="hidden" name="assessmentId" value={t.id} />
 									<Button
 										type="submit"
-										class="w-full"
+										class="w-full ticket-btn"
 										disabled={blocked || (!t.canStart && !t.inProgressSessionId) || startingId === t.id}
 									>
 										{#if startingId === t.id}
@@ -344,15 +339,17 @@
 		<!-- ─── Already Taken ──────────────────────────────────────────────── -->
 		{#if completedTests.length > 0}
 			<div class="flex flex-col gap-4">
-				<h2 class="flex items-center gap-1.5 text-sm font-semibold text-muted-foreground">
-					<Archive class="size-4" />
-					Already Taken
-				</h2>
+				<div class="board-section-label">
+					<span class="flex items-center gap-1.5"><Archive class="size-4" /> Already Taken</span>
+					<div class="board-rule"></div>
+				</div>
 				<div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
 					{#each completedTests as t (t.id)}
 						{@const badge = completedBadge(t)}
 						{@const countdown = countdowns[t.id]}
-						<Card class="flex flex-col gap-4 p-5 opacity-90">
+						<Card class="ticket ticket-archived flex flex-col gap-4 p-5 opacity-90">
+							<div class="ticket-perf" aria-hidden="true"></div>
+
 							<div class="flex items-start justify-between gap-2">
 								<div>
 									{#if t.course}
@@ -361,7 +358,7 @@
 											{t.course.code} • Level {t.course.level}
 										</Badge>
 									{/if}
-									<p class="font-semibold leading-snug">{t.title}</p>
+									<p class="ticket-title">{t.title}</p>
 								</div>
 								<Badge variant={badge.variant} class="whitespace-nowrap">{badge.label}</Badge>
 							</div>
@@ -433,3 +430,136 @@
 		{/if}
 	{/if}
 </main>
+
+<style>
+	@import url('https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,600;0,700&family=Oswald:wght@500;600&display=swap');
+
+	/* ---------- NOTICES ---------- */
+
+	.notice {
+		display: flex;
+		align-items: flex-start;
+		gap: 0.75rem;
+		border-radius: 0.5rem;
+		border: 1px solid hsl(var(--border));
+		border-left: 4px solid hsl(var(--primary));
+		background: hsl(var(--muted) / 0.25);
+		padding: 0.85rem 1rem;
+		font-size: 0.875rem;
+	}
+
+	.notice-amber {
+		border-left-color: rgb(217 119 6);
+		background: rgb(217 119 6 / 0.08);
+		color: rgb(180 96 6);
+	}
+	:global(.dark) .notice-amber {
+		color: rgb(251 191 36);
+	}
+
+	.notice-destructive {
+		border-left-color: hsl(var(--destructive));
+		background: hsl(var(--destructive) / 0.08);
+		color: hsl(var(--destructive));
+	}
+
+	.notice-icon {
+		margin-top: 0.15rem;
+		width: 1rem;
+		height: 1rem;
+		flex-shrink: 0;
+	}
+
+	/* ---------- SESSION STRIP ---------- */
+
+	.session-strip {
+		border: 1px solid hsl(var(--border));
+		border-radius: 0.6rem;
+		padding: 0.65rem 1rem 0.75rem;
+		background: hsl(var(--muted) / 0.2);
+	}
+
+	.session-eyebrow {
+		font-family: 'Oswald', sans-serif;
+		font-size: 0.68rem;
+		font-weight: 600;
+		letter-spacing: 0.14em;
+		text-transform: uppercase;
+		color: hsl(var(--muted-foreground));
+	}
+
+	.session-row {
+		margin-top: 0.25rem;
+		display: flex;
+		flex-wrap: wrap;
+		align-items: center;
+		justify-content: space-between;
+		gap: 0.5rem;
+	}
+
+	.session-name {
+		font-family: 'Cormorant Garamond', Georgia, serif;
+		font-weight: 700;
+		font-size: 1.15rem;
+		color: hsl(var(--foreground));
+	}
+
+	/* ---------- SECTION LABELS ---------- */
+
+	.board-section-label {
+		display: flex;
+		align-items: center;
+		gap: 1rem;
+		font-family: 'Oswald', sans-serif;
+		font-size: 0.78rem;
+		font-weight: 600;
+		letter-spacing: 0.12em;
+		text-transform: uppercase;
+		color: hsl(var(--foreground));
+	}
+
+	.board-rule {
+		flex: 1;
+		height: 1px;
+		background: linear-gradient(to right, hsl(var(--primary) / 0.4), transparent);
+	}
+
+	/* ---------- TICKET CARDS ---------- */
+
+	:global(.ticket) {
+		position: relative;
+		border-top: 3px solid hsl(var(--primary) / 0.55);
+	}
+
+	:global(.ticket-archived) {
+		border-top-color: hsl(var(--border));
+	}
+
+	.ticket-perf {
+		position: absolute;
+		top: 0;
+		left: 1.25rem;
+		right: 1.25rem;
+		height: 0;
+		border-top: 1px dashed hsl(var(--border));
+		opacity: 0;
+	}
+
+	.ticket-title {
+		font-family: 'Cormorant Garamond', Georgia, serif;
+		font-weight: 700;
+		font-size: 1.05rem;
+		line-height: 1.35;
+		color: hsl(var(--foreground));
+	}
+
+	:global(.ticket-btn) {
+		font-family: 'Oswald', sans-serif;
+		font-weight: 600;
+		letter-spacing: 0.03em;
+	}
+
+	.empty-board {
+		background: hsl(var(--muted) / 0.1);
+	}
+</style>
