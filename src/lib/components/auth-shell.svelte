@@ -36,47 +36,50 @@
 	}
 </script>
 
-<div class="relative flex h-svh flex-col items-center justify-center overflow-y-auto bg-muted/30 px-4 py-6 sm:py-10">
+<div class="relative flex min-h-svh flex-col items-center justify-center overflow-y-auto bg-muted/30 px-4 py-6 sm:py-10">
 
-	{#if showBack}
-		<button
-			type="button"
-			onclick={handleBack}
-			aria-label="Go back"
-			title="Go back"
-			class="absolute left-5 top-5 flex size-9 cursor-pointer items-center justify-center rounded-full border border-border bg-background text-muted-foreground shadow-sm transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-		>
-			<ArrowLeft class="size-4" />
-		</button>
-	{/if}
+	<!-- Top bar: back button + theme toggle, own row so they never overlap the heading -->
+	<div class="mb-4 flex w-full max-w-md items-center justify-between sm:absolute sm:inset-x-0 sm:top-3 sm:mx-auto sm:mb-0 sm:px-5">
+		{#if showBack}
+			<button
+				type="button"
+				onclick={handleBack}
+				aria-label="Go back"
+				title="Go back"
+				class="flex size-9 shrink-0 cursor-pointer items-center justify-center rounded-full border border-border bg-background text-muted-foreground shadow-sm transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+			>
+				<ArrowLeft class="size-4" />
+			</button>
+		{:else}
+			<div class="size-9"></div>
+		{/if}
 
-	<div class="absolute right-5 top-5">
 		<ThemeToggle />
 	</div>
 
 	<div class="w-full max-w-md py-2">
 
-		<div class="mb-3 flex flex-col items-center gap-2 text-center">
-			<div class="flex size-14 items-center justify-center rounded-2xl border border-border bg-background shadow-sm">
+		<div class="mb-3 flex flex-col items-center gap-3 text-center">
+			<div class="flex size-16 shrink-0 items-center justify-center rounded-2xl border border-border bg-background p-2.0 shadow-sm">
 				<img
 					src="/mouau_logo.png"
 					alt="MOUAU logo"
-					class="size-9 object-contain"
+					class="size-full object-contain"
 					onerror={handleLogoError}
 				/>
 				<span
-					class="hidden size-9 items-center justify-center text-sm font-bold text-primary"
+					class="hidden size-full items-center justify-center text-lg font-bold text-primary"
 					aria-hidden="true"
 				>
 					M
 				</span>
 			</div>
 
-			<div class="flex flex-col gap-2">
-				<p class="text-xs font-semibold uppercase tracking-widest text-muted-foreground">
+			<div class="flex flex-col gap-2 px-2">
+				<p class="text-[11px] font-semibold uppercase tracking-widest text-muted-foreground leading-snug sm:text-xs">
 					Michael Okpara University of Agriculture
 				</p>
-				<h1 class="text-2xl font-semibold tracking-tight text-foreground">
+				<h1 class="text-xl font-semibold tracking-tight text-foreground sm:text-2xl">
 					{heading}
 				</h1>
 				{#if subheading}
@@ -85,7 +88,7 @@
 			</div>
 		</div>
 
-		<div class="flex flex-col gap-4 rounded-2xl border border-border bg-card px-8 py-9 shadow-sm">
+		<div class="flex flex-col gap-4 rounded-2xl border border-border bg-card px-5 py-7 shadow-sm sm:px-8 sm:py-9">
 			{@render children()}
 		</div>
 

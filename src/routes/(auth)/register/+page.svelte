@@ -11,16 +11,10 @@
 	import { Skeleton } from '$lib/components/ui/skeleton/index.js';
 	import { extractRefFromUrl } from '$lib/universities/receipt';
 	import { getUniConfig } from '$lib/universities/registry';
+	import { IsMobile } from '$lib/hooks/is-mobile.svelte';
 
-	import ShieldCheck from '@lucide/svelte/icons/shield-check';
-	import User from '@lucide/svelte/icons/user';
-	import Lock from '@lucide/svelte/icons/lock';
 	import Eye from '@lucide/svelte/icons/eye';
 	import EyeOff from '@lucide/svelte/icons/eye-off';
-	import Mail from '@lucide/svelte/icons/mail';
-	import Phone from '@lucide/svelte/icons/phone';
-	import Building2 from '@lucide/svelte/icons/building-2';
-	import BookOpen from '@lucide/svelte/icons/book-open';
 	import Briefcase from '@lucide/svelte/icons/briefcase';
 	import QrCode from '@lucide/svelte/icons/qr-code';
 	import Camera from '@lucide/svelte/icons/camera';
@@ -38,6 +32,8 @@
 	const REF_EXTRACT_PARAM = MOUAU_CFG.refExtractParam ?? 'transaction_ref';
 
 	let { data, form }: { data: PageData; form: ActionData } = $props();
+
+	const isMobile = new IsMobile();
 
 	type Step = 1 | 2 | 3;
 	let currentStep = $state<Step>(1);
@@ -507,7 +503,7 @@
 	const STEPS = ['Verify receipt', 'Your details', 'Set password'];
 
 	const headings: Record<Step, { heading: string; subheading: string }> = {
-		1: { heading: 'Verify your receipt', subheading: 'Enter your matric number and verify your school fee receipt' },
+		1: { heading: 'Student verification', subheading: 'Enter your matric number and verify your school fee receipt' },
 		2: { heading: 'Your details', subheading: 'Confirm your academic details' },
 		3: { heading: 'Set a password', subheading: 'Create a secure password for your account' }
 	};
@@ -524,30 +520,46 @@
 	showBack={currentStep > 1}
 >
 	<!-- Step tracker -->
-	<div class="mb-6 flex items-center gap-4">
-		{#each STEPS as label, i}
-			{@const stepNum = i + 1}
-			{@const done = currentStep > stepNum}
-			{@const active = currentStep === stepNum}
-			<div class="flex items-center gap-3">
-				<div
-					class="flex size-6 shrink-0 items-center justify-center rounded-full text-xs font-semibold {done
-						? 'bg-primary text-primary-foreground'
-						: active
-							? 'border-2 border-primary text-primary'
-							: 'border-2 border-border text-muted-foreground'}"
-				>
-					{#if done}<Check class="size-3.5" />{:else}{stepNum}{/if}
-				</div>
-				<span class="text-sm font-medium {active ? 'text-foreground' : 'text-muted-foreground'}">
-					{label}
-				</span>
-				{#if i < STEPS.length - 1}
-					<div class="h-px w-8 {done ? 'bg-primary' : 'bg-border'}"></div>
-				{/if}
+	{#if isMobile.current}
+		<!-- Compact mobile tracker: progress bar + "Step X of N" -->
+		<div class="mb-6 flex flex-col gap-2">
+			<div class="flex items-center justify-between text-sm">
+				<span class="font-semibold text-foreground">Step {currentStep} of {STEPS.length}</span>
+				<span class="text-muted-foreground">{STEPS[currentStep - 1]}</span>
 			</div>
-		{/each}
-	</div>
+			<div class="flex gap-1.5">
+				{#each STEPS as _, i}
+					{@const stepNum = i + 1}
+					<div class="h-1.5 flex-1 rounded-full transition-colors {currentStep >= stepNum ? 'bg-primary' : 'bg-border'}"></div>
+				{/each}
+			</div>
+		</div>
+	{:else}
+		<div class="mb-6 flex items-center gap-4">
+			{#each STEPS as label, i}
+				{@const stepNum = i + 1}
+				{@const done = currentStep > stepNum}
+				{@const active = currentStep === stepNum}
+				<div class="flex items-center gap-3">
+					<div
+						class="flex size-6 shrink-0 items-center justify-center rounded-full text-xs font-semibold {done
+							? 'bg-primary text-primary-foreground'
+							: active
+								? 'border-2 border-primary text-primary'
+								: 'border-2 border-border text-muted-foreground'}"
+					>
+						{#if done}<Check class="size-3.5" />{:else}{stepNum}{/if}
+					</div>
+					<span class="text-sm font-medium {active ? 'text-foreground' : 'text-muted-foreground'}">
+						{label}
+					</span>
+					{#if i < STEPS.length - 1}
+						<div class="h-px w-8 {done ? 'bg-primary' : 'bg-border'}"></div>
+					{/if}
+				</div>
+			{/each}
+		</div>
+	{/if}
 
 	{#if errorMessage}
 		<div class="mb-6 flex items-start gap-3 rounded-lg border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive" role="alert">
@@ -558,7 +570,7 @@
 
 	<!-- ══ STEP 1 — verify receipt ══ -->
 	{#if currentStep === 1}
-		<div class="flex flex-col gap-8">
+		<div class="flex flex-col gap-6 sm:gap-8">
 			<!-- Matric Number -->
 			<div class="flex flex-col gap-2">
 				<Label for="s1matric" class="text-sm font-semibold">Matric Number</Label>
@@ -575,27 +587,27 @@
 				</div>
 				{#if matricError}
 					<p class="flex items-center gap-1.5 text-sm text-destructive">
-						<AlertCircle class="size-3.5" /> {matricError}
+						<AlertCircle class="size-3.5 shrink-0" /> {matricError}
 					</p>
 				{/if}
 			</div>
 
 			<!-- QR Scan Section -->
-			<div class="rounded-xl border border-border bg-muted/40 p-6 {matricError ? 'pointer-events-none opacity-50' : ''}">
+			<div class="rounded-xl border border-border bg-muted/40 p-4 sm:p-6 {matricError ? 'pointer-events-none opacity-50' : ''}">
 				<p class="mb-4 flex items-center gap-2 text-sm font-semibold text-muted-foreground">
-					<QrCode class="size-4" /> Scan School Fee QR Code
+					<QrCode class="size-4 shrink-0" /> Scan School Fee QR Code
 					{#if matricError}<span class="font-normal text-xs">— fix matric number first</span>{/if}
 				</p>
-				<div class="flex flex-wrap gap-4">
+				<div class="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:gap-4">
 					<button
 						type="button"
 						onclick={startWebcam}
 						disabled={!!matricError}
-						class="inline-flex cursor-pointer items-center gap-2 rounded-lg border border-border bg-background px-5 py-2.5 text-sm font-semibold text-muted-foreground transition-colors hover:border-primary hover:text-primary disabled:pointer-events-none disabled:opacity-45"
+						class="inline-flex cursor-pointer items-center justify-center gap-2 rounded-lg border border-border bg-background px-5 py-2.5 text-sm font-semibold text-muted-foreground transition-colors hover:border-primary hover:text-primary disabled:pointer-events-none disabled:opacity-45"
 					>
 						<Camera class="size-4" /> Live Camera
 					</button>
-					<label class="inline-flex cursor-pointer items-center gap-2 rounded-lg border border-border bg-background px-5 py-2.5 text-sm font-semibold text-muted-foreground transition-colors hover:border-primary hover:text-primary {matricError ? 'pointer-events-none opacity-45' : ''}">
+					<label class="inline-flex cursor-pointer items-center justify-center gap-2 rounded-lg border border-border bg-background px-5 py-2.5 text-sm font-semibold text-muted-foreground transition-colors hover:border-primary hover:text-primary {matricError ? 'pointer-events-none opacity-45' : ''}">
 						<Upload class="size-4" /> Upload Image
 						<input type="file" accept="image/*" class="sr-only" disabled={!!matricError} onchange={handleQrUpload} />
 					</label>
@@ -604,7 +616,7 @@
 
 			{#if camError}
 				<p class="flex items-center gap-1.5 text-sm text-destructive">
-					<AlertCircle class="size-3.5" /> {camError}
+					<AlertCircle class="size-3.5 shrink-0" /> {camError}
 				</p>
 			{/if}
 
@@ -615,7 +627,7 @@
 						<video bind:this={videoEl} playsinline autoplay class="size-full object-cover"></video>
 						<div class="pointer-events-none absolute left-1/2 top-1/2 size-[150px] -translate-x-1/2 -translate-y-1/2 rounded-xl border-2 border-primary shadow-[0_0_0_9999px_rgba(0,0,0,0.5)]"></div>
 					</div>
-					<p class="text-sm text-muted-foreground">Point at the QR code on your receipt</p>
+					<p class="text-center text-sm text-muted-foreground">Point at the QR code on your receipt</p>
 					<button
 						type="button"
 						onclick={stopWebcam}
@@ -640,22 +652,22 @@
 							refNumber = (e.target as HTMLInputElement).value;
 							onRefInput();
 						}}
-						placeholder="Remita RRR Code"
+						placeholder="Remita - RRR Code"
 						disabled={!!matricError || receiptLoading}
 						readonly={refMasked}
 						aria-invalid={!!refError && !receiptFetched}
-						class="h-11 w-full rounded-md border border-input bg-transparent px-3 py-1 pl-10 pr-28 text-base shadow-sm transition-colors placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50 aria-[invalid=true]:border-destructive"
+						class="h-11 w-full rounded-md border border-input bg-transparent px-3 py-1 pl-10 pr-24 sm:pr-28 text-base shadow-sm transition-colors placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50 aria-[invalid=true]:border-destructive"
 					/>
 					{#if receiptLoading}
-						<div class="absolute right-3 top-1/2 flex -translate-y-1/2 items-center gap-2 text-sm font-semibold text-primary">
-							<span class="size-3 animate-spin rounded-full border-2 border-primary/30 border-t-primary"></span> Verifying…
+						<div class="absolute right-3 top-1/2 flex -translate-y-1/2 items-center gap-1.5 sm:gap-2 text-xs sm:text-sm font-semibold text-primary">
+							<span class="size-3 shrink-0 animate-spin rounded-full border-2 border-primary/30 border-t-primary"></span> Verifying…
 						</div>
 					{:else if !refMasked}
 						<button
 							type="button"
 							onclick={() => fetchReceipt(false)}
 							disabled={!refNumber.trim() || !!matricError}
-							class="absolute right-1.5 top-1/2 -translate-y-1/2 rounded-md bg-primary px-4 py-1.5 text-sm font-semibold text-primary-foreground transition-opacity disabled:opacity-45"
+							class="absolute right-1.5 top-1/2 -translate-y-1/2 rounded-md bg-primary px-3 sm:px-4 py-1.5 text-sm font-semibold text-primary-foreground transition-opacity disabled:opacity-45"
 						>
 							Fetch
 						</button>
@@ -681,7 +693,7 @@
 				</div>
 				{#if refError && !receiptFetched}
 					<p class="flex items-center gap-1.5 text-sm text-destructive">
-						<AlertCircle class="size-3.5" /> {refError}
+						<AlertCircle class="size-3.5 shrink-0" /> {refError}
 					</p>
 				{/if}
 				<p class="text-sm text-muted-foreground">Found on your MOUAU portal or school fee receipt</p>
@@ -689,29 +701,29 @@
 
 			<!-- Skeleton Loading for Receipt -->
 			{#if receiptLoading}
-				<div class="rounded-xl border border-border bg-card p-5 shadow-sm">
+				<div class="rounded-xl border border-border bg-card p-4 sm:p-5 shadow-sm">
 					<div class="mb-3 flex items-center gap-2">
 						<Skeleton class="size-4" />
 						<Skeleton class="h-3 w-40" />
 					</div>
 					<div class="flex flex-col gap-3">
-						<div class="flex justify-between">
+						<div class="flex flex-col gap-1 sm:flex-row sm:justify-between">
 							<Skeleton class="h-4 w-24" />
 							<Skeleton class="h-4 w-32" />
 						</div>
-						<div class="flex justify-between">
+						<div class="flex flex-col gap-1 sm:flex-row sm:justify-between">
 							<Skeleton class="h-4 w-28" />
 							<Skeleton class="h-4 w-36" />
 						</div>
-						<div class="flex justify-between">
+						<div class="flex flex-col gap-1 sm:flex-row sm:justify-between">
 							<Skeleton class="h-4 w-20" />
 							<Skeleton class="h-4 w-28" />
 						</div>
-						<div class="flex justify-between">
+						<div class="flex flex-col gap-1 sm:flex-row sm:justify-between">
 							<Skeleton class="h-4 w-24" />
 							<Skeleton class="h-4 w-32" />
 						</div>
-						<div class="flex justify-between">
+						<div class="flex flex-col gap-1 sm:flex-row sm:justify-between">
 							<Skeleton class="h-4 w-20" />
 							<Skeleton class="h-4 w-28" />
 						</div>
@@ -721,15 +733,15 @@
 
 			<!-- Receipt Preview -->
 			{#if receiptFetched}
-				<div class="rounded-xl border border-primary/25 bg-primary/5 p-5">
+				<div class="rounded-xl border border-primary/25 bg-primary/5 p-4 sm:p-5">
 					<p class="mb-4 flex items-center gap-2 text-xs font-bold uppercase tracking-wide text-primary">
-						<Check class="size-4" /> Verified — Student Details
+						<Check class="size-4 shrink-0" /> Verified — Student Details
 					</p>
 					<div class="flex flex-col gap-4">
 						<!-- Full Name -->
 						<div class="flex flex-col gap-0.5">
 							<span class="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">Full Name</span>
-							<span class="text-base font-medium text-foreground">
+							<span class="text-base font-medium text-foreground break-words">
 								{[surname, firstName, otherName].filter(Boolean).join(' ') || '—'}
 							</span>
 						</div>
@@ -737,19 +749,19 @@
 						<!-- Matric Number -->
 						<div class="flex flex-col gap-0.5">
 							<span class="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">Matric Number</span>
-							<span class="text-base font-medium text-foreground">{matricNumber || '—'}</span>
+							<span class="text-base font-medium text-foreground break-words">{matricNumber || '—'}</span>
 						</div>
 
 						<!-- JAMB Registration -->
 						<div class="flex flex-col gap-0.5">
 							<span class="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">JAMB Registration</span>
-							<span class="text-base font-medium text-foreground">{jambRegNo || '—'}</span>
+							<span class="text-base font-medium text-foreground break-words">{jambRegNo || '—'}</span>
 						</div>
 
 						<!-- College/Faculty with Short Name -->
 						<div class="flex flex-col gap-0.5">
 							<span class="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">College / Faculty</span>
-							<span class="text-base font-medium text-foreground">
+							<span class="text-base font-medium text-foreground break-words">
 								{college ? getCollegeDisplayName(college, collegeShortName) : '—'}
 							</span>
 						</div>
@@ -757,7 +769,7 @@
 						<!-- Department -->
 						<div class="flex flex-col gap-0.5">
 							<span class="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">Department</span>
-							<span class="text-base font-medium text-foreground">{department || '—'}</span>
+							<span class="text-base font-medium text-foreground break-words">{department || '—'}</span>
 						</div>
 
 						<!-- Level -->
@@ -781,14 +793,14 @@
 						<!-- Receipt Number -->
 						<div class="flex flex-col gap-0.5">
 							<span class="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">Receipt Number</span>
-							<span class="text-base font-medium text-foreground">{receiptRaw?.receiptNo || '—'}</span>
+							<span class="text-base font-medium text-foreground break-words">{receiptRaw?.receiptNo || '—'}</span>
 						</div>
 					</div>
 				</div>
 			{/if}
 
 			<Button type="button" size="lg" class="h-12 w-full text-base" onclick={nextStep} disabled={!receiptFetched}>
-				{#if !receiptFetched}Verify Receipt First{:else}Continue →{/if}
+				{#if !receiptFetched}Verify your receipt{:else}Continue →{/if}
 			</Button>
 			<p class="text-center text-sm text-muted-foreground">
 				Already have an account? <a href="/login" class="text-primary hover:underline">Sign in</a>
@@ -838,7 +850,7 @@
 						}}
 						class="inline-flex cursor-pointer items-center gap-1.5 text-sm font-semibold text-white transition-colors hover:text-primary/80"
 					>
-						<RefreshCw class="size-3.5" /> Re-verify Information
+						<RefreshCw class="size-3.5 shrink-0" /> Re-verify Information
 					</button>
 				</div>
 			{/if}

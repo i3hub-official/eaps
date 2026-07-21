@@ -133,7 +133,7 @@
 								<LoaderCircle class="mr-3 size-5 animate-spin" />
 								Signing in...
 							{:else}
-								Sign in to begin
+								Sign in to continue
 								<ArrowRight class="ml-3 size-5" />
 							{/if}
 						</Button>
