@@ -20,10 +20,10 @@ export const DELETE: RequestHandler = async ({ locals }) => {
 
   try {
     clearFlagCache();
-    console.log('[system-flags-api] Cache cleared by', locals.user.id);
+    // console.log('[system-flags-api] Cache cleared by', locals.user.id);
     return json({ success: true, message: 'Cache cleared' });
   } catch (err) {
-    console.error('[system-flags-api] cache DELETE error:', err);
+    // console.error('[system-flags-api] cache DELETE error:', err);
     throw error(500, 'Failed to clear cache');
   }
 };

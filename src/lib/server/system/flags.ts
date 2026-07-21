@@ -86,7 +86,7 @@ export async function setSystemFlag(
           afterData: { key, value },
         }
       });
-    } catch (auditError) {
+    } catch {
       console.log(`[AUDIT] User ${userId} set flag ${key} to ${value}`);
     }
   } catch (error) {
@@ -100,5 +100,5 @@ export async function setSystemFlag(
  */
 export function clearFlagCache(): void {
   // No cache to clear since we don't use Redis
-  console.log('Cache clear called but no Redis configured');
+  // console.log('Cache clear called but no Redis configured');
 }

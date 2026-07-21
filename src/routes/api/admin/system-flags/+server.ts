@@ -22,7 +22,7 @@ export const GET: RequestHandler = async ({ locals }) => {
     const flags = await getSystemFlags();
     return json(flags);
   } catch (err) {
-    console.error('[system-flags-api] GET error:', err);
+    // console.error('[system-flags-api] GET error:', err);
     throw error(500, 'Failed to fetch flags');
   }
 };
@@ -56,7 +56,7 @@ export const POST: RequestHandler = async ({ locals, request }) => {
   } catch (err) {
     // Re-throw SvelteKit HttpErrors (from our own `throw error(...)` above) as-is
     if (err && typeof err === 'object' && 'status' in err) throw err;
-    console.error('[system-flags-api] POST error:', err);
+    // console.error('[system-flags-api] POST error:', err);
     throw error(500, 'Failed to update flag');
   }
 };
@@ -77,10 +77,10 @@ export const DELETE: RequestHandler = async ({ locals, url }) => {
 
   try {
     clearFlagCache();
-    console.log('[system-flags-api] Cache cleared by', locals.user.id);
+    // console.log('[system-flags-api] Cache cleared by', locals.user.id);
     return json({ success: true, message: 'Cache cleared' });
   } catch (err) {
-    console.error('[system-flags-api] DELETE error:', err);
+    // console.error('[system-flags-api] DELETE error:', err);
     throw error(500, 'Failed to clear cache');
   }
 };
