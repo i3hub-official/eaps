@@ -50,13 +50,11 @@ export async function setSystemFlag(
     const prisma = await getPrismaClient();
     const stringValue = value ? 'true' : 'false';
 
-    // Check if flag exists
     const existing = await prisma.systemFlag.findUnique({
       where: { key }
     });
 
     if (existing) {
-      // Update existing flag
       await prisma.systemFlag.update({
         where: { key },
         data: {
@@ -66,7 +64,6 @@ export async function setSystemFlag(
         }
       });
     } else {
-      // Create new flag (id auto-generated via @default(cuid()))
       await prisma.systemFlag.create({
         data: {
           key,
@@ -81,14 +78,15 @@ export async function setSystemFlag(
     try {
       await prisma.auditLog.create({
         data: {
-          userId,
-          actorType: 'staff', // system flags are only settable by staff/SUPER_ADMIN
+          actorType: 'staff',
+          staffId: userId,
           action: 'SYSTEM_FLAG_UPDATED',
-          details: `System flag "${key}" set to ${value}`,
-          timestamp: new Date()
+          entity: 'SystemFlag',
+          entityId: key,
+          afterData: { key, value },
         }
       });
-    } catch {
+    } catch (auditError) {
       console.log(`[AUDIT] User ${userId} set flag ${key} to ${value}`);
     }
   } catch (error) {
