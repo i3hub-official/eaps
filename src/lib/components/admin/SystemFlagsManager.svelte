@@ -9,11 +9,11 @@
 		AlertCircle,
 		CheckCircle2,
 		XCircle,
-		RefreshCw,
-		LoaderCircle,
 		Wrench,
 		Power,
-		Trash2
+		Trash2,
+		LoaderCircle,
+		RefreshCw
 	} from '@lucide/svelte/icons';
 
 	interface SystemFlags {
@@ -21,8 +21,12 @@
 		shutdown: boolean;
 	}
 
+	let {
+		refresh = $bindable<(() => void) | undefined>(undefined),
+		loading = $bindable(true)
+	} = $props();
+
 	let flags = $state<SystemFlags | null>(null);
-	let loading = $state(true);
 	let error = $state<string | null>(null);
 	let updating = $state<Record<string, boolean>>({});
 	let successMessage = $state<string | null>(null);
@@ -30,7 +34,7 @@
 
 	onMount(() => {
 		fetchFlags();
-		// Auto-refresh every 10 seconds to catch updates from other instances
+		refresh = fetchFlags;
 		refreshInterval = setInterval(() => {
 			if (!loading && !error) {
 				fetchFlags();
@@ -80,7 +84,6 @@
 		error = null;
 		successMessage = null;
 
-		// Optimistic update
 		const oldFlags = { ...flags };
 		flags = { ...flags, [key]: newValue };
 
@@ -164,24 +167,6 @@
 </script>
 
 <div class="space-y-6">
-	<!-- Header -->
-	<div class="flex items-center justify-between">
-		<div>
-			<h2 class="text-2xl font-bold tracking-tight">System Flags</h2>
-			<p class="text-sm text-muted-foreground">
-				Control system-wide states like maintenance mode and shutdown
-			</p>
-		</div>
-		<Button variant="outline" size="sm" onclick={fetchFlags} disabled={loading}>
-			{#if loading}
-				<LoaderCircle class="mr-2 size-4 animate-spin" />
-			{:else}
-				<RefreshCw class="mr-2 size-4" />
-			{/if}
-			Refresh
-		</Button>
-	</div>
-
 	{#if error}
 		<Alert variant="destructive">
 			<AlertCircle class="size-4" />

@@ -1,44 +1,34 @@
-<!-- src/routes/admin/system-flags/+page.svelte -->
+<!-- src/routes/(admin)/admin/system-flags/+page.svelte -->
 <script lang="ts">
-  import SystemFlagsManager from '$lib/components/admin/SystemFlagsManager.svelte';
+	import { Topbar } from '$lib/components/dashboard';
+	import { Button } from '$lib/components/ui/button/index.js';
+	import { RefreshCw, LoaderCircle } from '@lucide/svelte/icons';
+	import SystemFlagsManager from '$lib/components/admin/SystemFlagsManager.svelte';
+
+	let refreshFn: (() => void) | undefined = $state();
+	let loading = $state(false);
 </script>
 
 <svelte:head>
-  <title>System Flags - Administration</title>
+	<title>System Flags - Administration</title>
 </svelte:head>
 
-<div class="page-container">
-  <div class="page-header">
-    <h1>System Flags Management</h1>
-    <p class="page-description">
-      Control system-wide states like maintenance mode and shutdown. Changes take effect immediately.
-    </p>
-  </div>
+<Topbar
+	title="System Flags Management"
+	description="Control system-wide states like maintenance mode and shutdown. Changes take effect immediately."
+>
+	{#snippet actions()}
+		<Button variant="outline" size="sm" onclick={() => refreshFn?.()} disabled={loading}>
+			{#if loading}
+				<LoaderCircle class="mr-2 size-4 animate-spin" />
+			{:else}
+				<RefreshCw class="mr-2 size-4" />
+			{/if}
+			Refresh
+		</Button>
+	{/snippet}
+</Topbar>
 
-  <SystemFlagsManager />
-</div>
-
-<style>
-  .page-container {
-    max-width: 1200px;
-    margin: 0 auto;
-    padding: 20px;
-  }
-
-  .page-header {
-    margin-bottom: 40px;
-  }
-
-  .page-header h1 {
-    margin: 0 0 8px;
-    font-size: 1.75rem;
-    font-weight: 600;
-  }
-
-  .page-description {
-    margin: 0;
-    color: #666;
-    font-size: 0.95rem;
-    line-height: 1.5;
-  }
-</style>
+<main class="flex flex-1 flex-col gap-6 p-6">
+	<SystemFlagsManager bind:refresh={refreshFn} bind:loading />
+</main>
