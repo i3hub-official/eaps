@@ -12,6 +12,6 @@ import { getSystemFlags } from '$lib/server/system/flags.js';
  * Returns ONLY these two booleans — never spread the full flags object here.
  */
 export const GET: RequestHandler = async () => {
-	const { maintenance, shutdown } = await getSystemFlags();
-	return json({ maintenance, shutdown });
+	const { maintenance, shutdown, launchSoon, launchDateISO } = await getSystemFlags();
+	return json({ maintenance, shutdown, launchSoon, launchDateISO });
 };

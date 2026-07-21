@@ -13,13 +13,15 @@
     import MaintenanceScreen from '$lib/components/system/MaintenanceScreen.svelte';
     import VpnBlockedScreen from '$lib/components/system/VpnBlockedScreen.svelte';
     import ShutdownScreen from '$lib/components/system/ShutdownScreen.svelte';
+    import LaunchSoonScreen from '$lib/components/system/LaunchSoonScreen.svelte';
 
     interface LayoutData {
-        systemState: 'maintenance' | 'vpn_blocked' | 'shutdown' | null;
+        systemState: 'maintenance' | 'vpn_blocked' | 'shutdown' | 'launch_soon' | null;
         detectedIp: string | null;
+        launchDateISO?: string | null;
     }
 
-    let { children, data }: { children: Snippet; data: LayoutData } = $props();
+	let { children, data }: { children: Snippet; data: LayoutData } = $props();
 
     setContext('faceModels', faceModels);
 
@@ -41,18 +43,17 @@
 <Toaster richColors position="top-right" />
 
 {#if systemState === 'maintenance'}
-    <MaintenanceScreen
-        estimatedReturn="soon."
-        message="We are performing scheduled maintenance to improve the platform. Please check back shortly."
-    />
+	<MaintenanceScreen ... />
 {:else if systemState === 'vpn_blocked'}
-    <VpnBlockedScreen detectedIp="" />
+	<VpnBlockedScreen detectedIp="" />
 {:else if systemState === 'shutdown'}
-    <ShutdownScreen
-        reason="The examination platform has been shut down by the administration pending review."
-        reopenDate="Monday, 21 July 2025"
-        contactEmail="examoffice@mouau.edu.ng"
-    />
+	<ShutdownScreen />
+{:else if systemState === 'launch_soon'}
+	<LaunchSoonScreen
+		launchDateISO={data.launchDateISO ?? undefined}
+		message="We're putting the finishing touches on the platform. Check back soon."
+		contactEmail="examoffice@mouau.edu.ng"
+	/>
 {:else}
-    {@render children()}
+	{@render children()}
 {/if}

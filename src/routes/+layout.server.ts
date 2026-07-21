@@ -85,9 +85,9 @@ export const load: LayoutServerLoad = async ({ request, url, locals, getClientAd
     // XFF_DEPTH for adapter-node; adapter-vercel handles this automatically).
     const ip = safeClientAddress(getClientAddress);
 
-    const { shutdown, maintenance } = await getSystemFlags();
+const { shutdown, maintenance, launchSoon, launchDateISO } = await getSystemFlags();
     
-    // console.log(`[layout] Checking system state at ${pathname}: maintenance=${maintenance}, shutdown=${shutdown}, ip=${ip}`);
+    // console.log(`[layout] Checking system state at ${pathname}: maintenance=${maintenance}, shutdown=${shutdown}, launchSoon=${launchSoon}, ip=${ip}`);
     
     if (shutdown) {
         // console.log(`[layout] Returning shutdown state for ${pathname}`);
@@ -97,6 +97,11 @@ export const load: LayoutServerLoad = async ({ request, url, locals, getClientAd
     if (maintenance) {
         // console.log(`[layout] Returning maintenance state for ${pathname}`);
         return { systemState: 'maintenance' as const, detectedIp: ip };
+    }
+
+    if (launchSoon) {
+        // console.log(`[layout] Returning launchSoon state for ${pathname}`);
+        return { systemState: 'launch_soon' as const, detectedIp: ip, launchDateISO };
     }
 
     // No resolvable IP for this request — skip VPN screening rather than
