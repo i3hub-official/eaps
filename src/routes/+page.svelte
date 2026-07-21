@@ -8,7 +8,7 @@
 	import ShieldCheck from '@lucide/svelte/icons/shield-check';
 	import { LoaderCircle } from '@lucide/svelte/icons';
 	import { goto } from '$app/navigation';
-	import { fade, fly } from 'svelte/transition';
+	import { fly } from 'svelte/transition';
 
 	const modes = [
 		{
@@ -34,15 +34,15 @@
 		}
 	];
 
-	let isNavigating = $state(false);
+	let navigatingTo = $state<string | null>(null);
 
 	async function handleNavigation(path: string) {
-		if (isNavigating) return;
-		isNavigating = true;
+		if (navigatingTo) return;
+		navigatingTo = path;
 		try {
 			await goto(path);
 		} finally {
-			isNavigating = false;
+			navigatingTo = null;
 		}
 	}
 </script>
@@ -83,12 +83,9 @@
 					variant="ghost"
 					size="sm"
 					onclick={() => handleNavigation('/login')}
-					disabled={isNavigating}
 					class="font-medium"
+					disabled={!!navigatingTo}
 				>
-					{#if isNavigating}
-						<LoaderCircle class="mr-2 size-4 animate-spin" />
-					{/if}
 					Sign in
 				</Button>
 			</div>
@@ -127,9 +124,9 @@
 							onclick={() => handleNavigation('/login')}
 							size="lg"
 							class="h-14 text-base font-semibold shadow-lg transition-shadow hover:shadow-xl"
-							disabled={isNavigating}
+							disabled={!!navigatingTo}
 						>
-							{#if isNavigating}
+							{#if navigatingTo === '/login'}
 								<LoaderCircle class="mr-3 size-5 animate-spin" />
 								Signing in...
 							{:else}
@@ -143,9 +140,14 @@
 							variant="outline"
 							size="lg"
 							class="h-14 text-base"
-							disabled={isNavigating}
+							disabled={!!navigatingTo}
 						>
-							Create account
+							{#if navigatingTo === '/register'}
+								<LoaderCircle class="mr-3 size-5 animate-spin" />
+								Processing...
+							{:else}
+								Create account
+							{/if}
 						</Button>
 					</div>
 
@@ -380,6 +382,7 @@
 						onclick={() => handleNavigation('/register')}
 						variant="outline"
 						class="shrink-0"
+						disabled={!!navigatingTo}
 					>
 						Get started
 						<ArrowRight class="ml-2 size-4" />
