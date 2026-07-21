@@ -44,7 +44,7 @@
         {#if estimatedReturn}
             <div class="flex items-center gap-2 rounded-full border border-border bg-muted px-4 py-2 text-sm text-foreground">
                 <ClockIcon class="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
-                <span>Expected back at <strong class="font-semibold">{estimatedReturn}</strong></span>
+                <span>Expected back <strong class="font-semibold">{estimatedReturn}</strong></span>
             </div>
         {/if}
 

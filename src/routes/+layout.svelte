@@ -42,7 +42,7 @@
 
 {#if systemState === 'maintenance'}
     <MaintenanceScreen
-        estimatedReturn="2:00 PM WAT"
+        estimatedReturn="soon."
         message="We are performing scheduled maintenance to improve the platform. Please check back shortly."
     />
 {:else if systemState === 'vpn_blocked'}
