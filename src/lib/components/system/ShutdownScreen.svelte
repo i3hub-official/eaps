@@ -114,14 +114,14 @@
 			</p>
 		</div>
 
-		<button
+		<!-- <button
 			onclick={() => checkStatus(true)}
 			disabled={checking}
 			class="flex items-center gap-2 rounded-lg border border-border bg-background px-5 py-2.5 text-sm font-medium text-foreground shadow-sm transition-colors hover:bg-muted disabled:opacity-60"
 		>
 			<RefreshCwIcon class="h-3.5 w-3.5 {checking ? 'animate-spin' : ''}" />
 			{checking ? 'Checking…' : 'Check now'}
-		</button>
+		</button> -->
 
 		<div class="w-full border-t border-border pt-6">
 			<p class="text-xs text-muted-foreground">
