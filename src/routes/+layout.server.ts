@@ -18,7 +18,7 @@ function safeClientAddress(getClientAddress: () => string): string | null {
     try {
         return getClientAddress();
     } catch (err) {
-        console.warn('[layout] Could not determine clientAddress, skipping VPN check for this request:', err);
+        // console.warn('[layout] Could not determine clientAddress, skipping VPN check for this request:', err);
         return null;
     }
 }
@@ -75,7 +75,7 @@ export const load: LayoutServerLoad = async ({ request, url, locals, getClientAd
     // member can hold ADMIN as a secondary role. See guards.ts header comment.
     const userRoles = locals.user?.type === 'staff' ? locals.user.roles : [];
     if (isAdminRole(userRoles)) {
-        console.log(`[layout] Admin user ${locals.user?.id} bypassing system state checks at ${pathname}`);
+        // console.log(`[layout] Admin user ${locals.user?.id} bypassing system state checks at ${pathname}`);
         return { systemState: null, detectedIp: null };
     }
 
@@ -87,15 +87,15 @@ export const load: LayoutServerLoad = async ({ request, url, locals, getClientAd
 
     const { shutdown, maintenance } = await getSystemFlags();
     
-    console.log(`[layout] Checking system state at ${pathname}: maintenance=${maintenance}, shutdown=${shutdown}, ip=${ip}`);
+    // console.log(`[layout] Checking system state at ${pathname}: maintenance=${maintenance}, shutdown=${shutdown}, ip=${ip}`);
     
     if (shutdown) {
-        console.log(`[layout] Returning shutdown state for ${pathname}`);
+        // console.log(`[layout] Returning shutdown state for ${pathname}`);
         return { systemState: 'shutdown' as const, detectedIp: ip };
     }
     
     if (maintenance) {
-        console.log(`[layout] Returning maintenance state for ${pathname}`);
+        // console.log(`[layout] Returning maintenance state for ${pathname}`);
         return { systemState: 'maintenance' as const, detectedIp: ip };
     }
 
@@ -118,7 +118,7 @@ export const load: LayoutServerLoad = async ({ request, url, locals, getClientAd
     }
 
     if (vpnBlocked) {
-        console.log(`[layout] VPN blocked at ${pathname}, ip=${ip}`);
+        // console.log(`[layout] VPN blocked at ${pathname}, ip=${ip}`);
         return { systemState: 'vpn_blocked' as const, detectedIp: ip };
     }
 

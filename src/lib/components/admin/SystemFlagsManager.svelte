@@ -1,294 +1,322 @@
 <!-- src/lib/components/admin/SystemFlagsManager.svelte -->
 <script lang="ts">
-  import { onMount } from 'svelte';
+	import { onMount, onDestroy } from 'svelte';
+	import { Button } from '$lib/components/ui/button/index.js';
+	import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '$lib/components/ui/card/index.js';
+	import { Badge } from '$lib/components/ui/badge/index.js';
+	import { Alert, AlertDescription } from '$lib/components/ui/alert/index.js';
+	import {
+		AlertCircle,
+		CheckCircle2,
+		XCircle,
+		RefreshCw,
+		LoaderCircle,
+		Wrench,
+		Power,
+		Trash2
+	} from '@lucide/svelte/icons';
 
-  interface SystemFlags {
-    maintenance: boolean;
-    shutdown: boolean;
-  }
+	interface SystemFlags {
+		maintenance: boolean;
+		shutdown: boolean;
+	}
 
-  let flags: SystemFlags | null = null;
-  let loading = true;
-  let error: string | null = null;
-  let updating: Record<string, boolean> = {};
-  let successMessage: string | null = null;
+	let flags = $state<SystemFlags | null>(null);
+	let loading = $state(true);
+	let error = $state<string | null>(null);
+	let updating = $state<Record<string, boolean>>({});
+	let successMessage = $state<string | null>(null);
+	let refreshInterval: ReturnType<typeof setInterval> | null = null;
 
-  onMount(async () => {
-    await fetchFlags();
-  });
+	onMount(() => {
+		fetchFlags();
+		// Auto-refresh every 10 seconds to catch updates from other instances
+		refreshInterval = setInterval(() => {
+			if (!loading && !error) {
+				fetchFlags();
+			}
+		}, 10000);
+	});
 
-  async function fetchFlags() {
-    loading = true;
-    error = null;
-    try {
-      const res = await fetch('/api/admin/system-flags');
-      if (!res.ok) throw new Error(`Failed to fetch flags: ${res.statusText}`);
-      flags = await res.json();
-    } catch (err) {
-      error = err instanceof Error ? err.message : 'Unknown error';
-      console.error('Fetch flags error:', err);
-    } finally {
-      loading = false;
-    }
-  }
+	onDestroy(() => {
+		if (refreshInterval) {
+			clearInterval(refreshInterval);
+		}
+	});
 
-  async function toggleFlag(key: 'maintenance' | 'shutdown') {
-    if (!flags) return;
+	async function fetchFlags() {
+		loading = true;
+		error = null;
+		try {
+			const res = await fetch('/api/admin/system-flags', {
+				credentials: 'include'
+			});
 
-    const newValue = !flags[key];
-    updating[key] = true;
-    error = null;
-    successMessage = null;
+			if (!res.ok) {
+				let errorMessage = `Failed to fetch flags: ${res.statusText}`;
+				try {
+					const errorData = await res.json();
+					errorMessage = errorData.message || errorMessage;
+				} catch (e) {
+					// If response is not JSON, use status text
+				}
+				throw new Error(errorMessage);
+			}
 
-    try {
-      const res = await fetch('/api/admin/system-flags', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ key, value: newValue }),
-      });
+			flags = await res.json();
+		} catch (err) {
+			error = err instanceof Error ? err.message : 'Unknown error occurred';
+			console.error('Fetch flags error:', err);
+		} finally {
+			loading = false;
+		}
+	}
 
-      if (!res.ok) {
-        const text = await res.text();
-        throw new Error(`Failed to update flag: ${text}`);
-      }
+	async function toggleFlag(key: 'maintenance' | 'shutdown') {
+		if (!flags) return;
 
-      const updated = await res.json();
-      flags = updated;
-      successMessage = `${key} set to ${newValue}`;
+		const newValue = !flags[key];
+		updating[key] = true;
+		error = null;
+		successMessage = null;
 
-      // Clear message after 3s
-      setTimeout(() => {
-        successMessage = null;
-      }, 3000);
-    } catch (err) {
-      error = err instanceof Error ? err.message : 'Unknown error';
-      console.error('Toggle flag error:', err);
-    } finally {
-      updating[key] = false;
-    }
-  }
+		// Optimistic update
+		const oldFlags = { ...flags };
+		flags = { ...flags, [key]: newValue };
 
-  async function clearCache() {
-    error = null;
-    successMessage = null;
+		try {
+			const res = await fetch('/api/admin/system-flags', {
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json' },
+				credentials: 'include',
+				body: JSON.stringify({ key, value: newValue }),
+			});
 
-    try {
-      const res = await fetch('/api/admin/system-flags/cache', {
-        method: 'DELETE',
-      });
+			if (!res.ok) {
+				let errorMessage = `Failed to update flag: ${res.statusText}`;
+				try {
+					const errorData = await res.json();
+					errorMessage = errorData.message || errorMessage;
+				} catch (e) {
+					// If response is not JSON, use status text
+				}
+				throw new Error(errorMessage);
+			}
 
-      if (!res.ok) {
-        throw new Error(`Failed to clear cache: ${res.statusText}`);
-      }
+			const updated = await res.json();
+			flags = updated;
 
-      successMessage = 'Cache cleared. Flags will re-check from DB on next request.';
-      setTimeout(() => {
-        successMessage = null;
-      }, 3000);
-    } catch (err) {
-      error = err instanceof Error ? err.message : 'Unknown error';
-      console.error('Clear cache error:', err);
-    }
-  }
+			successMessage = `${key} successfully set to ${newValue ? 'ON' : 'OFF'}`;
+
+			setTimeout(() => {
+				successMessage = null;
+			}, 3000);
+		} catch (err) {
+			flags = oldFlags;
+			error = err instanceof Error ? err.message : 'Unknown error occurred';
+			console.error('Toggle flag error:', err);
+		} finally {
+			updating[key] = false;
+		}
+	}
+
+	async function clearCache() {
+		error = null;
+		successMessage = null;
+
+		try {
+			const res = await fetch('/api/admin/system-flags/cache', {
+				method: 'DELETE',
+				credentials: 'include',
+			});
+
+			if (!res.ok) {
+				let errorMessage = `Failed to clear cache: ${res.statusText}`;
+				try {
+					const errorData = await res.json();
+					errorMessage = errorData.message || errorMessage;
+				} catch (e) {
+					// If response is not JSON, use status text
+				}
+				throw new Error(errorMessage);
+			}
+
+			const data = await res.json();
+			successMessage = data.message || 'Cache cleared successfully';
+
+			await fetchFlags();
+
+			setTimeout(() => {
+				successMessage = null;
+			}, 3000);
+		} catch (err) {
+			error = err instanceof Error ? err.message : 'Unknown error occurred';
+			console.error('Clear cache error:', err);
+		}
+	}
+
+	function getStatusBadge(value: boolean) {
+		if (value) {
+			return { variant: 'destructive' as const, icon: XCircle, label: 'Active' };
+		}
+		return { variant: 'secondary' as const, icon: CheckCircle2, label: 'Inactive' };
+	}
 </script>
 
-<div class="system-flags-manager">
-  <h2>System Flags</h2>
+<div class="space-y-6">
+	<!-- Header -->
+	<div class="flex items-center justify-between">
+		<div>
+			<h2 class="text-2xl font-bold tracking-tight">System Flags</h2>
+			<p class="text-sm text-muted-foreground">
+				Control system-wide states like maintenance mode and shutdown
+			</p>
+		</div>
+		<Button variant="outline" size="sm" onclick={fetchFlags} disabled={loading}>
+			{#if loading}
+				<LoaderCircle class="mr-2 size-4 animate-spin" />
+			{:else}
+				<RefreshCw class="mr-2 size-4" />
+			{/if}
+			Refresh
+		</Button>
+	</div>
 
-  {#if error}
-    <div class="alert alert-error">
-      {error}
-    </div>
-  {/if}
+	{#if error}
+		<Alert variant="destructive">
+			<AlertCircle class="size-4" />
+			<AlertDescription>{error}</AlertDescription>
+		</Alert>
+	{/if}
 
-  {#if successMessage}
-    <div class="alert alert-success">
-      {successMessage}
-    </div>
-  {/if}
+	{#if successMessage}
+		<Alert variant="default" class="border-green-500 bg-green-50 text-green-700 dark:bg-green-950/20 dark:text-green-400">
+			<CheckCircle2 class="size-4" />
+			<AlertDescription>{successMessage}</AlertDescription>
+		</Alert>
+	{/if}
 
-  {#if loading}
-    <p>Loading system flags...</p>
-  {:else if flags}
-    <div class="flags-container">
-      <!-- Maintenance Flag -->
-      <div class="flag-card">
-        <div class="flag-header">
-          <h3>Maintenance Mode</h3>
-          <p class="status" class:active={flags.maintenance}>
-            {flags.maintenance ? '🔴 Active' : '🟢 Inactive'}
-          </p>
-        </div>
-        <p class="description">
-          When active, all non-admin users are redirected to the maintenance screen.
-        </p>
-        <button
-          on:click={() => toggleFlag('maintenance')}
-          disabled={updating['maintenance']}
-          class={flags.maintenance ? 'btn-danger' : 'btn-primary'}
-        >
-          {updating['maintenance'] ? 'Updating...' : flags.maintenance ? 'Disable' : 'Enable'}
-        </button>
-      </div>
+	{#if loading && !flags}
+		<div class="flex flex-col items-center justify-center py-12">
+			<LoaderCircle class="size-8 animate-spin text-muted-foreground" />
+			<p class="mt-4 text-sm text-muted-foreground">Loading system flags...</p>
+		</div>
+	{:else if flags}
+		<div class="grid gap-6 md:grid-cols-2">
+			<Card class={flags.maintenance ? 'border-red-200 dark:border-red-800' : ''}>
+				<CardHeader>
+					<div class="flex items-center justify-between">
+						<CardTitle class="flex items-center gap-2">
+							<Wrench class="size-5" />
+							Maintenance Mode
+						</CardTitle>
+						<Badge variant={getStatusBadge(flags.maintenance).variant}>
+							<svelte:component this={getStatusBadge(flags.maintenance).icon} class="mr-1 size-3" />
+							{getStatusBadge(flags.maintenance).label}
+						</Badge>
+					</div>
+					<CardDescription>
+						When active, all non-admin users are redirected to the maintenance screen.
+						Admin users can still access the system.
+					</CardDescription>
+				</CardHeader>
+				<CardContent>
+					<Button
+						variant={flags.maintenance ? 'destructive' : 'default'}
+						class="w-full"
+						onclick={() => toggleFlag('maintenance')}
+						disabled={updating['maintenance']}
+					>
+						{#if updating['maintenance']}
+							<LoaderCircle class="mr-2 size-4 animate-spin" />
+							Updating...
+						{:else}
+							{flags.maintenance ? 'Disable Maintenance' : 'Enable Maintenance'}
+						{/if}
+					</Button>
+				</CardContent>
+			</Card>
 
-      <!-- Shutdown Flag -->
-      <div class="flag-card">
-        <div class="flag-header">
-          <h3>Shutdown Mode</h3>
-          <p class="status" class:active={flags.shutdown}>
-            {flags.shutdown ? '🔴 Active' : '🟢 Inactive'}
-          </p>
-        </div>
-        <p class="description">
-          When active, all non-admin users see a shutdown notice and cannot access the system.
-        </p>
-        <button
-          on:click={() => toggleFlag('shutdown')}
-          disabled={updating['shutdown']}
-          class={flags.shutdown ? 'btn-danger' : 'btn-primary'}
-        >
-          {updating['shutdown'] ? 'Updating...' : flags.shutdown ? 'Disable' : 'Enable'}
-        </button>
-      </div>
-    </div>
+			<Card class={flags.shutdown ? 'border-red-200 dark:border-red-800' : ''}>
+				<CardHeader>
+					<div class="flex items-center justify-between">
+						<CardTitle class="flex items-center gap-2">
+							<Power class="size-5" />
+							Shutdown Mode
+						</CardTitle>
+						<Badge variant={getStatusBadge(flags.shutdown).variant}>
+							<svelte:component this={getStatusBadge(flags.shutdown).icon} class="mr-1 size-3" />
+							{getStatusBadge(flags.shutdown).label}
+						</Badge>
+					</div>
+					<CardDescription>
+						When active, all non-admin users see a shutdown notice and cannot access the system.
+						Admin users can still access the system.
+					</CardDescription>
+				</CardHeader>
+				<CardContent>
+					<Button
+						variant={flags.shutdown ? 'destructive' : 'default'}
+						class="w-full"
+						onclick={() => toggleFlag('shutdown')}
+						disabled={updating['shutdown']}
+					>
+						{#if updating['shutdown']}
+							<LoaderCircle class="mr-2 size-4 animate-spin" />
+							Updating...
+						{:else}
+							{flags.shutdown ? 'Disable Shutdown' : 'Enable Shutdown'}
+						{/if}
+					</Button>
+				</CardContent>
+			</Card>
+		</div>
 
-    <div class="cache-section">
-      <h3>Cache Management</h3>
-      <p class="description">
-        Flags are cached for 15 seconds per instance. If you update the database directly,
-        click below to clear the cache immediately.
-      </p>
-      <button on:click={clearCache} class="btn-secondary">Clear Cache</button>
-    </div>
-  {/if}
+		<Card>
+			<CardHeader>
+				<CardTitle class="flex items-center gap-2">
+					<Trash2 class="size-5" />
+					Cache Management
+				</CardTitle>
+				<CardDescription>
+					Flags are read directly from the database. If you update the database manually,
+					click below to force a refresh.
+				</CardDescription>
+			</CardHeader>
+			<CardContent>
+				<Button variant="outline" onclick={clearCache}>
+					<RefreshCw class="mr-2 size-4" />
+					Force Refresh
+				</Button>
+			</CardContent>
+		</Card>
+
+		<Card>
+			<CardHeader>
+				<CardTitle class="text-base">Current System Status</CardTitle>
+			</CardHeader>
+			<CardContent>
+				<div class="grid gap-4 sm:grid-cols-2">
+					<div class="flex items-center justify-between rounded-lg border p-4">
+						<div class="flex items-center gap-3">
+							<Wrench class="size-4 text-muted-foreground" />
+							<span class="text-sm font-medium">Maintenance</span>
+						</div>
+						<Badge variant={flags.maintenance ? 'destructive' : 'secondary'}>
+							{flags.maintenance ? 'Active' : 'Inactive'}
+						</Badge>
+					</div>
+					<div class="flex items-center justify-between rounded-lg border p-4">
+						<div class="flex items-center gap-3">
+							<Power class="size-4 text-muted-foreground" />
+							<span class="text-sm font-medium">Shutdown</span>
+						</div>
+						<Badge variant={flags.shutdown ? 'destructive' : 'secondary'}>
+							{flags.shutdown ? 'Active' : 'Inactive'}
+						</Badge>
+					</div>
+				</div>
+			</CardContent>
+		</Card>
+	{/if}
 </div>
-
-<style>
-  .system-flags-manager {
-    max-width: 800px;
-    margin: 0 auto;
-    padding: 20px;
-  }
-
-  h2 {
-    margin-bottom: 20px;
-    font-size: 1.5rem;
-    font-weight: 600;
-  }
-
-  .alert {
-    padding: 12px 16px;
-    border-radius: 6px;
-    margin-bottom: 16px;
-    font-size: 0.9rem;
-  }
-
-  .alert-error {
-    background-color: #fee;
-    color: #c33;
-    border: 1px solid #fcc;
-  }
-
-  .alert-success {
-    background-color: #efe;
-    color: #3c3;
-    border: 1px solid #cfc;
-  }
-
-  .flags-container {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
-    gap: 16px;
-    margin-bottom: 32px;
-  }
-
-  .flag-card {
-    border: 1px solid #e0e0e0;
-    border-radius: 8px;
-    padding: 16px;
-    background-color: #f9f9f9;
-  }
-
-  .flag-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    margin-bottom: 12px;
-  }
-
-  .flag-header h3 {
-    margin: 0;
-    font-size: 1.1rem;
-    font-weight: 600;
-  }
-
-  .status {
-    margin: 0;
-    font-size: 0.85rem;
-    font-weight: 500;
-  }
-
-  .status.active {
-    color: #c33;
-  }
-
-  .description {
-    margin: 8px 0 16px;
-    font-size: 0.85rem;
-    color: #666;
-    line-height: 1.4;
-  }
-
-  button {
-    padding: 8px 16px;
-    border: none;
-    border-radius: 4px;
-    font-size: 0.9rem;
-    font-weight: 500;
-    cursor: pointer;
-    transition: opacity 0.2s;
-  }
-
-  button:disabled {
-    opacity: 0.6;
-    cursor: not-allowed;
-  }
-
-  .btn-primary {
-    background-color: #007bff;
-    color: white;
-  }
-
-  .btn-primary:hover:not(:disabled) {
-    background-color: #0056b3;
-  }
-
-  .btn-danger {
-    background-color: #dc3545;
-    color: white;
-  }
-
-  .btn-danger:hover:not(:disabled) {
-    background-color: #c82333;
-  }
-
-  .btn-secondary {
-    background-color: #6c757d;
-    color: white;
-  }
-
-  .btn-secondary:hover:not(:disabled) {
-    background-color: #5a6268;
-  }
-
-  .cache-section {
-    border-top: 1px solid #e0e0e0;
-    padding-top: 20px;
-  }
-
-  .cache-section h3 {
-    margin: 0 0 8px;
-    font-size: 1rem;
-    font-weight: 600;
-  }
-</style>

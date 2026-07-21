@@ -1,99 +1,107 @@
 // src/lib/server/system/flags.ts
 import { getPrismaClient } from '$lib/server/db/index.js';
 
-const FLAGS_CACHE: Map<string, { value: string; expiresAt: number }> = new Map();
-const CACHE_TTL_MS = 15 * 1000; // 15 seconds
+export interface SystemFlags {
+  maintenance: boolean;
+  shutdown: boolean;
+}
 
 /**
- * Get a system flag value from cache or DB.
- * Falls back to env var if set (env takes precedence).
+ * Get system flags
  */
-export async function getSystemFlag(
-  key: 'maintenance' | 'shutdown',
-): Promise<boolean> {
-  // Env var overrides DB (hard override for emergencies)
-  const envKey = key === 'maintenance' ? 'SYSTEM_MAINTENANCE' : 'SYSTEM_SHUTDOWN';
-  if (process.env[envKey] === 'true') return true;
-  if (process.env[envKey] === 'false') return false;
-
-  // Check in-memory cache
-  const now = Date.now();
-  const cached = FLAGS_CACHE.get(key);
-  if (cached && cached.expiresAt > now) {
-    return cached.value === 'true';
-  }
-
-  // Query DB
+export async function getSystemFlags(): Promise<SystemFlags> {
   try {
     const prisma = await getPrismaClient();
-    const flag = await prisma.systemFlag.findUnique({
-      where: { key },
-      select: { value: true },
+
+    // Get from database
+    const flags = await prisma.systemFlag.findMany({
+      where: {
+        key: {
+          in: ['maintenance', 'shutdown']
+        }
+      }
     });
 
-    const value = flag?.value ?? 'false';
-    FLAGS_CACHE.set(key, { value, expiresAt: now + CACHE_TTL_MS });
-    return value === 'true';
+    // Convert to boolean values (schema stores value as text)
+    const result: SystemFlags = {
+      maintenance: flags.find(f => f.key === 'maintenance')?.value === 'true',
+      shutdown: flags.find(f => f.key === 'shutdown')?.value === 'true'
+    };
+
+    return result;
   } catch (error) {
-    console.error(`[system-flags] Failed to fetch flag "${key}":`, error);
-    // Safe default: assume maintenance required on DB error
-    return true;
+    console.error('Error getting system flags:', error);
+    // Return defaults if there's an error
+    return {
+      maintenance: false,
+      shutdown: false
+    };
   }
 }
 
 /**
- * Set a system flag value in the DB and clear cache.
- * Use from admin routes only.
+ * Set a system flag
  */
 export async function setSystemFlag(
   key: 'maintenance' | 'shutdown',
   value: boolean,
-  updatedBy?: string,
+  userId: string
 ): Promise<void> {
   try {
     const prisma = await getPrismaClient();
-    await prisma.systemFlag.upsert({
-      where: { key },
-      update: {
-        value: value ? 'true' : 'false',
-        updatedBy,
-        updatedAt: new Date(),
-      },
-      create: {
-        key,
-        value: value ? 'true' : 'false',
-        updatedBy,
-      },
+    const stringValue = value ? 'true' : 'false';
+
+    // Check if flag exists
+    const existing = await prisma.systemFlag.findUnique({
+      where: { key }
     });
 
-    // Invalidate cache immediately
-    FLAGS_CACHE.delete(key);
+    if (existing) {
+      // Update existing flag
+      await prisma.systemFlag.update({
+        where: { key },
+        data: {
+          value: stringValue,
+          updatedAt: new Date(),
+          updatedBy: userId
+        }
+      });
+    } else {
+      // Create new flag (id auto-generated via @default(cuid()))
+      await prisma.systemFlag.create({
+        data: {
+          key,
+          value: stringValue,
+          updatedAt: new Date(),
+          updatedBy: userId
+        }
+      });
+    }
 
-    console.log(`[system-flags] Set ${key}=${value} by ${updatedBy || 'system'}`);
+    // Create audit log
+    try {
+      await prisma.auditLog.create({
+        data: {
+          userId,
+          action: 'SYSTEM_FLAG_UPDATED',
+          details: `System flag "${key}" set to ${value}`,
+          timestamp: new Date()
+        }
+      });
+    } catch (auditError) {
+      // If auditLog doesn't exist, just log it
+      console.log(`[AUDIT] User ${userId} set flag ${key} to ${value}`);
+    }
   } catch (error) {
-    console.error(`[system-flags] Failed to set flag "${key}":`, error);
+    console.error(`Error setting system flag ${key}:`, error);
     throw error;
   }
 }
 
 /**
- * Get both system flags at once.
- */
-export async function getSystemFlags(): Promise<{
-  maintenance: boolean;
-  shutdown: boolean;
-}> {
-  const [maintenance, shutdown] = await Promise.all([
-    getSystemFlag('maintenance'),
-    getSystemFlag('shutdown'),
-  ]);
-
-  return { maintenance, shutdown };
-}
-
-/**
- * Clear the in-memory cache (useful after DB direct updates).
+ * Clear the system flags cache - no-op since we don't use Redis
  */
 export function clearFlagCache(): void {
-  FLAGS_CACHE.clear();
+  // No cache to clear since we don't use Redis
+  console.log('Cache clear called but no Redis configured');
 }
