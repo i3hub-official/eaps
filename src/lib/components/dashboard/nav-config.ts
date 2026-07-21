@@ -270,6 +270,7 @@ export const navByRole: Record<Role, NavSection[]> = {
 		{
 			label: 'System',
 			items: [
+				{ label: 'System Flags', href: '/admin/system-flags', icon: Flag },
 				{ label: 'Development Team', href: '/admin/team', icon: Code },
 				{ label: 'Staff Invitations', href: '/admin/staff-invitations', icon: Mail },
 				{ label: 'System Logs', href: '/admin/system-logs', icon: Server },

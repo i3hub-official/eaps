@@ -1,59 +1,19 @@
 // src/routes/+layout.server.ts
 import type { LayoutServerLoad } from './$types';
-import { getPrismaClient } from '$lib/server/db/index.js';
+import { getSystemFlags } from '$lib/server/system/flags.js';
 import { isAdminRole } from '$lib/server/auth/roles';
 import crypto from 'node:crypto';
 
 const VPN_COOKIE = 'vpn_chk';
 const VPN_CACHE_TTL_MS = 15 * 60 * 1000; // recheck every 15 min
-const FLAGS_CACHE_TTL_MS = 15 * 1000;    // recheck every 15s
 
 const HMAC_SECRET = process.env.VPN_COOKIE_SECRET ?? '';
 if (!HMAC_SECRET && process.env.NODE_ENV === 'production') {
     console.error('[layout] VPN_COOKIE_SECRET is not set — VPN check cache cannot be trusted.');
 }
 
-// ── in-memory system flags cache (per warm instance) ────────────────────────
-
-let flagsCache: { shutdown: boolean; maintenance: boolean; expiresAt: number } | null = null;
-
-async function getSystemFlags(): Promise<{ maintenance: boolean; shutdown: boolean }> {
-    if (process.env.SYSTEM_SHUTDOWN === 'true')    return { shutdown: true,  maintenance: false };
-    if (process.env.SYSTEM_MAINTENANCE === 'true') return { shutdown: false, maintenance: true  };
-
-    const now = Date.now();
-    if (flagsCache && flagsCache.expiresAt > now) {
-        return { shutdown: flagsCache.shutdown, maintenance: flagsCache.maintenance };
-    }
-
-    try {
-        const prisma = await getPrismaClient();
-        const flags  = await prisma.systemFlag.findMany({
-            where:  { key: { in: ['maintenance', 'shutdown'] } },
-            select: { key: true, value: true },
-        });
-        const get = (k: string) => flags.find((f) => f.key === k)?.value === 'true';
-        const result = { shutdown: get('shutdown'), maintenance: get('maintenance') };
-        flagsCache = { ...result, expiresAt: now + FLAGS_CACHE_TTL_MS };
-        return result;
-    } catch {
-        return { shutdown: false, maintenance: true };
-    }
-}
-
 // ── client IP resolution ─────────────────────────────────────────────────
-//
-// getClientAddress() can throw — most commonly in Vite dev, where certain
-// requests (HMR-internal fetches, some Windows/WSL proxy setups) don't carry
-// a real underlying socket for SvelteKit to read remoteAddress from. Since
-// this load function runs on every navigation via the root layout, an
-// unguarded call takes down the entire app rather than one route.
-//
-// If we can't resolve an IP, we deliberately do NOT fail closed into
-// vpn_blocked — that would lock people out (including in dev) any time the
-// address happens to be unresolvable. Instead we skip VPN screening for that
-// request only; shutdown/maintenance checks are unaffected since they don't
-// depend on IP.
+
 function safeClientAddress(getClientAddress: () => string): string | null {
     try {
         return getClientAddress();
@@ -103,8 +63,10 @@ async function checkVpnLive(ip: string): Promise<boolean> {
 // ── load ───────────────────────────────────────────────────────────────────
 
 export const load: LayoutServerLoad = async ({ request, url, locals, getClientAddress, cookies }) => {
+    const pathname = url.pathname;
+    
     // Hidden admin login route always bypasses system screens
-    if (url.pathname.startsWith('/sys/admin-access')) {
+    if (pathname.startsWith('/sys/admin-access')) {
         return { systemState: null, detectedIp: null };
     }
 
@@ -113,6 +75,7 @@ export const load: LayoutServerLoad = async ({ request, url, locals, getClientAd
     // member can hold ADMIN as a secondary role. See guards.ts header comment.
     const userRoles = locals.user?.type === 'staff' ? locals.user.roles : [];
     if (isAdminRole(userRoles)) {
+        console.log(`[layout] Admin user ${locals.user?.id} bypassing system state checks at ${pathname}`);
         return { systemState: null, detectedIp: null };
     }
 
@@ -123,8 +86,18 @@ export const load: LayoutServerLoad = async ({ request, url, locals, getClientAd
     const ip = safeClientAddress(getClientAddress);
 
     const { shutdown, maintenance } = await getSystemFlags();
-    if (shutdown)    return { systemState: 'shutdown'    as const, detectedIp: ip };
-    if (maintenance) return { systemState: 'maintenance' as const, detectedIp: ip };
+    
+    console.log(`[layout] Checking system state at ${pathname}: maintenance=${maintenance}, shutdown=${shutdown}, ip=${ip}`);
+    
+    if (shutdown) {
+        console.log(`[layout] Returning shutdown state for ${pathname}`);
+        return { systemState: 'shutdown' as const, detectedIp: ip };
+    }
+    
+    if (maintenance) {
+        console.log(`[layout] Returning maintenance state for ${pathname}`);
+        return { systemState: 'maintenance' as const, detectedIp: ip };
+    }
 
     // No resolvable IP for this request — skip VPN screening rather than
     // fail closed (see safeClientAddress comment above).
@@ -144,7 +117,10 @@ export const load: LayoutServerLoad = async ({ request, url, locals, getClientAd
         });
     }
 
-    if (vpnBlocked) return { systemState: 'vpn_blocked' as const, detectedIp: ip };
+    if (vpnBlocked) {
+        console.log(`[layout] VPN blocked at ${pathname}, ip=${ip}`);
+        return { systemState: 'vpn_blocked' as const, detectedIp: ip };
+    }
 
     return { systemState: null, detectedIp: ip };
 };

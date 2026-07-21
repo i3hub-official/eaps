@@ -14,13 +14,17 @@
     import VpnBlockedScreen from '$lib/components/system/VpnBlockedScreen.svelte';
     import ShutdownScreen from '$lib/components/system/ShutdownScreen.svelte';
 
-    let { children }: { children: Snippet } = $props();
+    interface LayoutData {
+        systemState: 'maintenance' | 'vpn_blocked' | 'shutdown' | null;
+        detectedIp: string | null;
+    }
+
+    let { children, data }: { children: Snippet; data: LayoutData } = $props();
 
     setContext('faceModels', faceModels);
 
-    // --- System state (drive from your server/env/store as needed) ---
-    // Set only one to true at a time; all false renders the app normally.
-    const systemState: 'maintenance' | 'vpn_blocked' | 'shutdown' | null = null;
+    const systemState = data?.systemState ?? null;
+    const detectedIp = data?.detectedIp ?? null;
 
     onMount(async () => {
         if (!browser) return;

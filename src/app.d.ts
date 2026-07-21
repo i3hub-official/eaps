@@ -10,6 +10,7 @@ declare global {
     interface Locals {
       user: User | null;
       session: Session | null;
+      systemState: 'maintenance' | 'shutdown' | 'vpn_blocked' | null;
     }
     // interface PageData {}
     // interface PageState {}

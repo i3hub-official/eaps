@@ -1,11 +1,4 @@
 // src/hooks.server.ts
-// Populates event.locals.user / event.locals.session from the staff or
-// student session cookie on every request, redirects already-authenticated
-// users away from guest-only routes ("/", "/login", "/forgot-password"),
-// and mounts the invigilator WebSocket server on HTTP upgrade requests
-// (SvelteKit doesn't handle WS natively — we intercept the upgrade event
-// from the underlying Node HTTP server).
-
 import type { Handle, Cookies } from '@sveltejs/kit'
 import { createInvigilatorWSS } from '$lib/server/invigilator/websocket'
 import {
@@ -17,7 +10,6 @@ import {
 } from '$lib/server/auth'
 import { revealEmail, revealMatricNumber, revealName } from '$lib/security/dataProtection'
 import type { User, Session } from '$lib/server/auth/types'
-import type { StaffRole } from '@prisma/client'
 import { enforceGuestOnly } from '$lib/server/auth/guestOnly.js'
 
 let wss: any = null
@@ -125,6 +117,14 @@ export const handle: Handle = async ({ event, resolve }) => {
   const { user, session } = await loadSessionFromCookies(event.cookies)
   event.locals.user = user
   event.locals.session = session
+
+  // System state checks are now in layout.server.ts — it handles env vars, DB flags,
+  // VPN blocking, and admin bypass. This hook runs before layout, so we don't
+  // replicate that logic here; instead layout.server.ts returns systemState to the
+  // component, which conditionally renders MaintenanceScreen, ShutdownScreen, etc.
+  //
+  // For critical maintenance/shutdown that requires immediate redirect (before DB
+  // queries), you can add a quick env-var check here. Most use cases won't need it.
 
   // Must run AFTER `user` is resolved above — it decides whether to bounce
   // an already-authenticated visitor off "/", "/login", and
