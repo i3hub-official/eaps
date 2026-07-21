@@ -38,7 +38,6 @@ export async function getSystemFlags(): Promise<SystemFlags> {
     };
   }
 }
-
 /**
  * Set a system flag
  */
@@ -83,13 +82,13 @@ export async function setSystemFlag(
       await prisma.auditLog.create({
         data: {
           userId,
+          actorType: 'staff', // system flags are only settable by staff/SUPER_ADMIN
           action: 'SYSTEM_FLAG_UPDATED',
           details: `System flag "${key}" set to ${value}`,
           timestamp: new Date()
         }
       });
-    } catch (auditError) {
-      // If auditLog doesn't exist, just log it
+    } catch {
       console.log(`[AUDIT] User ${userId} set flag ${key} to ${value}`);
     }
   } catch (error) {
